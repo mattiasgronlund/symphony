@@ -104,6 +104,23 @@ Workflow when making or changing a decision:
 - Prefer making a substantive spec change *after* its decision is captured, so the reasoning is never
   lost.
 
+### Addressing SPEC.md from a Plan.md (decision 0002)
+
+So plans stay re-executable in any order and after intervening edits, `Plan.md` steps address
+`SPEC.md` by stable identity, never by line/column or paragraph/bullet ordinal:
+
+- Prefer code-token identifiers (field names, error/category codes, state names, event names, file
+  names); then section titles; cite a section number only as a secondary hint, paired with its title
+  — e.g. `Section 8.4 "Retry and Backoff"`. Section numbers renumber on insert/reorder, so they are
+  not a reliable primary key.
+- Phrase each step as a declarative post-condition ("ensure X exists with `Default: Z`"), not an
+  imperative positional diff. Where prose must be located, quote a short unique nearby token. Give
+  each step a recognizable done-condition so it is self-checking and idempotent on re-execution.
+- When a decision renames or removes an anchor (a code-token or a section title), record it
+  append-only in that decision's `Plan.md` `Anchor changes` section. Do **not** keep a standalone
+  registry of current anchors: `SPEC.md` is the source of truth for what exists now; the per-decision
+  records are the history of what changed.
+
 ## Working agreements
 
 - Keep changes scoped and reviewable; prefer focused edits over large rewrites.
