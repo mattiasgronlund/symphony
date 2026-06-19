@@ -28,3 +28,15 @@ Keep a structured decision log so changes to `SPEC.md` are traceable to their re
 decision is a chapter here plus a folder containing `Background.md`, `Plan.md`, and `Sessions.md`.
 This lets us revisit a decision later with its original motivation intact, rather than guessing at
 why the spec reads the way it does.
+
+## 0002 — Stable addressing of SPEC.md from decision plans
+
+**State:** Accepted
+**Folder:** [decisions/0002-stable-spec-addressing/](decisions/0002-stable-spec-addressing/)
+
+`Plan.md` files address `SPEC.md` by stable identity — code-token identifiers first, then section
+titles, with section numbers only as a secondary hint — and phrase each step as a declarative,
+idempotent post-condition rather than a positional diff. This keeps plans re-executable in any order
+and after intervening edits, where line/column or paragraph addressing would degrade. Anchor renames
+and removals are recorded append-only in the `Anchor changes` section of the decision that causes
+them, rather than in a standalone registry that would duplicate `SPEC.md` and rot.
