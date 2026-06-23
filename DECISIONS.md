@@ -43,7 +43,7 @@ them, rather than in a standalone registry that would duplicate `SPEC.md` and ro
 
 ## 0003 — Responsibility inversion and the credential broker boundary
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0003-responsibility-inversion-credential-broker/](decisions/0003-responsibility-inversion-credential-broker/)
 
 Symphony inverts from a scheduler/tracker-reader where the agent holds credentials into a privileged

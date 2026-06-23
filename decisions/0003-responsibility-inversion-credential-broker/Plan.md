@@ -44,7 +44,12 @@ remove the `linear_graphql` extension rows. Coordinate with 0005–0008 so share
   for secrets; retained for non-secret path values only.
 - New anchors introduced: `symphony` (broker CLI), `scope_denied` (error/category code), the per-run
   broker socket concept (mechanics in 0004).
+- Section 3.1 components — added `Privileged Operation Broker`; `Status Surface` and `Logging`
+  renumbered to items 8 and 9.
+- New subsection Section 10.8 "Privileged Operation Broker (`symphony` CLI)".
+- Section 11.5 "Tracker Writes (Important Boundary)" — retitled to "Tracker Writes (Broker Boundary)"
+  and reframed to the broker model (the full reader→read+write reversal continues in 0008).
 
 ## Status
 
-Not started. Reasoning captured; `SPEC.md` not yet edited (decision recorded as `Proposed`).
+Applied to `SPEC.md` on branch `broker-rearchitecture-0003-0009`.
