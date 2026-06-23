@@ -68,7 +68,7 @@ an allowlist. This drops the SSH Worker Extension (Appendix A) for now.
 
 ## 0005 — Config and trust split
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0005-config-trust-split/](decisions/0005-config-trust-split/)
 
 Configuration splits on the sandbox boundary: `WORKFLOW.md` (repo-owned, untrusted) holds only settings

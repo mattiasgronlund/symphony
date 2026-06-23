@@ -299,9 +299,24 @@ Fields:
 - `Session ID`
   - Compose from coding-agent `thread_id` and `turn_id` as `<thread_id>-<turn_id>`.
 
-## 5. Workflow Specification (Repository Contract)
+## 5. Configuration Contracts
 
-### 5.1 File Discovery and Path Resolution
+Symphony reads configuration from two artifacts split on the sandbox boundary (Section 9.6):
+
+- `WORKFLOW.md` — repository-owned and version-controlled. It contains only settings used *inside* the
+  agent sandbox: the per-issue prompt template and in-sandbox hooks. Because anyone who can commit to
+  the repository — including the agent — can edit it, it is treated as untrusted input and MUST NOT
+  carry credentials, scope rules, or any setting Symphony uses outside the sandbox.
+- Policy config — operator-owned and not modifiable by the repository or the agent. It contains
+  everything Symphony uses outside the sandbox: credentials, authorization scope, the sandbox profile,
+  tracker and VCS configuration, polling and concurrency, privileged setup hooks, agent selection, and
+  the workflow state-machine. Its format and discovery path are `Implementation-defined` and MUST be
+  documented.
+
+The dividing rule is mechanical: if Symphony uses a setting outside the sandbox, it belongs to the
+policy config; only settings consumed inside the sandbox belong to `WORKFLOW.md`.
+
+### 5.1 WORKFLOW.md Discovery and Path Resolution
 
 Workflow file path precedence:
 
@@ -319,9 +334,10 @@ Loader behavior:
 
 Design note:
 
-- `WORKFLOW.md` SHOULD be self-contained enough to describe and run different workflows (prompt,
-  runtime settings, hooks, and tracker selection/config) without requiring out-of-band
-  service-specific configuration.
+- `WORKFLOW.md` SHOULD contain only what the agent needs inside the sandbox: the prompt template and
+  in-sandbox hooks. Privileged and orchestration settings (tracker, VCS, polling, concurrency, agent
+  selection, sandbox profile, scope, state-machine) live in the operator-owned policy config, not in
+  `WORKFLOW.md`.
 
 Parsing rules:
 
@@ -336,14 +352,18 @@ Returned workflow object:
 - `config`: front matter root object (not nested under a `config` key).
 - `prompt_template`: trimmed Markdown body.
 
-### 5.3 Front Matter Schema
+### 5.3 Configuration Schema
 
-Top-level keys:
+This section documents the configuration keys. With the exception of in-sandbox `hooks` (Section
+5.3.4), every key below belongs to the operator-owned policy config, because Symphony consumes it
+outside the sandbox. `WORKFLOW.md` front matter carries only in-sandbox settings.
+
+Top-level keys (policy config unless noted):
 
 - `tracker`
 - `polling`
 - `workspace`
-- `hooks`
+- `hooks` (split: policy-config setup hooks and in-sandbox `WORKFLOW.md` hooks; see Section 5.3.4)
 - `agent`
 - `codex`
 
@@ -351,10 +371,10 @@ Unknown keys SHOULD be ignored for forward compatibility.
 
 Note:
 
-- The workflow front matter is extensible. Extensions MAY define additional top-level keys without
-  changing the core schema above.
-- Extensions SHOULD document their field schema, defaults, validation rules, and whether changes
-  apply dynamically or require restart.
+- The configuration is extensible. Extensions MAY define additional top-level keys without changing
+  the core schema above.
+- Extensions SHOULD document their field schema, defaults, validation rules, whether they belong to
+  the policy config or `WORKFLOW.md`, and whether changes apply dynamically or require restart.
 
 #### 5.3.1 `tracker` (object)
 
@@ -397,10 +417,21 @@ Fields:
 - `root` (path string or `$VAR`)
   - Default: `<system-temp>/symphony_workspaces`
   - `~` is expanded.
-  - Relative paths are resolved relative to the directory containing `WORKFLOW.md`.
+  - Relative paths are resolved relative to the directory containing the policy config.
   - The effective workspace root is normalized to an absolute path before use.
 
 #### 5.3.4 `hooks` (object)
+
+Hooks exist at two trust levels, distinguished by where they run:
+
+- Policy-config hooks run on the host, outside the sandbox, and are trusted. They are for privileged
+  setup that needs host access (for example dependency bootstrap that reaches credentialed mirrors).
+- `WORKFLOW.md` hooks run inside the sandbox, without credentials, and are untrusted. They are for
+  in-sandbox build/test/workspace preparation.
+
+Both sets share the same lifecycle points. A lifecycle point MAY be defined in either artifact; when
+both define it, the policy-config hook runs on the host and the `WORKFLOW.md` hook runs inside the
+sandbox.
 
 Fields:
 
@@ -519,10 +550,12 @@ Dispatch gating behavior:
 
 Configuration is resolved in this order:
 
-1. Select the workflow file path (explicit runtime setting, otherwise cwd default).
-2. Parse YAML front matter into a raw config map.
+1. Load the operator policy config and select the `WORKFLOW.md` path (explicit runtime setting,
+   otherwise cwd default).
+2. Parse the policy config and the `WORKFLOW.md` front matter into raw config maps.
 3. Apply built-in defaults for missing OPTIONAL fields.
-4. Resolve `$VAR_NAME` indirection only for config values that explicitly contain `$VAR_NAME`.
+4. Resolve secrets through the secret-provider interface, and `$VAR_NAME` indirection for non-secret
+   path values that explicitly contain `$VAR_NAME`.
 5. Coerce and validate typed values.
 
 Environment variables do not globally override YAML values. They are used only when a config value
@@ -538,15 +571,17 @@ Value coercion semantics:
   - `$VAR` expansion for env-backed path values
   - Apply expansion only to values intended to be local filesystem paths; do not rewrite URIs or
     arbitrary shell command strings.
-- Relative `workspace.root` values resolve relative to the directory containing the selected
-  `WORKFLOW.md`.
+- Relative `workspace.root` values resolve relative to the directory containing the policy config.
 
 ### 6.2 Dynamic Reload Semantics
 
 Dynamic reload is REQUIRED:
 
-- The software MUST detect `WORKFLOW.md` changes.
-- On change, it MUST re-read and re-apply workflow config and prompt template without restart.
+- The software MUST detect changes to both configuration artifacts: `WORKFLOW.md` and the policy
+  config.
+- On change, it MUST re-read and re-apply the affected configuration and prompt template without
+  restart. Live policy-config reload includes credentials, scope, and the workflow state-machine;
+  implementations SHOULD apply such changes to future operations rather than disrupting in-flight runs.
 - The software MUST attempt to adjust live behavior to the new config (for example polling
   cadence, concurrency limits, active/terminal states, codex settings, workspace paths/hooks, and
   prompt content for future runs).
@@ -591,6 +626,9 @@ Validation checks:
 This section is intentionally redundant so a coding agent can implement the config layer quickly.
 Extension fields are documented in the extension section that defines them. Core conformance does
 not require recognizing or validating extension fields unless that extension is implemented.
+
+Unless a field is marked as in-sandbox (`WORKFLOW.md`), it lives in the operator-owned policy config
+(Section 5).
 
 - `tracker.kind`: string, REQUIRED, currently `linear`
 - `tracker.endpoint`: string, default `https://api.linear.app/graphql` when `tracker.kind=linear`
@@ -1722,12 +1760,14 @@ RECOMMENDED additional hardening for ports:
 
 ### 15.4 Hook Script Safety
 
-Workspace hooks are arbitrary shell scripts from `WORKFLOW.md`.
+Hooks exist at two trust levels (Section 5.3.4).
 
 Implications:
 
-- Hooks are fully trusted configuration.
-- Hooks run inside the workspace directory.
+- Policy-config hooks are operator-owned, trusted, and run on the host outside the sandbox.
+- `WORKFLOW.md` hooks are repo-owned, untrusted, and MUST NOT be granted credentials or host access;
+  they run inside the sandbox (Section 9.6).
+- Hooks run with the workspace directory as their working directory.
 - Hook output SHOULD be truncated in logs.
 - Hook timeouts are REQUIRED to avoid hanging the orchestrator.
 
@@ -2023,6 +2063,10 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - Workflow file changes are detected and trigger re-read/re-apply without restart
 - Invalid workflow reload keeps last known good effective configuration and emits an
   operator-visible error
+- Policy config and `WORKFLOW.md` load as separate artifacts; `WORKFLOW.md` carries only in-sandbox
+  settings (prompt and in-sandbox hooks)
+- Policy-config changes are detected and re-applied without restart, with last-known-good on invalid
+  reload
 - Missing `WORKFLOW.md` returns typed error
 - Invalid YAML front matter returns typed error
 - Front matter non-map returns typed error
@@ -2159,11 +2203,13 @@ Use the same validation profiles as Section 17:
 - Workflow path selection supports explicit runtime path and cwd default
 - `WORKFLOW.md` loader with YAML front matter + prompt body split
 - Typed config layer with defaults, secret-provider resolution, and `$` expansion for non-secret paths
-- Dynamic `WORKFLOW.md` watch/reload/re-apply for config and prompt
+- Two configuration artifacts: operator-owned policy config (privileged) and repo-owned `WORKFLOW.md`
+  (in-sandbox only); dynamic watch/reload/re-apply for both
 - Polling orchestrator with single-authority mutable state
 - Issue tracker client with candidate fetch + state refresh + terminal fetch
 - Workspace manager with sanitized per-issue workspaces
-- Workspace lifecycle hooks (`after_create`, `before_run`, `after_run`, `before_remove`)
+- Workspace lifecycle hooks at two trust levels (policy-config hooks on the host; `WORKFLOW.md` hooks
+  in the sandbox)
 - Hook timeout config (`hooks.timeout_ms`, default `60000`)
 - Coding-agent app-server subprocess client with JSON line protocol
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and

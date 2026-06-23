@@ -34,8 +34,12 @@ split.
   hooks remain in `WORKFLOW.md`.
 - "Hooks are fully trusted configuration" (Section 15.4) — removed/qualified: only policy-config hooks
   are trusted; `WORKFLOW.md` hooks run sandboxed and credential-less.
+- Section 5 "Workflow Specification (Repository Contract)" — retitled to "Configuration Contracts";
+  Section 5.1 retitled to "WORKFLOW.md Discovery and Path Resolution"; Section 5.3 "Front Matter
+  Schema" retitled to "Configuration Schema".
 - New anchors: the policy config artifact and the in-sandbox-only rule.
 
 ## Status
 
-Not started. Recorded as `Proposed`; `SPEC.md` not yet edited.
+Applied to `SPEC.md` on branch `broker-rearchitecture-0003-0009`. Field-by-field migration of
+specific keys (tracker, agent/codex, repo map) continues in their owning decisions (0006, 0008, 0009).
