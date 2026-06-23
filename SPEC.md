@@ -51,6 +51,8 @@ Important boundary:
 - Poll the issue tracker on a fixed cadence and dispatch work with bounded concurrency.
 - Maintain a single authoritative orchestrator state for dispatch, retries, and reconciliation.
 - Create deterministic per-issue workspaces and preserve them across runs.
+- Run each coding-agent session inside a configurable sandbox so credentials and the host stay outside
+  the agent's reach.
 - Stop active runs when issue state changes make them ineligible.
 - Recover from transient failures with exponential backoff.
 - Load runtime behavior from a repository-owned `WORKFLOW.md` contract.
@@ -66,9 +68,8 @@ Important boundary:
 - Built-in product logic for *what* to write in tickets, PRs, or comments. Symphony brokers those
   operations and enforces authorization scope; the content is supplied by the agent and the workflow
   prompt.
-- Mandating strong sandbox controls beyond what the coding agent and host OS provide.
 - Mandating a single default approval, sandbox, or operator-confirmation posture for all
-  implementations.
+  implementations (the sandbox is REQUIRED but its profile is configurable; see Section 9.6).
 
 ## 3. System Overview
 
@@ -151,6 +152,8 @@ Symphony is easiest to port when kept in these layers:
 - Local filesystem for workspaces and logs.
 - OPTIONAL workspace population tooling (for example Git CLI, if used).
 - Coding-agent executable that supports the targeted Codex app-server mode.
+- Agent sandbox mechanism (for example `jai` on Linux, https://jai.scs.stanford.edu, or an equivalent
+  on other platforms).
 - Host environment authentication for the issue tracker and coding agent.
 
 ## 4. Core Domain Model
@@ -925,6 +928,41 @@ Invariant 3: Workspace key is sanitized.
 - Only `[A-Za-z0-9._-]` allowed in workspace directory names.
 - Replace all other characters with `_`.
 
+### 9.6 Agent Sandbox and Execution Isolation
+
+Each coding-agent run MUST be runnable inside a sandbox that isolates the agent from the host and from
+Symphony's credentials. The sandbox profile is configurable; a strict containment profile is the
+assumed default.
+
+Sandbox profile:
+
+- The reference baseline is `jai` (https://jai.scs.stanford.edu) in its `Strict` mode on Linux — a
+  containment tool for AI agents — with an equivalent local mechanism on other platforms. The selected
+  profile is `Implementation-defined` and MUST be documented.
+- `jai` describes itself as a casual sandbox that reduces rather than eliminates risk, so deployments
+  needing stronger isolation SHOULD layer additional controls (container, VM, or network policy).
+
+Privileged channel:
+
+- The per-run broker socket (Section 10.8) is the only privileged channel into the sandbox. It is
+  mounted into the sandbox and bound to exactly one run, so the broker attributes every request to that
+  run's repository, issue, and work branch.
+- No credentials are present inside the sandbox. Every secret-bearing environment variable MUST be
+  scrubbed before the sandbox starts (Section 15.3).
+
+Working tree:
+
+- The per-issue working tree is a host directory bind-mounted into the sandbox. The agent edits and
+  runs local git there; Symphony performs credentialed git (fetch, push) on the host against the same
+  directory, with the pushed ref pinned by Symphony. The agent can read repository git state but cannot
+  authenticate to a remote or change which ref Symphony pushes.
+
+Network egress:
+
+- Egress policy is configurable. Under the strict default, egress is denied except for an
+  operator-maintained allowlist (for example the agent's model API and package registries) plus the
+  broker socket. Implementations MUST document the effective egress policy.
+
 ## 10. Agent Runner Protocol (Coding Agent Integration)
 
 This section defines Symphony's language-neutral responsibilities when integrating a Codex
@@ -1651,6 +1689,8 @@ Operational safety requirements:
   approvals, stricter sandboxing, or some combination of those controls.
 - Workspace isolation and path validation are important baseline controls, but they are not a
   substitute for whatever approval and sandbox policy an implementation chooses.
+- The coding agent runs inside the sandbox defined in Section 9.6, and credentials stay outside it;
+  privileged side effects happen only through the broker (Section 10.8).
 
 ### 15.2 Filesystem Safety Requirements
 
@@ -2011,6 +2051,10 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - `before_remove` hook runs on cleanup and failures/timeouts are ignored
 - Workspace path sanitization and root containment invariants are enforced before agent launch
 - Agent launch uses the per-issue workspace path as cwd and rejects out-of-root paths
+- Agent launch wraps the session in the configured sandbox (strict profile by default)
+- The per-run broker socket is mounted into the sandbox and bound to one run; without it the broker is
+  unreachable
+- Secret-bearing environment variables are scrubbed before the sandbox starts
 
 ### 17.3 Issue Tracker Client
 
@@ -2124,6 +2168,8 @@ Use the same validation profiles as Section 17:
 - Coding-agent app-server subprocess client with JSON line protocol
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
   structured results (`scope_denied` fails the run)
+- Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
+  before start, and the broker socket as the only privileged channel
 - Codex launch command config (`codex.command`, default `codex app-server`)
 - Strict prompt rendering with `issue` and `attempt` variables
 - Exponential retry queue with continuation retries after normal exit
@@ -2150,65 +2196,3 @@ Use the same validation profiles as Section 17:
 - Verify hook execution and workflow path resolution on the target host OS/shell environment.
 - If the OPTIONAL HTTP server is shipped, verify the configured port behavior and loopback/default
   bind expectations on the target environment.
-
-## Appendix A. SSH Worker Extension (OPTIONAL)
-
-This appendix describes a common extension profile in which Symphony keeps one central
-orchestrator but executes worker runs on one or more remote hosts over SSH.
-
-Extension config:
-
-- `worker.ssh_hosts` (list of SSH host strings, OPTIONAL)
-  - When omitted, work runs locally.
-- `worker.max_concurrent_agents_per_host` (positive integer, OPTIONAL)
-  - Shared per-host cap applied across configured SSH hosts.
-
-### A.1 Execution Model
-
-- The orchestrator remains the single source of truth for polling, claims, retries, and
-  reconciliation.
-- `worker.ssh_hosts` provides the candidate SSH destinations for remote execution.
-- Each worker run is assigned to one host at a time, and that host becomes part of the run's
-  effective execution identity along with the issue workspace.
-- `workspace.root` is interpreted on the remote host, not on the orchestrator host.
-- The coding-agent app-server is launched over SSH stdio instead of as a local subprocess, so the
-  orchestrator still owns the session lifecycle even though commands execute remotely.
-- Continuation turns inside one worker lifetime SHOULD stay on the same host and workspace.
-- A remote host SHOULD satisfy the same basic contract as a local worker environment: reachable
-  shell, writable workspace root, coding-agent executable, and any required auth or repository
-  prerequisites.
-
-### A.2 Scheduling Notes
-
-- SSH hosts MAY be treated as a pool for dispatch.
-- Implementations MAY prefer the previously used host on retries when that host is still
-  available.
-- `worker.max_concurrent_agents_per_host` is an OPTIONAL shared per-host cap across configured SSH
-  hosts.
-- When all SSH hosts are at capacity, dispatch SHOULD wait rather than silently falling back to a
-  different execution mode.
-- Implementations MAY fail over to another host when the original host is unavailable before work
-  has meaningfully started.
-- Once a run has already produced side effects, a transparent rerun on another host SHOULD be
-  treated as a new attempt, not as invisible failover.
-
-### A.3 Problems to Consider
-
-- Remote environment drift:
-  - Each host needs the expected shell environment, coding-agent executable, auth, and repository
-    prerequisites.
-- Workspace locality:
-  - Workspaces are usually host-local, so moving an issue to a different host is typically a cold
-    restart unless shared storage exists.
-- Path and command safety:
-  - Remote path resolution, shell quoting, and workspace-boundary checks matter more once execution
-    crosses a machine boundary.
-- Startup and failover semantics:
-  - Implementations SHOULD distinguish host-connectivity/startup failures from in-workspace agent
-    failures so the same ticket is not accidentally re-executed on multiple hosts.
-- Host health and saturation:
-  - A dead or overloaded host SHOULD reduce available capacity, not cause duplicate execution or an
-    accidental fallback to local work.
-- Cleanup and observability:
-  - Operators need to know which host owns a run, where its workspace lives, and whether cleanup
-    happened on the right machine.

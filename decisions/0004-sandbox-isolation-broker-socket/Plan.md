@@ -37,9 +37,9 @@ policy config (0005).
 - Appendix A "SSH Worker Extension", `worker.ssh_hosts`, `worker.max_concurrent_agents_per_host` —
   removed (dropped for now; superseded by the sandbox/socket/broker execution model, to be reworked
   later).
-- New anchors: the sandbox profile concept, the per-run broker socket, and `jai` `Strict` as the
-  reference default.
+- New anchors: Section 9.6 "Agent Sandbox and Execution Isolation", the sandbox profile concept, the
+  per-run broker socket, and `jai` `Strict` as the reference default.
 
 ## Status
 
-Not started. Recorded as `Proposed`; `SPEC.md` not yet edited.
+Applied to `SPEC.md` on branch `broker-rearchitecture-0003-0009`.

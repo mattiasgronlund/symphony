@@ -56,7 +56,7 @@ environment before the sandbox forks. This is the keystone for decisions 0004–
 
 ## 0004 — Sandbox isolation and the per-run broker socket
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0004-sandbox-isolation-broker-socket/](decisions/0004-sandbox-isolation-broker-socket/)
 
 Each agent run MUST be wrappable in a configurable sandbox, with a strict-by-default profile assumed
