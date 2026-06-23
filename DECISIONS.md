@@ -80,7 +80,7 @@ assumption.
 
 ## 0006 — Agent adapters (Codex, Claude Code)
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0006-agent-adapters/](decisions/0006-agent-adapters/)
 
 Section 10 generalizes into a neutral agent runner contract plus per-agent adapters (Codex, Claude
