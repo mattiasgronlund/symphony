@@ -35,12 +35,16 @@ git-automation, back-merge/conflict, and PR-lifecycle rows.
 
 ## Anchor changes
 
-- Section 9.3 "OPTIONAL Workspace Population (Implementation-Defined)" — superseded for VCS by
-  first-class Symphony-owned clone/fetch/worktree provisioning.
-- New anchors: the VCS adapter, the work-branch template `symphony/<identifier>`, `back-merge` and
-  `request-merge` (CLI verbs), the `non_fast_forward` and `pr_conflict` reason codes, and the
-  one-PR-per-issue model.
+- Section 9 "Workspace Management and Safety" — retitled to "Workspace, VCS, and Safety". Section 9.3
+  "OPTIONAL Workspace Population (Implementation-Defined)" — retitled to "Workspace Population" and
+  superseded for VCS by first-class Symphony-owned provisioning.
+- New anchors: Sections 9.7 "VCS Adapter and Repository Provisioning", 9.8 "Git Automation and Work
+  Branch", and 9.9 "Pull Requests and Broker Git/PR Verbs"; the `vcs.*` config keys; the VCS adapter;
+  the work-branch template `symphony/<identifier>`; the `push`/`back-merge`/`pr`/`request-merge` broker
+  verbs; the `non_fast_forward`/`pr_conflict` reason codes; and the one-PR-per-issue model.
 
 ## Status
 
-Not started. Recorded as `Proposed`; `SPEC.md` not yet edited.
+Applied to `SPEC.md` on branch `broker-rearchitecture-0003-0009`. The VCS contract is housed under
+Section 9 (workspace = git working tree) rather than as a new top-level section, to avoid renumbering
+Sections 11–18 and their cross-references.

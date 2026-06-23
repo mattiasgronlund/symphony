@@ -150,7 +150,7 @@ Symphony is easiest to port when kept in these layers:
 
 - Issue tracker API (Linear for `tracker.kind: linear` in this specification version).
 - Local filesystem for workspaces and logs.
-- OPTIONAL workspace population tooling (for example Git CLI, if used).
+- Git CLI and a VCS host API (GitHub or Forgejo) for repository provisioning, push, and pull requests.
 - Coding-agent executable that supports the targeted Codex app-server mode.
 - Agent sandbox mechanism (for example `jai` on Linux, https://jai.scs.stanford.edu, or an equivalent
   on other platforms).
@@ -655,6 +655,11 @@ Unless a field is marked as in-sandbox (`WORKFLOW.md`), it lives in the operator
 - `tracker.terminal_states`: list of strings, default `["Closed", "Cancelled", "Canceled", "Duplicate", "Done"]`
 - `polling.interval_ms`: integer, default `30000`
 - `workspace.root`: path resolved to absolute, default `<system-temp>/symphony_workspaces`
+- `vcs.kind`: string, `github` | `forgejo`
+- `vcs.base_branch`: string, PR target and back-merge source
+- `vcs.work_branch_template`: string, default `symphony/<identifier>`
+- `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
+- `vcs.api_key`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env
 - `hooks.after_create`: shell script or null
 - `hooks.before_run`: shell script or null
 - `hooks.after_run`: shell script or null
@@ -889,7 +894,7 @@ When the service starts:
 
 This prevents stale terminal workspaces from accumulating after restarts.
 
-## 9. Workspace Management and Safety
+## 9. Workspace, VCS, and Safety
 
 ### 9.1 Workspace Layout
 
@@ -906,6 +911,12 @@ Workspace persistence:
 - Workspaces are reused across runs for the same issue.
 - Successful runs do not auto-delete workspaces.
 
+VCS-backed workspaces:
+
+- When the issue's repository is managed by a VCS adapter (Section 9.7), the per-issue workspace is a
+  git worktree of that repository's shared object store, not a bare directory. The path layout above is
+  unchanged.
+
 ### 9.2 Workspace Creation and Reuse
 
 Input: `issue.identifier`
@@ -921,16 +932,17 @@ Algorithm summary:
 
 Notes:
 
-- This section does not assume any specific repository/VCS workflow.
-- Workspace preparation beyond directory creation (for example dependency bootstrap, checkout/sync,
-  code generation) is implementation-defined and is typically handled via hooks.
+- For VCS-managed repositories, workspace creation provisions a worktree of the repository's shared
+  object store (Section 9.7) rather than only an empty directory.
+- Additional workspace preparation (for example dependency bootstrap, build, or code generation) is
+  handled via in-sandbox hooks (Section 5.3.4).
 
-### 9.3 OPTIONAL Workspace Population (Implementation-Defined)
+### 9.3 Workspace Population
 
-The spec does not require any built-in VCS or repository bootstrap behavior.
-
-Implementations MAY populate or synchronize the workspace using implementation-defined logic and/or
-hooks (for example `after_create` and/or `before_run`).
+For VCS-managed repositories, repository population and synchronization are first-class Symphony
+behavior (Section 9.7), not an implementation-defined hook concern. For non-VCS workspaces,
+implementations MAY still populate or synchronize using hooks (for example `after_create` and/or
+`before_run`).
 
 Failure handling:
 
@@ -1019,6 +1031,85 @@ Network egress:
 - Egress policy is configurable. Under the strict default, egress is denied except for an
   operator-maintained allowlist (for example the agent's model API and package registries) plus the
   broker socket. Implementations MUST document the effective egress policy.
+
+### 9.7 VCS Adapter and Repository Provisioning
+
+Symphony owns all interaction with the version-control remote through a VCS adapter. At least two
+adapters are defined: `github` and `forgejo`. The adapter backs the broker's git and pull-request verbs
+(Section 9.9); the agent never holds VCS credentials.
+
+Repository provisioning:
+
+- Symphony keeps one fetched object store per repository on the host. Each issue's working tree is a
+  worktree (or reference clone) of that store, created under the workspace root and bind-mounted into
+  the sandbox (Section 9.6). Sharing objects keeps provisioning fast and disk-efficient as the number
+  of repositories and concurrent issues grows.
+- Fetch and other network git operations run on the host with credentials the agent never sees. Local
+  git in the worktree is available to the agent.
+
+Configuration (policy config, `vcs` object):
+
+- `kind` (string) — `github` or `forgejo`.
+- `base_branch` (string) — the branch pull requests target and back-merges pull from.
+- `work_branch_template` (string) — template for the deterministic work branch (Section 9.8).
+  Default: `symphony/<identifier>`.
+- `author` / `actor` (objects) — identity mapping for commits and for the push/PR actor (Section 9.8).
+- `api_key` (string) — resolved through the secret-provider interface (Section 15.3).
+
+### 9.8 Git Automation and Work Branch
+
+Division of labor:
+
+- The agent uses local git in the worktree, including `git commit`, and resolves conflicts. Symphony
+  performs every operation that touches the remote: fetch, branch, back-merge, push, and pull-request
+  management.
+- The agent's high-value contributions are commit and pull-request *messages* and *conflict
+  resolution*; Symphony automates the surrounding git mechanics.
+
+Work branch:
+
+- The work branch is derived deterministically from issue identity using `vcs.work_branch_template`
+  (Default: `symphony/<identifier>`). It does not depend on agent input; a tracker-provided
+  `branch_name` is at most a hint.
+- Because the branch is fixed and Symphony-derived, the broker can enforce "push only to the work
+  branch" (Section 10.8).
+
+Push:
+
+- The agent commits locally and requests a push through the broker. Symphony pushes the work branch
+  from the host with the refspec pinned to the work branch; it does not push agent-specified refs.
+
+Back-merge and conflict handoff:
+
+- At the start of a run, Symphony attempts to bring the work branch up to date with `vcs.base_branch`.
+  If the update applies cleanly it is taken; if it would conflict, it is postponed so the agent is not
+  interrupted up front.
+- Conflict resolution is required only when a push is rejected as non-fast-forward. Symphony then
+  stages the back-merge in the worktree, hands the conflicted tree to the agent (via continuation
+  guidance) to resolve, and completes the merge once the agent signals done.
+
+Identity:
+
+- The commit author/committer and the push/pull-request actor are configurable per repository
+  (`vcs.author`, `vcs.actor`). Where branch protection requires review, the actor SHOULD be distinct
+  from the approver so a pull request cannot be self-approved.
+
+### 9.9 Pull Requests and Broker Git/PR Verbs
+
+Pull requests:
+
+- Symphony maintains one pull request per issue. It is created on first push and updated (new commits,
+  refreshed title/body) on later runs, and reused across retries and continuations. The agent supplies
+  the title and body; the base is `vcs.base_branch` and the head is the work branch.
+
+Broker git/PR verbs:
+
+- The broker exposes a fixed neutral core of git and pull-request verbs over the per-run socket
+  (Section 10.8), identical across `github` and `forgejo`: for example `push`, `back-merge`, `pr`
+  (create/update), and `request-merge`. Adapters or policy MAY extend this set.
+- Each verb returns a structured result with a stable reason code on failure (for example
+  `non_fast_forward`, `pr_conflict`, `scope_denied`). Ordinary failures are returned to the agent to
+  adapt to; `scope_denied` fails the run (Section 10.8).
 
 ## 10. Agent Runner Protocol (Coding Agent Integration)
 
@@ -1993,9 +2084,13 @@ function dispatch_issue(issue, state, attempt):
 
 ```text
 function run_agent_attempt(issue, attempt, orchestrator_channel):
-  workspace = workspace_manager.create_for_issue(issue.identifier)
+  workspace = workspace_manager.provision_for_issue(issue)  # VCS worktree or bare dir
   if workspace failed:
     fail_worker("workspace error")
+
+  # Bring the work branch up to date with base; postpone if it would conflict (resolved later
+  # only if a push is rejected). See Section 9.8.
+  vcs.attempt_clean_backmerge(issue, workspace)
 
   if run_hook("before_run", workspace.path) failed:
     fail_worker("before_run hook error")
@@ -2009,6 +2104,8 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
   turn_number = 1
 
   while true:
+    # During each turn the agent uses the symphony broker CLI for privileged operations
+    # (push, pull request, tracker writes); Symphony executes them host-side (Sections 10.8, 9.9).
     prompt = build_turn_prompt(workflow_template, issue, attempt, turn_number, max_turns)
     if prompt failed:
       app_server.stop_session(session)
@@ -2159,6 +2256,12 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - The per-run broker socket is mounted into the sandbox and bound to one run; without it the broker is
   unreachable
 - Secret-bearing environment variables are scrubbed before the sandbox starts
+- VCS-managed workspaces are provisioned as worktrees of a shared per-repo object store
+- The agent does local git including commit; Symphony performs fetch/branch/back-merge/push/PR
+- The work branch is Symphony-derived (`symphony/<identifier>`) and the push refspec is pinned to it
+- Back-merge is attempted at run start and postponed on conflict; conflict resolution is required only
+  on push-reject
+- One pull request per issue is created then updated; the agent supplies title/body, base from policy
 
 ### 17.3 Issue Tracker Client
 
@@ -2278,6 +2381,8 @@ Use the same validation profiles as Section 17:
   JSON line protocol as the worked example)
 - Agent and effort selected from policy (`default_agent`/`default_effort`) with `agent_by_label`
   per-issue overrides
+- VCS adapter (`github`, `forgejo`) owning provisioning, push, back-merge, and one-PR-per-issue, with a
+  Symphony-derived work branch and configurable authorship
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
   structured results (`scope_denied` fails the run)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
