@@ -237,7 +237,9 @@ Fields (logical):
 
 #### 4.1.6 Live Session (Agent Session Metadata)
 
-State tracked while a coding-agent subprocess is running.
+State tracked while a coding-agent subprocess is running. The field names below use the Codex adapter's
+shapes as the worked example; each adapter normalizes its own protocol's session, turn, and usage
+identifiers into these logical fields (Section 10.9).
 
 Fields:
 
@@ -297,7 +299,8 @@ Fields:
 - `Normalized Issue State`
   - Compare states after `lowercase`.
 - `Session ID`
-  - Compose from coding-agent `thread_id` and `turn_id` as `<thread_id>-<turn_id>`.
+  - Compose from the agent adapter's thread and turn identifiers. The Codex adapter composes them as
+    `<thread_id>-<turn_id>`.
 
 ## 5. Configuration Contracts
 
@@ -459,6 +462,16 @@ Fields:
 
 Fields:
 
+- `default_agent` (string)
+  - The agent adapter used for the repository. Supported values: `codex`, `claude_code`.
+  - Default: `Implementation-defined`.
+- `default_effort` (adapter-native value)
+  - Passed through to the selected agent as its native effort/reasoning value (Section 10.9).
+  - Default: `Implementation-defined`.
+- `agent_by_label` (map `label -> {agent, effort}`)
+  - Per-issue override of `default_agent`/`default_effort`, keyed by tracker label.
+  - Only mapped labels take effect; unmapped labels are ignored.
+  - Default: empty map.
 - `max_concurrent_agents` (integer)
   - Default: `10`
   - Changes SHOULD be re-applied at runtime and affect subsequent dispatch decisions.
@@ -474,7 +487,10 @@ Fields:
   - State keys are normalized (`lowercase`) for lookup.
   - Invalid entries (non-positive or non-numeric) are ignored.
 
-#### 5.3.6 `codex` (object)
+#### 5.3.6 `codex` (object — Codex adapter)
+
+This block configures the `codex` adapter. Each agent adapter owns its own configuration block; the
+adapter selected by `agent.default_agent` reads the block named for it.
 
 Fields:
 
@@ -644,11 +660,14 @@ Unless a field is marked as in-sandbox (`WORKFLOW.md`), it lives in the operator
 - `hooks.after_run`: shell script or null
 - `hooks.before_remove`: shell script or null
 - `hooks.timeout_ms`: integer, default `60000`
+- `agent.default_agent`: string, `codex` | `claude_code`, default implementation-defined
+- `agent.default_effort`: adapter-native value passed through to the agent, default implementation-defined
+- `agent.agent_by_label`: map `label -> {agent, effort}` (per-issue override), default `{}`
 - `agent.max_concurrent_agents`: integer, default `10`
 - `agent.max_turns`: integer, default `20`
 - `agent.max_retry_backoff_ms`: integer, default `300000` (5m)
 - `agent.max_concurrent_agents_by_state`: map of positive integers, default `{}`
-- `codex.command`: shell command string, default `codex app-server`
+- `codex.command` (Codex adapter): shell command string, default `codex app-server`
 - `codex.approval_policy`: Codex `AskForApproval` value, default implementation-defined
 - `codex.thread_sandbox`: Codex `SandboxMode` value, default implementation-defined
 - `codex.turn_sandbox_policy`: Codex `SandboxPolicy` value, default implementation-defined
@@ -1003,17 +1022,22 @@ Network egress:
 
 ## 10. Agent Runner Protocol (Coding Agent Integration)
 
-This section defines Symphony's language-neutral responsibilities when integrating a Codex
-app-server. The Codex app-server protocol for the targeted Codex version is the source of truth for
-protocol schemas, message payloads, transport framing, and method names.
+This section defines Symphony's agent-neutral responsibilities for running a coding agent. Symphony
+supports more than one agent (at least Codex and Claude Code) through per-agent *adapters*: each
+adapter implements the same neutral runner contract over its agent's own protocol, which is the source
+of truth for that agent's protocol schemas, message payloads, transport framing, and method names.
+
+Sections 10.1–10.6 describe these responsibilities using the Codex adapter as the worked example;
+another adapter (for example Claude Code) provides the same responsibilities over its own protocol.
+Section 10.9 defines the neutral contract, the available adapters, and how an agent is selected.
 
 Protocol source of truth:
 
-- Implementations MUST send messages that are valid for the targeted Codex app-server version.
-- Implementations MUST consult the targeted Codex app-server documentation or generated schema
-  instead of treating this specification as a protocol schema.
-- If this specification appears to conflict with the targeted Codex app-server protocol, the Codex
-  protocol controls protocol shape and transport behavior.
+- Implementations MUST send messages that are valid for the targeted agent adapter's protocol version.
+- Implementations MUST consult the targeted agent's documentation or generated schema instead of
+  treating this specification as a protocol schema.
+- If this specification appears to conflict with the targeted agent's protocol, that protocol controls
+  protocol shape and transport behavior.
 - Symphony-specific requirements in this section still control orchestration behavior, workspace
   selection, prompt construction, continuation handling, and observability extraction.
 
@@ -1237,6 +1261,39 @@ Note:
   the way the agent effects change. Performing privileged operations through a CLI keeps them
   independent of the coding-agent protocol.
 
+### 10.9 Agent Adapters and Selection
+
+Symphony integrates each coding agent through an adapter implementing one neutral runner contract:
+
+- start a session in the per-issue workspace;
+- run a turn with a rendered prompt and stream updates;
+- report turn completion, failure, and cancellation;
+- expose session/turn identity and normalized token usage;
+- advertise any in-protocol client-side tools the agent supports.
+
+Each adapter defers to its agent's own protocol as the source of truth (Section 10 intro). At least
+two adapters are defined: `codex` (the Codex app-server, the worked example in Sections 10.1–10.8) and
+`claude_code`.
+
+Selection:
+
+- The agent and its effort are selected in the operator policy config, because agent choice carries
+  model credentials and sandbox shape. Each repository has a `default_agent` and `default_effort`.
+- A per-issue override is expressed as an explicit policy table mapping tracker labels to an
+  `{agent, effort}` pair (`agent.agent_by_label`); only mapped labels take effect.
+
+Effort:
+
+- `effort` is passed through to the selected agent as that agent's native value. Each adapter MUST
+  document the values it accepts; a value is not portable across adapters, which is why the label
+  mapping pairs an agent with its effort.
+
+Observability normalization:
+
+- Each adapter normalizes its protocol's session and turn identifiers and its usage payloads into the
+  logical session fields (Section 4.1.6) and token totals (Section 13.5). The `codex_*` field shapes
+  there reflect the Codex adapter.
+
 ## 11. Issue Tracker Integration Contract (Linear-Compatible)
 
 ### 11.1 REQUIRED Operations
@@ -1414,6 +1471,9 @@ If present, it SHOULD draw from orchestrator state/metrics only and MUST NOT be 
 correctness.
 
 ### 13.5 Session Metrics and Token Accounting
+
+Each agent adapter normalizes its protocol's usage payloads into the token totals below; the payload
+names mentioned here reflect the Codex adapter.
 
 Token accounting rules:
 
@@ -2131,8 +2191,11 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
   limits
 - If a snapshot API is implemented, timeout/unavailable cases are surfaced
 
-### 17.5 Coding-Agent App-Server Client
+### 17.5 Coding-Agent Adapters
 
+- At least the `codex` and `claude_code` adapters implement the neutral runner contract
+- Agent and effort are selected from policy (`default_agent`/`default_effort`); `agent_by_label`
+  overrides per issue, and `effort` is passed through as the agent's native value
 - Launch command uses workspace cwd and invokes `bash -lc <codex.command>`
 - Session startup follows the targeted Codex app-server protocol.
 - Client identity/capability payloads are valid when the targeted Codex app-server protocol requires
@@ -2211,12 +2274,15 @@ Use the same validation profiles as Section 17:
 - Workspace lifecycle hooks at two trust levels (policy-config hooks on the host; `WORKFLOW.md` hooks
   in the sandbox)
 - Hook timeout config (`hooks.timeout_ms`, default `60000`)
-- Coding-agent app-server subprocess client with JSON line protocol
+- Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex app-server
+  JSON line protocol as the worked example)
+- Agent and effort selected from policy (`default_agent`/`default_effort`) with `agent_by_label`
+  per-issue overrides
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
   structured results (`scope_denied` fails the run)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
   before start, and the broker socket as the only privileged channel
-- Codex launch command config (`codex.command`, default `codex app-server`)
+- Codex adapter launch command config (`codex.command`, default `codex app-server`)
 - Strict prompt rendering with `issue` and `attempt` variables
 - Exponential retry queue with continuation retries after normal exit
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)

@@ -36,9 +36,14 @@ neutral-contract plus per-adapter rows.
   namespace (the Codex adapter); neutral runner fields replace Codex-specific ones in core.
 - Session identity `<thread_id>-<turn_id>` and `codex_*` token fields (Sections 4.1.6, 13.5) —
   generalized to adapter-normalized neutral fields.
-- New anchors: the neutral agent runner contract, the agent adapter concept, `effort`, and the
-  agent/effort label mapping table.
+- New anchors: Section 10.9 "Agent Adapters and Selection", the neutral agent runner contract, the
+  agent adapter concept, `effort`, the agent/effort label mapping table, and the
+  `agent.default_agent`/`agent.default_effort`/`agent.agent_by_label` keys.
+- Section 17.5 "Coding-Agent App-Server Client" — retitled to "Coding-Agent Adapters"; Section 5.3.6
+  "`codex` (object)" — retitled to "`codex` (object — Codex adapter)".
 
 ## Status
 
-Not started. Recorded as `Proposed`; `SPEC.md` not yet edited.
+Applied to `SPEC.md` on branch `broker-rearchitecture-0003-0009`. Codex-specific field shapes
+(`<thread_id>-<turn_id>`, `codex_*`) are retained as the Codex adapter's worked example, framed as
+adapter-normalized logical fields rather than mass-renamed.
