@@ -553,6 +553,20 @@ Fallback prompt behavior:
 - Workflow file read/parse failures are configuration/validation errors and SHOULD NOT silently fall
   back to a prompt.
 
+Prompt authority:
+
+- The prompt template advises the agent and tells it how to signal progress; it does not perform
+  privileged operations and MUST NOT be relied on to enforce them. Commits, branch pushes,
+  pull-request creation, and tracker transitions occur only through the broker (Section 10.8) and
+  the policy-owned state-machine (Section 11.6) — never because the prompt instructs the agent.
+- Because `WORKFLOW.md` is repository-owned and untrusted (Section 5.2), prompt text that directs a
+  privileged side effect is a request, not an authorization: the broker still scopes every
+  operation to the run's repository, issue, and work branch, and an instruction the agent cannot
+  satisfy through the broker has no effect.
+- The prompt SHOULD describe how the agent expresses intent — when to emit which milestone signal
+  (Section 11.6) — rather than which tracker transitions to perform. Operators, not repositories,
+  own the resulting transitions.
+
 ### 5.5 Workflow Validation and Error Surface
 
 Error classes:
@@ -1551,6 +1565,13 @@ Milestone signals:
 - The policy state-machine maps each milestone signal to a concrete tracker transition. The agent
   expresses intent; the operator controls the resulting states. An unmapped signal performs no
   transition.
+
+Process authority:
+
+- The repository-owned prompt (Section 5.4) shapes how the agent works and how it signals; it does
+  not define the state-machine and cannot grant a milestone signal a transition the policy does not
+  map. Process authority is operator-owned (Sections 5.2, 5.3): no prompt wording widens the set of
+  transitions an agent can cause.
 
 ## 12. Prompt Construction and Context Assembly
 
