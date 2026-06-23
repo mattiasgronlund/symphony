@@ -35,9 +35,12 @@ stricter approvals or sandboxing.
 
 Important boundary:
 
-- Symphony is a scheduler/runner and tracker reader.
-- Ticket writes (state transitions, comments, PR links) are typically performed by the coding agent
-  using tools available in the workflow/runtime environment.
+- Symphony is a privileged broker: it performs all outward side effects (VCS remote operations,
+  pull-request creation, and issue-tracker interaction) on the agent's behalf, holding the credentials
+  those operations require.
+- The coding agent runs sandboxed and credential-less. It supplies only the content of those
+  operations (commit and pull-request text, comments, milestone signals) and requests them through a
+  `symphony` broker CLI rather than acting on credentials directly.
 - A successful run can end at a workflow-defined handoff state (for example `Human Review`), not
   necessarily `Done`.
 
@@ -60,8 +63,9 @@ Important boundary:
 - Rich web UI or multi-tenant control plane.
 - Prescribing a specific dashboard or terminal UI implementation.
 - General-purpose workflow engine or distributed job scheduler.
-- Built-in business logic for how to edit tickets, PRs, or comments. (That logic lives in the
-  workflow prompt and agent tooling.)
+- Built-in product logic for *what* to write in tickets, PRs, or comments. Symphony brokers those
+  operations and enforces authorization scope; the content is supplied by the agent and the workflow
+  prompt.
 - Mandating strong sandbox controls beyond what the coding agent and host OS provide.
 - Mandating a single default approval, sandbox, or operator-confirmation posture for all
   implementations.
@@ -104,11 +108,17 @@ Important boundary:
    - Launches the coding agent app-server client.
    - Streams agent updates back to the orchestrator.
 
-7. `Status Surface` (OPTIONAL)
+7. `Privileged Operation Broker`
+   - Exposes the `symphony` CLI to the sandboxed agent over a per-run socket.
+   - Performs VCS remote, pull-request, and issue-tracker operations using credentials the agent never
+     sees.
+   - Enforces per-run authorization scope on every brokered operation.
+
+8. `Status Surface` (OPTIONAL)
    - Presents human-readable runtime status (for example terminal output, dashboard, or other
      operator-facing view).
 
-8. `Logging`
+9. `Logging`
    - Emits structured runtime logs to one or more configured sinks.
 
 ### 3.2 Abstraction Levels
@@ -353,9 +363,10 @@ Fields:
 - `endpoint` (string)
   - Default for `tracker.kind == "linear"`: `https://api.linear.app/graphql`
 - `api_key` (string)
-  - MAY be a literal token or `$VAR_NAME`.
-  - Canonical environment variable for `tracker.kind == "linear"`: `LINEAR_API_KEY`.
-  - If `$VAR_NAME` resolves to an empty string, treat the key as missing.
+  - Resolved through the secret-provider interface (Section 15.3); a file provider is REQUIRED.
+  - Environment variables MUST NOT be used as a secret channel into the agent. `$VAR_NAME` indirection
+    is not used for this value.
+  - If the resolved secret is empty, treat the key as missing.
 - `project_slug` (string)
   - REQUIRED for dispatch when `tracker.kind == "linear"`.
 - `required_labels` (list of strings)
@@ -514,6 +525,9 @@ Configuration is resolved in this order:
 Environment variables do not globally override YAML values. They are used only when a config value
 explicitly references them.
 
+Secret values are not resolved through `$VAR_NAME` indirection; they use the secret-provider interface
+(Section 15.3). `$VAR` expansion applies only to non-secret path values.
+
 Value coercion semantics:
 
 - Path/command fields support:
@@ -577,7 +591,7 @@ not require recognizing or validating extension fields unless that extension is 
 
 - `tracker.kind`: string, REQUIRED, currently `linear`
 - `tracker.endpoint`: string, default `https://api.linear.app/graphql` when `tracker.kind=linear`
-- `tracker.api_key`: string or `$VAR`, canonical env `LINEAR_API_KEY` when `tracker.kind=linear`
+- `tracker.api_key`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env (Section 15.3)
 - `tracker.project_slug`: string, REQUIRED when `tracker.kind=linear`
 - `tracker.required_labels`: list of strings, default `[]`
 - `tracker.active_states`: list of strings, default `["Todo", "In Progress"]`
@@ -965,7 +979,8 @@ client to:
   targeted protocol.
 - Include issue-identifying metadata, such as `<issue.identifier>: <issue.title>`, when the targeted
   protocol supports turn or session titles.
-- Advertise implemented client-side tools using the targeted protocol.
+- Advertise any implemented in-protocol client-side tools using the targeted protocol. Privileged
+  operations are not exposed this way; they are performed through the broker CLI (Section 10.8).
 
 Session identifiers:
 
@@ -1052,47 +1067,13 @@ Unsupported dynamic tool calls:
   using the targeted protocol and continue the session.
 - This prevents the session from stalling on unsupported tool execution paths.
 
-Optional client-side tool extension:
+Privileged operations:
 
-- An implementation MAY expose a limited set of client-side tools to the app-server session.
-- Current standardized optional tool: `linear_graphql`.
-- If implemented, supported tools SHOULD be advertised to the app-server session during startup
-  using the protocol mechanism supported by the targeted Codex app-server version.
-- Unsupported tool names SHOULD still return a failure result using the targeted protocol and
-  continue the session.
-
-`linear_graphql` extension contract:
-
-- Purpose: execute a raw GraphQL query or mutation against Linear using Symphony's configured
-  tracker auth for the current session.
-- Availability: only meaningful when `tracker.kind == "linear"` and valid Linear auth is configured.
-- Preferred input shape:
-
-  ```json
-  {
-    "query": "single GraphQL query or mutation document",
-    "variables": {
-      "optional": "graphql variables object"
-    }
-  }
-  ```
-
-- `query` MUST be a non-empty string.
-- `query` MUST contain exactly one GraphQL operation.
-- `variables` is OPTIONAL and, when present, MUST be a JSON object.
-- Implementations MAY additionally accept a raw GraphQL query string as shorthand input.
-- Execute one GraphQL operation per tool call.
-- If the provided document contains multiple operations, reject the tool call as invalid input.
-- `operationName` selection is intentionally out of scope for this extension.
-- Reuse the configured Linear endpoint and auth from the active Symphony workflow/runtime config; do
-  not require the coding agent to read raw tokens from disk.
-- Tool result semantics:
-  - transport success + no top-level GraphQL `errors` -> `success=true`
-  - top-level GraphQL `errors` present -> `success=false`, but preserve the GraphQL response body
-    for debugging
-  - invalid input, missing auth, or transport failure -> `success=false` with an error payload
-- Return the GraphQL response or error payload as structured tool output that the model can inspect
-  in-session.
+- Privileged, outward-facing operations (VCS remote actions, pull-request creation, issue-tracker
+  reads and writes) are not exposed as in-protocol tools. They are performed through the broker CLI
+  described in Section 10.8, which the agent invokes as an ordinary command inside its sandbox.
+- This supersedes the former `linear_graphql` client-side tool: raw tracker access is no longer an
+  in-protocol tool but a brokered operation subject to authorization scope.
 
 User-input-required policy:
 
@@ -1137,6 +1118,48 @@ Behavior:
 Note:
 
 - Workspaces are intentionally preserved after successful runs.
+
+### 10.8 Privileged Operation Broker (`symphony` CLI)
+
+Symphony performs all privileged, outward-facing side effects on the agent's behalf. The agent is
+sandboxed and holds no credentials; it requests every side effect — VCS remote operations,
+pull-request creation, and issue-tracker interaction — by invoking a `symphony` command-line tool that
+is the only privileged channel out of the sandbox.
+
+Channel:
+
+- The agent reaches the broker through a per-run socket (a Unix domain socket on Linux, or an
+  equivalent local IPC mechanism on other platforms). The socket is bound to exactly one run, so the
+  broker attributes every request to that run's repository, issue, and work branch without trusting
+  any identifier supplied by the agent.
+- Credentials are never placed in the sandbox: not in its environment, not on its filesystem, and not
+  in the broker channel. The broker executes operations using credentials held by the orchestrator
+  process outside the sandbox.
+
+Authorization scope:
+
+- The broker enforces authorization scope, not only credential confidentiality. Each brokered
+  operation MUST be constrained to the current run: for example, push only to the run's work branch,
+  write only to the assigned issue, and open or update only the pull request for that issue against
+  the configured base.
+- The brokered operations are a fixed neutral core, identical across VCS and tracker backends, plus an
+  extension mechanism for adapter- or policy-specific operations. The core verbs are defined alongside
+  the VCS and issue-tracker integration contracts.
+
+Result contract:
+
+- Every brokered operation returns a structured result with at least a success/failure status and, on
+  failure, a stable reason code (for example `non_fast_forward`, `pr_conflict`, `scope_denied`).
+  Ordinary failures are returned to the agent so it can adapt, for example resolve a conflict and
+  retry.
+- A `scope_denied` result is treated as a policy violation: the run MUST fail rather than allowing the
+  agent to retry around the boundary.
+
+Note:
+
+- The broker supersedes in-protocol client-side tools (such as the former `linear_graphql` tool) as
+  the way the agent effects change. Performing privileged operations through a CLI keeps them
+  independent of the coding-agent protocol.
 
 ## 11. Issue Tracker Integration Contract (Linear-Compatible)
 
@@ -1210,17 +1233,16 @@ Orchestrator behavior on tracker errors:
 - Running-state refresh failure: log and keep active workers running.
 - Startup terminal cleanup failure: log warning and continue startup.
 
-### 11.5 Tracker Writes (Important Boundary)
+### 11.5 Tracker Writes (Broker Boundary)
 
-Symphony does not require first-class tracker write APIs in the orchestrator.
+Issue-tracker writes are performed by the privileged broker (Section 10.8), not by the orchestrator's
+scheduling logic and not by the agent using its own credentials.
 
-- Ticket mutations (state transitions, comments, PR metadata) are typically handled by the coding
-  agent using tools defined by the workflow prompt.
-- The service remains a scheduler/runner and tracker reader.
-- Workflow-specific success often means "reached the next handoff state" (for example
-  `Human Review`) rather than tracker terminal state `Done`.
-- If the `linear_graphql` client-side tool extension is implemented, it is still part of the agent
-  toolchain rather than orchestrator business logic.
+- Ticket mutations (state transitions, comments, pull-request links) are requested by the agent
+  through the `symphony` CLI and executed by the broker using Symphony's configured tracker auth. The
+  agent supplies the content; it never holds tracker credentials.
+- Workflow-specific success often means "reached the next handoff state" (for example `Human Review`)
+  rather than tracker terminal state `Done`.
 
 ## 12. Prompt Construction and Context Assembly
 
@@ -1646,8 +1668,16 @@ RECOMMENDED additional hardening for ports:
 
 ### 15.3 Secret Handling
 
-- Support `$VAR` indirection in workflow config.
-- Do not log API tokens or secret env values.
+- Secrets are resolved through a secret-provider interface. A file provider (reading from a
+  permission-restricted path) is REQUIRED; additional providers (OS keyring, external secret managers)
+  MAY be offered as extensions. Environment variables MUST NOT be used as a secret channel into the
+  agent.
+- Secrets MUST NOT cross into the agent sandbox: not through its environment, its filesystem, or the
+  broker channel. Symphony MAY consume standard credential mechanisms (including environment variables
+  and tool-native credential files) in its own process, but MUST scrub every secret-bearing
+  environment variable before starting the agent sandbox.
+- `$VAR` indirection is retained only for non-secret path values, not for secrets.
+- Do not log API tokens or secret values.
 - Validate presence of secrets without printing them.
 
 ### 15.4 Hook Script Safety
@@ -1681,8 +1711,9 @@ Possible hardening measures include:
   separate credentials beyond the built-in Codex policy controls.
 - Filtering which Linear issues, projects, teams, labels, or other tracker sources are eligible for
   dispatch so untrusted or out-of-scope tasks do not automatically reach the agent.
-- Narrowing the `linear_graphql` tool so it can only read or mutate data inside the
-  intended project scope, rather than exposing general workspace-wide tracker access.
+- Constraining brokered tracker operations to the intended project/issue scope, rather than exposing
+  general workspace-wide tracker access (the broker enforces authorization scope by default; see
+  Section 10.8).
 - Reducing the set of client-side tools, credentials, filesystem paths, and network destinations
   available to the agent to the minimum needed for the workflow.
 
@@ -1957,8 +1988,9 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - Front matter non-map returns typed error
 - Config defaults apply when OPTIONAL values are missing
 - `tracker.kind` validation enforces currently supported kind (`linear`)
-- `tracker.api_key` works (including `$VAR` indirection)
-- `$VAR` resolution works for tracker API key and path values
+- `tracker.api_key` resolves through the secret provider (file provider)
+- Secret-provider resolution works for tracker auth; `$VAR` resolution works for non-secret path
+  values only
 - `~` path expansion works
 - `codex.command` is preserved as a shell command string
 - Per-state concurrency override map normalizes state names and ignores invalid values
@@ -2031,14 +2063,11 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - Usage and rate-limit telemetry exposed by the targeted protocol is extracted
 - Approval, user-input-required, usage, and rate-limit signals are interpreted according to the
   targeted protocol
-- If client-side tools are implemented, session startup advertises the supported tool specs
-  using the targeted app-server protocol
-- If the `linear_graphql` client-side tool extension is implemented:
-  - the tool is advertised to the session
-  - valid `query` / `variables` inputs execute against configured Linear auth
-  - top-level GraphQL `errors` produce `success=false` while preserving the GraphQL body
-  - invalid arguments, missing auth, and transport failures return structured failure payloads
-  - unsupported tool names still fail without stalling the session
+- The `symphony` broker CLI is reachable from the sandbox over the per-run socket and is unreachable
+  without it
+- Brokered operations return structured results with stable reason codes
+- A `scope_denied` result fails the run rather than being retried around
+- Privileged operations are not exposed as in-protocol client-side tools
 
 ### 17.6 Observability
 
@@ -2085,7 +2114,7 @@ Use the same validation profiles as Section 17:
 
 - Workflow path selection supports explicit runtime path and cwd default
 - `WORKFLOW.md` loader with YAML front matter + prompt body split
-- Typed config layer with defaults and `$` resolution
+- Typed config layer with defaults, secret-provider resolution, and `$` expansion for non-secret paths
 - Dynamic `WORKFLOW.md` watch/reload/re-apply for config and prompt
 - Polling orchestrator with single-authority mutable state
 - Issue tracker client with candidate fetch + state refresh + terminal fetch
@@ -2093,6 +2122,8 @@ Use the same validation profiles as Section 17:
 - Workspace lifecycle hooks (`after_create`, `before_run`, `after_run`, `before_remove`)
 - Hook timeout config (`hooks.timeout_ms`, default `60000`)
 - Coding-agent app-server subprocess client with JSON line protocol
+- Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
+  structured results (`scope_denied` fails the run)
 - Codex launch command config (`codex.command`, default `codex app-server`)
 - Strict prompt rendering with `issue` and `attempt` variables
 - Exponential retry queue with continuation retries after normal exit
@@ -2106,8 +2137,6 @@ Use the same validation profiles as Section 17:
 
 - HTTP server extension honors CLI `--port` over `server.port`, uses a safe default bind host, and
   exposes the baseline endpoints/error semantics in Section 13.7 if shipped.
-- `linear_graphql` client-side tool extension exposes raw Linear GraphQL access through the
-  app-server session using configured Symphony auth.
 - TODO: Persist retry queue and session metadata across process restarts.
 - TODO: Make observability settings configurable in workflow front matter without prescribing UI
   implementation details.
