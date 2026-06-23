@@ -91,7 +91,7 @@ and token accounting are generalized off Codex-specific shapes.
 
 ## 0007 — VCS abstraction and git automation
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0007-vcs-abstraction-git-automation/](decisions/0007-vcs-abstraction-git-automation/)
 
 A VCS adapter (GitHub, Forgejo) backs the broker's git and PR verbs. The agent does local git including
