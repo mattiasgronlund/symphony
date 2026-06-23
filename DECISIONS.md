@@ -103,7 +103,7 @@ actor are configurable per repo.
 
 ## 0008 — Tracker abstraction and writes
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0008-tracker-abstraction-writes/](decisions/0008-tracker-abstraction-writes/)
 
 A tracker adapter (Linear, Forgejo) supports reads *and* writes, reversing the spec's "tracker reader

@@ -385,9 +385,10 @@ Fields:
 
 - `kind` (string)
   - REQUIRED for dispatch.
-  - Current supported value: `linear`
+  - Supported values: `linear`, `forgejo`.
 - `endpoint` (string)
-  - Default for `tracker.kind == "linear"`: `https://api.linear.app/graphql`
+  - Default for `tracker.kind == "linear"`: `https://api.linear.app/graphql`. The `forgejo` adapter
+    uses the configured Forgejo instance API base.
 - `api_key` (string)
   - Resolved through the secret-provider interface (Section 15.3); a file provider is REQUIRED.
   - Environment variables MUST NOT be used as a secret channel into the agent. `$VAR_NAME` indirection
@@ -404,6 +405,10 @@ Fields:
   - Default: `Todo`, `In Progress`
 - `terminal_states` (list of strings)
   - Default: `Closed`, `Cancelled`, `Canceled`, `Duplicate`, `Done`
+- `milestones` (map `signal -> state_name`)
+  - Maps agent milestone signals (for example `ready-for-review`, `blocked`, `done`) to tracker state
+    transitions, as part of the workflow state-machine (Section 11.6).
+  - Default: empty map (no signal-driven transitions).
 
 #### 5.3.2 `polling` (object)
 
@@ -646,13 +651,14 @@ not require recognizing or validating extension fields unless that extension is 
 Unless a field is marked as in-sandbox (`WORKFLOW.md`), it lives in the operator-owned policy config
 (Section 5).
 
-- `tracker.kind`: string, REQUIRED, currently `linear`
+- `tracker.kind`: string, REQUIRED, `linear` | `forgejo`
 - `tracker.endpoint`: string, default `https://api.linear.app/graphql` when `tracker.kind=linear`
 - `tracker.api_key`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env (Section 15.3)
 - `tracker.project_slug`: string, REQUIRED when `tracker.kind=linear`
 - `tracker.required_labels`: list of strings, default `[]`
 - `tracker.active_states`: list of strings, default `["Todo", "In Progress"]`
 - `tracker.terminal_states`: list of strings, default `["Closed", "Cancelled", "Canceled", "Duplicate", "Done"]`
+- `tracker.milestones`: map `signal -> state_name`, default `{}` (workflow state-machine, Section 11.6)
 - `polling.interval_ms`: integer, default `30000`
 - `workspace.root`: path resolved to absolute, default `<system-temp>/symphony_workspaces`
 - `vcs.kind`: string, `github` | `forgejo`
@@ -1385,11 +1391,18 @@ Observability normalization:
   logical session fields (Section 4.1.6) and token totals (Section 13.5). The `codex_*` field shapes
   there reflect the Codex adapter.
 
-## 11. Issue Tracker Integration Contract (Linear-Compatible)
+## 11. Issue Tracker Integration Contract
+
+Symphony performs all issue-tracker reads and writes through a tracker adapter; at least the `linear`
+and `forgejo` adapters are defined. Reads feed scheduling and reconciliation; writes (comments, state
+transitions, pull-request links) are performed by the broker (Section 10.8) with content supplied by
+the agent. The agent never holds tracker credentials.
 
 ### 11.1 REQUIRED Operations
 
-An implementation MUST support these tracker adapter operations:
+An implementation MUST support these tracker adapter operations.
+
+Read operations:
 
 1. `fetch_candidate_issues()`
    - Return issues in configured active states for a configured project.
@@ -1400,7 +1413,17 @@ An implementation MUST support these tracker adapter operations:
 3. `fetch_issue_states_by_ids(issue_ids)`
    - Used for active-run reconciliation.
 
-### 11.2 Query Semantics (Linear)
+Write operations (performed by the broker, Section 10.8; the agent supplies the content):
+
+4. `add_comment(issue_id, body)`
+5. `set_state(issue_id, target_state)`
+6. `link_pull_request(issue_id, pr_ref)`
+
+### 11.2 Adapter Semantics
+
+Each tracker adapter implements the read and write operations over its own API; the normalized outputs
+MUST match the domain model in Section 4. The `forgejo` adapter uses the Forgejo issues API and maps
+issue tags and open/closed status to the normalized states.
 
 Linear-specific requirements for `tracker.kind == "linear"`:
 
@@ -1467,6 +1490,26 @@ scheduling logic and not by the agent using its own credentials.
   agent supplies the content; it never holds tracker credentials.
 - Workflow-specific success often means "reached the next handoff state" (for example `Human Review`)
   rather than tracker terminal state `Done`.
+
+### 11.6 Workflow State Machine and Milestone Signals
+
+Symphony drives ticket lifecycle; the agent supplies content and signals progress.
+
+State machine:
+
+- Ticket state transitions are governed by a workflow state-machine defined in the operator policy
+  config. Because transitions are privileged tracker writes performed outside the sandbox, the
+  state-machine is operator-owned, not part of `WORKFLOW.md`.
+- The state-machine names the allowed states and transitions and the conditions under which Symphony
+  performs them (for example a milestone signal, or a run outcome such as a pull request being opened).
+
+Milestone signals:
+
+- The agent reports progress with semantic milestone signals through the broker CLI — for example
+  `ready-for-review`, `blocked`, and `done` — optionally with content.
+- The policy state-machine maps each milestone signal to a concrete tracker transition. The agent
+  expresses intent; the operator controls the resulting states. An unmapped signal performs no
+  transition.
 
 ## 12. Prompt Construction and Context Assembly
 
@@ -2265,6 +2308,11 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 
 ### 17.3 Issue Tracker Client
 
+- At least the `linear` and `forgejo` tracker adapters implement the read and write operations
+- Tracker writes (`add_comment`, `set_state`, `link_pull_request`) are performed by the broker with
+  agent-supplied content
+- Milestone signals map to tracker transitions via the policy state-machine; unmapped signals
+  transition nothing
 - Candidate issue fetch uses active states and project slug
 - Linear query uses the specified project filter field (`slugId`)
 - Empty `fetch_issues_by_states([])` returns empty without API call
@@ -2383,6 +2431,8 @@ Use the same validation profiles as Section 17:
   per-issue overrides
 - VCS adapter (`github`, `forgejo`) owning provisioning, push, back-merge, and one-PR-per-issue, with a
   Symphony-derived work branch and configurable authorship
+- Tracker adapter (`linear`, `forgejo`) with reads and writes; Symphony-driven lifecycle via a
+  policy-owned state-machine and agent milestone signals
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
   structured results (`scope_denied` fails the run)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
@@ -2403,9 +2453,6 @@ Use the same validation profiles as Section 17:
 - TODO: Persist retry queue and session metadata across process restarts.
 - TODO: Make observability settings configurable in workflow front matter without prescribing UI
   implementation details.
-- TODO: Add first-class tracker write APIs (comments/state transitions) in the orchestrator instead
-  of only via agent tools.
-- TODO: Add pluggable issue tracker adapters beyond Linear.
 
 ### 18.3 Operational Validation Before Production (RECOMMENDED)
 
