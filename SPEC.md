@@ -16,8 +16,8 @@ behavior.
 ## 1. Problem Statement
 
 Symphony is a long-running automation service that continuously reads work from an issue tracker
-(Linear in this specification version), creates an isolated workspace for each issue, and runs a
-coding agent session for that issue inside the workspace.
+(at least Linear and Forgejo), creates an isolated workspace for each issue, and runs a coding agent
+session for that issue inside the workspace.
 
 The service solves four operational problems:
 
@@ -148,10 +148,10 @@ Symphony is easiest to port when kept in these layers:
 
 ### 3.3 External Dependencies
 
-- Issue tracker API (Linear for `tracker.kind: linear` in this specification version).
+- Issue tracker API (at least Linear and Forgejo; selected by `tracker.kind`).
 - Local filesystem for workspaces and logs.
 - Git CLI and a VCS host API (GitHub or Forgejo) for repository provisioning, push, and pull requests.
-- Coding-agent executable that supports the targeted Codex app-server mode.
+- A supported coding agent (for example Codex or Claude Code) and its adapter (Section 10.9).
 - Agent sandbox mechanism (for example `jai` on Linux, https://jai.scs.stanford.edu, or an equivalent
   on other platforms).
 - Host environment authentication for the issue tracker and coding agent.
@@ -548,7 +548,7 @@ Template input variables:
 Fallback prompt behavior:
 
 - If the workflow prompt body is empty, the runtime MAY use a minimal default prompt
-  (`You are working on an issue from Linear.`).
+  (`You are working on an issue from the issue tracker.`).
 - Workflow file read/parse failures are configuration/validation errors and SHOULD NOT silently fall
   back to a prompt.
 
