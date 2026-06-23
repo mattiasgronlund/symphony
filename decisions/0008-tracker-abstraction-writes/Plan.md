@@ -30,11 +30,17 @@ tracker-writes-via-agent framing.
 
 ## Anchor changes
 
-- Section 11.5 "Tracker Writes (Important Boundary)" and the Section 1 "Important boundary" — reversed:
-  Symphony performs tracker writes.
-- New anchors: the tracker adapter (read and write), the workflow state-machine (policy-owned), and the
-  milestone signals (`ready-for-review`, `blocked`, `done`).
+- Section 11 "Issue Tracker Integration Contract (Linear-Compatible)" — retitled to "Issue Tracker
+  Integration Contract"; Section 11.2 "Query Semantics (Linear)" — retitled to "Adapter Semantics".
+  The Section 1 / 11.5 reader boundary was already reversed in 0003; this decision adds the adapter
+  writes and the state-machine.
+- New anchors: Section 11.6 "Workflow State Machine and Milestone Signals"; the tracker adapter
+  read/write operations (`add_comment`, `set_state`, `link_pull_request`); the `tracker.milestones`
+  key; the workflow state-machine (policy-owned); and the milestone signals (`ready-for-review`,
+  `blocked`, `done`). `tracker.kind` gains `forgejo`.
+- Removed the Section 18.2 TODOs for first-class tracker writes and pluggable tracker adapters (now
+  done).
 
 ## Status
 
-Not started. Recorded as `Proposed`; `SPEC.md` not yet edited.
+Applied to `SPEC.md` on branch `broker-rearchitecture-0003-0009`.
