@@ -314,7 +314,9 @@ Symphony reads configuration from two artifacts split on the sandbox boundary (S
   everything Symphony uses outside the sandbox: credentials, authorization scope, the sandbox profile,
   tracker and VCS configuration, polling and concurrency, privileged setup hooks, agent selection, and
   the workflow state-machine. Its format and discovery path are `Implementation-defined` and MUST be
-  documented.
+  documented. A single policy config MAY define multiple repositories managed by one instance, each
+  with its own VCS and agent settings, plus the issue→repo routing for shared tracker polling
+  (Section 8.7).
 
 The dividing rule is mechanical: if Symphony uses a setting outside the sandbox, it belongs to the
 policy config; only settings consumed inside the sandbox belong to `WORKFLOW.md`.
@@ -649,7 +651,8 @@ Extension fields are documented in the extension section that defines them. Core
 not require recognizing or validating extension fields unless that extension is implemented.
 
 Unless a field is marked as in-sandbox (`WORKFLOW.md`), it lives in the operator-owned policy config
-(Section 5).
+(Section 5). A policy config MAY define multiple repositories, each with its own `vcs` and `agent`
+settings, plus a tracker-specific issue→repo mapping (Section 8.7).
 
 - `tracker.kind`: string, REQUIRED, `linear` | `forgejo`
 - `tracker.endpoint`: string, default `https://api.linear.app/graphql` when `tracker.kind=linear`
@@ -797,7 +800,8 @@ Tick sequence:
 
 1. Reconcile running issues.
 2. Run dispatch preflight validation.
-3. Fetch candidate issues from tracker using active states.
+3. Fetch candidate issues from each tracker (once per tracker) and route them to repositories
+   (Section 8.7).
 4. Sort issues by dispatch priority.
 5. Dispatch eligible issues while slots remain.
 6. Notify observability/status consumers of state changes.
@@ -900,6 +904,35 @@ When the service starts:
 
 This prevents stale terminal workspaces from accumulating after restarts.
 
+### 8.7 Multiple Repositories and Shared Polling
+
+One Symphony instance MAY manage multiple repositories.
+
+Configuration:
+
+- The policy config enumerates the managed repositories, each with its own VCS configuration (Section
+  9.7) and agent selection (Section 10.9), and the trackers they draw work from.
+
+Issue-to-repository routing:
+
+- Each polled issue is routed to exactly one repository. An issue maps to one repository only;
+  cross-repository changes are handled as separate issues.
+- Routing uses an explicit, tracker-implementation-specific mapping in the policy config. For example,
+  the `linear` adapter maps by project, team, label, or assignee; the `forgejo` adapter maps by
+  repository and issue tags/state. Routing MUST NOT depend on untrusted free-form issue content beyond
+  what the mapping names.
+
+Shared polling:
+
+- When several repositories draw work from the same tracker, the tracker is polled once per cycle and
+  the returned issues are routed to repositories via the mapping, rather than polling per repository.
+  This minimizes redundant background polling.
+
+Keying:
+
+- Workspace identity, the per-repository object store (Section 9.7), and concurrency accounting are
+  keyed by `(repository, issue)`.
+
 ## 9. Workspace, VCS, and Safety
 
 ### 9.1 Workspace Layout
@@ -910,7 +943,8 @@ Workspace root:
 
 Per-issue workspace path:
 
-- `<workspace.root>/<sanitized_issue_identifier>`
+- `<workspace.root>/<repo_key>/<sanitized_issue_identifier>` when one instance manages multiple
+  repositories; `<workspace.root>/<sanitized_issue_identifier>` for a single-repository instance.
 
 Workspace persistence:
 
@@ -2325,6 +2359,10 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 
 ### 17.4 Orchestrator Dispatch, Reconciliation, and Retry
 
+- One instance can manage multiple repositories; each issue routes to exactly one repository via the
+  policy mapping
+- A tracker shared by several repositories is polled once per cycle and its issues are routed
+- Workspace and concurrency identity are keyed by (repository, issue)
 - Dispatch sort order is priority then oldest creation time
 - `Todo` issue with non-terminal blockers is not eligible
 - `Todo` issue with terminal blockers is eligible
@@ -2433,6 +2471,8 @@ Use the same validation profiles as Section 17:
   Symphony-derived work branch and configurable authorship
 - Tracker adapter (`linear`, `forgejo`) with reads and writes; Symphony-driven lifecycle via a
   policy-owned state-machine and agent milestone signals
+- Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
+  polling; workspace/concurrency keyed by (repository, issue)
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
   structured results (`scope_denied` fails the run)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
