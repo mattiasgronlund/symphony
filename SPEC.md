@@ -36,8 +36,8 @@ stricter approvals or sandboxing.
 Important boundary:
 
 - Symphony is a privileged broker: it performs all outward side effects (VCS remote operations,
-  pull-request creation, and issue-tracker interaction) on the agent's behalf, holding the credentials
-  those operations require.
+  pull-request creation, and issue-tracker interaction) on the agent's behalf, holding the
+  credentials those operations require.
 - The coding agent runs sandboxed and credential-less. It supplies only the content of those
   operations (commit and pull-request text, comments, milestone signals) and requests them through a
   `symphony` broker CLI rather than acting on credentials directly.
@@ -51,8 +51,8 @@ Important boundary:
 - Poll the issue tracker on a fixed cadence and dispatch work with bounded concurrency.
 - Maintain a single authoritative orchestrator state for dispatch, retries, and reconciliation.
 - Create deterministic per-issue workspaces and preserve them across runs.
-- Run each coding-agent session inside a configurable sandbox so credentials and the host stay outside
-  the agent's reach.
+- Run each coding-agent session inside a configurable sandbox so credentials and the host stay
+  outside the agent's reach.
 - Stop active runs when issue state changes make them ineligible.
 - Recover from transient failures with exponential backoff.
 - Load runtime behavior from a repository-owned `WORKFLOW.md` contract.
@@ -111,8 +111,8 @@ Important boundary:
 
 7. `Privileged Operation Broker`
    - Exposes the `symphony` CLI to the sandboxed agent over a per-run socket.
-   - Performs VCS remote, pull-request, and issue-tracker operations using credentials the agent never
-     sees.
+   - Performs VCS remote, pull-request, and issue-tracker operations using credentials the agent
+     never sees.
    - Enforces per-run authorization scope on every brokered operation.
 
 8. `Status Surface` (OPTIONAL)
@@ -150,10 +150,11 @@ Symphony is easiest to port when kept in these layers:
 
 - Issue tracker API (at least Linear and Forgejo; selected by `tracker.kind`).
 - Local filesystem for workspaces and logs.
-- Git CLI and a VCS host API (GitHub or Forgejo) for repository provisioning, push, and pull requests.
+- Git CLI and a VCS host API (GitHub or Forgejo) for repository provisioning, push, and pull
+  requests.
 - A supported coding agent (for example Codex or Claude Code) and its adapter (Section 10.9).
-- Agent sandbox mechanism (for example `jai` on Linux, https://jai.scs.stanford.edu, or an equivalent
-  on other platforms).
+- Agent sandbox mechanism (for example `jai` on Linux, https://jai.scs.stanford.edu, or an
+  equivalent on other platforms).
 - Host environment authentication for the issue tracker and coding agent.
 
 ## 4. Core Domain Model
@@ -237,9 +238,9 @@ Fields (logical):
 
 #### 4.1.6 Live Session (Agent Session Metadata)
 
-State tracked while a coding-agent subprocess is running. The field names below use the Codex adapter's
-shapes as the worked example; each adapter normalizes its own protocol's session, turn, and usage
-identifiers into these logical fields (Section 10.9).
+State tracked while a coding-agent subprocess is running. The field names below use the Codex
+adapter's shapes as the worked example; each adapter normalizes its own protocol's session, turn,
+and usage identifiers into these logical fields (Section 10.9).
 
 Fields:
 
@@ -306,17 +307,17 @@ Fields:
 
 Symphony reads configuration from two artifacts split on the sandbox boundary (Section 9.6):
 
-- `WORKFLOW.md` — repository-owned and version-controlled. It contains only settings used *inside* the
-  agent sandbox: the per-issue prompt template and in-sandbox hooks. Because anyone who can commit to
-  the repository — including the agent — can edit it, it is treated as untrusted input and MUST NOT
-  carry credentials, scope rules, or any setting Symphony uses outside the sandbox.
+- `WORKFLOW.md` — repository-owned and version-controlled. It contains only settings used *inside*
+  the agent sandbox: the per-issue prompt template and in-sandbox hooks. Because anyone who can
+  commit to the repository — including the agent — can edit it, it is treated as untrusted input and
+  MUST NOT carry credentials, scope rules, or any setting Symphony uses outside the sandbox.
 - Policy config — operator-owned and not modifiable by the repository or the agent. It contains
-  everything Symphony uses outside the sandbox: credentials, authorization scope, the sandbox profile,
-  tracker and VCS configuration, polling and concurrency, privileged setup hooks, agent selection, and
-  the workflow state-machine. Its format and discovery path are `Implementation-defined` and MUST be
-  documented. A single policy config MAY define multiple repositories managed by one instance, each
-  with its own VCS and agent settings, plus the issue→repo routing for shared tracker polling
-  (Section 8.7).
+  everything Symphony uses outside the sandbox: credentials, authorization scope, the sandbox
+  profile, tracker and VCS configuration, polling and concurrency, privileged setup hooks, agent
+  selection, and the workflow state-machine. Its format and discovery path are
+  `Implementation-defined` and MUST be documented. A single policy config MAY define multiple
+  repositories managed by one instance, each with its own VCS and agent settings, plus the
+  issue→repo routing for shared tracker polling (Section 8.7).
 
 The dividing rule is mechanical: if Symphony uses a setting outside the sandbox, it belongs to the
 policy config; only settings consumed inside the sandbox belong to `WORKFLOW.md`.
@@ -393,8 +394,8 @@ Fields:
     uses the configured Forgejo instance API base.
 - `api_key` (string)
   - Resolved through the secret-provider interface (Section 15.3); a file provider is REQUIRED.
-  - Environment variables MUST NOT be used as a secret channel into the agent. `$VAR_NAME` indirection
-    is not used for this value.
+  - Environment variables MUST NOT be used as a secret channel into the agent. `$VAR_NAME`
+    indirection is not used for this value.
   - If the resolved secret is empty, treat the key as missing.
 - `project_slug` (string)
   - REQUIRED for dispatch when `tracker.kind == "linear"`.
@@ -408,8 +409,8 @@ Fields:
 - `terminal_states` (list of strings)
   - Default: `Closed`, `Cancelled`, `Canceled`, `Duplicate`, `Done`
 - `milestones` (map `signal -> state_name`)
-  - Maps agent milestone signals (for example `ready-for-review`, `blocked`, `done`) to tracker state
-    transitions, as part of the workflow state-machine (Section 11.6).
+  - Maps agent milestone signals (for example `ready-for-review`, `blocked`, `done`) to tracker
+    state transitions, as part of the workflow state-machine (Section 11.6).
   - Default: empty map (no signal-driven transitions).
 
 #### 5.3.2 `polling` (object)
@@ -584,8 +585,8 @@ Configuration is resolved in this order:
 Environment variables do not globally override YAML values. They are used only when a config value
 explicitly references them.
 
-Secret values are not resolved through `$VAR_NAME` indirection; they use the secret-provider interface
-(Section 15.3). `$VAR` expansion applies only to non-secret path values.
+Secret values are not resolved through `$VAR_NAME` indirection; they use the secret-provider
+interface (Section 15.3). `$VAR` expansion applies only to non-secret path values.
 
 Value coercion semantics:
 
@@ -604,7 +605,8 @@ Dynamic reload is REQUIRED:
   config.
 - On change, it MUST re-read and re-apply the affected configuration and prompt template without
   restart. Live policy-config reload includes credentials, scope, and the workflow state-machine;
-  implementations SHOULD apply such changes to future operations rather than disrupting in-flight runs.
+  implementations SHOULD apply such changes to future operations rather than disrupting in-flight
+  runs.
 - The software MUST attempt to adjust live behavior to the new config (for example polling
   cadence, concurrency limits, active/terminal states, codex settings, workspace paths/hooks, and
   prompt content for future runs).
@@ -910,23 +912,23 @@ One Symphony instance MAY manage multiple repositories.
 
 Configuration:
 
-- The policy config enumerates the managed repositories, each with its own VCS configuration (Section
-  9.7) and agent selection (Section 10.9), and the trackers they draw work from.
+- The policy config enumerates the managed repositories, each with its own VCS configuration
+  (Section 9.7) and agent selection (Section 10.9), and the trackers they draw work from.
 
 Issue-to-repository routing:
 
 - Each polled issue is routed to exactly one repository. An issue maps to one repository only;
   cross-repository changes are handled as separate issues.
-- Routing uses an explicit, tracker-implementation-specific mapping in the policy config. For example,
-  the `linear` adapter maps by project, team, label, or assignee; the `forgejo` adapter maps by
-  repository and issue tags/state. Routing MUST NOT depend on untrusted free-form issue content beyond
-  what the mapping names.
+- Routing uses an explicit, tracker-implementation-specific mapping in the policy config. For
+  example, the `linear` adapter maps by project, team, label, or assignee; the `forgejo` adapter
+  maps by repository and issue tags/state. Routing MUST NOT depend on untrusted free-form issue
+  content beyond what the mapping names.
 
 Shared polling:
 
-- When several repositories draw work from the same tracker, the tracker is polled once per cycle and
-  the returned issues are routed to repositories via the mapping, rather than polling per repository.
-  This minimizes redundant background polling.
+- When several repositories draw work from the same tracker, the tracker is polled once per cycle
+  and the returned issues are routed to repositories via the mapping, rather than polling per
+  repository. This minimizes redundant background polling.
 
 Keying:
 
@@ -953,9 +955,9 @@ Workspace persistence:
 
 VCS-backed workspaces:
 
-- When the issue's repository is managed by a VCS adapter (Section 9.7), the per-issue workspace is a
-  git worktree of that repository's shared object store, not a bare directory. The path layout above is
-  unchanged.
+- When the issue's repository is managed by a VCS adapter (Section 9.7), the per-issue workspace is
+  a git worktree of that repository's shared object store, not a bare directory. The path layout
+  above is unchanged.
 
 ### 9.2 Workspace Creation and Reuse
 
@@ -1039,32 +1041,33 @@ Invariant 3: Workspace key is sanitized.
 
 ### 9.6 Agent Sandbox and Execution Isolation
 
-Each coding-agent run MUST be runnable inside a sandbox that isolates the agent from the host and from
-Symphony's credentials. The sandbox profile is configurable; a strict containment profile is the
-assumed default.
+Each coding-agent run MUST be runnable inside a sandbox that isolates the agent from the host and
+from Symphony's credentials. The sandbox profile is configurable; a strict containment profile is
+the assumed default.
 
 Sandbox profile:
 
 - The reference baseline is `jai` (https://jai.scs.stanford.edu) in its `Strict` mode on Linux — a
-  containment tool for AI agents — with an equivalent local mechanism on other platforms. The selected
-  profile is `Implementation-defined` and MUST be documented.
-- `jai` describes itself as a casual sandbox that reduces rather than eliminates risk, so deployments
-  needing stronger isolation SHOULD layer additional controls (container, VM, or network policy).
+  containment tool for AI agents — with an equivalent local mechanism on other platforms. The
+  selected profile is `Implementation-defined` and MUST be documented.
+- `jai` describes itself as a casual sandbox that reduces rather than eliminates risk, so
+  deployments needing stronger isolation SHOULD layer additional controls (container, VM, or network
+  policy).
 
 Privileged channel:
 
 - The per-run broker socket (Section 10.8) is the only privileged channel into the sandbox. It is
-  mounted into the sandbox and bound to exactly one run, so the broker attributes every request to that
-  run's repository, issue, and work branch.
+  mounted into the sandbox and bound to exactly one run, so the broker attributes every request to
+  that run's repository, issue, and work branch.
 - No credentials are present inside the sandbox. Every secret-bearing environment variable MUST be
   scrubbed before the sandbox starts (Section 15.3).
 
 Working tree:
 
 - The per-issue working tree is a host directory bind-mounted into the sandbox. The agent edits and
-  runs local git there; Symphony performs credentialed git (fetch, push) on the host against the same
-  directory, with the pushed ref pinned by Symphony. The agent can read repository git state but cannot
-  authenticate to a remote or change which ref Symphony pushes.
+  runs local git there; Symphony performs credentialed git (fetch, push) on the host against the
+  same directory, with the pushed ref pinned by Symphony. The agent can read repository git state
+  but cannot authenticate to a remote or change which ref Symphony pushes.
 
 Network egress:
 
@@ -1075,17 +1078,17 @@ Network egress:
 ### 9.7 VCS Adapter and Repository Provisioning
 
 Symphony owns all interaction with the version-control remote through a VCS adapter. At least two
-adapters are defined: `github` and `forgejo`. The adapter backs the broker's git and pull-request verbs
-(Section 9.9); the agent never holds VCS credentials.
+adapters are defined: `github` and `forgejo`. The adapter backs the broker's git and pull-request
+verbs (Section 9.9); the agent never holds VCS credentials.
 
 Repository provisioning:
 
 - Symphony keeps one fetched object store per repository on the host. Each issue's working tree is a
-  worktree (or reference clone) of that store, created under the workspace root and bind-mounted into
-  the sandbox (Section 9.6). Sharing objects keeps provisioning fast and disk-efficient as the number
-  of repositories and concurrent issues grows.
-- Fetch and other network git operations run on the host with credentials the agent never sees. Local
-  git in the worktree is available to the agent.
+  worktree (or reference clone) of that store, created under the workspace root and bind-mounted
+  into the sandbox (Section 9.6). Sharing objects keeps provisioning fast and disk-efficient as the
+  number of repositories and concurrent issues grows.
+- Fetch and other network git operations run on the host with credentials the agent never sees.
+  Local git in the worktree is available to the agent.
 
 Configuration (policy config, `vcs` object):
 
@@ -1093,7 +1096,8 @@ Configuration (policy config, `vcs` object):
 - `base_branch` (string) — the branch pull requests target and back-merges pull from.
 - `work_branch_template` (string) — template for the deterministic work branch (Section 9.8).
   Default: `symphony/<identifier>`.
-- `author` / `actor` (objects) — identity mapping for commits and for the push/PR actor (Section 9.8).
+- `author` / `actor` (objects) — identity mapping for commits and for the push/PR actor (Section
+  9.8).
 - `api_key` (string) — resolved through the secret-provider interface (Section 15.3).
 
 ### 9.8 Git Automation and Work Branch
@@ -1101,8 +1105,8 @@ Configuration (policy config, `vcs` object):
 Division of labor:
 
 - The agent uses local git in the worktree, including `git commit`, and resolves conflicts. Symphony
-  performs every operation that touches the remote: fetch, branch, back-merge, push, and pull-request
-  management.
+  performs every operation that touches the remote: fetch, branch, back-merge, push, and
+  pull-request management.
 - The agent's high-value contributions are commit and pull-request *messages* and *conflict
   resolution*; Symphony automates the surrounding git mechanics.
 
@@ -1121,9 +1125,9 @@ Push:
 
 Back-merge and conflict handoff:
 
-- At the start of a run, Symphony attempts to bring the work branch up to date with `vcs.base_branch`.
-  If the update applies cleanly it is taken; if it would conflict, it is postponed so the agent is not
-  interrupted up front.
+- At the start of a run, Symphony attempts to bring the work branch up to date with
+  `vcs.base_branch`. If the update applies cleanly it is taken; if it would conflict, it is
+  postponed so the agent is not interrupted up front.
 - Conflict resolution is required only when a push is rejected as non-fast-forward. Symphony then
   stages the back-merge in the worktree, hands the conflicted tree to the agent (via continuation
   guidance) to resolve, and completes the merge once the agent signals done.
@@ -1138,9 +1142,9 @@ Identity:
 
 Pull requests:
 
-- Symphony maintains one pull request per issue. It is created on first push and updated (new commits,
-  refreshed title/body) on later runs, and reused across retries and continuations. The agent supplies
-  the title and body; the base is `vcs.base_branch` and the head is the work branch.
+- Symphony maintains one pull request per issue. It is created on first push and updated (new
+  commits, refreshed title/body) on later runs, and reused across retries and continuations. The
+  agent supplies the title and body; the base is `vcs.base_branch` and the head is the work branch.
 
 Broker git/PR verbs:
 
@@ -1155,8 +1159,9 @@ Broker git/PR verbs:
 
 This section defines Symphony's agent-neutral responsibilities for running a coding agent. Symphony
 supports more than one agent (at least Codex and Claude Code) through per-agent *adapters*: each
-adapter implements the same neutral runner contract over its agent's own protocol, which is the source
-of truth for that agent's protocol schemas, message payloads, transport framing, and method names.
+adapter implements the same neutral runner contract over its agent's own protocol, which is the
+source of truth for that agent's protocol schemas, message payloads, transport framing, and method
+names.
 
 Sections 10.1–10.6 describe these responsibilities using the Codex adapter as the worked example;
 another adapter (for example Claude Code) provides the same responsibilities over its own protocol.
@@ -1164,11 +1169,12 @@ Section 10.9 defines the neutral contract, the available adapters, and how an ag
 
 Protocol source of truth:
 
-- Implementations MUST send messages that are valid for the targeted agent adapter's protocol version.
+- Implementations MUST send messages that are valid for the targeted agent adapter's protocol
+  version.
 - Implementations MUST consult the targeted agent's documentation or generated schema instead of
   treating this specification as a protocol schema.
-- If this specification appears to conflict with the targeted agent's protocol, that protocol controls
-  protocol shape and transport behavior.
+- If this specification appears to conflict with the targeted agent's protocol, that protocol
+  controls protocol shape and transport behavior.
 - Symphony-specific requirements in this section still control orchestration behavior, workspace
   selection, prompt construction, continuation handling, and observability extraction.
 
@@ -1235,8 +1241,8 @@ Completion conditions:
 
 Continuation processing:
 
-- If the worker decides to continue after a successful turn, it SHOULD start another turn on the same
-  live thread using the targeted protocol.
+- If the worker decides to continue after a successful turn, it SHOULD start another turn on the
+  same live thread using the targeted protocol.
 - The app-server subprocess SHOULD remain alive across those continuation turns and be stopped only
   when the worker run is ending.
 
@@ -1354,8 +1360,8 @@ Note:
 
 Symphony performs all privileged, outward-facing side effects on the agent's behalf. The agent is
 sandboxed and holds no credentials; it requests every side effect — VCS remote operations,
-pull-request creation, and issue-tracker interaction — by invoking a `symphony` command-line tool that
-is the only privileged channel out of the sandbox.
+pull-request creation, and issue-tracker interaction — by invoking a `symphony` command-line tool
+that is the only privileged channel out of the sandbox.
 
 Channel:
 
@@ -1363,9 +1369,9 @@ Channel:
   equivalent local IPC mechanism on other platforms). The socket is bound to exactly one run, so the
   broker attributes every request to that run's repository, issue, and work branch without trusting
   any identifier supplied by the agent.
-- Credentials are never placed in the sandbox: not in its environment, not on its filesystem, and not
-  in the broker channel. The broker executes operations using credentials held by the orchestrator
-  process outside the sandbox.
+- Credentials are never placed in the sandbox: not in its environment, not on its filesystem, and
+  not in the broker channel. The broker executes operations using credentials held by the
+  orchestrator process outside the sandbox.
 
 Authorization scope:
 
@@ -1373,18 +1379,18 @@ Authorization scope:
   operation MUST be constrained to the current run: for example, push only to the run's work branch,
   write only to the assigned issue, and open or update only the pull request for that issue against
   the configured base.
-- The brokered operations are a fixed neutral core, identical across VCS and tracker backends, plus an
-  extension mechanism for adapter- or policy-specific operations. The core verbs are defined alongside
-  the VCS and issue-tracker integration contracts.
+- The brokered operations are a fixed neutral core, identical across VCS and tracker backends, plus
+  an extension mechanism for adapter- or policy-specific operations. The core verbs are defined
+  alongside the VCS and issue-tracker integration contracts.
 
 Result contract:
 
-- Every brokered operation returns a structured result with at least a success/failure status and, on
-  failure, a stable reason code (for example `non_fast_forward`, `pr_conflict`, `scope_denied`).
+- Every brokered operation returns a structured result with at least a success/failure status and,
+  on failure, a stable reason code (for example `non_fast_forward`, `pr_conflict`, `scope_denied`).
   Ordinary failures are returned to the agent so it can adapt, for example resolve a conflict and
   retry.
-- A `scope_denied` result is treated as a policy violation: the run MUST fail rather than allowing the
-  agent to retry around the boundary.
+- A `scope_denied` result is treated as a policy violation: the run MUST fail rather than allowing
+  the agent to retry around the boundary.
 
 Note:
 
@@ -1403,8 +1409,8 @@ Symphony integrates each coding agent through an adapter implementing one neutra
 - advertise any in-protocol client-side tools the agent supports.
 
 Each adapter defers to its agent's own protocol as the source of truth (Section 10 intro). At least
-two adapters are defined: `codex` (the Codex app-server, the worked example in Sections 10.1–10.8) and
-`claude_code`.
+two adapters are defined: `codex` (the Codex app-server, the worked example in Sections 10.1–10.8)
+and `claude_code`.
 
 Selection:
 
@@ -1421,16 +1427,16 @@ Effort:
 
 Observability normalization:
 
-- Each adapter normalizes its protocol's session and turn identifiers and its usage payloads into the
-  logical session fields (Section 4.1.6) and token totals (Section 13.5). The `codex_*` field shapes
-  there reflect the Codex adapter.
+- Each adapter normalizes its protocol's session and turn identifiers and its usage payloads into
+  the logical session fields (Section 4.1.6) and token totals (Section 13.5). The `codex_*` field
+  shapes there reflect the Codex adapter.
 
 ## 11. Issue Tracker Integration Contract
 
-Symphony performs all issue-tracker reads and writes through a tracker adapter; at least the `linear`
-and `forgejo` adapters are defined. Reads feed scheduling and reconciliation; writes (comments, state
-transitions, pull-request links) are performed by the broker (Section 10.8) with content supplied by
-the agent. The agent never holds tracker credentials.
+Symphony performs all issue-tracker reads and writes through a tracker adapter; at least the
+`linear` and `forgejo` adapters are defined. Reads feed scheduling and reconciliation; writes
+(comments, state transitions, pull-request links) are performed by the broker (Section 10.8) with
+content supplied by the agent. The agent never holds tracker credentials.
 
 ### 11.1 REQUIRED Operations
 
@@ -1455,9 +1461,9 @@ Write operations (performed by the broker, Section 10.8; the agent supplies the 
 
 ### 11.2 Adapter Semantics
 
-Each tracker adapter implements the read and write operations over its own API; the normalized outputs
-MUST match the domain model in Section 4. The `forgejo` adapter uses the Forgejo issues API and maps
-issue tags and open/closed status to the normalized states.
+Each tracker adapter implements the read and write operations over its own API; the normalized
+outputs MUST match the domain model in Section 4. The `forgejo` adapter uses the Forgejo issues API
+and maps issue tags and open/closed status to the normalized states.
 
 Linear-specific requirements for `tracker.kind == "linear"`:
 
@@ -1516,14 +1522,14 @@ Orchestrator behavior on tracker errors:
 
 ### 11.5 Tracker Writes (Broker Boundary)
 
-Issue-tracker writes are performed by the privileged broker (Section 10.8), not by the orchestrator's
-scheduling logic and not by the agent using its own credentials.
+Issue-tracker writes are performed by the privileged broker (Section 10.8), not by the
+orchestrator's scheduling logic and not by the agent using its own credentials.
 
 - Ticket mutations (state transitions, comments, pull-request links) are requested by the agent
-  through the `symphony` CLI and executed by the broker using Symphony's configured tracker auth. The
-  agent supplies the content; it never holds tracker credentials.
-- Workflow-specific success often means "reached the next handoff state" (for example `Human Review`)
-  rather than tracker terminal state `Done`.
+  through the `symphony` CLI and executed by the broker using Symphony's configured tracker auth.
+  The agent supplies the content; it never holds tracker credentials.
+- Workflow-specific success often means "reached the next handoff state" (for example
+  `Human Review`) rather than tracker terminal state `Done`.
 
 ### 11.6 Workflow State Machine and Milestone Signals
 
@@ -1535,7 +1541,8 @@ State machine:
   config. Because transitions are privileged tracker writes performed outside the sandbox, the
   state-machine is operator-owned, not part of `WORKFLOW.md`.
 - The state-machine names the allowed states and transitions and the conditions under which Symphony
-  performs them (for example a milestone signal, or a run outcome such as a pull request being opened).
+  performs them (for example a milestone signal, or a run outcome such as a pull request being
+  opened).
 
 Milestone signals:
 
@@ -1975,13 +1982,13 @@ RECOMMENDED additional hardening for ports:
 ### 15.3 Secret Handling
 
 - Secrets are resolved through a secret-provider interface. A file provider (reading from a
-  permission-restricted path) is REQUIRED; additional providers (OS keyring, external secret managers)
-  MAY be offered as extensions. Environment variables MUST NOT be used as a secret channel into the
-  agent.
+  permission-restricted path) is REQUIRED; additional providers (OS keyring, external secret
+  managers) MAY be offered as extensions. Environment variables MUST NOT be used as a secret channel
+  into the agent.
 - Secrets MUST NOT cross into the agent sandbox: not through its environment, its filesystem, or the
-  broker channel. Symphony MAY consume standard credential mechanisms (including environment variables
-  and tool-native credential files) in its own process, but MUST scrub every secret-bearing
-  environment variable before starting the agent sandbox.
+  broker channel. Symphony MAY consume standard credential mechanisms (including environment
+  variables and tool-native credential files) in its own process, but MUST scrub every
+  secret-bearing environment variable before starting the agent sandbox.
 - `$VAR` indirection is retained only for non-secret path values, not for secrets.
 - Do not log API tokens or secret values.
 - Validate presence of secrets without printing them.
@@ -2330,15 +2337,16 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - Workspace path sanitization and root containment invariants are enforced before agent launch
 - Agent launch uses the per-issue workspace path as cwd and rejects out-of-root paths
 - Agent launch wraps the session in the configured sandbox (strict profile by default)
-- The per-run broker socket is mounted into the sandbox and bound to one run; without it the broker is
-  unreachable
+- The per-run broker socket is mounted into the sandbox and bound to one run; without it the broker
+  is unreachable
 - Secret-bearing environment variables are scrubbed before the sandbox starts
 - VCS-managed workspaces are provisioned as worktrees of a shared per-repo object store
 - The agent does local git including commit; Symphony performs fetch/branch/back-merge/push/PR
 - The work branch is Symphony-derived (`symphony/<identifier>`) and the push refspec is pinned to it
-- Back-merge is attempted at run start and postponed on conflict; conflict resolution is required only
-  on push-reject
-- One pull request per issue is created then updated; the agent supplies title/body, base from policy
+- Back-merge is attempted at run start and postponed on conflict; conflict resolution is required
+  only on push-reject
+- One pull request per issue is created then updated; the agent supplies title/body, base from
+  policy
 
 ### 17.3 Issue Tracker Client
 
@@ -2454,21 +2462,22 @@ Use the same validation profiles as Section 17:
 
 - Workflow path selection supports explicit runtime path and cwd default
 - `WORKFLOW.md` loader with YAML front matter + prompt body split
-- Typed config layer with defaults, secret-provider resolution, and `$` expansion for non-secret paths
-- Two configuration artifacts: operator-owned policy config (privileged) and repo-owned `WORKFLOW.md`
-  (in-sandbox only); dynamic watch/reload/re-apply for both
+- Typed config layer with defaults, secret-provider resolution, and `$` expansion for non-secret
+  paths
+- Two configuration artifacts: operator-owned policy config (privileged) and repo-owned
+  `WORKFLOW.md` (in-sandbox only); dynamic watch/reload/re-apply for both
 - Polling orchestrator with single-authority mutable state
 - Issue tracker client with candidate fetch + state refresh + terminal fetch
 - Workspace manager with sanitized per-issue workspaces
-- Workspace lifecycle hooks at two trust levels (policy-config hooks on the host; `WORKFLOW.md` hooks
-  in the sandbox)
+- Workspace lifecycle hooks at two trust levels (policy-config hooks on the host; `WORKFLOW.md`
+  hooks in the sandbox)
 - Hook timeout config (`hooks.timeout_ms`, default `60000`)
-- Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex app-server
-  JSON line protocol as the worked example)
+- Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
+  app-server JSON line protocol as the worked example)
 - Agent and effort selected from policy (`default_agent`/`default_effort`) with `agent_by_label`
   per-issue overrides
-- VCS adapter (`github`, `forgejo`) owning provisioning, push, back-merge, and one-PR-per-issue, with a
-  Symphony-derived work branch and configurable authorship
+- VCS adapter (`github`, `forgejo`) owning provisioning, push, back-merge, and one-PR-per-issue,
+  with a Symphony-derived work branch and configurable authorship
 - Tracker adapter (`linear`, `forgejo`) with reads and writes; Symphony-driven lifecycle via a
   policy-owned state-machine and agent milestone signals
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
