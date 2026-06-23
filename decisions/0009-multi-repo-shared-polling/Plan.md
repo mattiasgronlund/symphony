@@ -28,10 +28,11 @@ shared-polling, and repo-qualified concurrency/workspace rows.
 ## Anchor changes
 
 - Per-issue workspace path `<workspace.root>/<sanitized_issue_identifier>` (Section 9.1) —
-  repo-qualified to include the repo in the key.
-- New anchors: the issue→repo mapping (per tracker adapter), shared per-tracker polling, and multi-repo
-  policy config.
+  repo-qualified to `<workspace.root>/<repo_key>/<sanitized_issue_identifier>` for multi-repository
+  instances.
+- New anchors: Section 8.7 "Multiple Repositories and Shared Polling"; the issue→repo mapping (per
+  tracker adapter); shared per-tracker polling; and multi-repository policy config.
 
 ## Status
 
-Not started. Recorded as `Proposed`; `SPEC.md` not yet edited.
+Applied to `SPEC.md` on branch `broker-rearchitecture-0003-0009`.

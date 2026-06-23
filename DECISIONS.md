@@ -113,7 +113,7 @@ that the state-machine maps to the actual tracker transitions.
 
 ## 0009 — Multi-repo and shared polling
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0009-multi-repo-shared-polling/](decisions/0009-multi-repo-shared-polling/)
 
 One Symphony instance manages multiple repositories. Issues are routed to exactly one repo by explicit,
