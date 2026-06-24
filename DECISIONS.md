@@ -154,7 +154,7 @@ persisting session metadata across restarts.
 
 ## 0012 — Token budget guards
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0012-token-budget-guards/](decisions/0012-token-budget-guards/)
 
 Token-unit budget enforcement as an OPTIONAL extension and an application of class D (0010). Per-session
