@@ -1024,6 +1024,56 @@ Configuration:
   default to disabled (no limit); `<cap>_warning_pct` defaults to `80`. Core conformance does not
   require these fields.
 
+### 8.9 Provider Quota Backpressure (OPTIONAL)
+
+An OPTIONAL extension that pauses taking on new work when the underlying provider account is near a
+usage limit. It governs account headroom, which is distinct from Symphony's own token budgets
+(Section 8.8): account-wide quota MUST NOT be summed into Symphony-attributed consumed-token totals
+or budgets.
+
+Normalized quota snapshot:
+
+- Heterogeneous provider quota is normalized into one snapshot with fields:
+  - `provider` (which provider the snapshot describes)
+  - `source` (how it was obtained — see ingestion below)
+  - `fetched_at` (when the value was last successfully obtained)
+  - `stale_after_ms` (the age past which the snapshot is treated as `UNKNOWN`)
+  - `buckets` (one or more named usage buckets, each with a `used_percent` in `0`–`100` and an
+    OPTIONAL `resets_at`)
+  - OPTIONAL `error` (set when the most recent refresh failed)
+- Bucket identity is opaque: bucket names are provider-specific and unstable, so the gate only
+  compares each `used_percent` against a threshold and never depends on a specific bucket name.
+
+Ingestion (two paths, one shape):
+
+- In-band: the rate-limit payloads already tracked per Section 13.5 are normalized into the snapshot
+  for providers that report quota on their turn stream.
+- Out-of-band (OPTIONAL): a poller queries a provider usage interface and normalizes the result into
+  the same snapshot. The poller's credential source and any refresh subprocess are
+  `Implementation-defined` and MUST be documented and bounded.
+
+Recovery semantics:
+
+- The snapshot is class `Cached external signal` (Section 14.3): the last-known-good value is
+  carried across a failed refresh and a process restart; once older than `stale_after_ms` it becomes
+  `UNKNOWN`, which is distinct from any `used_percent` value, including `0`.
+
+Dispatch gate:
+
+- When any bucket's `used_percent` is at or above `dispatch_pause_percent`, the extension pauses new
+  dispatch. Running workers and reconciliation are not affected. Resume is implicit: the gate is
+  re-evaluated each tick and there is no dedicated paused state.
+- On `UNKNOWN`, behavior follows a configured policy: fail-open (proceed) or fail-closed (pause). A
+  permanently `UNKNOWN` signal (a provider/agent that exposes no quota interface) SHOULD default to
+  fail-open; a transiently `UNKNOWN` one (a temporary block) MAY fail-closed.
+
+Configuration:
+
+- The extension owns its configuration under the `quota.*` namespace, documented with it:
+  `enabled` (Default: `false`), `dispatch_pause_percent` (Default: `95`), `stale_after_ms`
+  (Default: `180000`), and a poller `refresh_ms` for the out-of-band path. Core conformance does not
+  require these fields.
+
 ## 9. Workspace, VCS, and Safety
 
 ### 9.1 Workspace Layout
@@ -1774,6 +1824,8 @@ Rate-limit tracking:
 
 - Track the latest rate-limit payload seen in any agent update.
 - Any human-readable presentation of rate-limit data is implementation-defined.
+- The OPTIONAL provider quota backpressure extension (Section 8.9) normalizes these payloads into a
+  provider-quota snapshot (class `Cached external signal`, Section 14.3) and MAY pause new dispatch.
 
 ### 13.6 Per-Execution Usage Ledger (OPTIONAL)
 
@@ -2612,6 +2664,12 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - If token budget guards are implemented, a `token_budget_exceeded` outcome is parked rather than
   retried via backoff, the durable counter is re-seeded idempotently on restart, and the soft
   warning fires once
+- If provider quota backpressure is implemented, a bucket at or above `dispatch_pause_percent`
+  pauses new dispatch only, leaving running workers and reconciliation untouched, with implicit
+  resume
+- If provider quota backpressure is implemented, the quota snapshot is normalized across providers,
+  `UNKNOWN` is never represented as `0`, last-known-good survives a restart, and the `UNKNOWN`
+  policy (fail-open vs fail-closed; unsupported vs blocked) is honored
 
 ### 17.5 Coding-Agent Adapters
 
@@ -2741,6 +2799,9 @@ Use the same validation profiles as Section 17:
 - Token budget guards extension (Section 8.8): per-session / per-issue / global token caps with
   distinct exhaustion semantics (abort-and-requeue vs pause-dispatch), a parked
   `token_budget_exceeded` category, durable idempotent counters, and a deferred cost/currency layer.
+- Provider quota backpressure extension (Section 8.9): a normalized provider-quota snapshot (class
+  `Cached external signal`) fed in-band or by an OPTIONAL poller, with a dispatch-only pause above a
+  threshold, implicit resume, and a configurable fail-open/closed policy on `UNKNOWN`.
 - TODO: Make observability settings configurable in workflow front matter without prescribing UI
   implementation details.
 
