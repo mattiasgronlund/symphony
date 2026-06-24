@@ -120,3 +120,59 @@ One Symphony instance manages multiple repositories. Issues are routed to exactl
 tracker-implementation-specific mappings in policy config (Linear project/team/label/assignee → repo;
 Forgejo repo/tags/state → repo), and a single tracker's polling is shared across its repos to minimize
 background work. Workspace, concurrency, and the object store/worktrees become keyed by (repo, issue).
+
+## 0010 — State recovery model and class taxonomy
+
+**State:** Accepted
+**Folder:** [decisions/0010-state-recovery-classification/](decisions/0010-state-recovery-classification/)
+
+The spec's current recovery stance ("without a durable orchestrator DB", "intentionally in-memory") is
+an implicit two-class model — every field is either reconstructable from an external source of truth or
+reset-and-lossy at startup — with zero durable state. Planned spend-control extensions introduce state
+that is neither safely reconstructable nor safely lossy, hinging on the distinction between *account
+totals* (external, account-wide, intermittently reachable) and *Symphony-attributed totals* (internal,
+must be correct). This decision makes the taxonomy explicit and adds a per-field classification
+obligation over four classes: `Reconstructable` (R, never primary-persisted), `Ephemeral` (E, documents
+its reset consequence), `Cached external signal` (C, last-known-good plus an explicit `UNKNOWN` sentinel
+that is never `0`, with a configurable fail-open/closed policy), and `Durable` (D, idempotent
+re-seed-before-enforcement accounting). It admits D as the narrow, OPTIONAL exception to the
+no-durable-DB stance, reclassifies `codex_rate_limits` to C, and is the shared prerequisite for
+decisions 0011–0013.
+
+## 0011 — Per-execution durable ledger
+
+**State:** Accepted
+**Folder:** [decisions/0011-execution-ledger/](decisions/0011-execution-ledger/)
+
+An append-only, per-execution usage ledger keyed by `(issue_identifier, session_id)`, recording absolute
+token snapshots and summarized by a high-water mark per session (then summed) so repeated appends are
+idempotent. It is both the per-execution history surface (audit, debugging expensive/looping runs, cost
+attribution) and the RECOMMENDED realization of class-D durability from 0010 — while D's contract stays
+abstract so a non-ledger durable counter still conforms. Observability-first (no cost/`model` field in
+the core schema), with non-fatal I/O. OPTIONAL extension; realizes the existing Section 18.2 TODO on
+persisting session metadata across restarts.
+
+## 0012 — Token budget guards
+
+**State:** Proposed
+**Folder:** [decisions/0012-token-budget-guards/](decisions/0012-token-budget-guards/)
+
+Token-unit budget enforcement as an OPTIONAL extension and an application of class D (0010). Per-session
+and per-issue caps abort and requeue the single issue; a global cap pauses new dispatch while in-flight
+runs continue (a dispatch gate composing with Section 8.3). Budget exhaustion is its own failure
+category (`token_budget_exceeded`) routed to a park/blocked state and kept out of the Section 8.4
+retry/backoff path. Counters are durable and re-seeded idempotently before enforcement (closing the
+fresh-budget-on-restart gap), with an OPTIONAL soft warning threshold and an OPTIONAL constrained
+one-shot recovery. A cost/currency pricing overlay is explicitly deferred.
+
+## 0013 — Provider quota backpressure
+
+**State:** Proposed
+**Folder:** [decisions/0013-quota-backpressure/](decisions/0013-quota-backpressure/)
+
+Activates the currently-inert `codex_rate_limits` tracking into a normalized provider-quota snapshot
+(comparable `used_percent`, opaque buckets, staleness, optional error) governed by class C (0010), fed
+by either an in-band rate-limit stream or an OPTIONAL out-of-band poller. A dispatch-only gate pauses new
+work when any bucket crosses a threshold, leaving running agents untouched, with implicit resume and a
+configurable fail-open/closed policy on `UNKNOWN` (unsupported defaults open; transient block MAY close).
+Account-wide headroom is kept separate from Symphony-attributed spend (0012). OPTIONAL extension.

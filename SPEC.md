@@ -275,18 +275,29 @@ Fields:
 
 #### 4.1.8 Orchestrator Runtime State
 
-Single authoritative in-memory state owned by the orchestrator.
+Single authoritative runtime state owned by the orchestrator, held in memory. Each field has a
+recovery class (Section 14.3) that governs its behavior across a process restart; class `Durable`
+fields MAY additionally be backed by a durable store.
 
-Fields:
+Fields (with recovery class):
 
-- `poll_interval_ms` (current effective poll interval)
-- `max_concurrent_agents` (current effective global concurrency limit)
-- `running` (map `issue_id -> running entry`)
-- `claimed` (set of issue IDs reserved/running/retrying)
-- `retry_attempts` (map `issue_id -> RetryEntry`)
-- `completed` (set of issue IDs; bookkeeping only, not dispatch gating)
-- `codex_totals` (aggregate tokens + runtime seconds)
-- `codex_rate_limits` (latest rate-limit snapshot from agent events)
+- `poll_interval_ms` (current effective poll interval) — `Reconstructable` (re-read from config).
+- `max_concurrent_agents` (current effective global concurrency limit) — `Reconstructable` (re-read
+  from config).
+- `running` (map `issue_id -> running entry`) — `Reconstructable` (rebuilt from tracker state and
+  workspaces during reconciliation).
+- `claimed` (set of issue IDs reserved/running/retrying) — `Reconstructable` (re-derived from
+  `running` and `retry_attempts`).
+- `retry_attempts` (map `issue_id -> RetryEntry`) — `Ephemeral` (timers are not restored; backoff
+  restarts from the first attempt).
+- `completed` (set of issue IDs; bookkeeping only, not dispatch gating) — `Ephemeral` (re-derived as
+  empty; loss is harmless).
+- `codex_totals` (aggregate tokens + runtime seconds) — `Ephemeral` for observability (resets to
+  zero); becomes `Durable` when a budgeting extension enforces on it, and then MUST be
+  Symphony-attributed rather than account-wide.
+- `codex_rate_limits` (latest rate-limit snapshot from agent events) — `Cached external signal`;
+  an absent value denotes `UNKNOWN` (distinct from any reading; in particular not `0`), and the
+  policy on `UNKNOWN` is defined by the consuming provider-quota extension.
 
 ### 4.2 Stable Identifiers and Normalization Rules
 
@@ -800,7 +811,10 @@ Distinct terminal reasons are important because retry logic and logs differ.
 - The orchestrator serializes state mutations through one authority to avoid duplicate dispatch.
 - `claimed` and `running` checks are REQUIRED before launching any worker.
 - Reconciliation runs before dispatch on every tick.
-- Restart recovery is tracker-driven and filesystem-driven (without a durable orchestrator DB).
+- Restart recovery is tracker-driven and filesystem-driven: `Reconstructable` and `Ephemeral`
+  state (Section 14.3) is rebuilt or reset, and no durable orchestrator database is REQUIRED. An
+  OPTIONAL extension MAY introduce `Durable` state, which is then the only state restored from a
+  store across a restart.
 - Startup terminal cleanup removes stale workspaces for issues already in terminal states.
 
 ## 8. Polling, Scheduling, and Reconciliation
@@ -1700,7 +1714,65 @@ Rate-limit tracking:
 - Track the latest rate-limit payload seen in any agent update.
 - Any human-readable presentation of rate-limit data is implementation-defined.
 
-### 13.6 Humanized Agent Event Summaries (OPTIONAL)
+### 13.6 Per-Execution Usage Ledger (OPTIONAL)
+
+An OPTIONAL durable, append-only record of per-execution token usage, suitable for audit, for
+debugging an expensive or looping run, and for cost attribution. It is also the RECOMMENDED
+realization of the `Durable` recovery class (Section 14.3): replaying the ledger yields the
+cumulative total and re-seeds an enforcement counter idempotently, so a budgeting extension (when
+present) MAY source its durable spend from it. The `Durable` contract stays abstract — a non-ledger
+durable counter also conforms.
+
+If implemented:
+
+- The ledger is append-only and durable. Each entry is a full absolute snapshot of one session's
+  token usage at one observation, consistent with the token accounting rules in Section 13.5
+  (absolute totals, never deltas).
+- Entries are keyed by `(issue_identifier, session_id)`.
+
+Entry fields:
+
+- `schema_version` (integer)
+  - Readers MUST skip entries whose version they do not recognize.
+- `observed_at` (timestamp)
+- `final` (boolean)
+  - `true` for the end-of-session snapshot; `false` for a live observation during the session.
+- `issue_id` (string or null)
+- `issue_identifier` (string)
+  - REQUIRED; an entry without it is invalid and MUST be skipped on read.
+- `session_id` (string)
+  - REQUIRED; an entry without it is invalid and MUST be skipped on read.
+- `turn_count` (integer)
+- `input_tokens` (integer)
+- `output_tokens` (integer)
+- `total_tokens` (integer)
+  - Absolute cumulative totals for the session, not per-turn deltas (Section 13.5).
+- `source_event` (string)
+  - The agent event (or `session_final`) that produced the observation.
+
+Summarization (read side):
+
+- Take the maximum `total_tokens` (and the corresponding `input_tokens` / `output_tokens`) per
+  `(issue_identifier, session_id)` — the high-water mark — then sum those per-session maxima.
+- Never sum every observed entry. The high-water-mark rule is what makes repeated appends idempotent
+  under retries, reconnects, and the end-of-session snapshot, and is what lets the ledger re-seed a
+  `Durable` counter without double-counting.
+
+I/O discipline:
+
+- A write failure MUST be logged and MUST NOT crash orchestration.
+- Readers MUST tolerate and skip truncated, malformed, or unrecognized-`schema_version` lines (a
+  torn final line is normal for an append-only artifact).
+
+Scope and configuration:
+
+- The ledger is observability data, not a billing surface: the entry schema carries no pricing,
+  cost, or `model` field. Post-hoc cost attribution would require adding a `model` field, so its
+  omission is a deliberate boundary.
+- The ledger owns its configuration (for example, a storage location and a retention policy) under
+  its own namespace, documented with the extension. Core conformance does not require these fields.
+
+### 13.7 Humanized Agent Event Summaries (OPTIONAL)
 
 Humanized summaries of raw agent protocol events are OPTIONAL.
 
@@ -1709,7 +1781,7 @@ If implemented:
 - Treat them as observability-only output.
 - Do not make orchestrator logic depend on humanized strings.
 
-### 13.7 OPTIONAL HTTP Server Extension
+### 13.8 OPTIONAL HTTP Server Extension
 
 This section defines an OPTIONAL HTTP interface for observability and operational control.
 
@@ -1738,7 +1810,7 @@ Enablement (extension):
 - Changes to HTTP listener settings (for example `server.port`) do not need to hot-rebind;
   restart-required behavior is conformant.
 
-#### 13.7.1 Human-Readable Dashboard (`/`)
+#### 13.8.1 Human-Readable Dashboard (`/`)
 
 - Host a human-readable dashboard at `/`.
 - The returned document SHOULD depict the current state of the system (for example active sessions,
@@ -1746,7 +1818,7 @@ Enablement (extension):
 - It is up to the implementation whether this is server-generated HTML or a client-side app that
   consumes the JSON API below.
 
-#### 13.7.2 JSON REST API (`/api/v1/*`)
+#### 13.8.2 JSON REST API (`/api/v1/*`)
 
 Provide a JSON REST API under `/api/v1/*` for current runtime state and operational debugging.
 
@@ -1940,9 +2012,55 @@ API design notes:
 - Dashboard/log failures:
   - Do not crash the orchestrator.
 
-### 14.3 Partial State Recovery (Restart)
+### 14.3 State Recovery Classes
 
-Current design is intentionally in-memory for scheduler state.
+Every field of the Orchestrator Runtime State (Section 4.1.8) — and any state introduced by an
+OPTIONAL extension — MUST be assigned exactly one recovery class, and the assignment MUST be
+documented. The class governs what happens to the value across a process restart and when a current
+value is unavailable.
+
+- `Reconstructable` (`R`)
+  - An authoritative source of truth lives outside the orchestrator (config, tracker state, the VCS,
+    or the workspace). The value is rebuilt at startup by reconciliation and polling.
+  - MUST NOT be persisted as a primary copy: the external source is authoritative, and a stored copy
+    risks diverging from it.
+- `Ephemeral` (`E`)
+  - No external source of truth, but loss is harmless or self-correcting. The value is reset at
+    startup.
+  - The reset consequence MUST be documented (for example, retry backoff restarts from the first
+    attempt).
+- `Cached external signal` (`C`)
+  - The authoritative source is an external, account-wide provider interface that is not exposed by
+    every agent and is only intermittently reachable.
+  - The most recent successfully fetched value (the last-known-good) MUST be carried across both a
+    failed refresh and a process restart.
+  - A value carries an age; once it is older than its configured staleness bound it is promoted to
+    an explicit `UNKNOWN`. `UNKNOWN` MUST be represented distinctly from any in-band value — in
+    particular it MUST NOT be modeled as `0`.
+  - Behavior on `UNKNOWN` is a configured policy: fail-open (proceed) or fail-closed (pause). An
+    implementation MAY distinguish a permanently `UNKNOWN` signal (the agent exposes no such
+    interface) from a transiently `UNKNOWN` one (a temporary block); a permanently `UNKNOWN` signal
+    SHOULD default to fail-open.
+- `Durable` (`D`)
+  - Symphony-attributed accounting with no external source, where resetting the value is harmful
+    (for example, it would grant a partially-spent issue a fresh budget).
+  - The value MUST be persisted and restored before any decision that enforces on it. Re-applying a
+    usage report MUST be idempotent — keyed by an absolute snapshot rather than added
+    incrementally — so a restart can neither double-count nor lose spend.
+  - Durable storage is OPTIONAL. When no store is configured, the implementation MUST document its
+    degradation (for example, decline enforcement, or fall back to `Ephemeral` with the stated risk
+    that the counter resets on restart).
+
+`Reconstructable` and `Ephemeral` are the default character of the service; `Durable` is the narrow
+exception that an OPTIONAL accounting or budgeting extension introduces, and `Cached external
+signal` is introduced by an OPTIONAL provider-quota extension. Core conformance requires only that
+every runtime-state field has a documented class; it does not require any durable store.
+
+### 14.4 Partial State Recovery (Restart)
+
+Scheduler state is `Reconstructable` or `Ephemeral` (Section 14.3) and is therefore held in memory:
+it is rebuilt or reset at startup rather than restored from a durable store. Only `Durable` state
+introduced by an OPTIONAL extension is restored across a restart.
 Restart recovery means the service can resume useful operation by polling tracker state and reusing
 preserved workspaces. It does not mean retry timers, running sessions, or live worker state survive
 process restart.
@@ -1951,12 +2069,14 @@ After restart:
 
 - No retry timers are restored from prior process memory.
 - No running sessions are assumed recoverable.
+- Any `Durable` state (Section 14.3) configured by an OPTIONAL extension is restored from its store
+  before that extension enforces on it; with no store, the extension degrades as documented.
 - Service recovers by:
   - startup terminal workspace cleanup
   - fresh polling of active issues
   - re-dispatching eligible work
 
-### 14.4 Operator Intervention Points
+### 14.5 Operator Intervention Points
 
 Operators can control behavior by:
 
@@ -2077,6 +2197,8 @@ function start_service():
     codex_rate_limits: null
   }
 
+  state = restore_cached_and_durable_state(state)
+
   validation = validate_dispatch_config()
   if validation is not ok:
     log_validation_error(validation)
@@ -2087,6 +2209,10 @@ function start_service():
 
   event_loop(state)
 ```
+
+`restore_cached_and_durable_state` overlays class `Cached external signal` and `Durable` fields
+(Section 14.3) from their store when an OPTIONAL extension configures one; otherwise the zero/null
+defaults above stand.
 
 ### 16.2 Poll-and-Dispatch Tick
 
@@ -2408,6 +2534,11 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - If a snapshot API is implemented, it returns running rows, retry rows, token totals, and rate
   limits
 - If a snapshot API is implemented, timeout/unavailable cases are surfaced
+- Every Orchestrator Runtime State field has a documented recovery class (`Reconstructable` /
+  `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3)
+- If a `Durable` or `Cached external signal` extension is implemented, restart restores its state
+  before enforcement, `UNKNOWN` is never represented as `0`, and the last-known-good value
+  survives a restart
 
 ### 17.5 Coding-Agent Adapters
 
@@ -2448,6 +2579,11 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
   not affect correctness
 - If humanized event summaries are implemented, they cover key wrapper/agent event classes without
   changing orchestrator behavior
+- If a per-execution usage ledger is implemented, appends are idempotent under retries, reconnects,
+  and the end-of-session snapshot via high-water-mark summarization per `(issue_identifier,
+  session_id)`
+- If a per-execution usage ledger is implemented, write failures are logged without crashing
+  orchestration and reads skip truncated/malformed/unrecognized-`schema_version` lines
 
 ### 17.7 CLI and Host Lifecycle
 
@@ -2512,6 +2648,8 @@ Use the same validation profiles as Section 17:
 - Exponential retry queue with continuation retries after normal exit
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)
 - Reconciliation that stops runs on terminal/non-active tracker states
+- Every Orchestrator Runtime State field is assigned and documented as a recovery class
+  (`Reconstructable` / `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3)
 - Workspace cleanup for terminal issues (startup sweep + active transition)
 - Structured logs with `issue_id`, `issue_identifier`, and `session_id`
 - Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)
@@ -2519,8 +2657,14 @@ Use the same validation profiles as Section 17:
 ### 18.2 RECOMMENDED Extensions (Not REQUIRED for Conformance)
 
 - HTTP server extension honors CLI `--port` over `server.port`, uses a safe default bind host, and
-  exposes the baseline endpoints/error semantics in Section 13.7 if shipped.
-- TODO: Persist retry queue and session metadata across process restarts.
+  exposes the baseline endpoints/error semantics in Section 13.8 if shipped.
+- Durable state across restarts is governed by the recovery-class taxonomy (Section 14.3): the retry
+  queue stays `Ephemeral` (backoff restarts after a restart), and durably persisting session
+  accounting is the `Durable` class an OPTIONAL budgeting extension provides rather than a core
+  requirement.
+- Per-execution usage ledger extension (Section 13.6): an append-only, durable record of token usage
+  keyed by `(issue_identifier, session_id)` and summarized by high-water mark, doubling as the
+  RECOMMENDED realization of the `Durable` recovery class (Section 14.3).
 - TODO: Make observability settings configurable in workflow front matter without prescribing UI
   implementation details.
 
