@@ -52,10 +52,13 @@ re-seed).
 
 ## Anchor changes
 
-- New anchors: failure category `token_budget_exceeded`; the budget park/blocked state; config keys
-  `budget.*` and `*_warning_pct`.
-- Depends on anchors introduced by 0010 (class D) and 0011 (the usage ledger).
+- New Section 8.8 "Token Budget Guards (OPTIONAL)" appended to Section 8 (no renumbering; Section 9
+  unchanged).
+- New anchors: failure category `token_budget_exceeded` (defined in 8.8, referenced from 14.1/14.2);
+  the soft-warning key `<cap>_warning_pct` (Default `80`); config namespace `budget.*`.
+- Depends on anchors introduced by 0010 (class `Durable`, Section 14.3) and 0011 (the usage ledger,
+  Section 13.6).
 
 ## Status
 
-Not started. Decision drafted; not yet applied to `SPEC.md`.
+Applied to `SPEC.md` (working tree; not yet committed).

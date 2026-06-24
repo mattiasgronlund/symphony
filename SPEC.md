@@ -963,6 +963,67 @@ Keying:
 - Workspace identity, the per-repository object store (Section 9.7), and concurrency accounting are
   keyed by `(repository, issue)`.
 
+### 8.8 Token Budget Guards (OPTIONAL)
+
+An OPTIONAL extension that bounds token spend. The unit of account is tokens; a cost/currency layer
+is deferred (see below). Budgets are enforced against Symphony-attributed cumulative usage
+(Section 13.5), not provider account totals.
+
+Budget scopes and exhaustion semantics:
+
+- A per-session cap and a per-issue cap, when exceeded, abort the running worker and requeue that
+  one issue as a budget failure (below); other issues are unaffected, preserving throughput.
+- A global cap (for example, a rolling window across all issues), when exceeded, pauses new dispatch
+  while in-flight runs continue. The pause is a dispatch gate composing with Concurrency Control
+  (Section 8.3): a paused scope contributes zero available slots; running workers are not
+  terminated. Dispatch resumes when the scope is back under its cap.
+
+Failure disposition:
+
+- Budget exhaustion is its own failure category, `token_budget_exceeded`. It is parked, not retried:
+  the run is aborted and the issue is moved to the policy's blocked disposition (Section 11.6)
+  rather than scheduled for exponential-backoff retry (Section 8.4). An implementation SHOULD record
+  why the issue was parked.
+
+Soft warning:
+
+- Each cap MAY define a soft warning threshold, `<cap>_warning_pct` (Default: `80`), that emits a
+  one-shot warning signal when crossed. Crossing the warning threshold does not abort or pause.
+
+Durable, idempotent counters:
+
+- Budget counters are class `Durable` (Section 14.3). They MUST be re-seeded from durable spend —
+  for example, by replaying the per-execution usage ledger (Section 13.6) — before any enforcement
+  decision, and re-applying a usage report MUST be idempotent (keyed by an absolute snapshot), so a
+  restart neither grants a partially-spent issue a fresh budget nor double-counts. With no durable
+  store configured, the extension degrades as documented for class `Durable`.
+
+Constrained recovery (OPTIONAL):
+
+- On a cap breach, an implementation MAY allow one constrained continuation: retry once through a
+  narrow handoff prompt if the workspace shows fresh local progress, otherwise park. A second breach
+  without new progress parks terminally.
+
+Tripwire semantics:
+
+- A cap is evaluated against observed cumulative usage and therefore MAY be overshot by roughly one
+  agent report before it trips; it bounds runaway spend rather than pre-authorizing it.
+  Estimate-based pre-authorization (gating a dispatch on a projected cost) is a separate, advisory
+  option and is not REQUIRED here.
+
+Deferred cost layer:
+
+- Budgets here are denominated in tokens. A cost/currency overlay — dollars as the unit, with an
+  `Implementation-defined` per-model pricing table converting token counts to currency — is a future
+  layer over this extension. If added, it MUST document how pricing is sourced and kept current and
+  the policy for an unpriced model (fail-open vs fail-closed).
+
+Configuration:
+
+- The extension owns its configuration under the `budget.*` namespace, documented with it. Caps
+  default to disabled (no limit); `<cap>_warning_pct` defaults to `80`. Core conformance does not
+  require these fields.
+
 ## 9. Workspace, VCS, and Safety
 
 ### 9.1 Workspace Layout
@@ -1991,6 +2052,10 @@ API design notes:
    - Dashboard render errors
    - Log sink configuration failure
 
+Note: an OPTIONAL extension MAY define additional failure categories outside this core list. For
+example, the token budget guards extension (Section 8.8) defines `token_budget_exceeded`, which is
+parked rather than retried (Section 14.2).
+
 ### 14.2 Recovery Behavior
 
 - Dispatch validation failures:
@@ -2000,6 +2065,9 @@ API design notes:
 
 - Worker failures:
   - Convert to retries with exponential backoff.
+
+- Token budget exhaustion (OPTIONAL extension, Section 8.8):
+  - Park the issue (`token_budget_exceeded`); do not convert to a backoff retry.
 
 - Tracker candidate-fetch failures:
   - Skip this tick.
@@ -2539,6 +2607,11 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - If a `Durable` or `Cached external signal` extension is implemented, restart restores its state
   before enforcement, `UNKNOWN` is never represented as `0`, and the last-known-good value
   survives a restart
+- If token budget guards are implemented, a per-session/per-issue cap aborts and requeues only that
+  issue while a global cap pauses new dispatch without terminating running workers
+- If token budget guards are implemented, a `token_budget_exceeded` outcome is parked rather than
+  retried via backoff, the durable counter is re-seeded idempotently on restart, and the soft
+  warning fires once
 
 ### 17.5 Coding-Agent Adapters
 
@@ -2665,6 +2738,9 @@ Use the same validation profiles as Section 17:
 - Per-execution usage ledger extension (Section 13.6): an append-only, durable record of token usage
   keyed by `(issue_identifier, session_id)` and summarized by high-water mark, doubling as the
   RECOMMENDED realization of the `Durable` recovery class (Section 14.3).
+- Token budget guards extension (Section 8.8): per-session / per-issue / global token caps with
+  distinct exhaustion semantics (abort-and-requeue vs pause-dispatch), a parked
+  `token_budget_exceeded` category, durable idempotent counters, and a deferred cost/currency layer.
 - TODO: Make observability settings configurable in workflow front matter without prescribing UI
   implementation details.
 
