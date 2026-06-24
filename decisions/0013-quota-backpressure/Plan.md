@@ -52,12 +52,16 @@ Session Metrics and Token Accounting (Section 13.5) into a normalized quota snap
 
 ## Anchor changes
 
-- `codex_rate_limits` (Section 4.1.8) generalized to a normalized provider-quota snapshot and
-  reclassified to class C.
-- New anchors: config keys `quota.*`, `dispatch_pause_percent`, `stale_after_ms`; the snapshot fields
-  `provider` / `source` / `fetched_at` / `buckets` / `used_percent` / `resets_at`.
-- Depends on the `UNKNOWN` sentinel and class C introduced by decision 0010.
+- New Section 8.9 "Provider Quota Backpressure (OPTIONAL)" appended to Section 8 (no renumbering;
+  Section 9 unchanged). The Section 13.5 "Rate-limit tracking" bullets gain a pointer to it.
+- `codex_rate_limits` (Section 4.1.8) was already reclassified to class `Cached external signal` by
+  decision 0010; this decision defines the snapshot the extension normalizes those payloads into (the
+  field itself is not renamed).
+- New anchors: config keys `quota.*`, `enabled`, `dispatch_pause_percent` (Default `95`),
+  `stale_after_ms` (Default `180000`), poller `refresh_ms`; snapshot fields `provider` / `source` /
+  `fetched_at` / `buckets` / `used_percent` / `resets_at` / `error`.
+- Depends on the `UNKNOWN` sentinel and class `Cached external signal` introduced by decision 0010.
 
 ## Status
 
-Not started. Decision drafted; not yet applied to `SPEC.md`.
+Applied to `SPEC.md` (working tree; not yet committed).

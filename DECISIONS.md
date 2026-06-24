@@ -167,7 +167,7 @@ one-shot recovery. A cost/currency pricing overlay is explicitly deferred.
 
 ## 0013 — Provider quota backpressure
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0013-quota-backpressure/](decisions/0013-quota-backpressure/)
 
 Activates the currently-inert `codex_rate_limits` tracking into a normalized provider-quota snapshot
