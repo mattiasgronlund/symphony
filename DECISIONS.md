@@ -323,3 +323,19 @@ mediates tracker writes for scope and isolation when the adapter has no credenti
 store MUST be host-side (outside the bind-mounted workspace) so the agent cannot bypass it. `linear`/`forgejo`
 are `secret`-mode; a `none`-mode adapter is an OPTIONAL extension. Mirrors the adapter-declared-DATA approach
 of decision 0018; relates to 0003/0005.
+
+## 0024 — Candidate enumeration completeness
+
+**State:** Accepted
+**Folder:** [decisions/0024-candidate-enumeration-completeness/](decisions/0024-candidate-enumeration-completeness/)
+
+Fixes a read-side correctness gap the sweep flagged (Monday/Bitable forks select a cursor but never follow
+it, capping at one page). Pagination was specified only in the Linear-specific block, and the orchestrator's
+client-side priority sort and dispatch (Section 8.2) assume the complete candidate set. States a neutral
+requirement in Sections 11.1/11.2: `fetch_candidate_issues` MUST return the complete matching set, the
+adapter paginating internally (mechanism/page size adapter-specific); a silently partial result is
+non-conformant; a broken enumeration surfaces `tracker_pagination_error`; a hard-capped backend documents the
+cap (`Implementation-defined`) and MUST NOT silently drop fetchable issues. The Linear page-size/cursor lines
+stay as Linear specifics. Reframes pagination as a correctness requirement, not an optional capability; a
+bounded server-side-ordered mode is noted as a deferred scale option. Continues the neutralization theme of
+0019/0020/0023.

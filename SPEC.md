@@ -1691,7 +1691,8 @@ capability-gated: each adapter declares which of them it supports through its ca
 Read operations (REQUIRED of every adapter):
 
 1. `fetch_candidate_issues()`
-   - Return issues in configured active states for a configured project.
+   - Return all matching issues in the configured active states for a configured project;
+     enumeration is complete (Section 11.2).
 
 2. `fetch_issues_by_states(state_names)`
    - Used for startup terminal cleanup.
@@ -1711,6 +1712,18 @@ per the capability descriptor, Section 11.7):
 Each tracker adapter implements the read and write operations over its own API; the normalized
 outputs MUST match the domain model in Section 4. The `forgejo` adapter uses the Forgejo issues API
 and maps issue tags and open/closed status to the normalized states.
+
+Candidate enumeration:
+
+- `fetch_candidate_issues` (Section 11.1) MUST return the complete set of matching issues. The
+  adapter paginates internally as its API requires (cursor, offset, `has_more`, page token); the
+  paging mechanism and page size are adapter-specific. A silently partial result is non-conformant,
+  because the orchestrator's priority sort and dispatch (Section 8.2) assume the complete candidate
+  set.
+- A failed or incomplete enumeration surfaces `tracker_pagination_error` (Section 11.4). Where a
+  backend API hard-caps results with no way to page further, the cap is an `Implementation-defined`
+  limitation the adapter MUST document; silently dropping issues the adapter could have fetched is
+  not permitted.
 
 Linear-specific requirements for `tracker.kind == "linear"`:
 
@@ -2840,7 +2853,8 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - Candidate issue fetch uses active states and project slug
 - Linear query uses the specified project filter field (`slugId`)
 - Empty `fetch_issues_by_states([])` returns empty without API call
-- Pagination preserves order across multiple pages
+- Candidate enumeration is complete across pages and preserves order; a silently partial result is
+  non-conformant and a broken enumeration surfaces `tracker_pagination_error`
 - Blockers are normalized from Linear inverse relations of type `blocks`; `blocked_by`/`branch_name`
   are tracker-dependent, and an empty `blocked_by` applies no blocker gating
 - Labels are normalized to lowercase
@@ -3009,6 +3023,8 @@ Use the same validation profiles as Section 17:
   rather than silently succeeding; a transition failure is logged and does not fail the run
 - Tracker adapters declare an auth mode (`secret` | `none`); `api_key`/`endpoint` and the secret
   provider apply only to `secret`-mode, and a `none`-mode local adapter keeps its store host-side
+- `fetch_candidate_issues` enumerates the complete matching set (adapter paginates internally); a
+  silent partial result is non-conformant
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
   polling; workspace/concurrency keyed by (repository, issue)
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
