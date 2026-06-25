@@ -266,3 +266,17 @@ Linear-named error categories to transport-neutral `tracker_*` names — `linear
 onto them as a `Note:`. The Section 17.3 error-mapping test row is neutralized to match. The retired
 `linear_graphql` tool name and the `~/.linear_api_key` example path are genuinely Linear-specific and
 unchanged.
+
+## 0020 — Normalized issue metadata and optional fields
+
+**State:** Accepted
+**Folder:** [decisions/0020-normalized-issue-metadata/](decisions/0020-normalized-issue-metadata/)
+
+Acts on the sweep's normalized-model findings: the flat `Issue` (Section 4.1.1) silently drops provider
+fields the flat schema does not capture, and `branch_name`/`blocked_by` are Linear-isms that no-op on other
+trackers. Adds an opaque, adapter-owned `metadata` map to `Issue` as the documented escape hatch (an adapter
+MAY round-trip a provider write handle through it, e.g. a GitHub Projects v2 item id, instead of re-resolving
+per write), and marks `branch_name` and `blocked_by` OPTIONAL/tracker-dependent — an adapter without a
+dependency model leaves `blocked_by` empty and blocker-gated dispatch (Section 8.2) then does not gate.
+Section 11.3 records the Linear-specific derivation and an `Implementation-defined` `metadata`. Stops short
+of a WorkItem wrapper to stay surgical.
