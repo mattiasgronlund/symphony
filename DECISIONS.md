@@ -105,6 +105,7 @@ actor are configurable per repo.
 
 **State:** Accepted
 **Folder:** [decisions/0008-tracker-abstraction-writes/](decisions/0008-tracker-abstraction-writes/)
+**Summary:** [Summary.md](decisions/0008-tracker-abstraction-writes/Summary.md) — the 22-fork deep dive and the decisions it produced (0017–0024)
 
 A tracker adapter (Linear, Forgejo) supports reads *and* writes, reversing the spec's "tracker reader
 only" boundary. Symphony drives ticket lifecycle via a policy-owned workflow state-machine; the agent
