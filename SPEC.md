@@ -1232,8 +1232,9 @@ Network egress:
 ### 9.7 VCS Adapter and Repository Provisioning
 
 Symphony owns all interaction with the version-control remote through a VCS adapter. At least two
-adapters are defined: `github` and `forgejo`. The adapter backs the broker's git and pull-request
-verbs (Section 9.9); the agent never holds VCS credentials.
+adapters are defined: `github` and `forgejo`. The adapter backs the broker's git verbs (Section
+9.9); pull-request and review operations go through the Forge adapter (Section 9.10). The agent
+never holds VCS credentials.
 
 Repository provisioning:
 
@@ -1259,8 +1260,8 @@ Configuration (policy config, `vcs` object):
 Division of labor:
 
 - The agent uses local git in the worktree, including `git commit`, and resolves conflicts. Symphony
-  performs every operation that touches the remote: fetch, branch, back-merge, push, and
-  pull-request management.
+  performs every operation that touches the remote: fetch, branch, back-merge, and push;
+  pull-request and review operations go through the Forge adapter (Section 9.10).
 - The agent's high-value contributions are commit and pull-request *messages* and *conflict
   resolution*; Symphony automates the surrounding git mechanics.
 
@@ -1292,22 +1293,51 @@ Identity:
   (`vcs.author`, `vcs.actor`). Where branch protection requires review, the actor SHOULD be distinct
   from the approver so a pull request cannot be self-approved.
 
-### 9.9 Pull Requests and Broker Git/PR Verbs
+### 9.9 Broker Git Verbs
+
+- The broker exposes a fixed neutral core of git verbs over the per-run socket (Section 10.8),
+  identical across `github` and `forgejo`: for example `push` and `back-merge`. Pull-request and
+  review verbs are Forge-adapter operations (Section 9.10). Adapters or policy MAY extend this set.
+- Each verb returns a structured result with a stable reason code on failure (for example
+  `non_fast_forward`, `scope_denied`). Ordinary failures are returned to the agent to adapt to;
+  `scope_denied` fails the run (Section 10.8).
+
+### 9.10 Forge Adapter, Pull Requests, and Review Writes
+
+Symphony performs pull-request and code-review operations through a Forge adapter — the code host's
+collaboration layer above the git remote. At least the `github` and `forgejo` forge adapters are
+defined. The Forge adapter shares the code host of the VCS adapter (Section 9.7), using the same
+`vcs.kind` and `vcs.api_key`; the agent never holds forge credentials.
 
 Pull requests:
 
 - Symphony maintains one pull request per issue. It is created on first push and updated (new
   commits, refreshed title/body) on later runs, and reused across retries and continuations. The
   agent supplies the title and body; the base is `vcs.base_branch` and the head is the work branch.
+- Issue link: when the tracker is the same platform as the forge, the forge establishes the
+  pull-request-to-issue link natively (for example a reference in the pull-request body). When the
+  tracker is a separate system (for example Linear), the pull-request reference is written onto the
+  tracker item through the tracker's `link_pull_request` (Section 11.1); a same-platform tracker
+  adapter MAY declare `link_pull_request` unsupported (Section 11.7), because the link is
+  forge-native.
 
-Broker git/PR verbs:
+Review writes (OPTIONAL):
 
-- The broker exposes a fixed neutral core of git and pull-request verbs over the per-run socket
-  (Section 10.8), identical across `github` and `forgejo`: for example `push`, `back-merge`, `pr`
-  (create/update), and `request-merge`. Adapters or policy MAY extend this set.
-- Each verb returns a structured result with a stable reason code on failure (for example
-  `non_fast_forward`, `pr_conflict`, `scope_denied`). Ordinary failures are returned to the agent to
-  adapt to; `scope_denied` fails the run (Section 10.8).
+- A Forge adapter MAY support code-review writes — posting a review comment, replying to a review
+  thread, and resolving a review thread — so a review or overseer workflow can record findings on
+  the pull request. They are OPTIONAL and capability-gated.
+
+Forge verbs:
+
+- The broker exposes forge verbs over the per-run socket (Section 10.8): `pr` (create/update),
+  `request-merge`, and, where supported, the review writes above. Each verb returns a structured
+  result with a stable reason code on failure (for example `pr_conflict`, `scope_denied`).
+
+Capability descriptor:
+
+- Like the agent (Section 10.9) and tracker (Section 11.7) adapters, the Forge adapter advertises a
+  static capability descriptor (data, not a runtime call) declaring which forge writes it supports.
+  Pull-request create/update is REQUIRED of every forge adapter; review-thread writes are OPTIONAL.
 
 ## 10. Agent Runner Protocol (Coding Agent Integration)
 
@@ -1756,6 +1786,9 @@ orchestrator's scheduling logic and not by the agent using its own credentials.
 - Ticket mutations (state transitions, comments, pull-request links) are requested by the agent
   through the `symphony` CLI and executed by the broker using Symphony's configured tracker auth.
   The agent supplies the content; it never holds tracker credentials.
+- `link_pull_request` records a pull-request reference on the tracker item — the cross-system
+  mechanism (Section 9.10). When the tracker shares the forge's platform the link is forge-native,
+  and the adapter MAY declare `link_pull_request` unsupported (Section 11.7).
 - Workflow-specific success often means "reached the next handoff state" (for example
   `Human Review`) rather than tracker terminal state `Done`.
 
@@ -1820,9 +1853,9 @@ This mirrors the agent adapter capability descriptor (Section 10.9).
   plan tier without a comment API declares `add_comment` unsupported, determined once at adapter
   initialization.
 - The orchestrator reads the descriptor before invoking a write and MUST NOT invoke an undeclared
-  write. An optional write the adapter does not support (for example `link_pull_request`) is skipped
-  and logged, not failed. An undeclared write invoked anyway returns `tracker_unsupported_operation`
-  (Section 11.4).
+  write. An optional write the adapter does not support (for example `link_pull_request` when the
+  link is forge-native, Section 9.10) is skipped and logged, not failed. An undeclared write invoked
+  anyway returns `tracker_unsupported_operation` (Section 11.4).
 - An unsupported write MUST NOT be silently treated as success, no-oped, or replaced by a
   synthesized substitute (for example appending a comment into a description field). Capability gaps
   are explicit.
@@ -2766,12 +2799,15 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
   is unreachable
 - Secret-bearing environment variables are scrubbed before the sandbox starts
 - VCS-managed workspaces are provisioned as worktrees of a shared per-repo object store
-- The agent does local git including commit; Symphony performs fetch/branch/back-merge/push/PR
+- The agent does local git including commit; Symphony performs fetch/branch/back-merge/push (VCS
+  adapter); pull-request and review writes go through the Forge adapter
 - The work branch is Symphony-derived (`symphony/<identifier>`) and the push refspec is pinned to it
 - Back-merge is attempted at run start and postponed on conflict; conflict resolution is required
   only on push-reject
 - One pull request per issue is created then updated; the agent supplies title/body, base from
   policy
+- The Forge adapter owns pull-request and review writes and advertises a capability descriptor;
+  review-thread writes (post/reply/resolve) are OPTIONAL and capability-gated
 
 ### 17.3 Issue Tracker Client
 
@@ -2947,8 +2983,10 @@ Use the same validation profiles as Section 17:
   cap, accepted effort); one adapter per (agent, transport) with no protocol impersonation
 - Agent and effort selected from policy (`default_agent`/`default_effort`) with `agent_by_label`
   per-issue overrides
-- VCS adapter (`github`, `forgejo`) owning provisioning, push, back-merge, and one-PR-per-issue,
-  with a Symphony-derived work branch and configurable authorship
+- VCS adapter (`github`, `forgejo`) owning provisioning, fetch, push, and back-merge, with a
+  Symphony-derived work branch and configurable authorship
+- Forge adapter (`github`, `forgejo`, sharing the VCS code host) owning one-PR-per-issue and
+  OPTIONAL review-thread writes (post/reply/resolve), with a static forge-capability descriptor
 - Tracker adapter (`linear`, `forgejo`) with reads and writes; Symphony-driven lifecycle via a
   policy-owned transition graph (`tracker.transitions`) keyed on agent milestone signals and
   observed run outcomes; each adapter advertises a static write-capability descriptor and an
