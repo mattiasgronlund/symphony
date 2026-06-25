@@ -1708,17 +1708,24 @@ Additional normalization details:
 
 ### 11.4 Error Handling Contract
 
-RECOMMENDED error categories:
+RECOMMENDED error categories. These are transport-neutral; each adapter maps its transport's
+failures onto them:
 
 - `unsupported_tracker_kind`
 - `missing_tracker_api_key`
 - `missing_tracker_project_slug`
 - `tracker_unsupported_operation` (write not in the adapter capability descriptor, Section 11.7)
-- `linear_api_request` (transport failures)
-- `linear_api_status` (non-200 HTTP)
-- `linear_graphql_errors`
-- `linear_unknown_payload`
-- `linear_missing_end_cursor` (pagination integrity error)
+- `tracker_api_request` (transport or connection failure)
+- `tracker_api_status` (unsuccessful response status, for example non-2xx HTTP)
+- `tracker_backend_errors` (backend-reported errors in a well-formed response, for example a
+  GraphQL `errors` array)
+- `tracker_payload_invalid` (unexpected or unparseable response payload)
+- `tracker_pagination_error` (pagination integrity failure, for example a missing continuation
+  cursor)
+
+Note: the Linear adapter, being GraphQL over HTTP, reports a non-2xx response as
+`tracker_api_status`, a GraphQL `errors` array as `tracker_backend_errors`, and a missing page
+cursor as `tracker_pagination_error`.
 
 Orchestrator behavior on tracker errors:
 
@@ -2745,7 +2752,8 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - Labels are normalized to lowercase
 - Issue state refresh by ID returns minimal normalized issues
 - Issue state refresh query uses GraphQL ID typing (`[ID!]`) as specified in Section 11.2
-- Error mapping for request errors, non-200, GraphQL errors, malformed payloads
+- Error mapping covers transport failures, unsuccessful status, backend-reported errors, and
+  malformed payloads (the transport-neutral categories of Section 11.4)
 
 ### 17.4 Orchestrator Dispatch, Reconciliation, and Retry
 

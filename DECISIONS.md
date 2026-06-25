@@ -252,3 +252,17 @@ reads it before a write and at preflight. An undeclared write yields `tracker_un
 unsupported write MUST NOT be silently no-oped or replaced by a synthesized substitute. A non-empty
 `tracker.transitions` (decision 0017) requires the `set_state` capability. Normalized-Issue field
 optionality and provider state representation are out of scope.
+
+## 0019 — Neutralize tracker error vocabulary
+
+**State:** Accepted
+**Folder:** [decisions/0019-neutralize-tracker-error-vocabulary/](decisions/0019-neutralize-tracker-error-vocabulary/)
+
+The tracker-side mirror of decision 0016 (agent `codex_*` neutralization): renames Section 11.4's
+Linear-named error categories to transport-neutral `tracker_*` names — `linear_api_request` ->
+`tracker_api_request`, `linear_api_status` -> `tracker_api_status`, `linear_graphql_errors` ->
+`tracker_backend_errors`, `linear_unknown_payload` -> `tracker_payload_invalid`,
+`linear_missing_end_cursor` -> `tracker_pagination_error` — and records the Linear GraphQL adapter's mapping
+onto them as a `Note:`. The Section 17.3 error-mapping test row is neutralized to match. The retired
+`linear_graphql` tool name and the `~/.linear_api_key` example path are genuinely Linear-specific and
+unchanged.
