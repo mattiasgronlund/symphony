@@ -238,22 +238,23 @@ Fields (logical):
 
 #### 4.1.6 Live Session (Agent Session Metadata)
 
-State tracked while a coding-agent subprocess is running. The field names below use the Codex
-adapter's shapes as the worked example; each adapter normalizes its own protocol's session, turn,
-and usage identifiers into these logical fields (Section 10.9).
+State tracked while a coding-agent subprocess is running. These are the neutral logical fields each
+agent adapter normalizes its own protocol's session, turn, and usage identifiers into (Section
+10.9). The `thread_id` / `turn_id` shapes shown are the Codex adapter's session identity (Section
+4.2); another adapter supplies its own.
 
 Fields:
 
 - `session_id` (string, `<thread_id>-<turn_id>`)
 - `thread_id` (string)
 - `turn_id` (string)
-- `codex_app_server_pid` (string or null)
-- `last_codex_event` (string/enum or null)
-- `last_codex_timestamp` (timestamp or null)
-- `last_codex_message` (summarized payload)
-- `codex_input_tokens` (integer)
-- `codex_output_tokens` (integer)
-- `codex_total_tokens` (integer)
+- `pid` (string or null)
+- `last_event` (string/enum or null)
+- `last_timestamp` (timestamp or null)
+- `last_message` (summarized payload)
+- `input_tokens` (integer)
+- `output_tokens` (integer)
+- `total_tokens` (integer)
 - `last_reported_input_tokens` (integer)
 - `last_reported_output_tokens` (integer)
 - `last_reported_total_tokens` (integer)
@@ -292,10 +293,10 @@ Fields (with recovery class):
   restarts from the first attempt).
 - `completed` (set of issue IDs; bookkeeping only, not dispatch gating) — `Ephemeral` (re-derived as
   empty; loss is harmless).
-- `codex_totals` (aggregate tokens + runtime seconds) — `Ephemeral` for observability (resets to
+- `agent_totals` (aggregate tokens + runtime seconds) — `Ephemeral` for observability (resets to
   zero); becomes `Durable` when a budgeting extension enforces on it, and then MUST be
   Symphony-attributed rather than account-wide.
-- `codex_rate_limits` (latest rate-limit snapshot from agent events) — `Cached external signal`;
+- `provider_rate_limits` (latest rate-limit snapshot from agent events) — `Cached external signal`;
   an absent value denotes `UNKNOWN` (distinct from any reading; in particular not `0`), and the
   policy on `UNKNOWN` is defined by the consuming provider-quota extension.
 
@@ -497,6 +498,8 @@ Fields:
 - `max_turns` (positive integer)
   - Default: `20`
   - Limits the number of coding-agent turns within one worker session.
+  - Bounds turns (orchestration-initiated prompt cycles, Section 10.3), not the agent's internal
+    tool-call steps within a turn.
   - Invalid values fail configuration validation.
 - `max_retry_backoff_ms` (integer)
   - Default: `300000` (5 minutes)
@@ -794,7 +797,7 @@ Distinct terminal reasons are important because retry logic and logs differ.
   - Update aggregate runtime totals.
   - Schedule exponential-backoff retry.
 
-- `Codex Update Event`
+- `Agent Update Event`
   - Update live session fields, token counters, and rate limits.
 
 - `Retry Timer Fired`
@@ -910,7 +913,7 @@ Reconciliation runs every tick and has two parts.
 Part A: Stall detection
 
 - For each running issue, compute `elapsed_ms` since:
-  - `last_codex_timestamp` if any event has been seen, else
+  - `last_timestamp` if any event has been seen, else
   - `started_at`
 - If `elapsed_ms > codex.stall_timeout_ms`, terminate the worker and queue a retry.
 - If `stall_timeout_ms <= 0`, skip stall detection entirely.
@@ -1367,6 +1370,20 @@ Session identifiers:
 
 ### 10.3 Streaming Turn Processing
 
+A *turn* is one orchestration-initiated prompt-to-completion cycle on the live agent thread:
+Symphony sends a prompt (the full task prompt on the first turn, continuation guidance on later
+turns) and the adapter streams the targeted protocol's updates until that cycle terminates. A turn
+is the targeted protocol's own turn unit; the Codex adapter maps it to one `turn_id` (Section 10.2).
+
+Within a turn the coding agent autonomously conducts any number of internal *steps* (model
+inferences and the tool calls they drive) to satisfy the prompt. Steps are agent-internal: Symphony
+neither initiates nor counts them, and `agent.max_turns` bounds turns, not steps. An adapter MAY
+enforce its own per-turn step limit (for example a native `--max-turns`-style control); that limit
+is adapter-owned and distinct from Symphony's `agent.max_turns`, and a breach of it is surfaced to
+Symphony as a turn-ending signal, not as a step count. A worker *run* (Section 7.2) is the full
+sequence of turns for one issue attempt, so a run contains one or more turns and each turn
+contains one or more steps.
+
 The client processes app-server updates according to the targeted Codex app-server protocol until
 the active turn terminates.
 
@@ -1380,10 +1397,12 @@ Completion conditions:
 
 Continuation processing:
 
-- If the worker decides to continue after a successful turn, it SHOULD start another turn on the
-  same live thread using the targeted protocol.
-- The app-server subprocess SHOULD remain alive across those continuation turns and be stopped only
-  when the worker run is ending.
+- Continuation state is carried in an opaque `continuation_ref` returned by each turn (Section
+  10.7). If the worker decides to continue after a successful turn, it starts another turn passing
+  that `continuation_ref` and continuation guidance rather than the original prompt.
+- Keeping the app-server subprocess alive across continuation turns is the Codex adapter's way of
+  realizing a warm `continuation_ref`; the contract does not require it. Another adapter MAY resume
+  from a token or re-establish the session (Section 10.9).
 
 Transport handling requirements:
 
@@ -1398,8 +1417,10 @@ include:
 
 - `event` (enum/string)
 - `timestamp` (UTC timestamp)
-- `codex_app_server_pid` (if available)
-- OPTIONAL `usage` map (token counts)
+- `pid` (if available)
+- OPTIONAL `usage` map: the neutral token-usage record (`input_tokens`, `output_tokens`,
+  `total_tokens`; Section 13.5), with any adapter-specific counts (for example cache tokens) in an
+  opaque extras field
 - payload fields as needed
 
 Important emitted events include, for example:
@@ -1479,16 +1500,48 @@ Error mapping (RECOMMENDED normalized categories):
 - `turn_cancelled`
 - `turn_input_required`
 
+Note:
+
+- A turn stopped early (timeout, stall, or operator/budget interruption) is cancelled through
+  the contract's `cancel` operation (Section 10.7). A `turn_timeout` reached without a clean
+  interrupt-then-drain leaves the underlying turn still running, so the session is not safely
+  resumable and the turn fails; an adapter that can drain cleanly MAY instead yield a resumable
+  `continuation_ref`.
+
 ### 10.7 Agent Runner Contract
 
-The `Agent Runner` wraps workspace + prompt + app-server client.
+The `Agent Runner` is the neutral, turn-centric contract between the orchestrator and an agent
+adapter. It is keyed by the selected adapter (Section 10.9) and exposes these operations:
 
-Behavior:
+- `run_turn(workspace, prompt, issue, continuation_ref, on_event)` — run one turn (Section 10.3),
+  returning a result with its outcome, normalized token usage (Section 13.5), session/turn identity,
+  and a new `continuation_ref`. The first turn passes `continuation_ref = null` and the full task
+  prompt; later turns pass the prior turn's `continuation_ref` and continuation guidance. There is
+  no separate session-start operation: an adapter establishes whatever session or process it needs
+  lazily on the first `run_turn`.
+- `cancel(continuation_ref)` — every adapter MUST support cancelling an in-flight turn. The adapter
+  SHOULD interrupt the turn, drain to the targeted protocol's real terminal signal within a bounded
+  secondary timeout, and yield a resumable `continuation_ref`; if it cannot drain cleanly it MUST
+  still terminate, in which case the turn fails (Section 10.6).
+- `release(continuation_ref)` — free any warm resources (a live subprocess, a session handle) when
+  the worker run is ending.
+
+`continuation_ref` is an opaque, adapter-owned token that is the contract-level continuation state.
+An adapter MAY realize it as a live warm session handle (the Codex adapter keeps the app-server
+subprocess alive, Section 10.3), a resume token, or declare it non-resumable through its capability
+descriptor (Section 10.9).
+
+Each adapter MUST emit the neutral event vocabulary (Section 10.4) and normalize usage into the
+neutral token-usage record (`input_tokens`, `output_tokens`, `total_tokens`; Section 13.5), carrying
+raw protocol payloads opaquely and any adapter-specific counts in an extras field. On any error the
+Agent Runner fails the worker attempt and the orchestrator retries.
+
+Behavior outline:
 
 1. Create/reuse workspace for issue.
 2. Build prompt from workflow template.
-3. Start app-server session.
-4. Forward app-server events to orchestrator.
+3. `run_turn` with the threaded `continuation_ref`; forward emitted events to the orchestrator.
+4. `cancel` an in-flight turn on timeout/stall/interruption; `release` warm resources at run end.
 5. On any error, fail the worker attempt (the orchestrator will retry).
 
 Note:
@@ -1539,17 +1592,23 @@ Note:
 
 ### 10.9 Agent Adapters and Selection
 
-Symphony integrates each coding agent through an adapter implementing one neutral runner contract:
+Symphony integrates each coding agent through an adapter implementing the neutral runner contract
+of Section 10.7: `run_turn` (threading an opaque `continuation_ref`), `cancel`, and `release`,
+emitting the neutral event vocabulary (Section 10.4) and normalized token usage (Section 13.5).
 
-- start a session in the per-issue workspace;
-- run a turn with a rendered prompt and stream updates;
-- report turn completion, failure, and cancellation;
-- expose session/turn identity and normalized token usage;
-- advertise any in-protocol client-side tools the agent supports.
-
-Each adapter defers to its agent's own protocol as the source of truth (Section 10 intro). At least
+Each adapter encapsulates one (agent, transport) pairing and defers to its agent's own protocol as
+the source of truth (Section 10 intro). Two transports for the same agent are two adapters; an
+implementation MUST NOT require a non-native agent to impersonate another agent's protocol. At least
 two adapters are defined: `codex` (the Codex app-server, the worked example in Sections 10.1–10.8)
 and `claude_code`.
+
+Capability descriptor:
+
+- Each adapter advertises a static capability descriptor (data, not a runtime call), declaring at
+  least: `resume` mode (`warm_session`, `resume_token`, or `none`), whether it streams turn updates,
+  whether it enforces a native per-turn step limit (Section 10.3), and its accepted `effort` values.
+- The orchestrator reads the descriptor to drive behavior: `resume = none` means it re-feeds context
+  or treats each turn as fresh; a native step-limit breach is a turn boundary, not a failure.
 
 Selection:
 
@@ -1567,8 +1626,9 @@ Effort:
 Observability normalization:
 
 - Each adapter normalizes its protocol's session and turn identifiers and its usage payloads into
-  the logical session fields (Section 4.1.6) and token totals (Section 13.5). The `codex_*` field
-  shapes there reflect the Codex adapter.
+  the neutral logical session fields (Section 4.1.6) and token-usage record (Section 13.5). The
+  `thread_id` / `turn_id` identity shown there is the Codex adapter's (Section 4.2); another adapter
+  supplies its own.
 
 ## 11. Issue Tracker Integration Contract
 
@@ -1771,7 +1831,7 @@ SHOULD return:
 - each running row SHOULD include `turn_count`
 - `retrying` (list of retry queue rows)
 - session and retry rows SHOULD include the tracker-provided issue URL when available
-- `codex_totals`
+- `agent_totals`
   - `input_tokens`
   - `output_tokens`
   - `total_tokens`
@@ -1793,8 +1853,9 @@ correctness.
 
 ### 13.5 Session Metrics and Token Accounting
 
-Each agent adapter normalizes its protocol's usage payloads into the token totals below; the payload
-names mentioned here reflect the Codex adapter.
+Each agent adapter normalizes its protocol's usage payloads into the neutral token-usage record
+(`input_tokens`, `output_tokens`, `total_tokens`; Section 4.1.6). The payload names mentioned below
+(`thread/tokenUsage/updated`, `total_token_usage`, `last_token_usage`) are Codex-adapter examples.
 
 Token accounting rules:
 
@@ -1978,7 +2039,7 @@ Minimum endpoints:
           "error": "no available orchestrator slots"
         }
       ],
-      "codex_totals": {
+      "agent_totals": {
         "input_tokens": 5000,
         "output_tokens": 2400,
         "total_tokens": 7400,
@@ -2021,10 +2082,10 @@ Minimum endpoints:
       },
       "retry": null,
       "logs": {
-        "codex_session_logs": [
+        "agent_session_logs": [
           {
             "label": "latest",
-            "path": "/var/log/symphony/codex/MT-649/latest.log",
+            "path": "/var/log/symphony/agent/MT-649/latest.log",
             "url": null
           }
         ]
@@ -2269,7 +2330,7 @@ Implications:
 
 ### 15.5 Harness Hardening Guidance
 
-Running Codex agents against repositories, issue trackers, and other inputs that can contain
+Running coding agents against repositories, issue trackers, and other inputs that can contain
 sensitive data or externally-controlled content can be dangerous. A permissive deployment can lead
 to data leaks, destructive mutations, or full machine compromise if the agent is induced to execute
 harmful commands or use overly-powerful integrations.
@@ -2281,10 +2342,10 @@ arguments are fully trustworthy just because they originate inside a normal work
 
 Possible hardening measures include:
 
-- Tightening Codex approval and sandbox settings described elsewhere in this specification instead
-  of running with a maximally permissive configuration.
+- Tightening the selected adapter's approval and sandbox settings described elsewhere in this
+  specification instead of running with a maximally permissive configuration.
 - Adding external isolation layers such as OS/container/VM sandboxing, network restrictions, or
-  separate credentials beyond the built-in Codex policy controls.
+  separate credentials beyond the adapter's built-in policy controls.
 - Filtering which Linear issues, projects, teams, labels, or other tracker sources are eligible for
   dispatch so untrusted or out-of-scope tasks do not automatically reach the agent.
 - Constraining brokered tracker operations to the intended project/issue scope, rather than exposing
@@ -2313,8 +2374,8 @@ function start_service():
     claimed: set(),
     retry_attempts: {},
     completed: set(),
-    codex_totals: {input_tokens: 0, output_tokens: 0, total_tokens: 0, seconds_running: 0},
-    codex_rate_limits: null
+    agent_totals: {input_tokens: 0, output_tokens: 0, total_tokens: 0, seconds_running: 0},
+    provider_rate_limits: null
   }
 
   state = restore_cached_and_durable_state(state)
@@ -2412,13 +2473,13 @@ function dispatch_issue(issue, state, attempt):
     identifier: issue.identifier,
     issue,
     session_id: null,
-    codex_app_server_pid: null,
-    last_codex_message: null,
-    last_codex_event: null,
-    last_codex_timestamp: null,
-    codex_input_tokens: 0,
-    codex_output_tokens: 0,
-    codex_total_tokens: 0,
+    pid: null,
+    last_message: null,
+    last_event: null,
+    last_timestamp: null,
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
     last_reported_input_tokens: 0,
     last_reported_output_tokens: 0,
     last_reported_total_tokens: 0,
@@ -2446,38 +2507,38 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
   if run_hook("before_run", workspace.path) failed:
     fail_worker("before_run hook error")
 
-  session = app_server.start_session(workspace=workspace.path)
-  if session failed:
-    run_hook_best_effort("after_run", workspace.path)
-    fail_worker("agent session startup error")
-
   max_turns = config.agent.max_turns
   turn_number = 1
+  continuation_ref = null  # first turn establishes the session lazily (Section 10.7)
 
   while true:
     # During each turn the agent uses the symphony broker CLI for privileged operations
     # (push, pull request, tracker writes); Symphony executes them host-side (Sections 10.8, 9.9).
+    # First turn: full task prompt; continuation turns: continuation guidance (Section 10.3).
     prompt = build_turn_prompt(workflow_template, issue, attempt, turn_number, max_turns)
     if prompt failed:
-      app_server.stop_session(session)
+      agent.release(continuation_ref)
       run_hook_best_effort("after_run", workspace.path)
       fail_worker("prompt error")
 
-    turn_result = app_server.run_turn(
-      session=session,
+    turn_result = agent.run_turn(
+      workspace=workspace.path,
       prompt=prompt,
       issue=issue,
-      on_message=(msg) -> send(orchestrator_channel, {codex_update, issue.id, msg})
+      continuation_ref=continuation_ref,
+      on_event=(msg) -> send(orchestrator_channel, {agent_update, issue.id, msg})
     )
 
     if turn_result failed:
-      app_server.stop_session(session)
+      agent.release(continuation_ref)
       run_hook_best_effort("after_run", workspace.path)
       fail_worker("agent turn error")
 
+    continuation_ref = turn_result.continuation_ref
+
     refreshed_issue = tracker.fetch_issue_states_by_ids([issue.id])
     if refreshed_issue failed:
-      app_server.stop_session(session)
+      agent.release(continuation_ref)
       run_hook_best_effort("after_run", workspace.path)
       fail_worker("issue state refresh error")
 
@@ -2491,7 +2552,7 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
 
     turn_number = turn_number + 1
 
-  app_server.stop_session(session)
+  agent.release(continuation_ref)
   run_hook_best_effort("after_run", workspace.path)
 
   exit_normal()
@@ -2676,6 +2737,16 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - At least the `codex` and `claude_code` adapters implement the neutral runner contract
 - Agent and effort are selected from policy (`default_agent`/`default_effort`); `agent_by_label`
   overrides per issue, and `effort` is passed through as the agent's native value
+- `run_turn` threads an opaque `continuation_ref` (first turn full prompt; continuation turns
+  guidance); there is no separate session-start operation
+- `cancel` stops an in-flight turn; a clean interrupt-then-drain yields a resumable
+  `continuation_ref`, otherwise the turn fails; `release` frees warm resources at run end
+- Each adapter advertises a capability descriptor (`resume` mode, native step cap, accepted
+  `effort` values)
+- Emitted usage is normalized to the neutral token-usage record (`input_tokens`, `output_tokens`,
+  `total_tokens`)
+- An adapter encapsulates one (agent, transport) pairing; no non-native agent impersonates another's
+  protocol
 - Launch command uses workspace cwd and invokes `bash -lc <codex.command>`
 - Session startup follows the targeted Codex app-server protocol.
 - Client identity/capability payloads are valid when the targeted Codex app-server protocol requires
@@ -2762,6 +2833,11 @@ Use the same validation profiles as Section 17:
 - Hook timeout config (`hooks.timeout_ms`, default `60000`)
 - Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
   app-server JSON line protocol as the worked example)
+- Turn-centric contract: `run_turn` threads an opaque `continuation_ref` (no separate start),
+  `cancel` does interrupt-then-drain to a resumable state or fails the turn, `release` frees warm
+  resources; adapters emit the neutral event vocabulary and token-usage record (`input_tokens`,
+  `output_tokens`, `total_tokens`) and advertise a capability descriptor (resume mode, native step
+  cap, accepted effort); one adapter per (agent, transport) with no protocol impersonation
 - Agent and effort selected from policy (`default_agent`/`default_effort`) with `agent_by_label`
   per-issue overrides
 - VCS adapter (`github`, `forgejo`) owning provisioning, push, back-merge, and one-PR-per-issue,

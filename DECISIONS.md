@@ -176,3 +176,50 @@ by either an in-band rate-limit stream or an OPTIONAL out-of-band poller. A disp
 work when any bucket crosses a threshold, leaving running agents untouched, with implicit resume and a
 configurable fail-open/closed policy on `UNKNOWN` (unsupported defaults open; transient block MAY close).
 Account-wide headroom is kept separate from Symphony-attributed spend (0012). OPTIONAL extension.
+
+## 0014 — Turn and step terminology
+
+**State:** Accepted
+**Folder:** [decisions/0014-turn-step-terminology/](decisions/0014-turn-step-terminology/)
+
+Disambiguates two things colloquially called a "turn". Keeps `turn` meaning the orchestration-
+initiated prompt-to-completion cycle on the live agent thread (unchanged, aligned with the Codex
+app-server protocol's turn unit and `turn_id`), and introduces `step` for the coding agent's
+internal, autonomous tool-call iteration within a turn — agent-internal, neither initiated nor
+counted by Symphony, so `max_turns` bounds turns, not steps. (An adapter MAY still cap steps with a
+native limit such as `--max-turns`, distinct from `agent.max_turns`.) The outer tier remains the
+`run` (Section 7.2): a run contains turns, a turn contains steps. Rejected the inverse (turn = inner loop,
+rename the cycle) as a conflict with the protocol the spec defers to.
+
+## 0015 — Neutral agent runner contract
+
+**State:** Accepted
+**Folder:** [decisions/0015-neutral-agent-runner-contract/](decisions/0015-neutral-agent-runner-contract/)
+
+Elaborates decision 0006's thin agent contract into a turn-centric, transport-neutral one, informed by a
+study of ~24 backend-swap forks. Replaces the implicit "keep the subprocess alive across continuation
+turns" assumption with an explicit, opaque, adapter-owned `continuation_ref` (a persistent app-server
+becomes one adapter whose ref is a warm handle; a per-invocation CLI another whose ref is a resume token
+or declares non-resumable). Adds a REQUIRED `cancel` with RECOMMENDED interrupt-then-drain to a resumable
+state (making timeouts and early stops clean boundaries, per 0014's Identione refinement); REQUIRES neutral
+events and a neutral token-usage record `{input_tokens, output_tokens, total_tokens}` with opaque extras;
+advertises adapter capability as a static descriptor (resume mode, native step cap, accepted effort) rather
+than a method; and rules that an adapter encapsulates one (agent, transport) pairing and MUST NOT
+impersonate another agent's protocol. Selection (0006) and the broker (0003/0004) are unchanged; the
+`codex_*` observability-field rename is delegated to a follow-on sweep (0016).
+
+## 0016 — Neutralize agent observability vocabulary
+
+**State:** Accepted
+**Folder:** [decisions/0016-neutralize-agent-vocabulary/](decisions/0016-neutralize-agent-vocabulary/)
+
+The mechanical-but-cross-cutting sweep deferred by 0006 and enabled by 0015: renames the persisted and
+emitted `codex_*` observability vocabulary to neutral names every adapter normalizes into — bare inside the agent-session struct (Section 4.1.6),
+scope-qualified in the runtime map (Section 4.1.8). `codex_app_server_pid` -> `pid`, `last_codex_*` ->
+`last_*`, `codex_{input,output,total}_tokens`
+-> `{input,output,total}_tokens`, `codex_totals` -> `agent_totals`, `codex_rate_limits` ->
+`provider_rate_limits`, `codex_update` / `Codex Update Event` -> `agent_update` / `Agent Update Event`,
+`codex_session_logs` -> `agent_session_logs`, plus neutralizing Codex-worded hardening prose (Section
+15.5). Genuinely Codex-adapter-specific anchors (the `codex` config block, the Sections 10.1-10.8 worked
+example, `codex.command`) are intentionally left unchanged. The generic-timeouts-under-`codex.*` config
+wart is left for a separate decision.
