@@ -410,9 +410,11 @@ Fields:
   - REQUIRED for dispatch.
   - Supported values: `linear`, `forgejo`.
 - `endpoint` (string)
-  - Default for `tracker.kind == "linear"`: `https://api.linear.app/graphql`. The `forgejo` adapter
-    uses the configured Forgejo instance API base.
+  - Adapter-specific; `none`-mode/local adapters have none (Section 11.7). Default for
+    `tracker.kind == "linear"`: `https://api.linear.app/graphql`. The `forgejo` adapter uses the
+    configured Forgejo instance API base.
 - `api_key` (string)
+  - Used by `secret`-mode tracker adapters (Section 11.7); `none`-mode adapters do not use it.
   - Resolved through the secret-provider interface (Section 15.3); a file provider is REQUIRED.
   - Environment variables MUST NOT be used as a secret channel into the agent. `$VAR_NAME`
     indirection is not used for this value.
@@ -679,7 +681,8 @@ Validation checks:
 
 - Workflow file can be loaded and parsed.
 - `tracker.kind` is present and supported.
-- `tracker.api_key` is present after `$` resolution.
+- `tracker.api_key` is present after `$` resolution when the selected tracker adapter is
+  `secret`-mode (Section 11.7); `none`-mode adapters require no key.
 - `tracker.project_slug` is present when REQUIRED by the selected tracker kind.
 - When `tracker.transitions` is non-empty, the selected tracker adapter declares the `set_state`
   capability (Section 11.7); otherwise configuration error.
@@ -1789,6 +1792,9 @@ orchestrator's scheduling logic and not by the agent using its own credentials.
 - `link_pull_request` records a pull-request reference on the tracker item — the cross-system
   mechanism (Section 9.10). When the tracker shares the forge's platform the link is forge-native,
   and the adapter MAY declare `link_pull_request` unsupported (Section 11.7).
+- The broker mediates tracker writes for scope and isolation even when the adapter has no credential
+  (a `none`-mode adapter, Section 11.7); a local adapter's store MUST be host-side, outside the
+  bind-mounted workspace, so the sandboxed agent cannot bypass the broker.
 - Workflow-specific success often means "reached the next handoff state" (for example
   `Human Review`) rather than tracker terminal state `Done`.
 
@@ -1842,13 +1848,19 @@ Process authority:
 
 ### 11.7 Adapter Capability Descriptor
 
-Tracker write support varies by backend, so writes are declared rather than universally mandated.
-This mirrors the agent adapter capability descriptor (Section 10.9).
+Tracker write support and authentication vary by backend, so the adapter declares both rather than
+the core assuming them. This mirrors the agent adapter capability descriptor (Section 10.9).
 
 - Each tracker adapter advertises a static capability descriptor (data, not a runtime call),
   declaring which write operations it supports: `add_comment`, `set_state`, and `link_pull_request`
   (Section 11.1). The three read operations are REQUIRED of every adapter and are not part of the
   descriptor.
+- The descriptor also declares the adapter's auth mode: `secret` (a credential resolved through the
+  secret provider, Section 15.3) or `none` (no credential; the adapter reaches a host-side store
+  such as a local file or database). `tracker.api_key` and `tracker.endpoint` apply only to
+  `secret`-mode adapters, and dispatch preflight (Section 6.3) requires `tracker.api_key` only then.
+  `linear` and `forgejo` are `secret`-mode; a `none`-mode adapter is admissible as an OPTIONAL
+  extension.
 - The descriptor MAY depend on resolved config and is fixed for the run. For example, a tracker on a
   plan tier without a comment API declares `add_comment` unsupported, determined once at adapter
   initialization.
@@ -2817,6 +2829,8 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - Writes are gated by a static adapter capability descriptor (reads REQUIRED); an unsupported write
   surfaces `tracker_unsupported_operation` and is never silently no-oped; non-empty
   `tracker.transitions` without the `set_state` capability is a preflight configuration error
+- A `none`-mode tracker adapter dispatches without `tracker.api_key`; a `secret`-mode adapter
+  requires it at preflight (Section 6.3)
 - Tracker transitions follow a deterministic policy graph (`tracker.transitions`) keyed on milestone
   signals and observed run outcomes; an unmatched trigger transitions nothing and a duplicate
   `(from, on)` is a configuration error
@@ -2993,6 +3007,8 @@ Use the same validation profiles as Section 17:
   unsupported write surfaces `tracker_unsupported_operation` rather than a silent no-op
 - `set_state` is idempotent and surfaces `tracker_state_unreachable` / `tracker_state_conflict`
   rather than silently succeeding; a transition failure is logged and does not fail the run
+- Tracker adapters declare an auth mode (`secret` | `none`); `api_key`/`endpoint` and the secret
+  provider apply only to `secret`-mode, and a `none`-mode local adapter keeps its store host-side
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
   polling; workspace/concurrency keyed by (repository, issue)
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
