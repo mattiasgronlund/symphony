@@ -340,3 +340,25 @@ cap (`Implementation-defined`) and MUST NOT silently drop fetchable issues. The 
 stay as Linear specifics. Reframes pagination as a correctness requirement, not an optional capability; a
 bounded server-side-ordered mode is noted as a deferred scale option. Continues the neutralization theme of
 0019/0020/0023.
+
+## 0025 — Session resource governance and the host-side launch seam
+
+**State:** Proposed
+**Folder:** [decisions/0025-session-resource-governance/](decisions/0025-session-resource-governance/)
+
+Captures the analysis behind an operator request for per-session CPU *fairness* (work-conserving weights, not
+quotas) under concurrent sessions whose build/test gate runs are CPU-bound. Finding 1: the agent's CPU-bound
+work runs inside the sandbox, so the existing `Implementation-defined` sandbox-wrap (Section 9.6) is already
+the per-session attach point for a cgroup / CPU weight — no new mechanism is needed agent-side. Finding 2: the
+spec models host-side work — repository provisioning and git verbs (Sections 9.7–9.9), worktree provisioning
+(Section 16.5), and policy-config hooks (Sections 9.4/15.4) — as behaviors, not launches, so it has no
+wrapper/governance seam; those subprocesses are orchestrator children and inherit the orchestrator's cgroup,
+not the session's, leaving the brief's "whole-subtree" goal unreachable for host-side ops (dominant host-side
+CPU cost = concurrent `after_create`/`before_run` build hooks, which is real but secondary to the in-sandbox
+gate). Records three options without choosing: A leave the spec silent; B an OPTIONAL note that the sandbox
+launch is the per-session attach point and host-side ops are governed at the service/orchestrator level; C an
+OPTIONAL host-side execution-wrapper ("session resource domain") that brings host-side per-session work into
+the session's cgroup. No option is selected; the distinguishing evidence is whether host-side per-session CPU
+is material once the agent subtree is governed. The brief's non-secret env-passthrough half (`ENTRY_CHECK_*`,
+touching the Section 15.3 secret-scrubbing invariant) is out of scope and tracked as a separate future
+decision. Proposed; finding recorded, no `SPEC.md` change.
