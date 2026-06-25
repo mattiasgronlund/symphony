@@ -308,3 +308,18 @@ adapter (new Section 9.10) owning pull-request/merge-request lifecycle and OPTIO
 and tracker (Section 11.7) adapters — PR create/update REQUIRED, review-thread writes OPTIONAL. Reconciles
 `link_pull_request` (decision 0008): forge-native for a same-platform tracker (which MAY declare the write
 unsupported), a tracker write for a separate-system tracker (Linear). Refines decisions 0007 and 0008.
+
+## 0023 — Adapter-declared auth mode
+
+**State:** Accepted
+**Folder:** [decisions/0023-adapter-declared-auth-mode/](decisions/0023-adapter-declared-auth-mode/)
+
+Removes the spec's hardwired assumption that every tracker is a remote, credentialed API (the sweep's local
+`td`/SQLite and self-owned Postgres backends did not fit). Each tracker adapter declares an auth mode in its
+capability descriptor (Section 11.7): `secret` (a credential resolved through the secret provider) or `none`
+(no credential; a host-side store). `tracker.api_key`/`tracker.endpoint` and the dispatch-preflight key check
+(Section 6.3) apply only to `secret`-mode; the secret provider is consulted only then. The broker still
+mediates tracker writes for scope and isolation when the adapter has no credential, and a local adapter's
+store MUST be host-side (outside the bind-mounted workspace) so the agent cannot bypass it. `linear`/`forgejo`
+are `secret`-mode; a `none`-mode adapter is an OPTIONAL extension. Mirrors the adapter-declared-DATA approach
+of decision 0018; relates to 0003/0005.
