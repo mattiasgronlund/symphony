@@ -1728,6 +1728,8 @@ failures onto them:
 - `missing_tracker_api_key`
 - `missing_tracker_project_slug`
 - `tracker_unsupported_operation` (write not in the adapter capability descriptor, Section 11.7)
+- `tracker_state_unreachable` (`set_state` target unreachable from the current state, Section 11.8)
+- `tracker_state_conflict` (issue state changed underneath a `set_state` write, Section 11.8)
 - `tracker_api_request` (transport or connection failure)
 - `tracker_api_status` (unsuccessful response status, for example non-2xx HTTP)
 - `tracker_backend_errors` (backend-reported errors in a well-formed response, for example a
@@ -1827,6 +1829,31 @@ This mirrors the agent adapter capability descriptor (Section 10.9).
 - A non-empty `tracker.transitions` (Section 5.3.1, Section 11.6) requires the `set_state`
   capability; dispatch preflight (Section 6.3) treats configured transitions on a tracker that does
   not support `set_state` as a configuration error.
+
+### 11.8 State Transition Write Semantics
+
+`set_state(issue_id, target_state)` (Section 11.1) is more than a plain write, because trackers
+differ in how a state change is applied (a status field, a workflow transition, a label set). It
+MUST observe:
+
+- Idempotent: if the issue is already in `target_state`, `set_state` is a successful no-op. The
+  adapter MUST NOT re-apply a transition, because some trackers reject re-applying one already taken
+  (for example a Jira workflow transition).
+- Unreachable target: if `target_state` cannot be reached from the current state, or is unknown
+  to the tracker, `set_state` fails with `tracker_state_unreachable` (Section 11.4) rather than
+  silently succeeding.
+- Concurrent change: if the issue's state changed underneath the write so the intended transition no
+  longer applies, `set_state` fails with `tracker_state_conflict` (Section 11.4). The orchestrator
+  re-reconciles from the tracker (Section 8.5) rather than blindly retrying the same transition.
+- Verification: where a backend applies state through several eventually-consistent writes (for
+  example adding and removing state labels), the adapter SHOULD confirm the resulting state and
+  surface a failure if it did not take.
+- Required transition input: where a transition requires additional fields (for example a Jira
+  transition screen), `set_state` cannot express them; the adapter supplies a documented default or
+  fails. This is `Implementation-defined`.
+
+A `set_state` failure is logged and does not by itself fail the run: the agent's work is already
+done, and the transition is a side effect the orchestrator reconciles.
 
 ## 12. Prompt Construction and Context Assembly
 
@@ -2757,6 +2784,9 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - Tracker transitions follow a deterministic policy graph (`tracker.transitions`) keyed on milestone
   signals and observed run outcomes; an unmatched trigger transitions nothing and a duplicate
   `(from, on)` is a configuration error
+- `set_state` is idempotent (already-in-target succeeds without re-applying a transition), fails
+  `tracker_state_unreachable` for an unreachable target, and `tracker_state_conflict` on a
+  concurrent state change
 - Candidate issue fetch uses active states and project slug
 - Linear query uses the specified project filter field (`slugId`)
 - Empty `fetch_issues_by_states([])` returns empty without API call
@@ -2923,6 +2953,8 @@ Use the same validation profiles as Section 17:
   policy-owned transition graph (`tracker.transitions`) keyed on agent milestone signals and
   observed run outcomes; each adapter advertises a static write-capability descriptor and an
   unsupported write surfaces `tracker_unsupported_operation` rather than a silent no-op
+- `set_state` is idempotent and surfaces `tracker_state_unreachable` / `tracker_state_conflict`
+  rather than silently succeeding; a transition failure is logged and does not fail the run
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
   polling; workspace/concurrency keyed by (repository, issue)
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and

@@ -280,3 +280,17 @@ per write), and marks `branch_name` and `blocked_by` OPTIONAL/tracker-dependent 
 dependency model leaves `blocked_by` empty and blocker-gated dispatch (Section 8.2) then does not gate.
 Section 11.3 records the Linear-specific derivation and an `Implementation-defined` `metadata`. Stops short
 of a WorkItem wrapper to stay surgical.
+
+## 0021 — set_state write semantics
+
+**State:** Accepted
+**Folder:** [decisions/0021-set-state-write-semantics/](decisions/0021-set-state-write-semantics/)
+
+Specifies the obligations `set_state` carries beyond a plain write, from the sweep's Jira/GitLab/GitHub
+evidence. New Section 11.8 requires `set_state` to be idempotent (already-in-target is a successful no-op;
+the adapter MUST NOT re-apply a transition some trackers reject), to fail with `tracker_state_unreachable`
+when the target is unreachable and `tracker_state_conflict` when the state changed underneath the write, to
+SHOULD-verify results applied through eventually-consistent writes, and to treat a required transition input
+it cannot express as `Implementation-defined`. A `set_state` failure is logged and does not by itself fail
+the run; a conflict triggers re-reconciliation. Adds the two error categories to Section 11.4. Keeps the
+`set_state(target)` altitude (no `apply_transition` in the contract).
