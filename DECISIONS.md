@@ -294,3 +294,17 @@ SHOULD-verify results applied through eventually-consistent writes, and to treat
 it cannot express as `Implementation-defined`. A `set_state` failure is logged and does not by itself fail
 the run; a conflict triggers re-reconciliation. Adds the two error categories to Section 11.4. Keeps the
 `set_state(target)` altitude (no `apply_transition` in the contract).
+
+## 0022 — Forge adapter surface
+
+**State:** Accepted
+**Folder:** [decisions/0022-forge-adapter-surface/](decisions/0022-forge-adapter-surface/)
+
+Splits decision 0007's single VCS adapter into two contracts on the same code host: a VCS adapter (git
+remote: clone/fetch/branch/back-merge/push, broker git verbs `push`/`back-merge`) and a first-class Forge
+adapter (new Section 9.10) owning pull-request/merge-request lifecycle and OPTIONAL review-thread writes
+(post/reply/resolve), with broker forge verbs `pr`/`request-merge`/review writes. The Forge adapter reuses
+`vcs.kind`/`vcs.api_key` and advertises a static capability descriptor mirroring the agent (Section 10.9)
+and tracker (Section 11.7) adapters — PR create/update REQUIRED, review-thread writes OPTIONAL. Reconciles
+`link_pull_request` (decision 0008): forge-native for a same-platform tracker (which MAY declare the write
+unsupported), a tracker write for a separate-system tracker (Linear). Refines decisions 0007 and 0008.

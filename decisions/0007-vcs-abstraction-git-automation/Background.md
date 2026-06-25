@@ -57,3 +57,12 @@ self-approval/self-merge must be structurally prevented — the configurable map
 approver possible; postponing back-merge until push can produce large late conflicts on fast-moving
 bases; and the shared-tree model means Symphony pins the pushed refspec and ignores agent-side ref
 manipulation.
+
+## Refinement: Forge adapter split (decision 0022)
+
+Decision 0022 splits the single VCS adapter defined here into two contracts on the same code host: this
+VCS adapter keeps the git-remote operations (clone/fetch/branch/back-merge/push), and a new first-class
+Forge adapter (SPEC Section 9.10) takes the pull-request lifecycle plus OPTIONAL review-thread writes the
+original design had no home for. The broker verbs split accordingly (git verbs vs forge verbs), and the
+Forge adapter reuses this decision's `vcs.kind`/`vcs.api_key`. The one-PR-per-issue model and configurable
+authorship are unchanged; they move to the Forge adapter's section.
