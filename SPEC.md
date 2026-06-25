@@ -178,17 +178,25 @@ Fields:
 - `state` (string)
   - Current tracker state name.
 - `branch_name` (string or null)
-  - Tracker-provided branch metadata if available.
+  - Tracker-provided branch metadata if available. OPTIONAL and tracker-dependent: an adapter whose
+    tracker has no native branch metadata leaves it null or MAY synthesize one.
 - `url` (string or null)
 - `labels` (list of strings)
   - Normalized to lowercase.
 - `blocked_by` (list of blocker refs)
+  - OPTIONAL and tracker-dependent: an adapter whose tracker has no dependency model leaves it
+    empty, and blocker-gated dispatch (Section 8.2) then observes no blockers.
   - Each blocker ref contains:
     - `id` (string or null)
     - `identifier` (string or null)
     - `state` (string or null)
 - `created_at` (timestamp or null)
 - `updated_at` (timestamp or null)
+- `metadata` (map)
+  - Opaque, adapter-owned key/value pairs carrying tracker-specific data the fields above do not
+    capture (for example Jira custom fields or board columns); empty when the adapter has none. The
+    orchestrator core does not interpret it. An adapter MAY use it to round-trip a provider write
+    handle (for example a GitHub Projects v2 item id) instead of re-resolving it per write.
 
 #### 4.1.2 Workflow Definition
 
@@ -859,6 +867,7 @@ An issue is dispatch-eligible only if all are true:
 - Per-state concurrency slots are available.
 - Blocker rule for `Todo` state passes:
   - If the issue state is `Todo`, do not dispatch when any blocker is non-terminal.
+  - An adapter that does not populate `blocked_by` reports no blockers, so this rule does not gate.
 
 Sorting order (stable intent):
 
@@ -1702,9 +1711,13 @@ Additional normalization details:
 - Label names are trimmed and lowercased.
 
 - `labels` -> lowercase strings
-- `blocked_by` -> derived from inverse relations where relation type is `blocks`
+- `blocked_by` -> for `linear`, derived from inverse relations where relation type is `blocks`; an
+  adapter whose tracker has no dependency model leaves it empty
+- `branch_name` -> tracker-provided when available, otherwise null or adapter-synthesized
 - `priority` -> integer only (non-integers become null)
 - `created_at` and `updated_at` -> parse ISO-8601 timestamps
+- `metadata` -> adapter-defined; an implementation MUST document what its adapter places there
+  (`Implementation-defined`)
 
 ### 11.4 Error Handling Contract
 
@@ -1830,7 +1843,7 @@ Inputs to prompt rendering:
 - Render with strict variable checking.
 - Render with strict filter checking.
 - Convert issue object keys to strings for template compatibility.
-- Preserve nested arrays/maps (labels, blockers) so templates can iterate.
+- Preserve nested arrays/maps (labels, blockers, metadata) so templates can iterate.
 
 ### 12.3 Retry/Continuation Semantics
 
@@ -2748,8 +2761,10 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - Linear query uses the specified project filter field (`slugId`)
 - Empty `fetch_issues_by_states([])` returns empty without API call
 - Pagination preserves order across multiple pages
-- Blockers are normalized from inverse relations of type `blocks`
+- Blockers are normalized from Linear inverse relations of type `blocks`; `blocked_by`/`branch_name`
+  are tracker-dependent, and an empty `blocked_by` applies no blocker gating
 - Labels are normalized to lowercase
+- `metadata` carries adapter-defined provider-specific fields the flat model does not capture
 - Issue state refresh by ID returns minimal normalized issues
 - Issue state refresh query uses GraphQL ID typing (`[ID!]`) as specified in Section 11.2
 - Error mapping covers transport failures, unsuccessful status, backend-reported errors, and
