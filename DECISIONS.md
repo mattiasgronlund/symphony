@@ -223,3 +223,18 @@ scope-qualified in the runtime map (Section 4.1.8). `codex_app_server_pid` -> `p
 15.5). Genuinely Codex-adapter-specific anchors (the `codex` config block, the Sections 10.1-10.8 worked
 example, `codex.command`) are intentionally left unchanged. The generic-timeouts-under-`codex.*` config
 wart is left for a separate decision.
+
+## 0017 — Workflow transition graph
+
+**State:** Accepted
+**Folder:** [decisions/0017-workflow-transition-graph/](decisions/0017-workflow-transition-graph/)
+
+Refines decision 0008 after the 22-fork tracker sweep found its flat milestone map (`tracker.milestones`)
+unattested and Section 11.6 over-claiming a state-machine it never specified. The workflow state-machine
+becomes an explicit directed graph over tracker workflow-state names: transitions `{from, on, to}` keyed on
+one closed trigger vocabulary that unifies agent-emitted milestone signals (`ready-for-review`, `blocked`,
+`done`) and orchestrator-observed run outcomes (`dispatched`, `pull_request_opened`, `run_succeeded`,
+`run_failed`, `retries_exhausted`, each tied to Section 7.2/7.3). The graph lives in `tracker.transitions`,
+replacing `tracker.milestones`; an unmatched trigger transitions nothing and the graph MUST be
+deterministic. Nodes reuse existing state names rather than introducing a `stage` noun; provider
+representation of states and tracker write-capability are deferred to a later capability decision.
