@@ -420,10 +420,11 @@ Fields:
   - Default: `Todo`, `In Progress`
 - `terminal_states` (list of strings)
   - Default: `Closed`, `Cancelled`, `Canceled`, `Duplicate`, `Done`
-- `milestones` (map `signal -> state_name`)
-  - Maps agent milestone signals (for example `ready-for-review`, `blocked`, `done`) to tracker
-    state transitions, as part of the workflow state-machine (Section 11.6).
-  - Default: empty map (no signal-driven transitions).
+- `transitions` (list of `{from, on, to}` entries)
+  - The workflow state-machine (Section 11.6): a directed graph over tracker workflow-state names.
+    Each entry transitions an issue from state `from` to state `to` when trigger `on` fires — an
+    agent milestone signal or an observed run outcome (Section 11.6).
+  - Default: `[]` (no policy-driven transitions).
 
 #### 5.3.2 `polling` (object)
 
@@ -691,7 +692,7 @@ settings, plus a tracker-specific issue→repo mapping (Section 8.7).
 - `tracker.required_labels`: list of strings, default `[]`
 - `tracker.active_states`: list of strings, default `["Todo", "In Progress"]`
 - `tracker.terminal_states`: list of strings, default `["Closed", "Cancelled", "Canceled", "Duplicate", "Done"]`
-- `tracker.milestones`: map `signal -> state_name`, default `{}` (workflow state-machine, Section 11.6)
+- `tracker.transitions`: list of `{from, on, to}` entries, default `[]` (workflow state-machine, Section 11.6)
 - `polling.interval_ms`: integer, default `30000`
 - `workspace.root`: path resolved to absolute, default `<system-temp>/symphony_workspaces`
 - `vcs.kind`: string, `github` | `forgejo`
@@ -1730,33 +1731,53 @@ orchestrator's scheduling logic and not by the agent using its own credentials.
 - Workflow-specific success often means "reached the next handoff state" (for example
   `Human Review`) rather than tracker terminal state `Done`.
 
-### 11.6 Workflow State Machine and Milestone Signals
+### 11.6 Workflow State Machine and Transition Triggers
 
 Symphony drives ticket lifecycle; the agent supplies content and signals progress.
 
 State machine:
 
 - Ticket state transitions are governed by a workflow state-machine defined in the operator policy
-  config. Because transitions are privileged tracker writes performed outside the sandbox, the
-  state-machine is operator-owned, not part of `WORKFLOW.md`.
-- The state-machine names the allowed states and transitions and the conditions under which Symphony
-  performs them (for example a milestone signal, or a run outcome such as a pull request being
-  opened).
+  config (`tracker.transitions`, Section 5.3.1). Because transitions are privileged tracker writes
+  performed outside the sandbox, the state-machine is operator-owned, not part of `WORKFLOW.md`.
+- The state-machine is a directed graph over tracker workflow-state names — the `active_states` and
+  `terminal_states` of Section 5.3.1, plus any intermediate handoff states such as `Human Review` or
+  `Merging`. Each transition is a `{from, on, to}` entry: in state `from`, when trigger `on` fires,
+  Symphony performs `set_state(issue_id, to)` (Section 11.1).
+- The graph is defined over neutral state names only. The adapter maps each state name to its
+  provider representation (Section 11.2); the state-machine MUST NOT name provider-specific
+  representations.
+- A trigger that fires with no matching `from`-state transition performs no transition.
+- The graph MUST be deterministic: at most one transition per `(from, on)` pair. A duplicate
+  `(from, on)` is a configuration error (Section 6.3).
 
-Milestone signals:
+Triggers:
 
-- The agent reports progress with semantic milestone signals through the broker CLI — for example
-  `ready-for-review`, `blocked`, and `done` — optionally with content.
-- The policy state-machine maps each milestone signal to a concrete tracker transition. The agent
-  expresses intent; the operator controls the resulting states. An unmapped signal performs no
-  transition.
+Each transition's `on` value is drawn from one closed vocabulary with two origins. Operators wire
+triggers to transitions but do not introduce new trigger names.
+
+- Milestone signals, emitted by the agent through the broker CLI to express intent, optionally with
+  content:
+  - `ready-for-review`
+  - `blocked`
+  - `done`
+- Run outcomes, observed by the orchestrator from run mechanics; the agent does not emit these:
+  - `dispatched` — the orchestrator has claimed the issue and started its first turn (Sections 7.1,
+    7.3).
+  - `pull_request_opened` — a pull request was opened for the issue during the run.
+  - `run_succeeded` — the run attempt finished in `Succeeded` (Section 7.2).
+  - `run_failed` — the run attempt finished in a failure terminal reason (`Failed`, `TimedOut`, or
+    `Stalled`; Section 7.2).
+  - `retries_exhausted` — the retry path completed without re-dispatch (Section 7.1 `Released`,
+    Section 8.4).
 
 Process authority:
 
-- The repository-owned prompt (Section 5.4) shapes how the agent works and how it signals; it does
-  not define the state-machine and cannot grant a milestone signal a transition the policy does not
-  map. Process authority is operator-owned (Sections 5.2, 5.3): no prompt wording widens the set of
-  transitions an agent can cause.
+- The repository-owned prompt (Section 5.4) shapes how the agent works and which milestone signal it
+  emits; it does not define the state-machine and cannot grant a trigger a transition the graph does
+  not define. Run outcomes are orchestrator-emitted and not influenceable by prompt wording. Process
+  authority is operator-owned (Sections 5.2, 5.3): no prompt wording widens the set of transitions
+  an agent can cause.
 
 ## 12. Prompt Construction and Context Assembly
 
@@ -2681,8 +2702,9 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - At least the `linear` and `forgejo` tracker adapters implement the read and write operations
 - Tracker writes (`add_comment`, `set_state`, `link_pull_request`) are performed by the broker with
   agent-supplied content
-- Milestone signals map to tracker transitions via the policy state-machine; unmapped signals
-  transition nothing
+- Tracker transitions follow a deterministic policy graph (`tracker.transitions`) keyed on milestone
+  signals and observed run outcomes; an unmatched trigger transitions nothing and a duplicate
+  `(from, on)` is a configuration error
 - Candidate issue fetch uses active states and project slug
 - Linear query uses the specified project filter field (`slugId`)
 - Empty `fetch_issues_by_states([])` returns empty without API call
@@ -2843,7 +2865,8 @@ Use the same validation profiles as Section 17:
 - VCS adapter (`github`, `forgejo`) owning provisioning, push, back-merge, and one-PR-per-issue,
   with a Symphony-derived work branch and configurable authorship
 - Tracker adapter (`linear`, `forgejo`) with reads and writes; Symphony-driven lifecycle via a
-  policy-owned state-machine and agent milestone signals
+  policy-owned transition graph (`tracker.transitions`) keyed on agent milestone signals and observed
+  run outcomes
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
   polling; workspace/concurrency keyed by (repository, issue)
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
