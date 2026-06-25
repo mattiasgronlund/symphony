@@ -673,6 +673,8 @@ Validation checks:
 - `tracker.kind` is present and supported.
 - `tracker.api_key` is present after `$` resolution.
 - `tracker.project_slug` is present when REQUIRED by the selected tracker kind.
+- When `tracker.transitions` is non-empty, the selected tracker adapter declares the `set_state`
+  capability (Section 11.7); otherwise configuration error.
 - `codex.command` is present and non-empty.
 
 ### 6.4 Core Config Fields Summary (Cheat Sheet)
@@ -1640,9 +1642,11 @@ content supplied by the agent. The agent never holds tracker credentials.
 
 ### 11.1 REQUIRED Operations
 
-An implementation MUST support these tracker adapter operations.
+Every tracker adapter MUST support the read operations below. The write operations are
+capability-gated: each adapter declares which of them it supports through its capability descriptor
+(Section 11.7), and the orchestrator does not invoke an undeclared write.
 
-Read operations:
+Read operations (REQUIRED of every adapter):
 
 1. `fetch_candidate_issues()`
    - Return issues in configured active states for a configured project.
@@ -1653,7 +1657,8 @@ Read operations:
 3. `fetch_issue_states_by_ids(issue_ids)`
    - Used for active-run reconciliation.
 
-Write operations (performed by the broker, Section 10.8; the agent supplies the content):
+Write operations (performed by the broker, Section 10.8; the agent supplies the content; supported
+per the capability descriptor, Section 11.7):
 
 4. `add_comment(issue_id, body)`
 5. `set_state(issue_id, target_state)`
@@ -1708,6 +1713,7 @@ RECOMMENDED error categories:
 - `unsupported_tracker_kind`
 - `missing_tracker_api_key`
 - `missing_tracker_project_slug`
+- `tracker_unsupported_operation` (write not in the adapter capability descriptor, Section 11.7)
 - `linear_api_request` (transport failures)
 - `linear_api_status` (non-200 HTTP)
 - `linear_graphql_errors`
@@ -1778,6 +1784,29 @@ Process authority:
   not define. Run outcomes are orchestrator-emitted and not influenceable by prompt wording. Process
   authority is operator-owned (Sections 5.2, 5.3): no prompt wording widens the set of transitions
   an agent can cause.
+
+### 11.7 Adapter Capability Descriptor
+
+Tracker write support varies by backend, so writes are declared rather than universally mandated.
+This mirrors the agent adapter capability descriptor (Section 10.9).
+
+- Each tracker adapter advertises a static capability descriptor (data, not a runtime call),
+  declaring which write operations it supports: `add_comment`, `set_state`, and `link_pull_request`
+  (Section 11.1). The three read operations are REQUIRED of every adapter and are not part of the
+  descriptor.
+- The descriptor MAY depend on resolved config and is fixed for the run. For example, a tracker on a
+  plan tier without a comment API declares `add_comment` unsupported, determined once at adapter
+  initialization.
+- The orchestrator reads the descriptor before invoking a write and MUST NOT invoke an undeclared
+  write. An optional write the adapter does not support (for example `link_pull_request`) is skipped
+  and logged, not failed. An undeclared write invoked anyway returns `tracker_unsupported_operation`
+  (Section 11.4).
+- An unsupported write MUST NOT be silently treated as success, no-oped, or replaced by a
+  synthesized substitute (for example appending a comment into a description field). Capability gaps
+  are explicit.
+- A non-empty `tracker.transitions` (Section 5.3.1, Section 11.6) requires the `set_state`
+  capability; dispatch preflight (Section 6.3) treats configured transitions on a tracker that does
+  not support `set_state` as a configuration error.
 
 ## 12. Prompt Construction and Context Assembly
 
@@ -2702,6 +2731,9 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - At least the `linear` and `forgejo` tracker adapters implement the read and write operations
 - Tracker writes (`add_comment`, `set_state`, `link_pull_request`) are performed by the broker with
   agent-supplied content
+- Writes are gated by a static adapter capability descriptor (reads REQUIRED); an unsupported write
+  surfaces `tracker_unsupported_operation` and is never silently no-oped; non-empty
+  `tracker.transitions` without the `set_state` capability is a preflight configuration error
 - Tracker transitions follow a deterministic policy graph (`tracker.transitions`) keyed on milestone
   signals and observed run outcomes; an unmatched trigger transitions nothing and a duplicate
   `(from, on)` is a configuration error
@@ -2865,8 +2897,9 @@ Use the same validation profiles as Section 17:
 - VCS adapter (`github`, `forgejo`) owning provisioning, push, back-merge, and one-PR-per-issue,
   with a Symphony-derived work branch and configurable authorship
 - Tracker adapter (`linear`, `forgejo`) with reads and writes; Symphony-driven lifecycle via a
-  policy-owned transition graph (`tracker.transitions`) keyed on agent milestone signals and observed
-  run outcomes
+  policy-owned transition graph (`tracker.transitions`) keyed on agent milestone signals and
+  observed run outcomes; each adapter advertises a static write-capability descriptor and an
+  unsupported write surfaces `tracker_unsupported_operation` rather than a silent no-op
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
   polling; workspace/concurrency keyed by (repository, issue)
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and

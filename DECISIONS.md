@@ -238,3 +238,17 @@ one closed trigger vocabulary that unifies agent-emitted milestone signals (`rea
 replacing `tracker.milestones`; an unmatched trigger transitions nothing and the graph MUST be
 deterministic. Nodes reuse existing state names rather than introducing a `stage` noun; provider
 representation of states and tracker write-capability are deferred to a later capability decision.
+
+## 0018 — Tracker capability descriptor
+
+**State:** Accepted
+**Folder:** [decisions/0018-tracker-capability-descriptor/](decisions/0018-tracker-capability-descriptor/)
+
+Acts on the 22-fork sweep's biggest finding: Section 11.1's "every adapter MUST support all six operations"
+is false for writes. The three reads stay REQUIRED; the writes (`add_comment`, `set_state`,
+`link_pull_request`) become capability-gated. Each tracker adapter advertises a static capability descriptor
+(data, not a runtime call) mirroring the agent adapter (Section 10.9 / decision 0015); the orchestrator
+reads it before a write and at preflight. An undeclared write yields `tracker_unsupported_operation` and an
+unsupported write MUST NOT be silently no-oped or replaced by a synthesized substitute. A non-empty
+`tracker.transitions` (decision 0017) requires the `set_state` capability. Normalized-Issue field
+optionality and provider state representation are out of scope.
