@@ -362,3 +362,29 @@ the session's cgroup. No option is selected; the distinguishing evidence is whet
 is material once the agent subtree is governed. The brief's non-secret env-passthrough half (`ENTRY_CHECK_*`,
 touching the Section 15.3 secret-scrubbing invariant) is out of scope and tracked as a separate future
 decision. Proposed; finding recorded, no `SPEC.md` change.
+
+## 0026 — VCS-operation lifecycle hooks aligned with `vcsx`
+
+**State:** Proposed
+**Folder:** [decisions/0026-vcs-lifecycle-hooks/](decisions/0026-vcs-lifecycle-hooks/)
+
+Aligns Symphony's hook vocabulary with the external `vcsx` VCS-workflow engine so one repository can
+express one VCS policy and have it honored identically whether it runs `vcsx` interactively or under
+Symphony's broker. A companion `vcsx` proposal merges that tool's direct-sequence, role-named hooks
+(`validate`, `scan-content`, `resolve-base`, `pr-body-transform`, `post-push`, `post-gate`) into one
+hook per lifecycle position and renames them to positional `before_*`/`after_*` names; this decision
+adds the matching set to Symphony. Introduces an OPTIONAL **VCS-operation** lifecycle hook axis —
+`before_commit`, `before_push`, `after_push`, `before_pull_request` — fired around the broker's
+commit/push (Sections 9.8–9.9) and forge `pr` (Section 9.10) verbs, sitting beside (not replacing) the
+existing **workspace** lifecycle hooks (`after_create`/`before_run`/`after_run`/`before_remove`,
+Section 9.4). Classifies them onto Symphony's existing two-trust-level model (Section 15.4):
+`before_commit` is in-sandbox/untrusted (warms a worktree artifact, no secrets); `before_push`/
+`after_push`/`before_pull_request` are host-side/operator-trusted, with `after_push` permitted a
+declared secret (Section 15.3) and outward writes under operator credentials. `before_*` may block with
+a stable reason code (Section 10.8); `after_*` is best-effort and never blocks. The bind-mounted
+working tree (Section 9.6) is the only channel between an in-sandbox `before_commit` and a host-side
+`after_push`, so a warmed artifact crosses the trust boundary as worktree state — the seam that lets
+the same policy split across the sandbox boundary or fold into one process. Symphony ships no
+cache/token/signing policy; whether such an artifact exists or is trusted lives entirely in the repo's
+wired hook implementations. Base resolution stays `vcs.base_branch` config, not a hook. Marked OPTIONAL
+so Core Conformance is unaffected. Proposed; reasoning recorded, no `SPEC.md` change.
