@@ -83,3 +83,24 @@ Problems to watch: the run-outcome trigger set is coupled to Sections 7.2/7.3 an
 those change; `tracker.transitions` replaces `tracker.milestones`, an anchor change other plans may
 reference; and Section 11.6 must stay silent on provider representation so it does not pre-empt the
 capability decision.
+
+## Re-evaluation — generalized by 0030 (2026-06-28)
+
+This decision **remains Accepted**; its transition-graph semantics are unchanged. Decision 0030 (the
+action-policy machine) *generalizes* it rather than replacing it: the `(from, on, to)` transition
+becomes one binding of the machine's `set_state` action, and the trigger kinds defined here
+(milestone signals, run outcomes) become two of the machine's trigger kinds. The two load-bearing
+rules of this decision are carried into 0030 intact — "a trigger with no matching transition performs
+no transition" becomes 0030's **unmatched-signal-is-a-no-op** rule, and the determinism requirement
+(at most one transition per `(from, on)`) becomes 0030's most-specific-wins matching. So 0017 is a
+specialization of 0030, not superseded by it; this note records the relationship so a future reader
+finds the generalization from here.
+
+## Re-evaluation — task-state triggers added by 0031 (2026-06-28)
+
+This decision **remains Accepted**. Decision 0031 (autonomous task management) adds a further trigger
+kind to the graph for the daemon case: **task-state events** (`tasks:all_closed`, `task:#needs_help`)
+join the milestone signals and run outcomes already defined here. Within 0030's action-policy machine
+these are simply more triggers; the milestone vocabulary this decision keyed on is enriched — an
+agent-asserted `done` becomes the computed `tasks:all_closed` — without changing the transition-graph
+semantics. See 0031.

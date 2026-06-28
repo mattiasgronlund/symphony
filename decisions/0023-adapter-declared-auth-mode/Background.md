@@ -66,3 +66,14 @@ Problems to watch: `api_key` is a token-flavoured name for what is really "the a
 later but is out of scope here. The host-side-store requirement is the load-bearing condition for a local
 adapter. The auth-mode concept could generalize to the VCS/forge adapters (a local/file git remote), but this
 decision scopes it to the tracker.
+
+## Re-evaluation — refined by 0029 (2026-06-28); stays Accepted
+
+This decision **remains Accepted** and its auth-mode mechanism is unchanged. Decision 0029 refines the
+secret model this decision builds on (Section 15.3): it splits the broker's secret handling into
+**outward credentials** (broker-mediated — the isolation invariant; the `secret`-mode credential this
+decision resolves through the secret provider is one) and **repo-internal integrity values**
+(repo-owned, supplied to a host-side hook's environment, not broker-mediated — e.g. the gate-cache
+HMAC). Nothing here becomes false: `secret`/`none` auth modes and the secret-provider consultation are
+exactly as decided; 0029 only adds a sibling category for non-credential integrity values. See 0029
+for the taxonomy.

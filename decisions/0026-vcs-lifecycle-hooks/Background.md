@@ -89,3 +89,25 @@ vocabulary, since the explicit goal is alignment, not independence.
 
 The corresponding `SPEC.md` change is **not** made yet: this records the decision and its reasoning
 (State: Proposed), pending acceptance and the parallel `vcsx` spec change.
+
+## Re-evaluation — Superseded by 0030 (2026-06-28)
+
+This decision never reached `Accepted`. While it was `Proposed`, decision 0030 (the action-policy
+machine) unified the three overlapping orchestration shapes — the tracker transition graph (0017),
+these positional lifecycle hooks, and ad-hoc VCS-outcome handling — into one `(trigger) → (action)`
+machine. That re-frames this decision rather than refuting it, so 0026 moves to the `Superseded`
+state introduced by decision 0033 (not `Rejected`):
+
+- **Superseded:** the *separate* `before_*`/`after_*` hook axis. Under 0030 a hook is not its own
+  mechanism; it is a policy edge. `after_push` is the `push:ok` edge, and the unknown-outcome and
+  no-silent-drop gaps are closed uniformly by 0030's `#class` fallback and fail-safe default rather
+  than per-hook.
+- **Carried forward (durable contribution):** the four lifecycle positions
+  (`before_commit`/`before_push`/`after_push`/`before_pull_request`) survive verbatim as **trigger
+  positions** in 0030, and this decision's **two-trust-level classification** of those positions
+  (in-sandbox/untrusted vs host-side/operator-trusted, with `after_push`'s declared-secret carve-out)
+  is preserved and is still referenced by decision 0029.
+
+So the reasoning here remains live as the trust-classification rationale for those positions; only its
+packaging as an independent hook axis is retired. No `SPEC.md` change was ever made under this
+decision, so there is nothing to unwind.

@@ -12,7 +12,9 @@ focused prose description. The folder holds the supporting detail:
 - `Sessions.md` — the Claude session name(s) and id(s) that worked on the decision.
 
 **States:** `Proposed` (under consideration) · `Accepted` (decided; to be / being applied) ·
-`Rejected` (decided against; kept for the record).
+`Rejected` (decided against; kept for the record) · `Superseded` (replaced by a later decision; kept
+for the record). A `Superseded` chapter names the decision that replaced it; unlike `Rejected`, a
+superseded decision may have been sound and parts of it may survive in its successor (decision 0033).
 
 New decisions get the next zero-padded number and a folder `decisions/NNNN-short-slug/`. Copy
 `decisions/_template/` to start. See `CLAUDE.md` for the working conventions.
@@ -68,7 +70,7 @@ an allowlist. This drops the SSH Worker Extension (Appendix A) for now.
 
 ## 0005 — Config and trust split
 
-**State:** Accepted
+**State:** Superseded (by 0029)
 **Folder:** [decisions/0005-config-trust-split/](decisions/0005-config-trust-split/)
 
 Configuration splits on the sandbox boundary: `WORKFLOW.md` (repo-owned, untrusted) holds only settings
@@ -76,7 +78,10 @@ used *inside* the sandbox — the prompt and in-sandbox build/test hooks — whi
 policy config holds everything Symphony uses outside the sandbox (credentials, scope rules, sandbox
 profile, repo map, the workflow state-machine, agent selection, privileged setup hooks). Both surfaces
 hot-reload with last-known-good-on-invalid. This retires the "hooks are fully trusted configuration"
-assumption.
+assumption. **Superseded by 0029** (`Superseded` state per 0033): 0029 reframes the config/trust axis
+from operator-vs-sandbox to base-sourced-vs-worktree and relocates the WoW (state-machine, host-side
+hooks) into repo-owned base-sourced `repo.policy.toml`. Carried forward into 0029: the
+`WORKFLOW.md`/in-sandbox model, credential isolation, and hot-reload last-known-good.
 
 ## 0006 — Agent adapters (Codex, Claude Code)
 
@@ -365,7 +370,7 @@ decision. Proposed; finding recorded, no `SPEC.md` change.
 
 ## 0026 — VCS-operation lifecycle hooks aligned with `vcsx`
 
-**State:** Proposed
+**State:** Superseded (by 0030)
 **Folder:** [decisions/0026-vcs-lifecycle-hooks/](decisions/0026-vcs-lifecycle-hooks/)
 
 Aligns Symphony's hook vocabulary with the external `vcsx` VCS-workflow engine so one repository can
@@ -387,4 +392,131 @@ working tree (Section 9.6) is the only channel between an in-sandbox `before_com
 the same policy split across the sandbox boundary or fold into one process. Symphony ships no
 cache/token/signing policy; whether such an artifact exists or is trusted lives entirely in the repo's
 wired hook implementations. Base resolution stays `vcs.base_branch` config, not a hook. Marked OPTIONAL
-so Core Conformance is unaffected. Proposed; reasoning recorded, no `SPEC.md` change.
+so Core Conformance is unaffected. **Superseded by 0030** (`Superseded` state per 0033): the separate
+`before_*`/`after_*` hook *axis* is folded into the one `(trigger) → (action)` machine, but the four
+lifecycle positions survive as triggers (`after_push` ≡ `push:ok`) and the two-trust-level
+classification is preserved and still referenced by 0029, so 0026's durable contribution lives on.
+Reasoning recorded; no `SPEC.md` change was ever made.
+
+## 0027 — Minimal enabler and the three-layer architecture
+
+**State:** Accepted
+**Folder:** [decisions/0027-minimal-enabler-three-layers/](decisions/0027-minimal-enabler-three-layers/)
+
+The headline re-framing for consuming an external VCS-workflow engine (`vcsx`): Symphony *enables*
+Ways of Working and *enforces* none beyond the **secret-isolation invariant** (the agent never needs
+VCS/Forge credentials, the keystone of 0003). The monolithic service is factored into three layers —
+a **broker core** (≈ 0003/0004: secret isolation, scope, the per-run socket, credentialed-op
+mediation; the only Core-Conformance guarantee here and independently conformant), an optional
+**`vcsx` engine**, and an **autonomous daemon** layered on the broker core. Three deployment
+topologies fall out with sharp conformance boundaries: daemon, interactive-agent (broker core +
+`ship`/`land`), and engine-direct. Parent of decisions 0028–0032; does not change 0003/0004.
+Accepted; reasoning recorded. The `SPEC.md` framing edits are deferred to be applied in step with
+decisions 0028–0032, whose still-`Proposed` framing 0027's spec text forward-references.
+
+## 0028 — `vcsx` as an independent deliverable; one shared policy executor
+
+**State:** Accepted
+**Folder:** [decisions/0028-vcsx-deliverable-shared-executor/](decisions/0028-vcsx-deliverable-shared-executor/)
+
+`vcsx` is an independent, reusable engine consumed as a pinned mise tool (like `archdoc`) and usable
+without Symphony; `SPEC.md` defers to its **contract** (not its implementation), mirroring the
+existing Codex-app-server-protocol deferral so the spec stays language-agnostic. The policy-graph
+**executor lives in `vcsx`**: interactive `ship`/`land` and the daemon are **two front-ends over one
+executor reading one `repo.policy.toml`**, differing only in initiator and `escalate` binding — which
+makes the three topologies provably consistent rather than coincidentally similar. `vcsx` is
+therefore not tiny (it owns the executor); Symphony's *marginal* code over it stays tiny. Refines
+0007 and 0022 (their VCS/forge adapter roles fold into the engine contract and its plugin layer).
+Depends on 0027 (Accepted). Accepted; reasoning recorded. The `SPEC.md` edits are deferred and
+applied in step with the companion `vcsx` spec (so contract names stay identical across both
+documents) and decisions 0029–0030, which 0028's spec text forward-references.
+
+## 0029 — Repo-owned WoW config, trust sourcing, and the secret/integrity taxonomy
+
+**State:** Accepted
+**Folder:** [decisions/0029-repo-owned-wow-config-trust-sourcing/](decisions/0029-repo-owned-wow-config-trust-sourcing/)
+
+The repository owns its Way of Working in `repo.policy.toml` (engine selection, hooks, the operation
+flow, transitions; `vcsx.toml` merged in), so configuring Symphony needs no WoW knowledge. The
+agent-tamper problem is solved by **sourcing by trust**, not an immutability flag: Symphony reads
+**host-side-executed** WoW from the protected **base revision** (the agent cannot push to base;
+review-gated) and **in-sandbox** parts (the `before:commit` gate/scan) from the **worktree** (harmless
+and correctly runs a PR's own gate change) — so WoW-config trust equals base-branch trust. The
+operator config shrinks to outward credentials, sandbox profile, and a repo→policy pointer; the scope
+invariant stays a broker-core built-in. The secret model splits into **outward credentials**
+(broker-mediated) vs **repo-internal integrity values** (the gate-cache HMAC — repo-owned, not a
+broker secret). Supersedes 0005 (now `Superseded by 0029` per 0033 — it reframes 0005's config/trust
+axis; 0005's `WORKFLOW.md`/in-sandbox model and credential isolation are carried forward); refines
+0023/§15.3 and 0026. Depends on 0027 (Accepted). Accepted; reasoning recorded. The `SPEC.md` edits are deferred and applied with the companion `vcsx` spec (0028) and
+decisions 0030–0031, which `repo.policy.toml` houses.
+
+## 0030 — The action-policy machine
+
+**State:** Accepted
+**Folder:** [decisions/0030-action-policy-machine/](decisions/0030-action-policy-machine/)
+
+One `(trigger) → (action)` machine subsumes three previously separate shapes: the tracker transition
+graph (0017), the positional lifecycle hooks (0026), and ad-hoc VCS-outcome handling. Triggers are
+lifecycle positions, typed operation results, and task-state events; actions are `run_op`, `run`
+(hook), `escalate` (abstract, bound per front-end), `create_task`, `set_state`, `notify`, `park`,
+`fail`. Hooks become policy edges (`after_push` ≡ `push:ok`). Matching is most-specific-wins with a
+**`#class` fallback** over the proto outcome classes (`done`/`needs_caller`/`error`), so configs need
+not enumerate every code and the vocabulary can grow without breaking them; an unmatched **operation
+outcome** is **fail-safe** (never a silent drop), while an unmatched signal stays a benign no-op.
+Abstract `escalate` lets the same WoW run under both front-ends. The proto **class** of each reason
+becomes part of the public contract. Generalizes 0017 (still Accepted; `tracker.transitions` becomes
+a `set_state` binding); supersedes the positional-hook axis of 0026, which moves to `Superseded`
+(0033) with its positions kept as triggers and its trust classification preserved. Depends on 0027,
+0028 (both Accepted). Accepted; reasoning recorded. The `SPEC.md` edits are deferred and applied in
+step with the companion `vcsx` spec (0028) and decisions 0031–0032, which share its triggers/actions.
+
+## 0031 — Autonomous task management and computed completion
+
+**State:** Accepted
+**Folder:** [decisions/0031-autonomous-task-management/](decisions/0031-autonomous-task-management/)
+
+A daemon-side task model makes completion **computed** rather than asserted: tasks carry an id,
+status, and an `agent`/`human` assignee; they seed from the ticket (capability-gated, 0018) or from an
+opening planning turn; the agent manages them through broker-CLI verbs (`add`/`split`/`close`/
+`need-help`/`update`, extending 0003/0004). `tasks:all_closed` runs `ship`; a conflict binds
+`escalate` (0030) to an agent task; `need-help` is an agent-created human-assigned task that parks for
+feedback. Daemon-only — interactive sessions use `ship`/`land`. Refines 0008 and 0017 (milestone
+signals → computed task state). The durability fork is **resolved**: the agent's `add`/`split` cause
+the broker to **materialize** the task list into the tracker as structured artifacts (write-through,
+default on where 0018 declares a structured-task-write capability; disablable in `repo.policy.toml`),
+making the list `Reconstructable` (0010) with faithful restart; the fallback where the tracker can't
+hold structure (or write-through is off) is `Durable`, never `Ephemeral` by default. Depends on 0027,
+0030 (both Accepted). Accepted; `SPEC.md` edits deferred (batched with 0028's `vcsx` spec and 0029).
+
+## 0032 — Message formulation: commit, pull request, squash
+
+**State:** Accepted
+**Folder:** [decisions/0032-message-formulation/](decisions/0032-message-formulation/)
+
+Message **content** is the agent's; message **formulation policy** is repo-owned WoW; Symphony bakes
+in no format. The three surfaces have distinct origins: the **commit** message is *authored* by the
+agent in-sandbox (validated by `scan-content`; author/committer identity is repo config per 0007); the
+**pull-request** message is *composed* from agent-supplied prose and/or durable inputs (ticket, the
+closed task list from 0031, commit subjects), scanned title-strict / body-Linear-relaxed; the
+**squash** message is *mechanically transformed* from the PR via a repo-owned `pr_to_squash` at the
+`before:merge` position (0030) — title verbatim, body strip-linear — re-imposing on history the
+strictness relaxed for the live PR surface, so `land` stays thin. Adds a credential-free broker-CLI
+content seam for agent-supplied PR text. The PR-body-source fork is **resolved**: the default body is
+auto-composed from ticket + closed task list (0031) + commit subjects, with agent prose overriding when
+supplied. Relates to 0003/0007/0022/0030/0031. Depends on 0027, 0030 (both Accepted). Accepted;
+`SPEC.md` edits deferred (batched with 0028's `vcsx` spec and 0029–0031).
+
+## 0033 — A `Superseded` state in the decision-log lifecycle
+
+**State:** Accepted
+**Folder:** [decisions/0033-superseded-decision-state/](decisions/0033-superseded-decision-state/)
+
+Adds a fourth state to the decision-log lifecycle (0001): `Superseded` — *replaced by a later
+decision; kept for the record*. Decision 0030 exposed the gap: it supersedes the positional-hook axis
+of 0026 while keeping 0026's durable parts (the lifecycle positions, now triggers; the trust
+classification, still used by 0029), so 0026 is neither `Rejected` (its mechanism was not decided
+against — parts survive) nor still `Proposed` (its framing is no longer under consideration). A
+`Superseded` chapter names its successor; unlike `Rejected`, a superseded decision may have been sound
+and may live on in that successor. Refines 0001; first applied to 0026 (superseded by 0030). Applied
+immediately — edits only the `DECISIONS.md` legend and its `CLAUDE.md` mirror; no `SPEC.md`
+dependency. Accepted and applied.

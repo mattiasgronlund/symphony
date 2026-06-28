@@ -92,5 +92,7 @@ becomes config).
 
 ## Status
 
-Not started (decision `Proposed`; no `SPEC.md` change yet). Apply after acceptance and in step with the
-companion `vcsx` spec change so the position names stay identical across both documents.
+Superseded by decision 0030 (see this decision's `Background.md` re-evaluation). This plan is **not**
+executed as written: under 0030 the lifecycle positions are realized as trigger names within the one
+action-policy machine, not as a separate hook axis, so the spec edits land through decision 0030's
+plan. No `SPEC.md` change was ever made under this decision.

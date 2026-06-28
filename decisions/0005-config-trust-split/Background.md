@@ -47,3 +47,29 @@ changes without a restart gate. The mitigation (invalid reload keeps last-known-
 future operations) is inherited from Section 6.2 and must be extended to policy config carefully. A
 second consequence to watch: moving the workflow state-machine into policy (0008) takes process
 control away from repo authors — intended, but a shift teams will feel.
+
+## Re-evaluation — Superseded by 0029 (2026-06-28)
+
+This decision is **Superseded by 0029** (the `Superseded` state per 0033). 0029 replaces this
+decision's central organizing principle — its config/trust axis — so 0029, not this decision, is the
+current model. Per the `Superseded` semantics, parts of this decision survive inside its successor:
+the agent (which can write the worktree and commit) still must not be able to edit trust-sensitive
+configuration; `WORKFLOW.md` stays repo-owned, untrusted, and in-sandbox-only (prompt + in-sandbox
+build/test hooks); both surfaces still hot-reload last-known-good; and credential isolation is
+untouched. Those rules are now expressed within 0029's framing rather than this decision's.
+
+Decision 0029 changes **one facet**: where the Way of Working lives. 0005 placed the workflow
+state-machine and host-side hooks in *operator-owned* policy config, reasoning that operator-ownership
+was the only way to keep them out of the agent's reach. 0029 shows a second way — **source by trust**:
+host-side-executed WoW is read from the protected **base revision** (which the agent cannot push to,
+per the scope invariant, and which is review-gated), and in-sandbox parts from the **worktree**. So
+the WoW moves into a *repo-owned* `repo.policy.toml` without becoming agent-tamperable, and the
+trust axis this decision framed as "operator-located vs. sandbox-located" is reframed as
+"**base-sourced vs. worktree-sourced**."
+
+What 0029 overturns: the claim that the workflow state-machine, transitions, and host-side hooks must
+live in *operator*-owned config — under 0029 they are repo-owned and base-sourced, and the operator
+config shrinks to outward credentials, the sandbox profile, and a repo→policy pointer. What survives
+(carried into 0029): the rules listed above. Because 0029 reframes this decision's load-bearing trust
+axis rather than merely refining a detail, this decision is marked `Superseded`, not left Accepted;
+see decision 0029 for the current model.
