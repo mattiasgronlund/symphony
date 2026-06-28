@@ -520,3 +520,24 @@ against — parts survive) nor still `Proposed` (its framing is no longer under 
 and may live on in that successor. Refines 0001; first applied to 0026 (superseded by 0030). Applied
 immediately — edits only the `DECISIONS.md` legend and its `CLAUDE.md` mirror; no `SPEC.md`
 dependency. Accepted and applied.
+
+## 0034 — Repository provisioning failure class and clone reference algorithm
+
+**State:** Accepted
+**Folder:** [decisions/0034-repository-provisioning-failure-class/](decisions/0034-repository-provisioning-failure-class/)
+
+Section 9.7 describes the *result* of repository provisioning ("one fetched object store per
+repository on the host") and its credential boundary, but the spec has no failure class, no recovery
+behavior, and no reference algorithm for the host-side clone/fetch that creates it — an asymmetry with
+the fully-specified per-issue worktree path (algorithm in 9.2, `Workspace Failures` in 14.1, recovery
+in 14.2). This decision closes that gap with **Option C**: a `Repository Provisioning Failures` class
+in Section 14.1 (parallel to `Workspace Failures`), a **repo-scoped** recovery entry in Section 14.2
+(skip the affected repository's dispatches and retry on a later tick, distinct from issue-scoped
+worker backoff; persistent auth/config failure park-vs-retry is `Implementation-defined`), and an
+`ensure_object_store(repo)` reference algorithm in Section 16 that runs before
+`provision_for_issue`. The decision fixes a layer-ownership error: the clone is **broker-core/daemon**
+work that uses the secret store (Section 15.3) and is **not** a `vcsx` responsibility — `vcsx` operates
+on an already-provisioned worktree (0007 "Symphony performs … clone/fetch …", 0027 broker-core holds
+credentials; 0028 defers only commit/push/pr/merge, not clone). No new config key (object-store path
+stays `Implementation-defined`). Builds on 0025's host-side-seam finding; relates to 0007, 0009, 0028.
+Depends on 0027 (Accepted). Accepted and applied to `SPEC.md`.

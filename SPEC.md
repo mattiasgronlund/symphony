@@ -1247,6 +1247,11 @@ Repository provisioning:
   number of repositories and concurrent issues grows.
 - Fetch and other network git operations run on the host with credentials the agent never sees.
   Local git in the worktree is available to the agent.
+- Provisioning the object store — the initial clone, and the fetches that refresh it — is
+  host-side Symphony work that uses the VCS credentials the agent never holds; it is never
+  performed by the agent. The reference algorithm is `ensure_object_store` (Section 16); clone or
+  fetch failures are classified as `Repository Provisioning Failures` (Section 14.1) and recovered
+  per Section 14.2.
 
 Configuration (policy config, `vcs` object):
 
@@ -2295,13 +2300,21 @@ API design notes:
    - Unsupported tracker kind or missing tracker credentials/project slug
    - Missing coding-agent executable
 
-2. `Workspace Failures`
+2. `Repository Provisioning Failures`
+   - Object-store clone failure (initial provisioning of a repository's shared store)
+   - Object-store fetch failure (refreshing an existing store)
+   - Repository authentication/credential failure (host-side; resolved through the secret provider,
+     Section 15.3)
+   - Remote unreachable or network transport error
+   - Invalid object-store path configuration
+
+3. `Workspace Failures`
    - Workspace directory creation failure
    - Workspace population/synchronization failure (implementation-defined; can come from hooks)
    - Invalid workspace path configuration
    - Hook timeout/failure
 
-3. `Agent Session Failures`
+4. `Agent Session Failures`
    - Startup handshake failure
    - Turn failed/cancelled
    - Turn timeout
@@ -2309,13 +2322,13 @@ API design notes:
    - Subprocess exit
    - Stalled session (no activity)
 
-4. `Tracker Failures`
+5. `Tracker Failures`
    - API transport errors
    - Non-200 status
    - GraphQL errors
    - malformed payloads
 
-5. `Observability Failures`
+6. `Observability Failures`
    - Snapshot timeout
    - Dashboard render errors
    - Log sink configuration failure
@@ -2333,6 +2346,13 @@ parked rather than retried (Section 14.2).
 
 - Worker failures:
   - Convert to retries with exponential backoff.
+
+- Repository provisioning failures:
+  - Skip new dispatches for the affected repository; the object store is shared across all of its
+    issues, so the failure is repo-scoped, not a single worker's. Other repositories are unaffected.
+  - Keep the service alive and retry on a later tick. Do not convert to a per-worker backoff retry.
+  - Persistent authentication/credential or invalid-store-path failures MAY be parked rather than
+    retried indefinitely; the choice is `Implementation-defined` and MUST be documented.
 
 - Token budget exhaustion (OPTIONAL extension, Section 8.8):
   - Park the issue (`token_budget_exceeded`); do not convert to a backoff retry.
@@ -2612,6 +2632,15 @@ function reconcile_running_issues(state):
 
 ```text
 function dispatch_issue(issue, state, attempt):
+  # Ensure the repository's shared object store exists before a per-issue worktree is cut from it
+  # (Section 9.7). Host-side, credentialed clone/fetch; Symphony's own work, never the agent's.
+  store = ensure_object_store(repo_of(issue))
+  if store failed:
+    # Repository Provisioning Failures (Section 14.1) are repo-scoped, not per-worker: skip this
+    # dispatch and leave the issue unclaimed so a later tick retries it (Section 14.2).
+    log_provisioning_error(repo_of(issue), store)
+    return state
+
   worker = spawn_worker(
     fn -> run_agent_attempt(issue, attempt, parent_orchestrator_pid) end
   )
@@ -2647,7 +2676,28 @@ function dispatch_issue(issue, state, attempt):
   return state
 ```
 
-### 16.5 Worker Attempt (Workspace + Prompt + Agent)
+### 16.5 Ensure Repository Object Store
+
+```text
+function ensure_object_store(repo):
+  # Host-side, credentialed; the agent never sees credentials (Section 15.3). This is Symphony's own
+  # provisioning work and is never delegated to the agent. See Section 9.7.
+  store_path = object_store_path(repo)          # host-side, outside the workspace root (Section 9.6)
+  if not exists(store_path):
+    result = vcs.clone_object_store(repo, store_path)   # initial clone
+  else:
+    result = vcs.fetch_object_store(repo, store_path)   # refresh existing store
+  if result failed:
+    return provisioning_error(result)           # Repository Provisioning Failures (Section 14.1)
+  return store_path
+```
+
+The store path is host-side and `Implementation-defined` (for example a sibling of the workspace
+root); implementations MUST document where it lives. `ensure_object_store` runs per repository ahead
+of `provision_for_issue` (Section 16.4), so a clone or fetch failure is recovered repo-scoped
+(Section 14.2) and no worker is spawned.
+
+### 16.6 Worker Attempt (Workspace + Prompt + Agent)
 
 ```text
 function run_agent_attempt(issue, attempt, orchestrator_channel):
@@ -2713,7 +2763,7 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
   exit_normal()
 ```
 
-### 16.6 Worker Exit and Retry Handling
+### 16.7 Worker Exit and Retry Handling
 
 ```text
 on_worker_exit(issue_id, reason, state):
@@ -2824,6 +2874,8 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
   is unreachable
 - Secret-bearing environment variables are scrubbed before the sandbox starts
 - VCS-managed workspaces are provisioned as worktrees of a shared per-repo object store
+- The shared per-repo object store is provisioned host-side (initial clone, then refresh fetches)
+  with credentials the agent never sees, before any per-issue worktree is cut from it
 - The agent does local git including commit; Symphony performs fetch/branch/back-merge/push (VCS
   adapter); pull-request and review writes go through the Forge adapter
 - The work branch is Symphony-derived (`symphony/<identifier>`) and the push refspec is pinned to it
@@ -2883,6 +2935,11 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - Retry queue entries include attempt, due time, identifier, and error
 - Stall detection kills stalled sessions and schedules retry
 - Slot exhaustion requeues retries with explicit error reason
+- A repository object-store clone/fetch failure (`Repository Provisioning Failures`) skips that
+  repository's dispatches for the tick and is retried on a later tick, leaving other repositories
+  and running workers untouched; it is not converted to a per-worker backoff retry
+- A persistent repository authentication/credential or invalid-store-path failure follows the
+  documented `Implementation-defined` park-vs-retry policy
 - If a snapshot API is implemented, it returns running rows, retry rows, token totals, and rate
   limits
 - If a snapshot API is implemented, timeout/unavailable cases are surfaced
@@ -3027,6 +3084,10 @@ Use the same validation profiles as Section 17:
   silent partial result is non-conformant
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
   polling; workspace/concurrency keyed by (repository, issue)
+- Repository object-store provisioning (host-side credentialed clone, then refresh fetches) runs
+  before per-issue worktree provisioning; clone/fetch failures are classified as `Repository
+  Provisioning Failures` and recovered repo-scoped (skip the repository's dispatches, retry on a
+  later tick) rather than as a per-worker failure
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
   structured results (`scope_denied` fails the run)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
