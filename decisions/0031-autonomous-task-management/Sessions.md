@@ -1,4 +1,4 @@
-# Sessions — 0026 VCS-operation lifecycle hooks aligned with `vcsx`
+# Sessions — 0031 Autonomous task management and computed completion
 
 <!--
 Every Claude Code session that worked on this decision. The session id is the transcript filename
@@ -7,5 +7,5 @@ Every Claude Code session that worked on this decision. The session id is the tr
 
 | Date | Session name | Session id |
 |------|--------------|------------|
-| 2026-06-26 | vcsx-hook-alignment | d2c32d47-275f-4c51-a2f9-65db4cd0f038 |
+| 2026-06-28 | vcsx-symphony-architecture | a7ed167a-6769-4c37-bff8-85d85e7771bf |
 | 2026-06-28 | accept-0027-three-layers | 9bb6b7f3-d2c4-4634-8d60-0233b89e028b |

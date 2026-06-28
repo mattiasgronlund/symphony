@@ -147,3 +147,17 @@ The milestone/outcome point was acted on immediately: decision 0017 generalizes 
 map into an explicit `{from, on, to}` transition graph (`tracker.transitions`) keyed on both agent milestone
 signals and orchestrator-observed run outcomes. The remaining refinements (write-capability declaration,
 error-code neutralization, Issue escape hatch) are still open.
+
+## Re-evaluation — completion model refined by 0031 (2026-06-28); stays Accepted
+
+This decision **remains Accepted**. Decision 0031 (daemon-side autonomous task management) refines the
+**completion** half of this decision for the autonomous case: the single agent-asserted `done` milestone
+becomes **computed** `tasks:all_closed`, and `blocked` becomes a `need-help` task. The agent still
+expresses intent and operators (now the repo, decision 0029) own the resulting transitions — this
+decision's load-bearing principle is intact; 0031 only makes completion observable rather than an
+unverifiable flag. 0031 also uses this decision's tracker writes in a new way: a **write-through**
+materialization of the task list into the issue as structured artifacts (sub-issues / checklist items),
+broker-mediated so the agent stays credential-free (decision 0003) — an additional *kind* of
+broker-mediated tracker write, consistent with the boundary set here, gated by a new structured-task-write
+capability (decision 0018). Interactive sessions keep the plain `ship`/`land` path with no task model.
+See 0031.

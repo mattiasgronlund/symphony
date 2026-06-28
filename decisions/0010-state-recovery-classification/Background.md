@@ -97,3 +97,14 @@ accounting becomes D only under an enforcement extension.
 We would reconsider if no enforcement/quota extension is ever adopted (classes C and D go unused and
 the service can remain two-class), or if a durable store ever becomes mandatory rather than the narrow
 optional exception scoped here.
+
+## New consumer — daemon task list (decision 0031, 2026-06-28)
+
+This decision **remains Accepted** and its taxonomy is unchanged. Decision 0031 classifies a new field,
+the daemon-side task list, using this taxonomy: **`Reconstructable`** where the list is materialized
+into the tracker (the tracker is the external source of truth — the preferred default), and the narrow
+OPTIONAL **`Durable`** class (idempotent re-seed) where the tracker cannot hold structured tasks or the
+write-through is disabled. By design it is **not** `Ephemeral`, so a restart resumes faithfully. This
+exercises the `D` exception scoped here for a second area (beyond the spend-control accounting of
+0011–0013) but does not widen it into a default: `R` via the tracker is preferred, `D` is the fallback.
+See 0031.
