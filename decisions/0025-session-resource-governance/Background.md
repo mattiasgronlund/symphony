@@ -92,3 +92,17 @@ material share once the agent subtree is governed: concurrent `after_create` / `
 build/install hooks are the path to watch, while fetch / merge / worktree appear bounded. Until that
 is measured, no option is preferable on the evidence here. The non-secret env-passthrough half of the
 brief (Section 15.3) is tracked separately and does not gate this decision.
+
+## Update — 2026-06-28: repository provisioning's failure-model half addressed by 0034
+
+This decision's finding 2 listed "repository provisioning and `git fetch` (Section 9.7)" among the
+host-side ops the spec models as behaviors with no governance seam. A separate gap in the *same* op —
+the spec described the provisioning *result* but gave it no failure class, recovery, or reference
+algorithm — was closed by decision 0034 (Accepted): a `Repository Provisioning Failures` class
+(Section 14.1), repo-scoped recovery (Section 14.2), and an `ensure_object_store` reference algorithm
+(Section 16.5). That renumbered the worktree-provisioning algorithm cited above from Section 16.5 to
+Section 16.6.
+
+This does **not** select an option here. 0034 is about *error handling* for repository provisioning;
+this decision's open question is *per-session CPU governance* of host-side ops, which 0034 leaves
+untouched. The two are neighbours on the same under-specified surface, not the same concern.

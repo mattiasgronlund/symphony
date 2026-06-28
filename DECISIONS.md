@@ -356,7 +356,7 @@ quotas) under concurrent sessions whose build/test gate runs are CPU-bound. Find
 work runs inside the sandbox, so the existing `Implementation-defined` sandbox-wrap (Section 9.6) is already
 the per-session attach point for a cgroup / CPU weight — no new mechanism is needed agent-side. Finding 2: the
 spec models host-side work — repository provisioning and git verbs (Sections 9.7–9.9), worktree provisioning
-(Section 16.5), and policy-config hooks (Sections 9.4/15.4) — as behaviors, not launches, so it has no
+(Section 16.6), and policy-config hooks (Sections 9.4/15.4) — as behaviors, not launches, so it has no
 wrapper/governance seam; those subprocesses are orchestrator children and inherit the orchestrator's cgroup,
 not the session's, leaving the brief's "whole-subtree" goal unreachable for host-side ops (dominant host-side
 CPU cost = concurrent `after_create`/`before_run` build hooks, which is real but secondary to the in-sandbox
@@ -366,7 +366,11 @@ OPTIONAL host-side execution-wrapper ("session resource domain") that brings hos
 the session's cgroup. No option is selected; the distinguishing evidence is whether host-side per-session CPU
 is material once the agent subtree is governed. The brief's non-secret env-passthrough half (`ENTRY_CHECK_*`,
 touching the Section 15.3 secret-scrubbing invariant) is out of scope and tracked as a separate future
-decision. Proposed; finding recorded, no `SPEC.md` change.
+decision. Decision 0034 (Accepted) later acted on one host-side op named in finding 2: it specified the
+failure model (`Repository Provisioning Failures`, Section 14.1) and a reference algorithm
+(`ensure_object_store`, Section 16.5) for repository provisioning — the error-handling half, distinct from
+and not closing the per-session CPU-governance question this decision leaves open. Proposed; finding
+recorded, no `SPEC.md` change.
 
 ## 0026 — VCS-operation lifecycle hooks aligned with `vcsx`
 
@@ -539,5 +543,7 @@ worker backoff; persistent auth/config failure park-vs-retry is `Implementation-
 work that uses the secret store (Section 15.3) and is **not** a `vcsx` responsibility — `vcsx` operates
 on an already-provisioned worktree (0007 "Symphony performs … clone/fetch …", 0027 broker-core holds
 credentials; 0028 defers only commit/push/pr/merge, not clone). No new config key (object-store path
-stays `Implementation-defined`). Builds on 0025's host-side-seam finding; relates to 0007, 0009, 0028.
-Depends on 0027 (Accepted). Accepted and applied to `SPEC.md`.
+stays `Implementation-defined`). Builds on 0025 (Proposed), which named repository provisioning as an
+under-specified host-side op: this decision closes its failure-model half and leaves 0025's per-session
+CPU-governance question open. Relates to 0007, 0009, 0028. Depends on 0027 (Accepted). Accepted and
+applied to `SPEC.md`.
