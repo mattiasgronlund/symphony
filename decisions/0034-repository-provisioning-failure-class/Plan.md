@@ -116,7 +116,11 @@ New anchors introduced (no renames/removals):
 - Failure class `Repository Provisioning Failures` (Section 14.1).
 - Reference algorithm function `ensure_object_store` (Section 16).
 
-None removed or renamed.
+No code-token or section-title anchor was renamed or removed. Section *numbers* shifted, though:
+inserting `ensure_object_store` as Section 16.5 renumbered "Worker Attempt" 16.5 → 16.6 and "Worker
+Exit and Retry Handling" 16.6 → 16.7 (titles unchanged). The one stale section-number hint this
+created — 0025's `DECISIONS.md` chapter cited worktree provisioning as "Section 16.5" — was corrected
+to "Section 16.6" when 0025 and 0034 were cross-linked.
 
 ## Status
 
