@@ -62,3 +62,9 @@ Accepted; `SPEC.md` application not started. The framing edits are deferred and 
 decisions 0028–0032: 0027's planned spec text forward-references those decisions (engine ≈ 0028,
 task management ≈ 0031, the configurable seams ≈ 0029–0032), so applying 0027 alone would bake
 forward-references to still-`Proposed` framing into `SPEC.md`. Apply in step with those decisions.
+
+Update (2026-07-05): Applied to `SPEC.md` in step with decisions 0028–0032 against the
+`VCSX-CONTRACT.md` stub (0039). Sections 1–2 state the enabler-not-enforcer principle and the
+secret-isolation invariant; new Section 3.4 names the three layers (Broker Core / VCS Engine /
+Autonomous Daemon) and the three deployment topologies; Section 18.1 carries the layering as a Core
+checklist item.

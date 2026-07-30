@@ -106,3 +106,32 @@ Section 16.6.
 This does **not** select an option here. 0034 is about *error handling* for repository provisioning;
 this decision's open question is *per-session CPU governance* of host-side ops, which 0034 leaves
 untouched. The two are neighbours on the same under-specified surface, not the same concern.
+
+## Update — 2026-07-03: Option C's seam is realized (as placement) by decision 0035
+
+This decision's finding 2 named the gap precisely: "the spec has no launch-governance seam for
+host-side work" — Symphony "models host-side ops as behaviors, not launches", so there is no
+wrapper/command indirection the orchestrator can interpose. Option C proposed closing it with a
+host-side execution-wrapper seam, a "session resource domain" that a session's host-side work and its
+sandbox both join.
+
+Decision 0035 (Accepted) closes that seam gap — along a **different axis than governance**. It gives
+the Execution Layer (Section 3.2) a component identity (the **execution process**) and makes the
+orchestrator↔executor seam always present, with local execution as the in-process transport. That is
+exactly the launch indirection finding 2 said was missing: dispatch no longer calls the worker as a
+behavior, it hands a run to an executor across a seam. A "session resource domain" that can be
+governed is, structurally, one step from a session resource domain that can be *placed* — on another
+machine (0036/0037). 0035 takes the placement step; the executor is the session resource domain
+Option C described, now a real component.
+
+This still does **not** select a governance option here. 0035–0038 are about *where and how* a
+session's execution detaches from the orchestrator (placement, the wire contract, acquisition, write
+authority); this decision's open question remains *per-session CPU fairness* of host-side work. But
+the relationship is now concrete rather than anticipated: once execution is a component behind a seam
+(0035), per-session resource governance has a natural home — the executor's own launch context, which
+for a remote run is the node and for a local run is the in-process executor. If and when the
+governance question is chosen, Option C's mechanism should be expressed against the 0035 executor
+rather than invented separately: the seam Option C wanted already exists as the executor boundary.
+The distinguishing evidence for choosing is unchanged (whether host-side per-session CPU is material
+once the agent subtree is governed); what changed is that the seam it would attach to is no longer
+hypothetical.

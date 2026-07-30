@@ -369,7 +369,11 @@ touching the Section 15.3 secret-scrubbing invariant) is out of scope and tracke
 decision. Decision 0034 (Accepted) later acted on one host-side op named in finding 2: it specified the
 failure model (`Repository Provisioning Failures`, Section 14.1) and a reference algorithm
 (`ensure_object_store`, Section 16.5) for repository provisioning — the error-handling half, distinct from
-and not closing the per-session CPU-governance question this decision leaves open. Proposed; finding
+and not closing the per-session CPU-governance question this decision leaves open. Decision 0035
+(Accepted) later realized Option C's "session resource domain" as a placed component — the execution
+process behind an always-present orchestrator↔executor seam — closing the host-side *launch-seam* gap
+along the placement axis while leaving this decision's per-session CPU-*governance* question open (its
+mechanism, when chosen, should attach to the 0035 executor rather than be invented separately). Proposed; finding
 recorded, no `SPEC.md` change.
 
 ## 0026 — VCS-operation lifecycle hooks aligned with `vcsx`
@@ -415,8 +419,9 @@ mediation; the only Core-Conformance guarantee here and independently conformant
 **`vcsx` engine**, and an **autonomous daemon** layered on the broker core. Three deployment
 topologies fall out with sharp conformance boundaries: daemon, interactive-agent (broker core +
 `ship`/`land`), and engine-direct. Parent of decisions 0028–0032; does not change 0003/0004.
-Accepted; reasoning recorded. The `SPEC.md` framing edits are deferred to be applied in step with
-decisions 0028–0032, whose still-`Proposed` framing 0027's spec text forward-references.
+Accepted and applied to `SPEC.md` (Sections 1, 2, 3.4, 18) in step with decisions 0028–0032 against
+the `VCSX-CONTRACT.md` stub (0039): the enabler-not-enforcer principle, the three layers, and the
+three deployment topologies.
 
 ## 0028 — `vcsx` as an independent deliverable; one shared policy executor
 
@@ -431,9 +436,10 @@ executor reading one `repo.policy.toml`**, differing only in initiator and `esca
 makes the three topologies provably consistent rather than coincidentally similar. `vcsx` is
 therefore not tiny (it owns the executor); Symphony's *marginal* code over it stays tiny. Refines
 0007 and 0022 (their VCS/forge adapter roles fold into the engine contract and its plugin layer).
-Depends on 0027 (Accepted). Accepted; reasoning recorded. The `SPEC.md` edits are deferred and
-applied in step with the companion `vcsx` spec (so contract names stay identical across both
-documents) and decisions 0029–0030, which 0028's spec text forward-references.
+Depends on 0027 (Accepted). Accepted and applied to `SPEC.md` (Sections 3.4, 5, 9.7–9.10, 18) against
+the `VCSX-CONTRACT.md` stub (0039), so contract names stay identical across both documents: the engine
+deferral boundary, the one-executor-two-front-ends invariant, and the recast of the broker verbs
+through the engine contract.
 
 ## 0029 — Repo-owned WoW config, trust sourcing, and the secret/integrity taxonomy
 
@@ -451,8 +457,10 @@ invariant stays a broker-core built-in. The secret model splits into **outward c
 (broker-mediated) vs **repo-internal integrity values** (the gate-cache HMAC — repo-owned, not a
 broker secret). Supersedes 0005 (now `Superseded by 0029` per 0033 — it reframes 0005's config/trust
 axis; 0005's `WORKFLOW.md`/in-sandbox model and credential isolation are carried forward); refines
-0023/§15.3 and 0026. Depends on 0027 (Accepted). Accepted; reasoning recorded. The `SPEC.md` edits are deferred and applied with the companion `vcsx` spec (0028) and
-decisions 0030–0031, which `repo.policy.toml` houses.
+0023/§15.3 and 0026. Depends on 0027 (Accepted). Accepted and applied to `SPEC.md` (Sections 5, 5.6,
+6.1–6.4, 9.6–9.8, 11.6, 15.3, 15.4) with decisions 0028–0031 against the `VCSX-CONTRACT.md` stub
+(0039): `repo.policy.toml` as the three-artifact WoW surface, base-vs-worktree trust sourcing, and the
+outward-credential vs integrity-value taxonomy.
 
 ## 0030 — The action-policy machine
 
@@ -471,8 +479,10 @@ Abstract `escalate` lets the same WoW run under both front-ends. The proto **cla
 becomes part of the public contract. Generalizes 0017 (still Accepted; `tracker.transitions` becomes
 a `set_state` binding); supersedes the positional-hook axis of 0026, which moves to `Superseded`
 (0033) with its positions kept as triggers and its trust classification preserved. Depends on 0027,
-0028 (both Accepted). Accepted; reasoning recorded. The `SPEC.md` edits are deferred and applied in
-step with the companion `vcsx` spec (0028) and decisions 0031–0032, which share its triggers/actions.
+0028 (both Accepted). Accepted and applied to `SPEC.md` (new Section 9.12 plus Sections 5.6, 11.6)
+against the `VCSX-CONTRACT.md` stub (0039): the `(trigger) → (action)` machine, the `#class` fallback,
+the fail-safe-on-unmatched-outcome rule, and abstract `escalate`, with `tracker.transitions` recast as
+a `set_state` binding within it.
 
 ## 0031 — Autonomous task management and computed completion
 
@@ -490,7 +500,10 @@ the broker to **materialize** the task list into the tracker as structured artif
 default on where 0018 declares a structured-task-write capability; disablable in `repo.policy.toml`),
 making the list `Reconstructable` (0010) with faithful restart; the fallback where the tracker can't
 hold structure (or write-through is off) is `Durable`, never `Ephemeral` by default. Depends on 0027,
-0030 (both Accepted). Accepted; `SPEC.md` edits deferred (batched with 0028's `vcsx` spec and 0029).
+0030 (both Accepted). Accepted and applied to `SPEC.md` (new Sections 4.1.9, 8.10 plus Sections 7.2,
+10.8, 11.6, 14.3) against the `VCSX-CONTRACT.md` stub (0039): the `Task` entity, computed completion,
+the broker task verbs, write-through materialization, and the `Reconstructable`/`Durable`
+classification.
 
 ## 0032 — Message formulation: commit, pull request, squash
 
@@ -507,8 +520,10 @@ closed task list from 0031, commit subjects), scanned title-strict / body-Linear
 strictness relaxed for the live PR surface, so `land` stays thin. Adds a credential-free broker-CLI
 content seam for agent-supplied PR text. The PR-body-source fork is **resolved**: the default body is
 auto-composed from ticket + closed task list (0031) + commit subjects, with agent prose overriding when
-supplied. Relates to 0003/0007/0022/0030/0031. Depends on 0027, 0030 (both Accepted). Accepted;
-`SPEC.md` edits deferred (batched with 0028's `vcsx` spec and 0029–0031).
+supplied. Relates to 0003/0007/0022/0030/0031. Depends on 0027, 0030 (both Accepted). Accepted and
+applied to `SPEC.md` (Sections 9.8, 9.10) against the `VCSX-CONTRACT.md` stub (0039): the three
+message surfaces (authored commit, composed PR, `pr_to_squash`-transformed squash), the auto-compose
+PR-body default with agent-prose override, and the credential-free content seam.
 
 ## 0033 — A `Superseded` state in the decision-log lifecycle
 
@@ -547,3 +562,183 @@ stays `Implementation-defined`). Builds on 0025 (Proposed), which named reposito
 under-specified host-side op: this decision closes its failure-model half and leaves 0025's per-session
 CPU-governance question open. Relates to 0007, 0009, 0028. Depends on 0027 (Accepted). Accepted and
 applied to `SPEC.md`.
+
+## 0035 — The execution process and the always-present orchestrator↔executor seam
+
+**State:** Accepted
+**Folder:** [decisions/0035-execution-process-and-seam/](decisions/0035-execution-process-and-seam/)
+
+The head of a four-decision set (0035–0038) reintroducing remote execution — the "reworked
+remote-execution extension" 0004 anticipated when it dropped the SSH Worker Extension for shipping the
+agent without the sandbox/per-run-socket/credential boundary. Driver: run coding-agent sessions on
+**Cloud Instances** billed per started hour, provisioned/reaped by an external system, variant chosen
+per repo and/or issue label, work shared under a configurable policy — implementing *as little
+cloud/scheduler logic as possible* in Symphony (which is *little logic*, not *no new surface*). This
+decision gives Section 3.2's **Execution Layer** a component identity — the **execution process
+(executor)** — that owns everything the in-process worker does today (Section 16.6: workspace, object
+store, prompt build, turn loop, agent protocol, broker, hooks), and makes the orchestrator↔executor
+seam **always present**: local execution is the degenerate **in-process transport**, remote execution
+(0036/0037) is the same seam over a network transport. One execution model, so local and remote cannot
+duplicate or drift; the node-scheduler is purely a placement + transport adapter behind the seam. The
+executor instantiates the secret-isolation boundary (sandbox 9.6, per-run broker socket 10.8,
+credential-less agent 15.3) *wherever it runs*, so carrying it to a node becomes a property of the
+transport rather than a bolt-on. The unification is of the **execution process and the seam**, not the
+wiring around them: 0036 (transport/secrets), 0037 (node-scheduler acquisition), and 0038 (executor
+commits) are the **autonomous-daemon topology's** realization; the interactive-agent (`ship`/`land`)
+and engine-direct (operator holds secrets) topologies reuse the same execution process with their own
+initiator and secret-sourcing (0027). Options: A bolt remote on beside a single-host core (duplicates the
+execution path); B a first-class executor behind an always-present seam (chosen); C reconsider for a
+lighter mechanism (rejected — the lighter mechanisms are the ones 0004 already rejected). Realizes
+0025's Option C "session resource domain" as a placed component (see 0025's 2026-07-03 update). Relates
+to 0004, 0025, 0027 (its Execution Layer given a component identity, shared across the three
+topologies with the daemon-topology wiring carried by 0036–0038), 0003. Parent of
+0036–0038. Accepted and applied to `SPEC.md` (Sections 3.1, 3.2, 16.4, 16.6) in the spec's current
+vocabulary; the three-topology framing and base-revision hook sourcing stay in the decision folder
+pending the deferred 0027/0029 edits.
+
+## 0036 — The orchestrator↔executor protocol and direct secret delivery
+
+**State:** Accepted
+**Folder:** [decisions/0036-orchestrator-executor-protocol/](decisions/0036-orchestrator-executor-protocol/)
+
+Specifies the network transport of the 0035 seam. Following the deferral pattern of Section 10 (agent
+app-server protocol) and 0028 (`vcsx` contract), the orchestrator↔executor wire protocol is its **own
+versioned sub-spec** that `SPEC.md` defers to; the spec owns orchestration semantics, not schemas.
+**The agent protocol terminates on the executor** — the orchestrator is never in agent communication;
+it dispatches a **run-spec** (normalized issue data, workflow template, agent/effort, `max_turns`,
+wall-clock bound, `continuation_ref`) plus secrets, and receives only normalized runtime events
+(Section 10.4), usage (13.5), outcome, and committed-state notifications. The up-channel is **durably
+buffered on the executor with a sequence cursor and replayed** from last-ack on reconnect, so an
+orchestrator disconnect leaves no gap in the event log or token accounting. **Secrets are delivered
+orchestrator→executor directly** (never through the scheduler) over a channel secured by
+**scheduler-bootstrapped mutual auth** (mutual TLS; the scheduler provisions one-time trust material,
+enabling trust without seeing the secret); Section 15.3's agent-side invariant is unchanged (the secret
+reaches the executor's broker context, never its sandbox). Version is **negotiated with a documented
+minimum floor** — a stale warm-node image fails closed at bring-up rather than mis-parsing mid-run.
+Options: A inline the protocol (drops the spec below altitude); B a deferred versioned sub-spec
+(chosen); C inline contract + external schema (splits the source of truth). Relates to 0004, 0035,
+0037, 0038, 0028, 0003, Section 15.3. Depends on 0035. Accepted and applied to `SPEC.md` (Sections 10,
+15.3); the versioned protocol sub-spec is referenced as a forward external document not yet authored.
+
+## 0037 — The node-scheduler remote adapter, provisioning failures, and the run registry
+
+**State:** Accepted
+**Folder:** [decisions/0037-node-scheduler-remote-adapter/](decisions/0037-node-scheduler-remote-adapter/)
+
+How the orchestrator obtains a remote executor, what happens when it cannot, and how it finds an
+in-flight remote run after a restart. Symphony is *configured to connect to* an external
+**node-scheduler** that owns node lifetimes end to end — provisioning/reaping, executor-software
+deployment, mutual-auth bootstrap (0036), pooling/autoscaling/billing, the instance-variant catalog and
+variant-selection logic, and teardown timing — and is deliberately **not** in the secret path (0036)
+or agent communication. Symphony connects through a thin `compute`-kinded adapter (sibling of the
+tracker/VCS/forge adapters) with a static capability descriptor and **four verbs**:
+`request_node(selection, bound)` (selection = repo identity 8.7, normalized labels 11.3, agent/effort
+10.9, sharing key+hint; bound = wall-clock/cost ceiling), `node_ready(endpoint, trust_material)`,
+`lookup_by_run_id(run_id) → endpoint` (reattach, surviving node moves), `signal_done(run_id)` (the
+scheduler decides keep-warm/reuse/destroy). Everything cloud-shaped stays `Implementation-defined`;
+Symphony treats the node as opaque. **Boundary travel is a fail-closed conformance requirement** of
+`remote` (sandbox 9.6, per-run socket 10.8, credential-less agent 15.3; `ensure_object_store` from 0034
+runs fresh on the executor's node). Acquire is **async with a new `provisioning` orchestration
+sub-state** (Section 7). **Two new failure classes** (with the existing agent-session class, three
+surfaces total): `Node Provisioning Failures` → scope-scoped skip + retry, mirroring `Repository
+Provisioning Failures` (0034); `Executor Bring-up Failures` (won't start / auth / boundary) →
+fail-closed, fresh node; agent-session (14.1) unchanged. Restart uses a **required,
+remote-mode-only durable run registry** (`run-id ↔ issue ↔ node`) reconciled via `lookup_by_run_id`
+(local keeps 14.4 reconstruct). **Sharing** is a `sharing_key` + hint; the scheduler packs isolated
+executor processes (each with its own sandbox/broker/secrets), so cross-credential co-tenancy risk
+dissolves and Section 8.3 concurrency stays session-count-based/placement-opaque (no new knob).
+Across-run retry is orchestrator-owned and **non-coercive** (it may re-dispatch but MUST NOT compel the
+scheduler to supply a node — enabler-not-enforcer, 0027). New `compute.*` config (`kind` default
+`local`, variant-by-repo/label pass-through, sharing hint/key, wall-clock bound, release disposition),
+extension-owned, not Core Conformance. Relates to 0004, 0034, 0025, 0027, 0035, 0036, 0038. Depends on
+0035, 0036. Accepted and applied to `SPEC.md` (Section 9.11 plus Sections 7.1, 8.3, 8.4, 14.1, 14.2,
+14.4, 6.4, 16.4).
+
+## 0038 — Executor-authoritative writes and the driver-local / reconciler-remote reframing
+
+**State:** Accepted
+**Folder:** [decisions/0038-executor-authoritative-state-writes/](decisions/0038-executor-authoritative-state-writes/)
+
+Resolves who writes the authoritative record of a run once the executor (0035–0037) runs the whole
+session on a node. The executor runs the turn loop autonomously and owns completion (turn count and
+"has the work progressed" — computed completion, 0031), holds the repo (it cloned it) and the
+credentials (0036), so the repo-owned WoW (0029, read from base) and the action-policy machine (0030)
+execute **on the executor** — which therefore also **commits** the outcome: opens the PR through its
+on-node broker and sets tracker state via the machine's `set_state`. Section 7 is reframed
+**driver-local / reconciler-remote**: the orchestrator drives dispatch/candidate selection, but for an
+in-flight run the executor is the authoritative writer and the orchestrator **reconciles from the
+tracker** — which it already does (humans edit tickets; Section 8.5 reconciles every tick), so this
+extends an existing reconciliation rather than inventing one. The **broker instance moves onto the
+executor** (0003/0004 invariant preserved — the agent sandbox holds no credentials); **git/forge writes
+are executor-exclusive** (only the executor holds those creds), while **tracker read/write is shared**
+(the orchestrator already polls with tracker creds; the executor may read/write too). `escalate` (0030)
+is resolved by an **executor tracker write** (comment / blocked state) the orchestrator observes — no
+new up-channel message for the common case. Terminal-mid-run guard is **hybrid**: while connected the
+orchestrator forwards terminal/cancel on the live down-channel (0036); while disconnected the executor
+**re-checks tracker state before finalizing writes** so it never pushes for a closed issue. Options:
+executor-commits / orchestrator-observes (chosen) vs. executor-proposes / orchestrator-commits vs.
+orchestrator sole writer. Edits applied **in step with** the deferred 0029–0031 `SPEC.md` edits (so the
+action-policy machine is never named before it exists, per 0034's deferral discipline). Relates to
+0003/0004, 0017, 0021, 0029, 0030, 0031, 0035, 0036, 0037. Depends on 0035, 0036, 0037. Accepted and
+applied to `SPEC.md` (Sections 7, 10.8, 11.5, 8.5) in current vocabulary; the action-policy machine
+(0030) and repo-owned WoW (0029) are expressed via the existing transition graph, `set_state`, and
+`blocked` signal pending the deferred 0029/0030 edits.
+
+## 0039 — vcsx contract-surface stub to unblock the repo-owned-WoW batch
+
+**State:** Accepted
+**Folder:** [decisions/0039-vcsx-contract-surface-stub/](decisions/0039-vcsx-contract-surface-stub/)
+
+Acts on decision 0028's own deferral. The 0027–0032 batch's `SPEC.md` edits are gated on the companion
+`vcsx` spec ("contract names stay identical across both documents", 0028), which did not exist in this
+repo and had no tracked owner — a hard external gate that could stall the largest re-framing of the
+spec indefinitely. This decision authors `VCSX-CONTRACT.md`, a **contract-surface stub** that freezes
+the shared vocabulary — the executor and its two front-ends (`ship`/`land` + the daemon driver) over
+one policy-graph executor and one `repo.policy.toml`; the action-policy machine (triggers
+`before:commit`/`before:push`/`before:create_pr`/`before:merge`, `<op>:<reason>` results, task-state
+events; actions `run_op`/`run`/`escalate`/`create_task`/`set_state`/`notify`/`park`/`fail`; the
+`#class` fallback over `done`/`needs_caller`/`error`; fail-safe on an unmatched operation outcome; the
+reason-token class contract; abstract `escalate`); the engine operations and typed results
+(`commit`/`integrate`/`push`/`create_pr`/`merge`); the lifecycle positions and the positional-name
+mapping (`after_push` ≡ `push:ok`); the task model and broker verbs
+(`add`/`split`/`close`/`need-help`/`update`, `tasks:all_closed` → `ship`, `structured-task-write`,
+write-through materialization); the message-formulation surfaces (authored/composed/transformed,
+`pr_to_squash` at `before:merge`, the content seam); and the trust-sourcing rule plus the
+outward-credential vs integrity-value taxonomy. Every token is taken verbatim from decisions 0026–0032,
+so freezing them creates no new design. It mirrors the app-server-protocol deferral: the stub owns
+entry points and policy vocabulary, while the **wire/RPC schema, the field-level `repo.policy.toml`
+schema, the plugin API, the concrete reason-token registry beyond its classes, and internal
+algorithms** stay deferred to the full engine spec. Options: A leave the batch gated on the missing
+external spec (stalls indefinitely); B a bare in-repo placeholder pointer (freezes nothing); C the
+contract-surface stub (chosen). Keeps `SPEC.md` the single source of truth and shrinks the deferral
+window: the 0027–0032 edits can now be written against a stable in-repo anchor, and the full `vcsx`
+spec reconciles to these names rather than inventing them. Depends on 0028; relates to 0026–0032
+(shaping) and 0035–0038 (which reuse the executor). Accepted; `VCSX-CONTRACT.md` authored, no `SPEC.md`
+edit made.
+
+## 0040 — Author the full vcsx engine specification
+
+**State:** Accepted
+**Folder:** [decisions/0040-vcsx-full-engine-spec/](decisions/0040-vcsx-full-engine-spec/)
+
+Completes the forward artifact decision 0039 deferred. The contract surface (`VCSX-CONTRACT.md`, 0039)
+fixes the `vcsx` vocabulary `SPEC.md` references but §11 defers the deep detail to a "full engine
+specification" that did not exist; with the 0027–0032 batch applied against that surface, the deferral
+target must resolve to a real document. This decision authors `VCSX-SPEC.md`, a full, standalone,
+language-agnostic engine spec, and wires `VCSX-CONTRACT.md` (header, §11, §12) to name it. The layering
+is now three clean levels — Symphony `SPEC.md` → the contract surface `VCSX-CONTRACT.md` → the full
+engine spec `VCSX-SPEC.md` — each deferring the next's detail rather than restating it, mirroring how
+`SPEC.md` defers to the Codex app-server protocol. `VCSX-SPEC.md` fixes the operation set and the
+concrete reason-token registry with stable proto classes; the full action-policy machine (triggers,
+actions, the `#class` matching ladder, unmatched policy, determinism, escalation binding); the
+field-level `repo.policy.toml` schema (`[engine]`/`[scope]`/`[base]`/`[policy]`/`[hooks]`/
+`tracker.transitions`/`[messages]`/`[tasks]`/`[driver]`, `vcsx.toml` merge, base resolution,
+execution-context labeling); the `ship`/`land` front-ends and the embedded-driver contract; the
+transport-neutral invocation contract (result envelope, exit codes, escalation payload, versioning with
+a `version_floor` floor); the plugin API for VCS and forge backends with capability descriptors; the
+message-formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in format; a
+security/trust model that enforces nothing itself; and reference algorithms. Every shared token is
+spelled identically to the surface. Options: A keep deferring to an unwritten spec (implementable from
+nothing); B fold the detail into `VCSX-CONTRACT.md` (inflates the stable surface); C a separate
+`VCSX-SPEC.md` the surface defers to (chosen). Builds on 0039; relates to 0026–0032. Accepted;
+`VCSX-SPEC.md` authored and `VCSX-CONTRACT.md` wired to it, no `SPEC.md` edit made.

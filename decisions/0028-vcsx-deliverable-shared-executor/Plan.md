@@ -59,3 +59,16 @@ Accepted; `SPEC.md` application not started. Decision 0027 (parent) is Accepted,
 dependency. Application is deferred: it must land in step with the companion `vcsx` spec so the
 contract names stay identical across both documents, and 0028's spec text forward-references
 decisions 0029–0030 (repo policy, the action-policy machine). Apply with those.
+
+Update (2026-07-05, decision 0039): the "companion `vcsx` spec" gate is now met **at the surface** by
+`VCSX-CONTRACT.md`, a contract-surface stub that freezes the shared vocabulary (executor + front-ends,
+`repo.policy.toml` sections, the action-policy machine, engine operations/results, the task model and
+verbs, message-formulation surfaces, trust sourcing) while deferring the wire schema, the field-level
+TOML schema, the plugin API, and the algorithms. The 0027–0032 `SPEC.md` batch is therefore unblocked
+at the vocabulary level and may be written against that stable in-repo anchor; the full engine spec
+remains a forward artifact the stub defers to.
+
+Update (2026-07-05): Applied to `SPEC.md` against `VCSX-CONTRACT.md`. Section 3.4 states the engine
+deferral boundary and the one-executor-two-front-ends invariant; Sections 9.7–9.10 recast the broker's
+provisioning-vs-operation split so push/back-merge/pr/merge are realized through the engine contract
+and its plugin layer (GitHub/Forgejo), while host-side provisioning stays Broker Core work (0034).

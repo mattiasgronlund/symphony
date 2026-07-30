@@ -80,3 +80,10 @@ re-evaluations are recorded: decisions 0008 and 0017 carry append-only `Backgrou
 stay Accepted), and decision 0010 notes the task list as a new R/D consumer. `SPEC.md` application is
 deferred and batched with the companion `vcsx` spec (0028) and decision 0029 (`repo.policy.toml`
 houses `[tasks]`/`[driver]`).
+
+Update (2026-07-05): Applied to `SPEC.md` against the `VCSX-CONTRACT.md` stub (0039). New Section
+4.1.9 defines the `Task` entity; new Section 8.10 specifies seeding, the broker task verbs, computed
+completion (`tasks:all_closed` → `ship`), escalation-as-tasks, write-through materialization
+(default on where `structured-task-write` exists), and the `Reconstructable`/`Durable` classification
+(never `Ephemeral` by default). Section 7.2 notes the planning turn; Section 10.8 adds the task verbs;
+Sections 11.6 and 14.3 carry the task-state triggers and the classification.

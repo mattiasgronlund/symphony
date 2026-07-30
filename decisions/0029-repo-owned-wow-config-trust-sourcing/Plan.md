@@ -66,3 +66,9 @@ and decisions 0023 and 0026 are annotated for the secret/integrity-taxonomy and 
 refinements respectively. `SPEC.md` application is deferred and batched with
 the companion `vcsx` spec (0028) and decisions 0030–0031, since `repo.policy.toml` houses their
 surfaces (policy edges, `[tasks]`, `tracker.transitions`).
+
+Update (2026-07-05): Applied to `SPEC.md` with decisions 0028–0031 against the `VCSX-CONTRACT.md`
+stub (0039). Section 5 is recast to the three artifacts (operator config / `repo.policy.toml` /
+`WORKFLOW.md`); new Section 5.6 documents the `repo.policy.toml` surface; Section 15.4 states the
+base-vs-worktree sourcing rule (WoW-trust = base-branch trust); Section 15.3 splits outward
+credentials from repo-internal integrity values; Sections 5.3.4, 6.1–6.4, and 9.7 follow.

@@ -9,3 +9,4 @@ Every Claude Code session that worked on this decision. The session id is the tr
 |------|--------------|------------|
 | 2026-06-28 | vcsx-symphony-architecture | a7ed167a-6769-4c37-bff8-85d85e7771bf |
 | 2026-06-28 | accept-0027-three-layers | 9bb6b7f3-d2c4-4634-8d60-0233b89e028b |
+| 2026-07-05 | Apply 0027–0032 batch to SPEC.md | c9832fd5-569d-4746-80fb-e75666b31cc1 |

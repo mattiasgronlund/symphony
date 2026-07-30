@@ -41,6 +41,12 @@ Important boundary:
 - The coding agent runs sandboxed and credential-less. It supplies only the content of those
   operations (commit and pull-request text, comments, milestone signals) and requests them through a
   `symphony` broker CLI rather than acting on credentials directly.
+- Symphony *enables* Ways of Working and *enforces* none beyond the **secret-isolation invariant**:
+  the coding agent never needs VCS, Forge, or tracker credentials (Sections 10.8, 15.3), with a
+  companion scope guard that confines every brokered operation to the run's repository, issue, and
+  work branch. How a repository commits, reviews, transitions tickets, formats messages, and merges
+  is repository-owned configuration (Section 5), not Symphony-enforced policy. This principle
+  organizes the service into layers and deployment topologies (Section 3.4).
 - A successful run can end at a workflow-defined handoff state (for example `Human Review`), not
   necessarily `Done`.
 
@@ -59,9 +65,15 @@ Important boundary:
 - Expose operator-visible observability (at minimum structured logs).
 - Support tracker/filesystem-driven restart recovery without requiring a persistent database; exact
   in-memory scheduler state is not restored.
+- Let a repository own its Way of Working (commit, review, ticket transitions, message formatting,
+  merge) through repository-owned configuration (Section 5), while Symphony guarantees only the
+  secret-isolation invariant and its scope guard.
 
 ### 2.2 Non-Goals
 
+- Enforcing a particular Way of Working — commit conventions, review or merge policy, message
+  format, or content hygiene. Those are repository-owned (Section 5); Symphony enables them and
+  enforces only secret isolation and scope.
 - Rich web UI or multi-tenant control plane.
 - Prescribing a specific dashboard or terminal UI implementation.
 - General-purpose workflow engine or distributed job scheduler.
@@ -122,6 +134,16 @@ Important boundary:
 9. `Logging`
    - Emits structured runtime logs to one or more configured sinks.
 
+The per-issue run is carried by an `Execution Process` (the *executor*): for one issue it composes
+the `Workspace Manager` (5), the `Agent Runner` (6), and a per-run `Privileged Operation Broker` (7)
+— workspace and object-store provisioning, prompt construction, the agent turn loop,
+privileged-operation mediation, and workspace lifecycle hooks. The `Orchestrator` (4) dispatches a
+run to exactly one executor across an orchestrator↔executor seam that is always present; locally the
+seam is an in-process call (the executor runs in the orchestrator's host), and it MAY instead be a
+network transport to a remote executor (Section 9.11). The executor is the host relative to its own
+agent sandbox (Section 9.6), so it runs both hook trust levels (Section 15.4) and instantiates the
+secret-isolation boundary — sandbox, per-run broker socket, credential-less agent — wherever it runs.
+
 ### 3.2 Abstraction Levels
 
 Symphony is easiest to port when kept in these layers:
@@ -137,8 +159,12 @@ Symphony is easiest to port when kept in these layers:
 3. `Coordination Layer` (orchestrator)
    - Polling loop, issue eligibility, concurrency, retries, reconciliation.
 
-4. `Execution Layer` (workspace + agent subprocess)
-   - Filesystem lifecycle, workspace preparation, coding-agent protocol.
+4. `Execution Layer` (the execution process / executor)
+   - Filesystem lifecycle, workspace preparation, the coding-agent protocol, and per-run
+     privileged-operation mediation, carried by one execution process per issue.
+   - Reached from the Coordination Layer across an always-present orchestrator↔executor seam whose
+     local form is an in-process call and whose remote form is a network transport (Sections 9.11,
+     10).
 
 5. `Integration Layer` (Linear adapter)
    - API calls and normalization for tracker data.
@@ -156,6 +182,52 @@ Symphony is easiest to port when kept in these layers:
 - Agent sandbox mechanism (for example `jai` on Linux, https://jai.scs.stanford.edu, or an
   equivalent on other platforms).
 - Host environment authentication for the issue tracker and coding agent.
+
+### 3.4 Layers, the VCS Engine, and Deployment Topologies
+
+Symphony *enables* Ways of Working and *enforces* only the secret-isolation invariant (Section 1).
+That principle factors the service into three layers:
+
+1. `Broker Core`
+   - Secret isolation, the per-run scope guard, the per-run broker socket, and
+     credentialed-operation mediation (Sections 9.6, 10.8, 15.3). It is the only Core-Conformance
+     guarantee in the VCS/Forge/tracker domain and is independently conformant: it can be satisfied
+     for a single interactive agent session with no polling daemon.
+
+2. `VCS Engine` (OPTIONAL)
+   - The VCS-workflow mechanics: the `ship`/`land` entry points and one policy-graph executor that
+     runs the action-policy machine (Section 9.12) over a repository's Way of Working (Section 5).
+   - Symphony consumes the engine through its **contract**, not its implementation, the way this
+     specification defers to the coding-agent app-server protocol (Section 10): the engine's entry
+     points and policy vocabulary are named here, and its wire, configuration, and plugin schemas
+     are deferred to the engine contract document (`VCSX-CONTRACT.md`).
+   - The engine is an independent deliverable, pinned as an external tool and released on its own
+     cadence; this specification names no engine implementation or language normatively. One
+     realization is the `vcsx` engine.
+
+3. `Autonomous Daemon`
+   - Polling, dispatch, bounded concurrency, multi-repo routing, task management (Section 4.1.9),
+     and the autonomous driver. It is layered on the Broker Core and consumes the VCS Engine.
+
+One executor, two front-ends: interactive `ship`/`land` and the autonomous daemon run the **same**
+policy-graph executor over the **same** repository Way of Working (`repo.policy.toml`, Section 5),
+differing only in their initiator and in how the abstract `escalate` action binds (Section 9.12). A
+given repository policy therefore yields the same operation flow through either front-end.
+
+Three deployment topologies compose the layers:
+
+- `daemon` — the autonomous daemon over the Broker Core, optionally driving the VCS Engine. The full
+  service described by this specification.
+- `interactive-agent` — the Broker Core plus the VCS Engine's `ship`/`land`, driving one interactive
+  agent session with no polling daemon. It gets secret isolation and Way-of-Working automation
+  without dispatch.
+- `engine-direct` — the VCS Engine alone, run directly by an operator who holds the credentials, with
+  no Broker Core sandbox. It is outside the agent-secret-isolation model, for a human-driven
+  workflow.
+
+The Broker Core's secret-isolation invariant holds in every topology that runs a coding agent
+(`daemon` and `interactive-agent`); `engine-direct` has no sandboxed agent and therefore no
+agent-secret boundary to instantiate.
 
 ## 4. Core Domain Model
 
@@ -308,6 +380,27 @@ Fields (with recovery class):
   an absent value denotes `UNKNOWN` (distinct from any reading; in particular not `0`), and the
   policy on `UNKNOWN` is defined by the consuming provider-quota extension.
 
+#### 4.1.9 Task (OPTIONAL, Daemon Task Management)
+
+A unit of work the autonomous daemon tracks so completion is computed rather than asserted (Section
+8.10). OPTIONAL and daemon-only; interactive sessions use `ship`/`land` and have no task manager.
+
+Fields:
+
+- `id` (string)
+  - Stable task identifier; the idempotency key for materialization and durable re-seed (Sections
+    8.10, 14.3).
+- `description` (string)
+- `status` (string/enum)
+  - One of `open`, `closed`, `blocked`.
+- `assignee` (string/enum)
+  - One of `agent`, `human`.
+- `parent` (string or null)
+  - OPTIONAL parent task id for split subtasks.
+- `tracker_ref` (string or null)
+  - OPTIONAL link to the materialized tracker artifact (sub-issue or checklist item) when
+    write-through sync is active (Section 8.10).
+
 ### 4.2 Stable Identifiers and Normalization Rules
 
 - `Issue ID`
@@ -325,22 +418,43 @@ Fields (with recovery class):
 
 ## 5. Configuration Contracts
 
-Symphony reads configuration from two artifacts split on the sandbox boundary (Section 9.6):
+Symphony reads configuration from three artifacts, distinguished by who owns them and — for
+repository-owned artifacts — which revision each part is sourced from (Section 15.4):
 
-- `WORKFLOW.md` — repository-owned and version-controlled. It contains only settings used *inside*
-  the agent sandbox: the per-issue prompt template and in-sandbox hooks. Because anyone who can
-  commit to the repository — including the agent — can edit it, it is treated as untrusted input and
-  MUST NOT carry credentials, scope rules, or any setting Symphony uses outside the sandbox.
-- Policy config — operator-owned and not modifiable by the repository or the agent. It contains
-  everything Symphony uses outside the sandbox: credentials, authorization scope, the sandbox
-  profile, tracker and VCS configuration, polling and concurrency, privileged setup hooks, agent
-  selection, and the workflow state-machine. Its format and discovery path are
-  `Implementation-defined` and MUST be documented. A single policy config MAY define multiple
-  repositories managed by one instance, each with its own VCS and agent settings, plus the
-  issue→repo routing for shared tracker polling (Section 8.7).
+- `WORKFLOW.md` — repository-owned, in-sandbox. It contains only settings used *inside* the agent
+  sandbox: the per-issue prompt template and in-sandbox hooks. It is sourced from the worktree (the
+  agent's own checkout), so an agent edit is honored where it is harmless (Section 15.4). Because
+  anyone who can commit — including the agent — can edit it, it is untrusted and MUST NOT carry
+  credentials, authorization scope, or any setting Symphony executes with host access.
+- `repo.policy.toml` — repository-owned, host-side. It holds the repository's **Way of Working**: the
+  VCS engine selection, the work-branch name pattern (`scope.branch_pattern`), the action-policy
+  edges and host-side hooks (Section 9.12), the workflow transitions (`tracker.transitions`, Section
+  11.6), and the daemon task settings `[tasks]` / `[driver]` (Section 8.10). Its host-side-executed
+  parts are sourced from the protected **base revision** — which the agent cannot push to and which
+  is review-gated — so Way-of-Working trust equals base-branch trust (Section 15.4). Configuring
+  Symphony therefore needs no knowledge of a repository's Way of Working. An engine-native config
+  file (`vcsx.toml`) is merged into this surface (`VCSX-CONTRACT.md`).
+- Operator policy config — operator-owned, not modifiable by the repository or the agent. It holds
+  what the operator, not the repository, owns: outward credentials, the sandbox profile, tracker and
+  VCS endpoints, polling and concurrency, agent selection, the managed repositories with their
+  issue→repo routing (Section 8.7), and, per repository, a pointer to that repository's
+  `repo.policy.toml`. It does not contain the workflow state-machine or hooks. Its format and
+  discovery path are `Implementation-defined` and MUST be documented.
 
-The dividing rule is mechanical: if Symphony uses a setting outside the sandbox, it belongs to the
-policy config; only settings consumed inside the sandbox belong to `WORKFLOW.md`.
+The dividing rules:
+
+- If a setting is the *repository's Way of Working* — how it commits, reviews, transitions tickets,
+  formats messages, or merges — it belongs to `repo.policy.toml`, sourced by trust (base revision
+  for host-side parts; the worktree for the in-sandbox `before:commit` gate; Section 15.4).
+- If a setting is consumed *inside the sandbox* (prompt template, in-sandbox hooks), it belongs to
+  `WORKFLOW.md`.
+- Everything else Symphony uses outside the sandbox that is an *operator or deployment* concern
+  (credentials, sandbox profile, tracker/VCS endpoints, polling, concurrency, agent selection, repo
+  routing) belongs to the operator policy config.
+
+The work-branch-only / assigned-issue-only **scope guard** is a Broker Core built-in (Sections 3.4,
+10.8), enforced regardless of any configuration; only the branch *name* pattern is repository config
+(`scope.branch_pattern`).
 
 ### 5.1 WORKFLOW.md Discovery and Path Resolution
 
@@ -361,9 +475,10 @@ Loader behavior:
 Design note:
 
 - `WORKFLOW.md` SHOULD contain only what the agent needs inside the sandbox: the prompt template and
-  in-sandbox hooks. Privileged and orchestration settings (tracker, VCS, polling, concurrency, agent
-  selection, sandbox profile, scope, state-machine) live in the operator-owned policy config, not in
-  `WORKFLOW.md`.
+  in-sandbox hooks. The repository's Way of Working (engine selection, host-side hooks, the
+  action-policy edges, transitions, task settings) lives in `repo.policy.toml`, and operator or
+  deployment settings (tracker, VCS, polling, concurrency, agent selection, sandbox profile,
+  credentials) live in the operator policy config — neither in `WORKFLOW.md`.
 
 Parsing rules:
 
@@ -380,16 +495,18 @@ Returned workflow object:
 
 ### 5.3 Configuration Schema
 
-This section documents the configuration keys. With the exception of in-sandbox `hooks` (Section
-5.3.4), every key below belongs to the operator-owned policy config, because Symphony consumes it
-outside the sandbox. `WORKFLOW.md` front matter carries only in-sandbox settings.
+This section documents the operator policy config keys. Repository Way-of-Working keys —
+`tracker.transitions` (Section 11.6), the action-policy edges and host-side hooks (Section 9.12), and
+the daemon task settings `[tasks]` / `[driver]` (Section 8.10) — live in `repo.policy.toml` (Section
+5.6), not here. Workspace `hooks` (Section 5.3.4) are repository-owned: in-sandbox hooks in
+`WORKFLOW.md`, host-side hooks in `repo.policy.toml`. Every other key below belongs to the operator
+policy config.
 
-Top-level keys (policy config unless noted):
+Top-level operator-config keys:
 
-- `tracker`
+- `tracker` (its `transitions` field is repository-owned; see Section 5.3.1)
 - `polling`
 - `workspace`
-- `hooks` (split: policy-config setup hooks and in-sandbox `WORKFLOW.md` hooks; see Section 5.3.4)
 - `agent`
 - `codex`
 
@@ -433,7 +550,11 @@ Fields:
 - `transitions` (list of `{from, on, to}` entries)
   - The workflow state-machine (Section 11.6): a directed graph over tracker workflow-state names.
     Each entry transitions an issue from state `from` to state `to` when trigger `on` fires — an
-    agent milestone signal or an observed run outcome (Section 11.6).
+    agent milestone signal or an observed run outcome (Section 11.6). Each entry is a `set_state`
+    binding within the action-policy machine (Section 9.12).
+  - Repository-owned: this field lives in `repo.policy.toml` (Section 5.6), not the operator policy
+    config, because transitions are part of the repository's Way of Working. The other `tracker`
+    fields above are operator config.
   - Default: `[]` (no policy-driven transitions).
 
 #### 5.3.2 `polling` (object)
@@ -456,16 +577,19 @@ Fields:
 
 #### 5.3.4 `hooks` (object)
 
-Hooks exist at two trust levels, distinguished by where they run:
+Hooks exist at two trust levels, distinguished by where they run and which revision they are sourced
+from (Section 15.4):
 
-- Policy-config hooks run on the host, outside the sandbox, and are trusted. They are for privileged
-  setup that needs host access (for example dependency bootstrap that reaches credentialed mirrors).
-- `WORKFLOW.md` hooks run inside the sandbox, without credentials, and are untrusted. They are for
-  in-sandbox build/test/workspace preparation.
+- Host-side hooks are defined in `repo.policy.toml`, sourced from the protected base revision, and
+  run on the host outside the sandbox with host access. They are for privileged setup (for example
+  dependency bootstrap that reaches credentialed mirrors). Because they are base-sourced, an agent
+  cannot alter them from within a run (Section 15.4).
+- `WORKFLOW.md` hooks are sourced from the worktree, run inside the sandbox without credentials, and
+  are untrusted. They are for in-sandbox build/test/workspace preparation.
 
 Both sets share the same lifecycle points. A lifecycle point MAY be defined in either artifact; when
-both define it, the policy-config hook runs on the host and the `WORKFLOW.md` hook runs inside the
-sandbox.
+both define it, the `repo.policy.toml` hook runs on the host and the `WORKFLOW.md` hook runs inside
+the sandbox.
 
 Fields:
 
@@ -583,14 +707,16 @@ Prompt authority:
 - The prompt template advises the agent and tells it how to signal progress; it does not perform
   privileged operations and MUST NOT be relied on to enforce them. Commits, branch pushes,
   pull-request creation, and tracker transitions occur only through the broker (Section 10.8) and
-  the policy-owned state-machine (Section 11.6) — never because the prompt instructs the agent.
+  the repository's action-policy machine (Sections 9.12, 11.6) — never because the prompt instructs
+  the agent.
 - Because `WORKFLOW.md` is repository-owned and untrusted (Section 5.2), prompt text that directs a
   privileged side effect is a request, not an authorization: the broker still scopes every
   operation to the run's repository, issue, and work branch, and an instruction the agent cannot
   satisfy through the broker has no effect.
 - The prompt SHOULD describe how the agent expresses intent — when to emit which milestone signal
-  (Section 11.6) — rather than which tracker transitions to perform. Operators, not repositories,
-  own the resulting transitions.
+  (Section 11.6) — rather than which tracker transitions to perform. The transitions are defined in
+  `repo.policy.toml` (base-sourced, Section 15.4), not in the worktree-sourced prompt, so no prompt
+  wording widens the transitions an agent can cause.
 
 ### 5.5 Workflow Validation and Error Surface
 
@@ -607,15 +733,49 @@ Dispatch gating behavior:
 - Workflow file read/YAML errors block new dispatches until fixed.
 - Template errors fail only the affected run attempt.
 
+### 5.6 `repo.policy.toml` (Repository Way of Working)
+
+`repo.policy.toml` is the repository-owned Way-of-Working surface (Section 5). The operator policy
+config points each managed repository at its `repo.policy.toml`; the repository owns the contents, so
+configuring Symphony needs no Way-of-Working knowledge. Symphony consumes it through the VCS engine
+contract (`VCSX-CONTRACT.md`, Section 3.4); this specification names its sections and defers the
+field-level schema to that contract.
+
+Sections:
+
+- engine selection — which VCS engine realizes the Way of Working.
+- `scope.branch_pattern` — the work-branch name pattern (Default: `symphony/<identifier>`, Section
+  9.8). Only the branch *name* is configurable here; the scope guard itself is a Broker Core built-in
+  (Section 10.8).
+- the action-policy edges and host-side hooks — the `(trigger) → (action)` machine (Section 9.12).
+- `tracker.transitions` — the workflow state-machine, expressed as `set_state` bindings in the
+  machine (Sections 5.3.1, 11.6).
+- `[tasks]` and `[driver]` — daemon task management and computed completion (Section 8.10).
+
+An engine-native config file (`vcsx.toml`) is merged into this surface.
+
+Trust sourcing:
+
+- Host-side-executed sections (engine selection, host-side hooks, the operation flow, the branch-name
+  pattern) are read from the resolved base revision; the in-sandbox `before:commit` gate is read from
+  the worktree (Section 15.4). Way-of-Working trust therefore equals base-branch trust.
+
+Discovery and reload:
+
+- The file path is resolved relative to the repository. Changes are re-read and re-applied like other
+  configuration (Section 6.2), with last-known-good on invalid reload.
+
 ## 6. Configuration Specification
 
 ### 6.1 Configuration Resolution Pipeline
 
 Configuration is resolved in this order:
 
-1. Load the operator policy config and select the `WORKFLOW.md` path (explicit runtime setting,
-   otherwise cwd default).
-2. Parse the policy config and the `WORKFLOW.md` front matter into raw config maps.
+1. Load the operator policy config, select the `WORKFLOW.md` path (explicit runtime setting,
+   otherwise cwd default), and resolve each managed repository's `repo.policy.toml` pointer.
+2. Parse the operator policy config, the `WORKFLOW.md` front matter, and each `repo.policy.toml`
+   (host-side sections from the base revision, the in-sandbox `before:commit` gate from the worktree;
+   Section 15.4) into raw config maps.
 3. Apply built-in defaults for missing OPTIONAL fields.
 4. Resolve secrets through the secret-provider interface, and `$VAR_NAME` indirection for non-secret
    path values that explicitly contain `$VAR_NAME`.
@@ -640,12 +800,14 @@ Value coercion semantics:
 
 Dynamic reload is REQUIRED:
 
-- The software MUST detect changes to both configuration artifacts: `WORKFLOW.md` and the policy
-  config.
+- The software MUST detect changes to all three configuration artifacts: `WORKFLOW.md`,
+  `repo.policy.toml`, and the operator policy config (Section 5). A `repo.policy.toml` host-side
+  section is re-read from the base revision, its in-sandbox `before:commit` gate from the worktree
+  (Section 15.4).
 - On change, it MUST re-read and re-apply the affected configuration and prompt template without
-  restart. Live policy-config reload includes credentials, scope, and the workflow state-machine;
-  implementations SHOULD apply such changes to future operations rather than disrupting in-flight
-  runs.
+  restart. Live operator-config reload includes credentials and scope, and live `repo.policy.toml`
+  reload includes the action-policy machine and transitions; implementations SHOULD apply such
+  changes to future operations rather than disrupting in-flight runs.
 - The software MUST attempt to adjust live behavior to the new config (for example polling
   cadence, concurrency limits, active/terminal states, codex settings, workspace paths/hooks, and
   prompt content for future runs).
@@ -694,9 +856,13 @@ This section is intentionally redundant so a coding agent can implement the conf
 Extension fields are documented in the extension section that defines them. Core conformance does
 not require recognizing or validating extension fields unless that extension is implemented.
 
-Unless a field is marked as in-sandbox (`WORKFLOW.md`), it lives in the operator-owned policy config
-(Section 5). A policy config MAY define multiple repositories, each with its own `vcs` and `agent`
-settings, plus a tracker-specific issue→repo mapping (Section 8.7).
+Configuration lives in three artifacts (Section 5): the operator policy config, the repository's
+`repo.policy.toml` (Way of Working), and `WORKFLOW.md` (in-sandbox). Each field below is tagged with
+its owner. The operator policy config MAY define multiple repositories, each with its own `vcs` and
+`agent` settings and a pointer to that repository's `repo.policy.toml`, plus a tracker-specific
+issue→repo mapping (Section 8.7).
+
+Operator policy config:
 
 - `tracker.kind`: string, REQUIRED, `linear` | `forgejo`
 - `tracker.endpoint`: string, default `https://api.linear.app/graphql` when `tracker.kind=linear`
@@ -705,14 +871,24 @@ settings, plus a tracker-specific issue→repo mapping (Section 8.7).
 - `tracker.required_labels`: list of strings, default `[]`
 - `tracker.active_states`: list of strings, default `["Todo", "In Progress"]`
 - `tracker.terminal_states`: list of strings, default `["Closed", "Cancelled", "Canceled", "Duplicate", "Done"]`
-- `tracker.transitions`: list of `{from, on, to}` entries, default `[]` (workflow state-machine, Section 11.6)
 - `polling.interval_ms`: integer, default `30000`
 - `workspace.root`: path resolved to absolute, default `<system-temp>/symphony_workspaces`
-- `vcs.kind`: string, `github` | `forgejo`
-- `vcs.base_branch`: string, PR target and back-merge source
-- `vcs.work_branch_template`: string, default `symphony/<identifier>`
+- `vcs.kind`: string, `github` | `forgejo` (engine plugin / code host, Section 9.7)
 - `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
 - `vcs.api_key`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env
+- a `repo.policy.toml` pointer per managed repository (Section 5.6)
+
+Repository Way of Working (`repo.policy.toml`, Section 5.6):
+
+- engine selection: which VCS engine realizes the Way of Working
+- base branch: PR target and back-merge source
+- `scope.branch_pattern`: string, default `symphony/<identifier>` (work-branch name; the scope guard is a Broker Core built-in)
+- action-policy edges and host-side hooks: the `(trigger) → (action)` machine (Section 9.12)
+- `tracker.transitions`: list of `{from, on, to}` entries, default `[]` (workflow state-machine, Sections 9.12, 11.6)
+- `[tasks]` / `[driver]`: OPTIONAL daemon task management and computed completion (Section 8.10)
+
+Workspace hooks (repository-owned; in-sandbox in `WORKFLOW.md`, host-side in `repo.policy.toml`, Sections 5.3.4, 15.4):
+
 - `hooks.after_create`: shell script or null
 - `hooks.before_run`: shell script or null
 - `hooks.after_run`: shell script or null
@@ -732,11 +908,26 @@ settings, plus a tracker-specific issue→repo mapping (Section 8.7).
 - `codex.turn_timeout_ms`: integer, default `3600000`
 - `codex.read_timeout_ms`: integer, default `5000`
 - `codex.stall_timeout_ms`: integer, default `300000`
+- `compute.kind` (node-scheduler extension, Section 9.11): string, default `local` (in-process executor)
+- `compute.variant_by_label`: map passed through to the node-scheduler for instance selection, default `{}`
+- `compute.variant_by_repo`: map passed through to the node-scheduler (repo-level default), default `{}`
+- `compute.sharing`: `exclusive` | `shared`, hint to the node-scheduler, default `exclusive`
+- `compute.sharing_key`: template over known inputs, default `repository`
+- `compute.max_wall_clock_ms`: integer wall-clock bound sent to the executor, default implementation-defined
+- `compute.release`: `decommission` | `return_to_pool` | `noop`, disposition on `signal_done`, default `decommission` (remote) / `noop` (local)
 
 ## 7. Orchestration State Machine
 
 The orchestrator is the only component that mutates scheduling state. All worker outcomes are
 reported back to it and converted into explicit state transitions.
+
+That authority is over the orchestrator's own *scheduling* state (claim, run, retry). *Tracker*
+(issue) state is a shared ledger rather than an orchestrator-exclusive one: the broker that performs
+tracker writes runs in the executor for the duration of a run (Sections 10.8, 11.5), so an in-flight
+run's transitions and comments (`set_state`, Section 11.8) are committed by the executor, while the
+orchestrator reconciles its view from the tracker each tick (Section 8.5) — as it must anyway, because
+humans also edit tickets. The orchestrator remains the sole writer of scheduling state; for tracker
+state it is the reconciler and the executor is the in-flight writer.
 
 ### 7.1 Issue Orchestration States
 
@@ -748,15 +939,21 @@ claim state.
 
 2. `Claimed`
    - Orchestrator has reserved the issue to prevent duplicate dispatch.
-   - In practice, claimed issues are either `Running` or `RetryQueued`.
+   - In practice, claimed issues are `Provisioning` (remote acquire), `Running`, or `RetryQueued`.
 
-3. `Running`
+3. `Provisioning` (remote executor only, Section 9.11)
+   - The issue is claimed and a remote executor is being acquired — a node requested and the executor
+     brought up — but its turn loop has not started. It holds a dispatch slot but is not yet
+     `Running`. A local (in-process) executor has no distinct provisioning window and goes straight to
+     `Running`.
+
+4. `Running`
    - Worker task exists and the issue is tracked in `running` map.
 
-4. `RetryQueued`
+5. `RetryQueued`
    - Worker is not running, but a retry timer exists in `retry_attempts`.
 
-5. `Released`
+6. `Released`
    - Claim removed because issue is terminal, non-active, missing, or retry path completed without
      re-dispatch.
 
@@ -791,6 +988,13 @@ A run attempt transitions through these phases:
 11. `CanceledByReconciliation`
 
 Distinct terminal reasons are important because retry logic and logs differ.
+
+Note:
+
+- Under the OPTIONAL autonomous task management extension (Section 8.10), when a run has no seeded
+  task list the first turn is a planning turn that decomposes the issue into tasks before
+  implementation turns begin. The planning turn is an ordinary `StreamingTurn`; it seeds tasks
+  through the broker task verbs (Section 10.8) rather than adding a new run phase.
 
 ### 7.3 Transition Triggers
 
@@ -891,6 +1095,11 @@ Per-state limit:
 
 The runtime counts issues by their current tracked state in the `running` map.
 
+Slot accounting is placement-opaque: it counts agent sessions, not where they run. When a remote
+node-scheduler (Section 9.11) packs several executor processes onto one node, that packing does not
+affect these limits; a deployment that wants to bound co-location does so with the same
+`max_concurrent_agents` limits.
+
 ### 8.4 Retry and Backoff
 
 Retry entry creation:
@@ -920,6 +1129,10 @@ Note:
   (including terminal transitions for currently running issues).
 - Retry handling mainly operates on active candidates and releases claims when the issue is absent,
   rather than performing terminal cleanup itself.
+- The executor owns continuation within a run (the turn loop, Section 16.6); the orchestrator owns
+  retry across runs. For a remote executor (Section 9.11) the orchestrator MAY request a fresh node
+  on re-dispatch but MUST NOT compel the node-scheduler to supply one; a refusal is a `Node
+  Provisioning Failure` (Section 14.1), recovered repo/scope-scoped (Section 14.2).
 
 ### 8.5 Active Run Reconciliation
 
@@ -941,6 +1154,11 @@ Part B: Tracker state refresh
   - If tracker state is still active: update the in-memory issue snapshot.
   - If tracker state is neither active nor terminal: terminate worker without workspace cleanup.
 - If state refresh fails, keep workers running and try again on the next tick.
+- For a remote executor (Section 9.11), a terminal or non-active decision is forwarded to the executor
+  over the seam while it is connected, so the executor stops; while the executor is disconnected it
+  re-reads the issue state itself before finalizing any push, pull request, or tracker write, so it
+  does not act for an issue that has gone terminal. Reconciliation emits `signal_done` (Section 9.11)
+  when it stops a remote run.
 
 ### 8.6 Startup Terminal Workspace Cleanup
 
@@ -1092,6 +1310,56 @@ Configuration:
   (Default: `180000`), and a poller `refresh_ms` for the out-of-band path. Core conformance does not
   require these fields.
 
+### 8.10 Autonomous Task Management (OPTIONAL)
+
+An OPTIONAL, daemon-only extension that makes run completion *computed* rather than asserted.
+Interactive sessions use `ship`/`land` and have no task manager. Tasks are the `Task` entity (Section
+4.1.9); their configuration is `[tasks]` / `[driver]` in `repo.policy.toml` (Section 5.6).
+
+Seeding:
+
+- Tasks seed from the ticket when the tracker exposes structured tasks — a checklist or sub-issues —
+  gated by the tracker's `structured-task-write` capability (Section 11.7). Otherwise an opening
+  planning turn (Section 7.2) creates them.
+
+Agent verbs:
+
+- The agent manages tasks through credential-free broker verbs (Section 10.8): `add`, `split`,
+  `close`, `need-help`, `update`.
+
+Computed completion:
+
+- The `tasks:all_closed` trigger (Sections 9.12, 11.6) fires when every implementation task is closed
+  and, wired through `[driver]`, runs `ship`. Completion is derived from task state, not from an
+  asserted `done`.
+
+Escalation as tasks:
+
+- A conflict or other need bound by `escalate` (Section 9.12) becomes an agent-assigned task.
+  `need-help` creates a human-assigned task that parks the run for feedback (for example a `blocked`
+  state and an operator notification).
+
+Write-through materialization:
+
+- The agent's `add` / `split` cause the broker (credentialed; the agent stays credential-free, Section
+  10.8) to create and maintain structured tracker artifacts — sub-issues or checklist items —
+  mirroring the task list. This is gated by the tracker's `structured-task-write` capability (Section
+  11.7) and is default on where that capability exists; a repository disables it in `repo.policy.toml`.
+  Materialization and the durable fallback are keyed by the stable task `id` (Section 4.1.9), so a
+  crash mid-planning reconstructs the partial list rather than duplicating it.
+
+Recovery classification:
+
+- The task list is classified under Section 14.3: `Reconstructable` where materialized into the
+  tracker (the tracker is the source of truth and nothing is primary-persisted), and `Durable`
+  (idempotent re-seed) where the tracker cannot represent structured tasks or write-through is off. It
+  is never `Ephemeral` by default.
+
+Configuration:
+
+- The extension owns `[tasks]` and `[driver]` in `repo.policy.toml` (Section 5.6). Core conformance
+  does not require these fields.
+
 ## 9. Workspace, VCS, and Safety
 
 ### 9.1 Workspace Layout
@@ -1112,9 +1380,8 @@ Workspace persistence:
 
 VCS-backed workspaces:
 
-- When the issue's repository is managed by a VCS adapter (Section 9.7), the per-issue workspace is
-  a git worktree of that repository's shared object store, not a bare directory. The path layout
-  above is unchanged.
+- When the issue's repository is VCS-managed (Section 9.7), the per-issue workspace is a git worktree
+  of that repository's shared object store, not a bare directory. The path layout above is unchanged.
 
 ### 9.2 Workspace Creation and Reuse
 
@@ -1232,12 +1499,19 @@ Network egress:
   operator-maintained allowlist (for example the agent's model API and package registries) plus the
   broker socket. Implementations MUST document the effective egress policy.
 
-### 9.7 VCS Adapter and Repository Provisioning
+### 9.7 Repository Provisioning and the VCS Engine
 
-Symphony owns all interaction with the version-control remote through a VCS adapter. At least two
-adapters are defined: `github` and `forgejo`. The adapter backs the broker's git verbs (Section
-9.9); pull-request and review operations go through the Forge adapter (Section 9.10). The agent
-never holds VCS credentials.
+Symphony owns all interaction with the version-control remote, split between two roles:
+
+- **Repository provisioning** (clone/fetch of the shared object store, below) is Broker Core work
+  (Section 3.4). It holds the VCS credentials directly and is never a VCS-engine responsibility; the
+  engine operates on an already-provisioned worktree.
+- The per-issue git and forge **operations** the broker exposes — commit, push, back-merge, pull
+  request, merge (Sections 9.8–9.10) — are realized through the **VCS engine contract** (Section 3.4,
+  `VCSX-CONTRACT.md`). The engine's plugin layer provides the code-host backends (`github`, `forgejo`,
+  and others); there are no parallel Symphony VCS/forge adapters for those operations. The engine runs
+  in the executor's credentialed context (Sections 10.8, 15.3), so the agent never holds VCS or Forge
+  credentials.
 
 Repository provisioning:
 
@@ -1253,15 +1527,17 @@ Repository provisioning:
   fetch failures are classified as `Repository Provisioning Failures` (Section 14.1) and recovered
   per Section 14.2.
 
-Configuration (policy config, `vcs` object):
+Configuration:
 
-- `kind` (string) — `github` or `forgejo`.
-- `base_branch` (string) — the branch pull requests target and back-merges pull from.
-- `work_branch_template` (string) — template for the deterministic work branch (Section 9.8).
-  Default: `symphony/<identifier>`.
-- `author` / `actor` (objects) — identity mapping for commits and for the push/PR actor (Section
-  9.8).
-- `api_key` (string) — resolved through the secret-provider interface (Section 15.3).
+- Operator policy config (`vcs` object):
+  - `kind` (string) — the engine plugin/code host, `github` or `forgejo`.
+  - `author` / `actor` (objects) — identity mapping for commits and for the push/PR actor (Section
+    9.8).
+  - `api_key` (string) — resolved through the secret-provider interface (Section 15.3).
+- Repository Way of Working (`repo.policy.toml`, Section 5.6):
+  - the base branch — the branch pull requests target and back-merges pull from.
+  - `scope.branch_pattern` — the deterministic work-branch name pattern (Section 9.8). Default:
+    `symphony/<identifier>`.
 
 ### 9.8 Git Automation and Work Branch
 
@@ -1269,17 +1545,24 @@ Division of labor:
 
 - The agent uses local git in the worktree, including `git commit`, and resolves conflicts. Symphony
   performs every operation that touches the remote: fetch, branch, back-merge, and push;
-  pull-request and review operations go through the Forge adapter (Section 9.10).
+  pull-request and review operations are realized through the VCS engine (Sections 9.7, 9.10).
 - The agent's high-value contributions are commit and pull-request *messages* and *conflict
   resolution*; Symphony automates the surrounding git mechanics.
 
 Work branch:
 
-- The work branch is derived deterministically from issue identity using `vcs.work_branch_template`
-  (Default: `symphony/<identifier>`). It does not depend on agent input; a tracker-provided
-  `branch_name` is at most a hint.
+- The work branch is derived deterministically from issue identity using `scope.branch_pattern`
+  (`repo.policy.toml`, Section 5.6; Default: `symphony/<identifier>`). It does not depend on agent
+  input; a tracker-provided `branch_name` is at most a hint.
 - Because the branch is fixed and Symphony-derived, the broker can enforce "push only to the work
   branch" (Section 10.8).
+
+Commit message:
+
+- The commit message is authored by the agent in-sandbox, with conventions conveyed by the prompt,
+  and validated by the repository's `before:commit` gate / `scan-content` (Section 9.12). Its content
+  is the agent's; the commit author/committer *identity* is configuration (`vcs.author`), distinct
+  from content. A mechanical merge commit uses the engine's default message.
 
 Push:
 
@@ -1288,9 +1571,9 @@ Push:
 
 Back-merge and conflict handoff:
 
-- At the start of a run, Symphony attempts to bring the work branch up to date with
-  `vcs.base_branch`. If the update applies cleanly it is taken; if it would conflict, it is
-  postponed so the agent is not interrupted up front.
+- At the start of a run, Symphony attempts to bring the work branch up to date with the base branch
+  (`repo.policy.toml`, Section 5.6). If the update applies cleanly it is taken; if it would conflict,
+  it is postponed so the agent is not interrupted up front.
 - Conflict resolution is required only when a push is rejected as non-fast-forward. Symphony then
   stages the back-merge in the worktree, hands the conflicted tree to the agent (via continuation
   guidance) to resolve, and completes the merge once the agent signals done.
@@ -1303,25 +1586,26 @@ Identity:
 
 ### 9.9 Broker Git Verbs
 
-- The broker exposes a fixed neutral core of git verbs over the per-run socket (Section 10.8),
-  identical across `github` and `forgejo`: for example `push` and `back-merge`. Pull-request and
-  review verbs are Forge-adapter operations (Section 9.10). Adapters or policy MAY extend this set.
+- The broker exposes a fixed neutral core of git verbs over the per-run socket (Section 10.8): for
+  example `push` and `back-merge`. These are realized through the VCS engine (Section 9.7), whose
+  plugin layer keeps them identical across code hosts (`github`, `forgejo`, …). Pull-request and
+  review verbs are forge operations (Section 9.10). Policy MAY extend this set.
 - Each verb returns a structured result with a stable reason code on failure (for example
   `non_fast_forward`, `scope_denied`). Ordinary failures are returned to the agent to adapt to;
   `scope_denied` fails the run (Section 10.8).
 
-### 9.10 Forge Adapter, Pull Requests, and Review Writes
+### 9.10 Forge Operations, Pull Requests, and Review Writes
 
-Symphony performs pull-request and code-review operations through a Forge adapter — the code host's
-collaboration layer above the git remote. At least the `github` and `forgejo` forge adapters are
-defined. The Forge adapter shares the code host of the VCS adapter (Section 9.7), using the same
-`vcs.kind` and `vcs.api_key`; the agent never holds forge credentials.
+Symphony performs pull-request and code-review operations through the VCS engine's forge plugin — the
+code host's collaboration layer above the git remote — for the configured `vcs.kind` (`github`,
+`forgejo`, and others), using the same `vcs.api_key`; the agent never holds forge credentials.
 
 Pull requests:
 
 - Symphony maintains one pull request per issue. It is created on first push and updated (new
   commits, refreshed title/body) on later runs, and reused across retries and continuations. The
-  agent supplies the title and body; the base is `vcs.base_branch` and the head is the work branch.
+  title and body are composed (below); the base is the base branch (`repo.policy.toml`, Section 5.6)
+  and the head is the work branch.
 - Issue link: when the tracker is the same platform as the forge, the forge establishes the
   pull-request-to-issue link natively (for example a reference in the pull-request body). When the
   tracker is a separate system (for example Linear), the pull-request reference is written onto the
@@ -1329,23 +1613,157 @@ Pull requests:
   adapter MAY declare `link_pull_request` unsupported (Section 11.7), because the link is
   forge-native.
 
+Message composition:
+
+- The pull-request title and body are content composed from agent-supplied prose and/or durable
+  inputs. The default body is auto-composed from the ticket (title and link), the closed task list
+  (Section 8.10), and commit subjects; agent-supplied prose, when present, overrides (replaces) it.
+  The title is scanned strictly; the body is scanned with the tracker-key relaxation the code host's
+  integration needs.
+- The agent supplies pull-request text across the sandbox boundary through a credential-free content
+  seam on the broker CLI (Section 10.8); it never holds forge credentials to do so.
+
+Squash message:
+
+- When a repository squash-merges, the squash subject and body are mechanically derived from the pull
+  request by a repository-owned `pr_to_squash` transform at the `before:merge` position (Section
+  9.12): title verbatim, body laundered (for example stripping tracker keys) so history is stricter
+  than the live pull-request surface. `land` runs this transform; it never authors a message.
+
 Review writes (OPTIONAL):
 
-- A Forge adapter MAY support code-review writes — posting a review comment, replying to a review
-  thread, and resolving a review thread — so a review or overseer workflow can record findings on
-  the pull request. They are OPTIONAL and capability-gated.
+- The engine's forge plugin MAY support code-review writes — posting a review comment, replying to a
+  review thread, and resolving a review thread — so a review or overseer workflow can record findings
+  on the pull request. They are OPTIONAL and capability-gated.
 
 Forge verbs:
 
-- The broker exposes forge verbs over the per-run socket (Section 10.8): `pr` (create/update),
-  `request-merge`, and, where supported, the review writes above. Each verb returns a structured
-  result with a stable reason code on failure (for example `pr_conflict`, `scope_denied`).
+- The broker exposes forge verbs over the per-run socket (Section 10.8), realized through the VCS
+  engine (Section 9.7): `pr` (create/update), `request-merge`, and, where supported, the review
+  writes above. Each verb returns a structured result with a stable reason code on failure (for
+  example `pr_conflict`, `scope_denied`).
 
 Capability descriptor:
 
-- Like the agent (Section 10.9) and tracker (Section 11.7) adapters, the Forge adapter advertises a
-  static capability descriptor (data, not a runtime call) declaring which forge writes it supports.
-  Pull-request create/update is REQUIRED of every forge adapter; review-thread writes are OPTIONAL.
+- Like the agent (Section 10.9) and tracker (Section 11.7) adapters, the engine's forge plugin
+  advertises a static capability descriptor (data, not a runtime call) declaring which forge writes
+  it supports. Pull-request create/update is REQUIRED of every forge plugin; review-thread writes are
+  OPTIONAL.
+
+### 9.11 Node-Scheduler Adapter (OPTIONAL)
+
+An OPTIONAL extension that lets the executor (Section 3.1) run on a remote node instead of in the
+orchestrator's process. Symphony connects to an external *node-scheduler* that owns node lifetimes —
+provisioning and reaping nodes, deploying the executor software, bootstrapping the mutual-auth trust
+material (Section 15.3), and everything cloud-shaped: vendor APIs, the instance-variant catalog and
+its selection logic, pooling, autoscaling, billing, and teardown timing. Those are the scheduler's and
+are `Implementation-defined`; Symphony treats a node as opaque. The adapter is a sibling of the tracker
+(Section 11.7), VCS (Section 9.7), and forge (Section 9.10) adapters, selected by `compute.kind`,
+which defaults to `local` (the in-process executor, with no scheduler). An implementation that does not
+ship this extension behaves exactly as the core specification.
+
+Adapter operations:
+
+- `request_node(selection, bound)` — request a node for a run. `selection` carries inputs Symphony
+  already computes: the repository identity (Section 8.7), the issue's normalized labels (Section
+  11.3), the resolved `agent`/effort (Section 10.9), and a sharing key and hint (below). `bound` is
+  the wall-clock ceiling the orchestrator sets and the remote executor enforces, reporting a timeout
+  outcome if it is exceeded.
+- `node_ready(endpoint, trust_material)` — return a dialable endpoint for the executor plus the
+  bootstrap material the orchestrator uses to mutually authenticate the secret channel (Section 15.3).
+- `lookup_by_run_id(run_id) -> endpoint` — return the current endpoint for an in-flight run, so the
+  orchestrator can reattach after a moved node or a restart (Sections 10, 14.4).
+- `signal_done(run_id)` — report that a run has finished. The scheduler decides whether the node is
+  kept warm, reused, or destroyed, and reaps idle or orphaned nodes; teardown timing is the
+  scheduler's, not Symphony's.
+
+The adapter advertises a static capability descriptor (data, not a runtime call), like the agent
+(Section 10.9), tracker (Section 11.7), and forge (Section 9.10) adapters, declaring at least whether
+it is `local` or `remote`, which `sharing` modes it supports, and what `signal_done` requests.
+
+Boundary travel (REQUIRED for `remote`):
+
+- A remote executor MUST instantiate the same secret-isolation boundary the in-process executor
+  provides: the sandbox (Section 9.6), the per-run broker socket (Section 10.8), and a
+  credential-less agent (Section 15.3). The shared object store is cloned or fetched on the node's own
+  context using the directly delivered credentials (`ensure_object_store`, Section 16.5), fresh per
+  executor process. If the boundary cannot be instantiated, bring-up fails closed (`Executor Bring-up
+  Failures`, Section 14.1); the run MUST NOT proceed credential-exposed.
+
+Acquisition and lifecycle:
+
+- Acquiring a node is asynchronous: while a node is requested and the executor is brought up, the
+  issue is in the `Provisioning` orchestration state (Section 7.1). It holds a dispatch slot but is
+  not yet `Running`, so a slow acquire does not block the poll tick.
+- `signal_done` is emitted when a run completes and when reconciliation stops a run for a terminal or
+  non-active issue (Sections 8.5, 8.6). Reclaiming a leaked node is the scheduler's responsibility;
+  Symphony only signals.
+
+Sharing:
+
+- `compute.sharing_key` (a template over inputs Symphony already has; Default: `repository`) and
+  `compute.sharing` (`exclusive` or `shared`; Default: `exclusive`) are passed on `request_node`. The
+  scheduler maps sessions to instances by packing executor processes; each executor is independently
+  isolated — its own sandbox, broker, and secrets over its own mutual-auth channel — so packing does
+  not weaken isolation. Symphony stays placement-opaque (Section 8.3).
+
+Configuration:
+
+- The extension owns its configuration under the `compute.*` namespace (Section 6.4), in the operator
+  policy config. `compute.kind` defaults to `local`; the variant maps (`compute.variant_by_label`,
+  `compute.variant_by_repo`) are passed through to the scheduler and not interpreted by Symphony. Core
+  conformance does not require these fields. Provider-specific configuration — vendor credentials, the
+  variant catalog, pool sizing, billing — lives with the provider and is `Implementation-defined`.
+
+### 9.12 The Action-Policy Machine
+
+The repository's Way of Working is a single `(trigger) → (action)` machine defined in
+`repo.policy.toml` (Section 5.6) and run by the VCS engine's policy-graph executor (Section 3.4). It
+subsumes three previously separate shapes: the workflow transition graph (Section 11.6), positional
+lifecycle hooks, and ad-hoc VCS-outcome handling. This specification names the machine's vocabulary
+and defers its schema to the engine contract (`VCSX-CONTRACT.md`).
+
+Triggers:
+
+- Lifecycle positions around an engine operation: `before:commit`, `before:push`, `before:create_pr`,
+  `before:merge`.
+- Typed operation results of the form `<op>:<reason>` (for example `push:ok`,
+  `push:non_fast_forward`, `integrate:merge_conflicts`), where the operations are `commit`,
+  `integrate` (back-merge), `push`, `create_pr`, and `merge`.
+- Task-state events (Section 8.10), for example `tasks:all_closed` and `task:#needs_help`.
+
+Actions:
+
+- `run_op` (run an engine operation), `run` (run a repository hook), `escalate` (raise a need bound
+  per front-end, below), `create_task`, `set_state`, `notify`, `park`, and `fail`.
+
+Matching and the `#class` fallback:
+
+- Every reason token carries a proto outcome **class** — one of `done`, `needs_caller`, `error` —
+  which is part of the public contract because configurations branch on it.
+- Matching is most-specific-wins over a fallback ladder, so a configuration need not enumerate every
+  reason and can survive new ones: `op:reason` → `op:#class` → `#class` → a built-in default (for
+  example `push:non_fast_forward` → `push:#needs_caller` → `#needs_caller` → default).
+
+Unmatched policy:
+
+- An unmatched **signal** (an agent milestone or task-state event with no matching edge) is a benign
+  no-op.
+- An unmatched **operation outcome** MUST be fail-safe: it is parked or failed with its proto reason
+  surfaced, never silently dropped, because a dropped operation outcome would strand a run.
+
+Hooks are edges:
+
+- A repository hook is an action (`run`) on a lifecycle-position or result trigger; there is no
+  separate hook axis. The lifecycle positions map the earlier positional hook names as `before_commit`
+  → `before:commit`, `before_push` → `before:push`, `after_push` → `push:ok`, and `before_pull_request`
+  → `before:create_pr`.
+
+Abstract `escalate`:
+
+- `escalate` names a need whose resolver the front-end binds: under the autonomous daemon it becomes
+  an agent-assigned task (Section 8.10); under interactive `ship`/`land` it returns a typed result to
+  the human. This is what lets one `repo.policy.toml` run under both front-ends (Section 3.4).
 
 ## 10. Agent Runner Protocol (Coding Agent Integration)
 
@@ -1369,6 +1787,29 @@ Protocol source of truth:
   controls protocol shape and transport behavior.
 - Symphony-specific requirements in this section still control orchestration behavior, workspace
   selection, prompt construction, continuation handling, and observability extraction.
+
+Orchestrator↔executor protocol:
+
+- The agent app-server protocol terminates at the executor (Section 3.1). The executor speaks it
+  locally — in-process for a local executor, on the node for a remote one (Section 9.11) — and the
+  orchestrator is never in agent communication. Across the seam the orchestrator sends a *run-spec*
+  (the normalized issue, the workflow template, the `agent`/effort selection, `agent.max_turns`, a
+  wall-clock bound, and any `continuation_ref`) plus the run's secrets, and receives only normalized
+  runtime events (Section 10.4), token usage (Section 13.5), the outcome, and committed-state
+  notifications.
+- When the executor is remote, the wire contract between the orchestrator and the executor — its
+  message shapes, framing, and version grammar — is defined by its own versioned protocol document
+  that the implementation MUST consult; this specification owns the orchestration semantics (what
+  crosses the seam and when, and the secret and isolation rules), not the schema, mirroring the
+  agent-protocol deferral above.
+- The up-channel is durably buffered on the executor with a monotonic sequence cursor and replayed
+  from the orchestrator's last acknowledged position on reconnect, so an orchestrator disconnect
+  loses no event or token-usage increment. On a mid-run disconnect the orchestrator reconnects to the
+  executor's known endpoint, or re-addresses it through the node-scheduler (Section 9.11) if that
+  endpoint is stale; the executor continues the run autonomously while disconnected.
+- The executor advertises its protocol version at bring-up; the orchestrator negotiates a
+  mutually-supported version and refuses, fail-closed, below a documented minimum floor, so a stale
+  remote-executor image fails cleanly at bring-up rather than mis-parsing mid-run.
 
 ### 10.1 Launch Contract
 
@@ -1612,8 +2053,8 @@ Channel:
   broker attributes every request to that run's repository, issue, and work branch without trusting
   any identifier supplied by the agent.
 - Credentials are never placed in the sandbox: not in its environment, not on its filesystem, and
-  not in the broker channel. The broker executes operations using credentials held by the
-  orchestrator process outside the sandbox.
+  not in the broker channel. The broker executes operations using credentials held outside the
+  sandbox in the executor's context (*Broker location*, below).
 
 Authorization scope:
 
@@ -1623,7 +2064,13 @@ Authorization scope:
   the configured base.
 - The brokered operations are a fixed neutral core, identical across VCS and tracker backends, plus
   an extension mechanism for adapter- or policy-specific operations. The core verbs are defined
-  alongside the VCS and issue-tracker integration contracts.
+  alongside the VCS and issue-tracker integration contracts. They include:
+  - VCS/forge verbs (Sections 9.9, 9.10): `push`, `back-merge`, `pr`, `request-merge`, and the
+    OPTIONAL review writes.
+  - Tracker verbs (Section 11.5): `add_comment`, `set_state`, `link_pull_request`.
+  - A credential-free content seam for agent-supplied pull-request text (Section 9.10).
+  - Daemon task verbs (Section 8.10): `add`, `split`, `close`, `need-help`, `update` — present only
+    in the autonomous-daemon topology and carrying no credentials.
 
 Result contract:
 
@@ -1633,6 +2080,16 @@ Result contract:
   retry.
 - A `scope_denied` result is treated as a policy violation: the run MUST fail rather than allowing
   the agent to retry around the boundary.
+
+Broker location:
+
+- The broker runs in the executor's context (Section 3.1), outside the agent sandbox: in-process in
+  the orchestrator's host for a local executor, and on the node for a remote one (Section 9.11), where
+  it holds the run's directly delivered credentials (Section 15.3). VCS and forge writes (Sections
+  9.8–9.10) are the executor's alone, because only the executor holds those credentials. Tracker
+  access is shared: the orchestrator already holds tracker credentials to poll (Section 8.1) and the
+  executor's broker also reads and writes the tracker (Sections 11.5, 11.8). Wherever it runs, the
+  broker keeps the agent sandbox credential-less.
 
 Note:
 
@@ -1813,6 +2270,12 @@ orchestrator's scheduling logic and not by the agent using its own credentials.
 - The broker mediates tracker writes for scope and isolation even when the adapter has no credential
   (a `none`-mode adapter, Section 11.7); a local adapter's store MUST be host-side, outside the
   bind-mounted workspace, so the sandboxed agent cannot bypass the broker.
+- The broker that performs these writes runs in the executor (Section 10.8). For an in-flight run the
+  executor commits tracker writes; the orchestrator, which also holds tracker credentials for polling
+  (Section 8.1), reads and MAY write the tracker as well. Tracker state is therefore a shared ledger
+  the orchestrator reconciles (Sections 7, 8.5), not an orchestrator-exclusive write path. An
+  escalation the agent signals (for example `blocked`, Section 11.6) is committed the same way — as a
+  state change and comment the executor writes and the orchestrator observes on reconcile.
 - Workflow-specific success often means "reached the next handoff state" (for example
   `Human Review`) rather than tracker terminal state `Done`.
 
@@ -1822,9 +2285,10 @@ Symphony drives ticket lifecycle; the agent supplies content and signals progres
 
 State machine:
 
-- Ticket state transitions are governed by a workflow state-machine defined in the operator policy
-  config (`tracker.transitions`, Section 5.3.1). Because transitions are privileged tracker writes
-  performed outside the sandbox, the state-machine is operator-owned, not part of `WORKFLOW.md`.
+- Ticket state transitions are governed by a workflow state-machine defined in `repo.policy.toml`
+  (`tracker.transitions`, Sections 5.3.1, 5.6) as `set_state` bindings within the action-policy
+  machine (Section 9.12). Because transitions are host-side-executed Way of Working, they are sourced
+  from the protected base revision (Section 15.4), not from `WORKFLOW.md` or the worktree.
 - The state-machine is a directed graph over tracker workflow-state names — the `active_states` and
   `terminal_states` of Section 5.3.1, plus any intermediate handoff states such as `Human Review` or
   `Merging`. Each transition is a `{from, on, to}` entry: in state `from`, when trigger `on` fires,
@@ -1838,8 +2302,9 @@ State machine:
 
 Triggers:
 
-Each transition's `on` value is drawn from one closed vocabulary with two origins. Operators wire
-triggers to transitions but do not introduce new trigger names.
+Each transition's `on` value is drawn from one closed vocabulary with several origins (the same
+trigger vocabulary as the action-policy machine, Section 9.12). A repository wires triggers to
+transitions but does not introduce new trigger names.
 
 - Milestone signals, emitted by the agent through the broker CLI to express intent, optionally with
   content:
@@ -1855,14 +2320,19 @@ triggers to transitions but do not introduce new trigger names.
     `Stalled`; Section 7.2).
   - `retries_exhausted` — the retry path completed without re-dispatch (Section 7.1 `Released`,
     Section 8.4).
+- Task-state events (OPTIONAL, autonomous daemon, Section 8.10):
+  - `tasks:all_closed` — every implementation task for the issue is closed; the daemon's
+    computed-completion trigger, which runs `ship` in place of an asserted `done`.
+  - `task:#needs_help` — an agent-created human-assigned task parks the run for feedback.
 
 Process authority:
 
 - The repository-owned prompt (Section 5.4) shapes how the agent works and which milestone signal it
   emits; it does not define the state-machine and cannot grant a trigger a transition the graph does
   not define. Run outcomes are orchestrator-emitted and not influenceable by prompt wording. Process
-  authority is operator-owned (Sections 5.2, 5.3): no prompt wording widens the set of transitions
-  an agent can cause.
+  authority is repository-owned but base-sourced (Sections 5.6, 15.4): the transitions live in
+  `repo.policy.toml` read from the protected base revision, while the prompt is worktree-sourced, so
+  no prompt wording widens the set of transitions an agent can cause.
 
 ### 11.7 Adapter Capability Descriptor
 
@@ -2333,9 +2803,20 @@ API design notes:
    - Dashboard render errors
    - Log sink configuration failure
 
+7. `Node Provisioning Failures` (OPTIONAL, remote execution — Section 9.11)
+   - The node-scheduler cannot supply a node (no capacity, transport error, invalid placement
+     configuration)
+   - Node-scheduler authentication/credential failure (the scheduler's own credentials)
+
+8. `Executor Bring-up Failures` (OPTIONAL, remote execution — Section 9.11)
+   - Remote executor process fails to start, or fails mutual authentication (Section 15.3)
+   - The sandbox, per-run broker socket, or secret-isolation boundary cannot be instantiated on the
+     node (Section 9.6) — fail-closed: the run MUST NOT proceed without the boundary
+
 Note: an OPTIONAL extension MAY define additional failure categories outside this core list. For
 example, the token budget guards extension (Section 8.8) defines `token_budget_exceeded`, which is
-parked rather than retried (Section 14.2).
+parked rather than retried (Section 14.2); classes 7 and 8 above are defined by the OPTIONAL
+node-scheduler extension (Section 9.11).
 
 ### 14.2 Recovery Behavior
 
@@ -2353,6 +2834,18 @@ parked rather than retried (Section 14.2).
   - Keep the service alive and retry on a later tick. Do not convert to a per-worker backoff retry.
   - Persistent authentication/credential or invalid-store-path failures MAY be parked rather than
     retried indefinitely; the choice is `Implementation-defined` and MUST be documented.
+
+- Node provisioning failures (OPTIONAL extension, Section 9.11):
+  - Skip the affected dispatch scope and retry on a later tick, mirroring repository provisioning
+    above; keep the service alive and do not convert to a per-worker backoff retry.
+  - Persistent node-scheduler authentication or invalid-placement-configuration failures MAY be
+    parked rather than retried indefinitely; the choice is `Implementation-defined` and MUST be
+    documented.
+
+- Executor bring-up failures (OPTIONAL extension, Section 9.11):
+  - Fail-closed and run-fatal: the run MUST NOT proceed without its sandbox, per-run broker socket,
+    and credential-less agent (Section 9.6). The orchestrator MAY re-dispatch onto a fresh node
+    (Section 8.4) but MUST NOT run the agent credential-exposed.
 
 - Token budget exhaustion (OPTIONAL extension, Section 8.8):
   - Park the issue (`token_budget_exceeded`); do not convert to a backoff retry.
@@ -2412,6 +2905,11 @@ exception that an OPTIONAL accounting or budgeting extension introduces, and `Ca
 signal` is introduced by an OPTIONAL provider-quota extension. Core conformance requires only that
 every runtime-state field has a documented class; it does not require any durable store.
 
+The OPTIONAL daemon task list (Section 8.10) is another consumer of this taxonomy: it is
+`Reconstructable` where write-through materializes it into the tracker (the tracker is the source of
+truth) and `Durable` (idempotent re-seed, keyed by task `id`) where the tracker cannot hold
+structured tasks or write-through is off; it is never `Ephemeral` by default.
+
 ### 14.4 Partial State Recovery (Restart)
 
 Scheduler state is `Reconstructable` or `Ephemeral` (Section 14.3) and is therefore held in memory:
@@ -2431,6 +2929,14 @@ After restart:
   - startup terminal workspace cleanup
   - fresh polling of active issues
   - re-dispatching eligible work
+
+Remote executors (OPTIONAL, Section 9.11) add durable run state that local execution does not need.
+In remote mode the orchestrator maintains a *run registry* — a `Durable`-class mapping (Section 14.3)
+from each in-flight run to its issue and its node. On restart it reconciles in-flight remote runs by
+re-querying the node-scheduler for the current endpoint (`lookup_by_run_id`) and reattaching across
+the seam, where the executor replays buffered events (Section 10). This is the one case where a
+running session is recoverable, and it is scoped to remote mode: local execution keeps the
+reconstruct-from-tracker/filesystem recovery above, with no running session assumed recoverable.
 
 ### 14.5 Operator Intervention Points
 
@@ -2489,16 +2995,43 @@ RECOMMENDED additional hardening for ports:
 - `$VAR` indirection is retained only for non-secret path values, not for secrets.
 - Do not log API tokens or secret values.
 - Validate presence of secrets without printing them.
+- The secret model splits into two classes:
+  - **Outward credentials** — VCS, Forge, and tracker credentials. These are broker-mediated and are
+    the subject of the secret-isolation invariant: they never enter the agent sandbox and are used
+    only in the executor's broker context (Section 10.8).
+  - **Repo-internal integrity values** — repository-owned values a host-side hook needs in its
+    environment (for example a gate-cache HMAC key). These are *not* outward credentials: they are
+    supplied to a host-side hook (sourced from `repo.policy.toml`, Section 15.4) and are not
+    broker-mediated. Symphony ships no such value; whether one exists lives in the repository's wired
+    hooks.
+- When the executor is remote (Section 9.11), Symphony resolves the run's outward credentials through
+  the secret-provider interface and delivers them directly to the executor over a mutually
+  authenticated channel; the node-scheduler bootstraps the trust material but is never on the secret
+  path. The invariant is unchanged wherever the executor runs: the secret reaches the executor's
+  broker context only (Section 10.8), never the agent sandbox (Section 9.6).
 
-### 15.4 Hook Script Safety
+### 15.4 Configuration Trust Sourcing and Hook Safety
 
-Hooks exist at two trust levels (Section 5.3.4).
+Repository-owned configuration is trusted by *where it is sourced from*, not by an immutability flag.
+The agent can edit the worktree and can commit, so Symphony sources each part of a repository's Way of
+Working from the revision that makes it safe:
 
-Implications:
+- Host-side-executed Way of Working — engine selection, host-side hooks, the operation flow, and the
+  branch-name pattern (`repo.policy.toml`, Section 5.6) — is read from the resolved **base revision**.
+  The agent cannot push to the base branch (it is review-gated by branch protection), so it cannot
+  alter host-side behavior from within a run. Way-of-Working trust equals base-branch trust.
+- In-sandbox parts — the `WORKFLOW.md` prompt and in-sandbox hooks, and the `before:commit`
+  gate/scan — are read from the **worktree**. An agent edit there is harmless: these run inside the
+  sandbox without credentials or host access, and running a pull request's own gate change against
+  that pull request is correct.
 
-- Policy-config hooks are operator-owned, trusted, and run on the host outside the sandbox.
-- `WORKFLOW.md` hooks are repo-owned, untrusted, and MUST NOT be granted credentials or host access;
-  they run inside the sandbox (Section 9.6).
+Hook implications:
+
+- Host-side hooks (`repo.policy.toml`, base-sourced) are trusted and run on the host outside the
+  sandbox; they MAY receive repo-internal integrity values (Section 15.3) but never place outward
+  credentials in the agent's reach.
+- `WORKFLOW.md` and in-sandbox hooks (worktree-sourced) are untrusted, MUST NOT be granted
+  credentials or host access, and run inside the sandbox (Section 9.6).
 - Hooks run with the workspace directory as their working directory.
 - Hook output SHOULD be truncated in logs.
 - Hook timeouts are REQUIRED to avoid hanging the orchestrator.
@@ -2641,6 +3174,11 @@ function dispatch_issue(issue, state, attempt):
     log_provisioning_error(repo_of(issue), store)
     return state
 
+  # Hand the run to an executor across the orchestrator↔executor seam (Section 3.1). Locally the
+  # executor runs in-process, as below. When a remote node-scheduler is configured
+  # (compute.kind != local, Section 9.11), dispatch first acquires a node (request_node) and brings up
+  # the executor; the issue is `Provisioning` (Section 7.1) until it is ready, and node-provisioning
+  # or bring-up failures are recovered per Section 14.2 rather than as a per-worker spawn failure.
   worker = spawn_worker(
     fn -> run_agent_attempt(issue, attempt, parent_orchestrator_pid) end
   )
@@ -2701,6 +3239,11 @@ of `provision_for_issue` (Section 16.4), so a clone or fetch failure is recovere
 
 ```text
 function run_agent_attempt(issue, attempt, orchestrator_channel):
+  # This is the executor's run (Section 3.1). Locally it runs in-process in the orchestrator's host;
+  # remotely it runs on a node reached across the orchestrator↔executor seam (Section 9.11), where
+  # `orchestrator_channel` is the network up-channel (buffered and replayed on reconnect) instead of
+  # an in-process channel. The executor instantiates the sandbox, the per-run broker socket, and the
+  # credential-less agent wherever it runs.
   workspace = workspace_manager.provision_for_issue(issue)  # VCS worktree or bare dir
   if workspace failed:
     fail_worker("workspace error")
@@ -2876,15 +3419,31 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - VCS-managed workspaces are provisioned as worktrees of a shared per-repo object store
 - The shared per-repo object store is provisioned host-side (initial clone, then refresh fetches)
   with credentials the agent never sees, before any per-issue worktree is cut from it
-- The agent does local git including commit; Symphony performs fetch/branch/back-merge/push (VCS
-  adapter); pull-request and review writes go through the Forge adapter
-- The work branch is Symphony-derived (`symphony/<identifier>`) and the push refspec is pinned to it
+- The agent does local git including commit; Symphony provisions host-side (Broker Core) and realizes
+  push/back-merge and pull-request/review writes through the VCS engine and its forge plugin (Sections
+  9.7–9.10)
+- The work branch is Symphony-derived from `scope.branch_pattern` (`symphony/<identifier>`) and the
+  push refspec is pinned to it
 - Back-merge is attempted at run start and postponed on conflict; conflict resolution is required
   only on push-reject
-- One pull request per issue is created then updated; the agent supplies title/body, base from
-  policy
-- The Forge adapter owns pull-request and review writes and advertises a capability descriptor;
-  review-thread writes (post/reply/resolve) are OPTIONAL and capability-gated
+- One pull request per issue is created then updated; the base is the repository's base branch
+  (`repo.policy.toml`), and the title/body are composed (Section 9.10)
+- The engine's forge plugin owns pull-request and review writes and advertises a capability
+  descriptor; review-thread writes (post/reply/resolve) are OPTIONAL and capability-gated
+- Configuration trust sourcing (Section 15.4): an agent worktree edit to a host-side hook does not
+  change host-side behavior (it is read from the base revision), an in-sandbox `before:commit` change
+  is honored, and a repo-internal integrity value never enters the sandbox
+- The action-policy machine (Section 9.12): an `op:#class` edge catches an unnamed operation reason,
+  an unmatched operation outcome is fail-safe (parked, not silently dropped), and an unmatched signal
+  is a benign no-op
+- Message formulation (Section 9.10): the squash message is `transform(PR)` via `pr_to_squash` at
+  `before:merge` (title verbatim, body laundered); the PR title is strict-scanned while the PR body
+  retains tracker keys; the commit message passes `before:commit`/`scan-content`; the default PR body
+  is auto-composed from ticket + closed task list + commit subjects and agent prose replaces it
+- Deployment topologies (Sections 3.4, 9.12): the Broker Core secret-isolation invariant holds in the
+  `daemon` and `interactive-agent` topologies; the same `repo.policy.toml` yields the same operation
+  flow through `ship` (interactive) and the daemon; `escalate` binds to an agent task under the daemon
+  and to a human return interactively
 
 ### 17.3 Issue Tracker Client
 
@@ -2959,6 +3518,28 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - If provider quota backpressure is implemented, the quota snapshot is normalized across providers,
   `UNKNOWN` is never represented as `0`, last-known-good survives a restart, and the `UNKNOWN`
   policy (fail-open vs fail-closed; unsupported vs blocked) is honored
+- If a remote node-scheduler is implemented (Section 9.11), a local (`compute.kind=local`) executor is
+  behaviorally identical to the in-process worker, and dispatch to a remote executor moves the issue
+  through the `Provisioning` state without blocking the poll tick
+- If a remote node-scheduler is implemented, a node-provisioning failure skips the affected dispatch
+  scope and retries on a later tick (not a per-worker backoff), while an executor bring-up or
+  boundary-instantiation failure is fail-closed (the run does not proceed credential-exposed)
+- If a remote node-scheduler is implemented, an in-flight remote run reattaches via `lookup_by_run_id`
+  after an orchestrator restart or a moved node, and the buffered event stream replays with no gap in
+  token accounting
+- If a remote node-scheduler is implemented, git/forge writes originate only from the executor, a
+  terminal issue stops a connected run via the forwarded signal and a disconnected run via the
+  executor's pre-finalize re-check, and `signal_done` is emitted on completion and on terminal/cancel
+- If a remote node-scheduler is implemented, secret delivery to the executor is direct and mutually
+  authenticated with the scheduler off the secret path, and a below-floor executor protocol version is
+  refused fail-closed at bring-up
+- If autonomous task management is implemented (Section 8.10), tasks seed from the ticket where the
+  `structured-task-write` capability exists and otherwise from a planning turn; `tasks:all_closed`
+  runs `ship`; `need-help` parks the run and notifies
+- If autonomous task management is implemented, write-through materializes the task list into the
+  tracker (default on where the capability exists) and a restart reconstructs it; with write-through
+  off or no capability a restart resumes from the `Durable` task list; a mid-planning crash does not
+  duplicate tasks (idempotent on task `id`)
 
 ### 17.5 Coding-Agent Adapters
 
@@ -3051,13 +3632,19 @@ Use the same validation profiles as Section 17:
 - `WORKFLOW.md` loader with YAML front matter + prompt body split
 - Typed config layer with defaults, secret-provider resolution, and `$` expansion for non-secret
   paths
-- Two configuration artifacts: operator-owned policy config (privileged) and repo-owned
-  `WORKFLOW.md` (in-sandbox only); dynamic watch/reload/re-apply for both
+- Three configuration artifacts (Section 5): operator policy config, repository-owned
+  `repo.policy.toml` (Way of Working; host-side sections base-sourced), and repository-owned
+  `WORKFLOW.md` (in-sandbox, worktree-sourced); dynamic watch/reload/re-apply for all three with
+  last-known-good on invalid reload
+- Enabler-not-enforcer layering (Section 3.4): the Broker Core (secret isolation + scope) is the only
+  enforced guarantee and is independently conformant; the VCS engine and autonomous daemon are
+  OPTIONAL layers; the `daemon`, `interactive-agent`, and `engine-direct` topologies compose them
 - Polling orchestrator with single-authority mutable state
 - Issue tracker client with candidate fetch + state refresh + terminal fetch
 - Workspace manager with sanitized per-issue workspaces
-- Workspace lifecycle hooks at two trust levels (policy-config hooks on the host; `WORKFLOW.md`
-  hooks in the sandbox)
+- Workspace lifecycle hooks at two trust levels sourced by trust (host-side hooks in
+  `repo.policy.toml` from the base revision; `WORKFLOW.md` hooks in the sandbox from the worktree,
+  Section 15.4)
 - Hook timeout config (`hooks.timeout_ms`, default `60000`)
 - Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
   app-server JSON line protocol as the worked example)
@@ -3068,14 +3655,22 @@ Use the same validation profiles as Section 17:
   cap, accepted effort); one adapter per (agent, transport) with no protocol impersonation
 - Agent and effort selected from policy (`default_agent`/`default_effort`) with `agent_by_label`
   per-issue overrides
-- VCS adapter (`github`, `forgejo`) owning provisioning, fetch, push, and back-merge, with a
-  Symphony-derived work branch and configurable authorship
-- Forge adapter (`github`, `forgejo`, sharing the VCS code host) owning one-PR-per-issue and
-  OPTIONAL review-thread writes (post/reply/resolve), with a static forge-capability descriptor
+- Repository provisioning (host-side, Broker Core) plus a VCS engine (Section 3.4) whose plugin layer
+  (`github`, `forgejo`) realizes push/back-merge and the forge operations; a
+  `scope.branch_pattern`-derived work branch and configurable authorship
+- The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
+  writes (post/reply/resolve), advertising a static forge-capability descriptor
+- The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback, an
+  unmatched operation outcome fail-safe, an unmatched signal a no-op, and abstract `escalate` bound
+  per front-end
+- Message formulation (Sections 9.8–9.10): commit authored + `scan-content`; PR composed
+  (auto-compose default, agent prose overrides) with strict-title / relaxed-body scans; squash
+  mechanically transformed via `pr_to_squash` at `before:merge`
 - Tracker adapter (`linear`, `forgejo`) with reads and writes; Symphony-driven lifecycle via a
-  policy-owned transition graph (`tracker.transitions`) keyed on agent milestone signals and
-  observed run outcomes; each adapter advertises a static write-capability descriptor and an
-  unsupported write surfaces `tracker_unsupported_operation` rather than a silent no-op
+  repository-owned transition graph (`tracker.transitions` in `repo.policy.toml`, a `set_state`
+  binding in the action-policy machine) keyed on agent milestone signals and observed run outcomes;
+  each adapter advertises a static write-capability descriptor and an unsupported write surfaces
+  `tracker_unsupported_operation` rather than a silent no-op
 - `set_state` is idempotent and surfaces `tracker_state_unreachable` / `tracker_state_conflict`
   rather than silently succeeding; a transition failure is logged and does not fail the run
 - Tracker adapters declare an auth mode (`secret` | `none`); `api_key`/`endpoint` and the secret
@@ -3092,6 +3687,11 @@ Use the same validation profiles as Section 17:
   structured results (`scope_denied` fails the run)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
   before start, and the broker socket as the only privileged channel
+- The secret model splits outward credentials (broker-mediated, never in the sandbox) from
+  repo-internal integrity values (repo-owned host-side hook environment; Section 15.3)
+- The Execution Layer is realized by one execution process (the executor) per run behind an
+  always-present orchestrator↔executor seam; local execution is its in-process transport, and the
+  executor instantiates the sandbox, per-run broker socket, and credential-less agent wherever it runs
 - Codex adapter launch command config (`codex.command`, default `codex app-server`)
 - Strict prompt rendering with `issue` and `attempt` variables
 - Exponential retry queue with continuation retries after normal exit
@@ -3120,6 +3720,20 @@ Use the same validation profiles as Section 17:
 - Provider quota backpressure extension (Section 8.9): a normalized provider-quota snapshot (class
   `Cached external signal`) fed in-band or by an OPTIONAL poller, with a dispatch-only pause above a
   threshold, implicit resume, and a configurable fail-open/closed policy on `UNKNOWN`.
+- Node-scheduler / remote-execution extension (Section 9.11): a remote executor carries the
+  secret-isolation boundary (sandbox, per-run broker socket, credential-less agent) to its node,
+  receives secrets over a directly mutually-authenticated channel with the node-scheduler off the
+  secret path, runs the turn loop and commits tracker writes itself while the orchestrator reconciles,
+  and is acquired through a four-verb adapter (`request_node`, `node_ready`, `lookup_by_run_id`,
+  `signal_done`) with a `Provisioning` state, `Node Provisioning` / `Executor Bring-up` failure classes
+  (Section 14.1), placement-opaque concurrency (Section 8.3), and a `Durable` remote-mode run registry
+  for reattach (Section 14.4). Owns the `compute.*` config namespace.
+- Autonomous task management extension (Section 8.10): a daemon-only task model with computed
+  completion (`tasks:all_closed` runs `ship`), credential-free broker task verbs
+  (`add`/`split`/`close`/`need-help`/`update`), write-through materialization into the tracker
+  (default on where the `structured-task-write` capability exists), and the task list classified
+  `Reconstructable` / `Durable` (never `Ephemeral` by default). Owns `[tasks]` / `[driver]` in
+  `repo.policy.toml`.
 - TODO: Make observability settings configurable in workflow front matter without prescribing UI
   implementation details.
 

@@ -62,3 +62,9 @@ Accepted; `SPEC.md` application not started. Dependencies 0027 and 0030 are Acce
 subjects, agent prose overriding — see this decision's `Background.md` *Fork resolution*. `SPEC.md`
 application is deferred and batched with the companion `vcsx` spec (0028) and decisions 0029–0031
 (`pr_to_squash` is a `before:merge` edge of 0030's machine, housed in `repo.policy.toml`).
+
+Update (2026-07-05): Applied to `SPEC.md` against the `VCSX-CONTRACT.md` stub (0039). Section 9.8 adds
+the authored-commit surface (`scan-content` at `before:commit`; identity vs content); Section 9.10 adds
+PR composition (auto-compose default from ticket + closed task list + commit subjects, agent prose
+overriding; strict-title / relaxed-body scans), the `pr_to_squash` squash transform at `before:merge`,
+and the credential-free content seam (Section 10.8).

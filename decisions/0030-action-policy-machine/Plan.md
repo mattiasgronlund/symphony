@@ -65,3 +65,9 @@ Accepted); decision 0026 moves to `Superseded` (the new state added by decision 
 append-only `Background.md` note naming 0030 as its successor. `SPEC.md` application is deferred and
 batched with the companion `vcsx` spec (0028) and decisions 0031–0032, which share this machine's
 triggers and actions.
+
+Update (2026-07-05): Applied to `SPEC.md` against the `VCSX-CONTRACT.md` stub (0039). New Section 9.12
+defines the `(trigger) → (action)` machine — trigger kinds, action kinds, the `#class` fallback over
+`done`/`needs_caller`/`error`, the fail-safe-on-unmatched-outcome / no-op-on-unmatched-signal rules,
+hooks-as-edges (`after_push` ≡ `push:ok`), and abstract `escalate`. Section 11.6 recasts
+`tracker.transitions` as a `set_state` binding within it; Section 5.6 houses it in `repo.policy.toml`.
