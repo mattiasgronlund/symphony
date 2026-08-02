@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repository.
+Guidance for coding agents working in this repository. `AGENTS.md` is a symlink to this file, so
+Claude Code and AGENTS.md-aware agents (for example Codex) read the same instructions.
 
 ## What this repo is
 
@@ -9,9 +10,13 @@ coding agents to do project work: it polls an issue tracker, creates an isolated
 workspace, and runs a coding-agent session for each issue.
 
 The long-term intention is to implement a variant of Symphony here over time. As of now the repo
-contains only:
+holds specification and planning material, not implementation:
 
 - `SPEC.md` — the authoritative, language-agnostic service specification (this is the artifact).
+- `VCSX-CONTRACT.md`, `VCSX-SPEC.md` — the layered `vcsx` engine documents `SPEC.md` defers to.
+- `DECISIONS.md` and `decisions/` — the decision log (see below).
+- A phased-delivery workflow — reusable skills, ExecPlan standard, templates, and planning docs —
+  that stays dormant until implementation is explicitly begun (see "Phased implementation workflow").
 - `LICENSE`
 
 There is no implementation yet. Treat `SPEC.md` as the primary work product.
@@ -122,6 +127,50 @@ So plans stay re-executable in any order and after intervening edits, `Plan.md` 
   append-only in that decision's `Plan.md` `Anchor changes` section. Do **not** keep a standalone
   registry of current anchors: `SPEC.md` is the source of truth for what exists now; the per-decision
   records are the history of what changed.
+
+## Phased implementation workflow (dormant)
+
+For when implementation begins, the repo carries a phased-delivery workflow that turns `SPEC.md`
+into reviewable vertical slices: a discovery/behavior-contract/verification/implementation/closeout
+gate sequence. It is installed but **dormant** — the near-term task remains refining `SPEC.md`, not
+building product code. Do not generate requirement IDs, populate the roadmap or traceability matrix,
+or start product implementation unless explicitly asked to.
+
+Skills live under `.agents/skills/` (the canonical copies) and are mirrored to `.claude/skills/` as
+symlinks. In Claude Code invoke them as `/spec-roadmap`, `/phase-workflow`, `/phase-planner`,
+`/phase-behavior-contract`, `/phase-verification`, `/phase-implementer`, and `/phase-closeout`; Codex
+invokes the same skills as `$spec-roadmap`, and so on. `USAGE.md` documents the commands.
+
+### Source of truth (once planning begins)
+
+- `SPEC.md` — canonical product requirements. Stable requirement IDs are introduced by `spec-roadmap`
+  when planning begins; until then requirements are addressed by section title and code-token
+  identity (see decision 0002).
+- `docs/implementation/ROADMAP.md` — phase allocation, ordering, dependencies, and status (an
+  unpopulated placeholder until preparation runs).
+- `docs/implementation/TRACEABILITY.md` — every normative requirement mapped to phases and evidence
+  (likewise a placeholder until preparation runs).
+- `.agent/PLANS.md` — the ExecPlan format and maintenance rules.
+- `docs/implementation/phases/phase-*.md` — one living ExecPlan per phase, created from
+  `docs/implementation/templates/`.
+
+### Governance (during implementation)
+
+- Complex features, migrations, major refactors, and multi-session work require an ExecPlan
+  conforming to `.agent/PLANS.md`.
+- Read the applicable SPEC requirements, roadmap entry, traceability rows, and active ExecPlan before
+  changing code.
+- Do not silently resolve product ambiguity. Record the question, affected requirement IDs, and the
+  blocker.
+- Keep each phase's `Decision Log` and `Surprises & Discoveries` authoritative; add concise
+  checkpoint outcomes after each stage.
+- Do not begin a later stage until the prior gate is approved, unless the ExecPlan records an
+  explicit exception and rationale.
+- Preserve unrelated changes and review the Git diff before completion.
+- Do not mark a phase complete without recorded, observable validation evidence.
+
+`python3 scripts/validate_workflow_bundle.py` checks the workflow bundle's structure and skill
+frontmatter; it validates the scaffolding only and does not build or test the spec.
 
 ## Working agreements
 

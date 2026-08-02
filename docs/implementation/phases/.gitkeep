@@ -1,0 +1,4 @@
+# One living ExecPlan per implementation phase lives here, named
+# phase-NN-<name>.md and created from ../templates/phase-execplan-template.md.
+# See docs/implementation/README.md. This placeholder keeps the directory
+# tracked until the first phase is planned via the phase-planner skill.

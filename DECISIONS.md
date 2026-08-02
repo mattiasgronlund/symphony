@@ -439,7 +439,8 @@ therefore not tiny (it owns the executor); Symphony's *marginal* code over it st
 Depends on 0027 (Accepted). Accepted and applied to `SPEC.md` (Sections 3.4, 5, 9.7–9.10, 18) against
 the `VCSX-CONTRACT.md` stub (0039), so contract names stay identical across both documents: the engine
 deferral boundary, the one-executor-two-front-ends invariant, and the recast of the broker verbs
-through the engine contract.
+through the engine contract. Realization and sequencing — a separate codebase from the start,
+`engine-direct` built first — are decided in 0042.
 
 ## 0029 — Repo-owned WoW config, trust sourcing, and the secret/integrity taxonomy
 
@@ -742,3 +743,24 @@ spelled identically to the surface. Options: A keep deferring to an unwritten sp
 nothing); B fold the detail into `VCSX-CONTRACT.md` (inflates the stable surface); C a separate
 `VCSX-SPEC.md` the surface defers to (chosen). Builds on 0039; relates to 0026–0032. Accepted;
 `VCSX-SPEC.md` authored and `VCSX-CONTRACT.md` wired to it, no `SPEC.md` edit made.
+
+## 0041 — Integrate the phased-spec implementation workflow
+
+**State:** Accepted
+**Folder:** [decisions/0041-integrate-phased-spec-workflow/](decisions/0041-integrate-phased-spec-workflow/)
+
+Installs a reusable phased-delivery workflow for the eventual `SPEC.md`→implementation transition: a
+discovery / behavior-contract / verification / implementation / conformance-closure gate sequence
+backed by seven skills (`spec-roadmap`, `phase-planner`, `phase-workflow`, `phase-behavior-contract`,
+`phase-verification`, `phase-implementer`, `phase-closeout`), an ExecPlan standard (`.agent/PLANS.md`),
+and a roadmap/traceability/template scaffold under `docs/implementation/`. The bundle shipped
+Codex-oriented and written as though implementation were already underway; it was reconciled rather
+than dropped in verbatim. Options: A install verbatim (its `AGENTS.md` misrepresents the current state
+and its skills reach only Codex); B take only the skills (breaks their references to the planning docs
+and the validator); C install the full bundle reconciled (chosen). The canonical skills live once under
+`.agents/skills/` and are mirrored to Claude Code as `.claude/skills/` symlinks — one source of truth,
+no drift; the same single-source principle governs the instruction files, so the governance lives in
+`CLAUDE.md` and `AGENTS.md` is a symlink to it, letting Claude Code and Codex read one shared file. It
+states the workflow is **dormant** until implementation is explicitly begun, so the near-term focus
+stays on refining `SPEC.md`; no requirement IDs, roadmap, or traceability rows are generated yet.
+`scripts/validate_workflow_bundle.py` passes. No `SPEC.md` edit made.
