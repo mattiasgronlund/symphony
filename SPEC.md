@@ -209,10 +209,11 @@ That principle factors the service into three layers:
    - Polling, dispatch, bounded concurrency, multi-repo routing, task management (Section 4.1.9),
      and the autonomous driver. It is layered on the Broker Core and consumes the VCS Engine.
 
-One executor, two front-ends: interactive `ship`/`land` and the autonomous daemon run the **same**
-policy-graph executor over the **same** repository Way of Working (`repo.policy.toml`, Section 5),
-differing only in their initiator and in how the abstract `escalate` action binds (Section 9.12). A
-given repository policy therefore yields the same operation flow through either front-end.
+One executor, two front-ends: interactive `ship`/`land` and the autonomous daemon — the engine's
+embedded-driver front-end — run the **same** policy-graph executor over the **same** repository Way of
+Working (`repo.policy.toml`, Section 5), differing only in their initiator and in how the abstract
+`escalate` action binds (Section 9.12). A given repository policy therefore yields the same operation
+flow through either front-end.
 
 Three deployment topologies compose the layers:
 
@@ -743,7 +744,9 @@ field-level schema to that contract.
 
 Sections:
 
-- engine selection — which VCS engine realizes the Way of Working.
+- engine and code-host selection — which VCS engine realizes the Way of Working, and the code host
+  (`github`, `forgejo`) and checkout mode (git, jj) it targets. The matching credential is
+  operator-owned (`vcs.api_key`, Section 9.7).
 - `scope.branch_pattern` — the work-branch name pattern (Default: `symphony/<identifier>`, Section
   9.8). Only the branch *name* is configurable here; the scope guard itself is a Broker Core built-in
   (Section 10.8).
@@ -873,14 +876,13 @@ Operator policy config:
 - `tracker.terminal_states`: list of strings, default `["Closed", "Cancelled", "Canceled", "Duplicate", "Done"]`
 - `polling.interval_ms`: integer, default `30000`
 - `workspace.root`: path resolved to absolute, default `<system-temp>/symphony_workspaces`
-- `vcs.kind`: string, `github` | `forgejo` (engine plugin / code host, Section 9.7)
 - `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
-- `vcs.api_key`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env
+- `vcs.api_key`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; the credential for the repository's selected code host
 - a `repo.policy.toml` pointer per managed repository (Section 5.6)
 
 Repository Way of Working (`repo.policy.toml`, Section 5.6):
 
-- engine selection: which VCS engine realizes the Way of Working
+- engine and code-host selection: which VCS engine realizes the Way of Working, and the code host (`github` | `forgejo`) and checkout mode it targets
 - base branch: PR target and back-merge source
 - `scope.branch_pattern`: string, default `symphony/<identifier>` (work-branch name; the scope guard is a Broker Core built-in)
 - action-policy edges and host-side hooks: the `(trigger) → (action)` machine (Section 9.12)
@@ -1530,11 +1532,15 @@ Repository provisioning:
 Configuration:
 
 - Operator policy config (`vcs` object):
-  - `kind` (string) — the engine plugin/code host, `github` or `forgejo`.
   - `author` / `actor` (objects) — identity mapping for commits and for the push/PR actor (Section
     9.8).
-  - `api_key` (string) — resolved through the secret-provider interface (Section 15.3).
+  - `api_key` (string) — resolved through the secret-provider interface (Section 15.3). It is the
+    credential for the code host the repository selects (below).
 - Repository Way of Working (`repo.policy.toml`, Section 5.6):
+  - the code host (`github`, `forgejo`) and checkout mode (git, jj) — the repository's engine and
+    code-host selection (part of engine selection, Section 5.6). The engine reads it from
+    `repo.policy.toml`; Symphony supplies the matching operator credential (`vcs.api_key`) and, for
+    provisioning (which precedes reading the base revision), the repository's remote.
   - the base branch — the branch pull requests target and back-merges pull from.
   - `scope.branch_pattern` — the deterministic work-branch name pattern (Section 9.8). Default:
     `symphony/<identifier>`.
@@ -1597,8 +1603,9 @@ Identity:
 ### 9.10 Forge Operations, Pull Requests, and Review Writes
 
 Symphony performs pull-request and code-review operations through the VCS engine's forge plugin — the
-code host's collaboration layer above the git remote — for the configured `vcs.kind` (`github`,
-`forgejo`, and others), using the same `vcs.api_key`; the agent never holds forge credentials.
+code host's collaboration layer above the git remote — for the code host the repository selects
+(`github`, `forgejo`, and others; Section 9.7), using the operator's `vcs.api_key`; the agent never
+holds forge credentials.
 
 Pull requests:
 

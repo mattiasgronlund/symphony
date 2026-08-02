@@ -57,6 +57,22 @@ New tokens/terms: `repo.policy.toml`, **base-sourced** / **worktree-sourced**, *
 (vs **outward credential**). Supersedes decision 0005 (now `Superseded by 0029`; extend its
 `Background.md` append-only). Refines decisions 0023 and 0026. Depends on decision 0027.
 
+Relocations applied by the batch (2026-07-05): the operator `vcs` object's `base_branch` moved to the
+`repo.policy.toml` base branch, and `vcs.work_branch_template` moved to `scope.branch_pattern` in
+`repo.policy.toml` `[scope]`. The operator `vcs` object now holds only `kind`, `author`/`actor`, and
+`api_key` (Section 9.7). Earlier decision plans that list the pre-relocation `vcs` object (for example
+0034's `Plan.md`) are accurate history as of their writing and are left append-only.
+
+Follow-up (2026-08-02): the code-host selector `vcs.kind` (`github`/`forgejo`) also moved out of the
+operator `vcs` object into the repository's engine/code-host selection in `repo.policy.toml` (part of
+"engine selection", Sections 5.6, 9.7) — the more faithful reading of "engine selection is
+repo.policy.toml", chosen over the two-layer bridge. The operator `vcs` object now holds only
+`author`/`actor` and `api_key` (the credential for the repository's selected code host); the forge kind
+is read from the base revision after provisioning, so no bootstrap circularity (provisioning uses the
+repository's remote and the operator credential, not the forge kind). Reconciles the earlier
+cross-document drift between `SPEC.md` §9.7 (was operator `vcs.kind`) and `VCSX-SPEC.md` §6.2
+(`[engine].forge`).
+
 ## Status
 
 Accepted; `SPEC.md` application not started. Dependency 0027 is Accepted. The re-evaluations are

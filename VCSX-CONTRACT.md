@@ -61,7 +61,7 @@ to the shared contract and MUST be reflected in both documents (see Section 12).
   action-policy machine (Section 5) against engine operations (Section 6).
 - The executor has **two front-ends** over that one executor:
   - the interactive front-end, entered through `ship` and `land`;
-  - the autonomous daemon driver (Symphony's daemon).
+  - the embedded driver (for example Symphony's autonomous daemon).
 - The two front-ends differ **only** in their initiator and in how the abstract `escalate` action
   (Section 5.6) is bound. They MUST run the same executor over the same policy, so a given
   `repo.policy.toml` yields the same operation flow through either front-end.
@@ -126,8 +126,8 @@ An action is one of:
 - `run_op` — run an engine operation (Section 6).
 - `run` — run a repo-owned hook.
 - `escalate` — raise a need whose resolver the front-end binds (Section 5.6).
-- `create_task` — create a task (Section 8).
-- `set_state` — apply a tracker state transition.
+- `create_task` — create a task (Section 8); a no-op where no task model runs.
+- `set_state` — apply a workflow-state transition.
 - `notify` — emit an operator/human notification.
 - `park` — stop the flow and hold for intervention, without failing it.
 - `fail` — end the flow as failed.
@@ -138,8 +138,9 @@ Trigger matching is **most-specific-wins** over a fallback ladder, so a configur
 enumerate every reason token and can survive new reason tokens:
 
 1. `op:reason` — an exact result token (for example `push:non_fast_forward`).
-2. `op:#class` — the operation with a proto **outcome class** (for example `push:#error`).
-3. `#class` — the proto outcome class alone (for example `#error`).
+2. `op:#class` — the operation with a proto **outcome class** (for example `push:#needs_caller`,
+   since `push:non_fast_forward` is class `needs_caller`).
+3. `#class` — the proto outcome class alone (for example `#needs_caller`).
 4. a built-in default.
 
 The proto outcome classes are a closed set:
@@ -167,7 +168,8 @@ classes are fixed here.
 `escalate` names a *need* — a point where the flow cannot proceed autonomously — and the **front-end**
 binds the *resolver*:
 
-- under the autonomous daemon driver, `escalate` binds to an agent-assigned task (Section 8);
+- under an embedded driver (for example the autonomous daemon), `escalate` binds to an agent-assigned
+  task (Section 8);
 - under the interactive front-end, `escalate` returns a typed result to the human.
 
 `escalate` is what lets the same `repo.policy.toml` run under both front-ends (Section 3). It is the
@@ -295,7 +297,7 @@ This surface deliberately does not fix, deferring them to the full engine specif
 - the plugin API for code-host backends (`VCSX-SPEC.md` Section 9);
 - the concrete per-operation reason-token registry beyond the classes (Section 5.5) and the named
   results (Section 6) here (`VCSX-SPEC.md` Section 4.3);
-- the engine's internal algorithms and storage (`VCSX-SPEC.md` Section 12).
+- the engine's internal algorithms (`VCSX-SPEC.md` Section 12).
 
 An implementation MUST consult `VCSX-SPEC.md` for these. Where this surface and the full spec appear to
 conflict on a *name*, the name here governs until the two are reconciled (Section 12); where they

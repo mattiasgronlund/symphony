@@ -309,6 +309,10 @@ which their behavior legitimately differs.
   (Section 3.3).
 - `forge` (string) — the forge backend selector (for example `github`, `forgejo`).
 
+The backend selection is read here in both standalone and embedded use. An embedding consumer supplies
+the *credential* the selected backend uses (Section 9), not the selection — so which code host a
+repository targets is repository-owned, while the credential for it is the consumer's.
+
 ### 6.3 `[scope]`
 
 - `branch_pattern` (string) — the work-branch name pattern (for example `symphony/<identifier>` or
@@ -377,7 +381,7 @@ run = "..."
 - A `before:*` (host-side or in-sandbox) hook MAY block by returning a `needs_caller` or `error` result
   with a stable reason; the engine surfaces it as the operation's `blocked`/`failed` reason.
 - An `after`/result-triggered hook is best-effort and does not block.
-- A host-side hook MAY receive repository-internal integrity values from the consumer's environment; an
+- A host-side hook MAY receive repo-internal integrity values from the consumer's environment; an
   in-sandbox hook MUST NOT receive credentials or integrity values.
 
 ### 6.7 `tracker.transitions`
@@ -469,11 +473,12 @@ An embedded driver invokes the same executor programmatically. It:
   plugins use;
 - binds `escalate` to its own resolver (Section 5.5) — for example an automation service that turns an
   escalation into an agent-assigned task;
-- MAY run a **task model**: tasks with an `id`, `status` (`open`/`closed`/`blocked`), and `assignee`
-  (`agent`/`human`), seeded from a work item or a planning step, closed by the caller, and yielding the
-  `tasks:all_closed` / `task:#needs_help` task-state events that drive computed completion (the
-  `[driver]` binding, Section 6.9). The task model, its durability, and its materialization into an
-  external tracker are the driver's; `vcsx` only consumes the resulting events.
+- MAY run a **task model**: tasks with an `id`, a `description`, a `status` (`open`/`closed`/`blocked`),
+  an `assignee` (`agent`/`human`), an optional parent, and an optional tracker link — seeded from a
+  work item or a planning step, closed by the caller, and yielding the `tasks:all_closed` /
+  `task:#needs_help` task-state events that drive computed completion (the `[driver]` binding, Section
+  6.9). The task model, its durability, and its materialization into an external tracker are the
+  driver's; `vcsx` only consumes the resulting events.
 
 The interactive and embedded front-ends run the identical executor over the identical policy; they
 differ only in initiator and `escalate` binding.
