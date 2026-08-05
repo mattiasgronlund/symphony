@@ -1,0 +1,31 @@
+{
+  "function": "per_state_concurrency_limit",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 8.3", "Section 4.2"],
+  "description": "Resolve the concurrency limit for a tracked state: max_concurrent_agents_by_state[state] if present (state key normalized by lowercase, Section 4.2), otherwise the global limit.",
+  "given": "{ state: string, max_concurrent_agents_by_state: object, global_limit: integer }",
+  "expect": "{ limit: integer }",
+  "vectors": [
+    {
+      "id": "override-present",
+      "given": { "state": "In Progress", "max_concurrent_agents_by_state": { "In Progress": 2 }, "global_limit": 10 },
+      "expect": { "limit": 2 }
+    },
+    {
+      "id": "override-matched-after-normalization",
+      "description": "Lookup state and map key match after lowercase normalization.",
+      "given": { "state": "in progress", "max_concurrent_agents_by_state": { "In Progress": 2 }, "global_limit": 10 },
+      "expect": { "limit": 2 }
+    },
+    {
+      "id": "no-override-falls-back-to-global",
+      "given": { "state": "Todo", "max_concurrent_agents_by_state": { "In Progress": 2 }, "global_limit": 10 },
+      "expect": { "limit": 10 }
+    },
+    {
+      "id": "empty-map-falls-back-to-global",
+      "given": { "state": "Todo", "max_concurrent_agents_by_state": {}, "global_limit": 10 },
+      "expect": { "limit": 10 }
+    }
+  ]
+}

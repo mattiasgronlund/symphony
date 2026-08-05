@@ -904,3 +904,31 @@ running issue between implementations — its own decision if ever wanted). Depe
 Accepted and applied: `CONFORMANCE-STATEMENT-TEMPLATE.md` is created, and `SPEC.md` gains Section 19
 `Conformance Statement`, a `Both Layer Profiles` checklist item (Section 18.1.1), and pointers to it
 from the Section 1, 9.6, and 14.3 documentation clauses.
+
+## 0046 — Conformance corpus, first slice
+
+**State:** Accepted
+**Folder:** [decisions/0046-conformance-corpus-first-slice/](decisions/0046-conformance-corpus-first-slice/)
+
+Drafts the shared, language-neutral conformance corpus 0045 named as the mechanism that turns
+Sections 17–18's prose into an objective pass/fail identical in every implementation language, and
+fixes the choices later slices inherit. Format is JSON (every language parses it dependency-free;
+`SPEC.md` already uses it for payloads; YAML rejected for its non-uniform implicit typing, a
+per-language test file rejected as not being data). The corpus lives in a spec-adjacent
+`conformance/` tree — a `README.md` plus one `vectors/*.json` file per behavior. The first slice
+covers only pure, host-independent functions — `sanitize_workspace_key`, `normalize_state`,
+`resolve_config_defaults`, `retry_backoff_delay_ms`, `available_slots`,
+`per_state_concurrency_limit`, `sort_for_dispatch` (31 vectors) — so it runs identically on day one
+with a few-line harness and no sandbox, tracker, engine, filesystem, or network; integration
+behaviors are deferred to a later slice tied to the `Real Integration Profile` (Section 17.8). The
+corpus specifies a harness *contract* (invoke the named `function` with `given`, assert it equals
+`expect`), not a harness in any language, and stays RECOMMENDED shared evidence feeding the
+Conformance Statement's Section 7 evidence row rather than a new REQUIRED gate. Every expected value
+is derived verbatim from the cited `SPEC.md` section; where the spec is silent no vector is authored
+— non-ASCII workspace-key sanitization (Section 9.5 Invariant 3) does not fix whether "character" is
+a byte, a code point, or a grapheme, so that gap is surfaced as a spec-clarification follow-on rather
+than guessed at, the corpus doing its second job of exercising the spec. Depends on 0045; relates to
+0002 (stable addressing) and 0044 (the Section 17.8 profile boundary it defers integration vectors
+to). Accepted and applied: the `conformance/` tree (README + 7 vector files, 31 vectors) is created,
+and `SPEC.md` Section 17's intro points at it as the RECOMMENDED machine-readable realization of its
+deterministic checks; the non-ASCII sanitization clarification remains a separate follow-on decision.

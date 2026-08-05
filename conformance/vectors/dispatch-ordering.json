@@ -1,0 +1,45 @@
+{
+  "function": "sort_for_dispatch",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 8.2", "Section 16.2"],
+  "description": "Order dispatch-eligible issues by: (1) priority ascending, where 1..4 are preferred and null/unknown sorts last; (2) created_at oldest first; (3) identifier lexicographic tie-breaker. The vector asserts the resulting identifier order.",
+  "given": "{ issues: Array<{ identifier: string, priority: integer | null, created_at: string }> }",
+  "expect": "{ order: Array<string> }",
+  "vectors": [
+    {
+      "id": "priority-then-age-then-null-last",
+      "description": "Priority 1 before 2; within priority 1 the older created_at wins; null priority sorts last regardless of age.",
+      "given": {
+        "issues": [
+          { "identifier": "C", "priority": 2, "created_at": "2026-01-03T00:00:00Z" },
+          { "identifier": "A", "priority": 1, "created_at": "2026-01-02T00:00:00Z" },
+          { "identifier": "B", "priority": null, "created_at": "2026-01-01T00:00:00Z" },
+          { "identifier": "D", "priority": 1, "created_at": "2026-01-01T00:00:00Z" }
+        ]
+      },
+      "expect": { "order": ["D", "A", "C", "B"] }
+    },
+    {
+      "id": "identifier-tiebreak",
+      "description": "Equal priority and created_at fall back to lexicographic identifier order.",
+      "given": {
+        "issues": [
+          { "identifier": "X-2", "priority": 3, "created_at": "2026-01-01T00:00:00Z" },
+          { "identifier": "X-1", "priority": 3, "created_at": "2026-01-01T00:00:00Z" }
+        ]
+      },
+      "expect": { "order": ["X-1", "X-2"] }
+    },
+    {
+      "id": "null-priority-sorts-after-lowest-explicit",
+      "description": "An unknown/null priority sorts after an explicit priority 4 even when far older.",
+      "given": {
+        "issues": [
+          { "identifier": "OLDNULL", "priority": null, "created_at": "2020-01-01T00:00:00Z" },
+          { "identifier": "NEW4", "priority": 4, "created_at": "2026-06-01T00:00:00Z" }
+        ]
+      },
+      "expect": { "order": ["NEW4", "OLDNULL"] }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "function": "normalize_state",
+  "profile": "Core Conformance",
+  "spec_refs": ["Section 4.2"],
+  "description": "Normalize a tracker state for comparison by lowercasing. State comparisons (active/terminal membership, per-state concurrency keys) are performed on the normalized value.",
+  "given": "{ state: string }",
+  "expect": "{ normalized: string }",
+  "vectors": [
+    {
+      "id": "title-case-two-words",
+      "given": { "state": "In Progress" },
+      "expect": { "normalized": "in progress" }
+    },
+    {
+      "id": "upper-case",
+      "given": { "state": "TODO" },
+      "expect": { "normalized": "todo" }
+    },
+    {
+      "id": "single-word",
+      "given": { "state": "Done" },
+      "expect": { "normalized": "done" }
+    },
+    {
+      "id": "already-normalized",
+      "given": { "state": "cancelled" },
+      "expect": { "normalized": "cancelled" }
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "function": "retry_backoff_delay_ms",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 8.4"],
+  "description": "Compute the retry delay. A normal continuation retry after a clean worker exit uses a fixed 1000 ms. A failure-driven retry uses delay = min(10000 * 2^(attempt - 1), max_retry_backoff_ms).",
+  "given": "{ kind: 'continuation' | 'failure', attempt?: integer, max_retry_backoff_ms?: integer }",
+  "expect": "{ delay_ms: integer }",
+  "vectors": [
+    {
+      "id": "continuation-fixed",
+      "description": "A clean-exit continuation retry ignores attempt and cap.",
+      "given": { "kind": "continuation" },
+      "expect": { "delay_ms": 1000 }
+    },
+    {
+      "id": "failure-attempt-1",
+      "given": { "kind": "failure", "attempt": 1, "max_retry_backoff_ms": 300000 },
+      "expect": { "delay_ms": 10000 }
+    },
+    {
+      "id": "failure-attempt-2",
+      "given": { "kind": "failure", "attempt": 2, "max_retry_backoff_ms": 300000 },
+      "expect": { "delay_ms": 20000 }
+    },
+    {
+      "id": "failure-attempt-3",
+      "given": { "kind": "failure", "attempt": 3, "max_retry_backoff_ms": 300000 },
+      "expect": { "delay_ms": 40000 }
+    },
+    {
+      "id": "failure-attempt-5",
+      "given": { "kind": "failure", "attempt": 5, "max_retry_backoff_ms": 300000 },
+      "expect": { "delay_ms": 160000 }
+    },
+    {
+      "id": "failure-attempt-6-capped",
+      "description": "10000 * 2^5 = 320000 exceeds the default cap and is clamped to 300000.",
+      "given": { "kind": "failure", "attempt": 6, "max_retry_backoff_ms": 300000 },
+      "expect": { "delay_ms": 300000 }
+    },
+    {
+      "id": "failure-attempt-9-capped",
+      "given": { "kind": "failure", "attempt": 9, "max_retry_backoff_ms": 300000 },
+      "expect": { "delay_ms": 300000 }
+    },
+    {
+      "id": "failure-custom-cap-clamps-early",
+      "description": "10000 * 2^3 = 80000 exceeds a custom 60000 cap and is clamped.",
+      "given": { "kind": "failure", "attempt": 4, "max_retry_backoff_ms": 60000 },
+      "expect": { "delay_ms": 60000 }
+    },
+    {
+      "id": "failure-custom-cap-below-threshold",
+      "description": "10000 * 2^1 = 20000 is below the 60000 cap and passes through.",
+      "given": { "kind": "failure", "attempt": 2, "max_retry_backoff_ms": 60000 },
+      "expect": { "delay_ms": 20000 }
+    }
+  ]
+}

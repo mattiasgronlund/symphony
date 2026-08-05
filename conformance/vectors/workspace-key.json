@@ -1,0 +1,40 @@
+{
+  "function": "sanitize_workspace_key",
+  "profile": "Core Conformance",
+  "spec_refs": ["Section 4.2", "Section 9.5"],
+  "description": "Derive the workspace directory key from an issue identifier by replacing every character not in [A-Za-z0-9._-] with '_'. The most important portability invariant (Section 9.5, Invariant 3).",
+  "given": "{ identifier: string }",
+  "expect": "{ workspace_key: string }",
+  "vectors": [
+    {
+      "id": "all-allowed-passthrough",
+      "description": "Letters, digits, dot, underscore and hyphen are all allowed and pass through unchanged.",
+      "given": { "identifier": "ENG-123" },
+      "expect": { "workspace_key": "ENG-123" }
+    },
+    {
+      "id": "dot-underscore-hyphen-allowed",
+      "description": "The three allowed punctuation characters survive.",
+      "given": { "identifier": "a.b_c-d" },
+      "expect": { "workspace_key": "a.b_c-d" }
+    },
+    {
+      "id": "slash-and-space-replaced",
+      "description": "Path separators and spaces are not allowed and each becomes a single underscore.",
+      "given": { "identifier": "feat/new thing" },
+      "expect": { "workspace_key": "feat_new_thing" }
+    },
+    {
+      "id": "punctuation-replaced",
+      "description": "Disallowed ASCII punctuation is replaced character-for-character.",
+      "given": { "identifier": "PROJ-1/sub:2#x" },
+      "expect": { "workspace_key": "PROJ-1_sub_2_x" }
+    },
+    {
+      "id": "all-disallowed",
+      "description": "A run of disallowed characters yields one underscore each; length is preserved.",
+      "given": { "identifier": "!! @@" },
+      "expect": { "workspace_key": "_____" }
+    }
+  ]
+}

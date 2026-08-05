@@ -1,0 +1,31 @@
+{
+  "function": "available_slots",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 8.3"],
+  "description": "Global concurrency headroom: available_slots = max(max_concurrent_agents - running_count, 0). Placement-opaque: it counts agent sessions, not where they run.",
+  "given": "{ max_concurrent_agents: integer, running_count: integer }",
+  "expect": "{ available_slots: integer }",
+  "vectors": [
+    {
+      "id": "headroom",
+      "given": { "max_concurrent_agents": 10, "running_count": 3 },
+      "expect": { "available_slots": 7 }
+    },
+    {
+      "id": "exactly-full",
+      "given": { "max_concurrent_agents": 10, "running_count": 10 },
+      "expect": { "available_slots": 0 }
+    },
+    {
+      "id": "over-subscribed-clamped",
+      "description": "running_count above the limit clamps to 0, never negative.",
+      "given": { "max_concurrent_agents": 10, "running_count": 12 },
+      "expect": { "available_slots": 0 }
+    },
+    {
+      "id": "single-slot-idle",
+      "given": { "max_concurrent_agents": 1, "running_count": 0 },
+      "expect": { "available_slots": 1 }
+    }
+  ]
+}

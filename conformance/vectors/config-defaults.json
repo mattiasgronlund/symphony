@@ -1,0 +1,61 @@
+{
+  "function": "resolve_config_defaults",
+  "profile": "Core Conformance",
+  "spec_refs": ["Section 6.4", "Section 17.1"],
+  "description": "Fill absent OPTIONAL config fields with their specified defaults (Section 6.4). This isolates the defaulting layer: it does NOT perform secret-provider resolution, path/$VAR expansion, or cross-field validation (those are separate, partly I/O-bound behaviors). The given config is the flat typed-config view of Section 6.4's cheat sheet, abstracting over which of the three artifacts owns each field. Only deterministic defaults are asserted; Implementation-defined defaults (for example workspace.root, agent.default_agent, agent.default_effort, codex.approval_policy, codex.thread_sandbox, codex.turn_sandbox_policy, compute.max_wall_clock_ms) are intentionally never asserted.",
+  "given": "{ config: object }",
+  "expect": "{ resolved: object }  // each dotted path in resolved MUST equal the resolved config at that path; unlisted paths are unconstrained",
+  "vectors": [
+    {
+      "id": "defaults-filled-from-minimal-linear-config",
+      "description": "A minimal linear config resolves every deterministic default.",
+      "given": {
+        "config": { "tracker": { "kind": "linear", "project_slug": "proj" } }
+      },
+      "expect": {
+        "resolved": {
+          "tracker.endpoint": "https://api.linear.app/graphql",
+          "tracker.required_labels": [],
+          "tracker.active_states": ["Todo", "In Progress"],
+          "tracker.terminal_states": ["Closed", "Cancelled", "Canceled", "Duplicate", "Done"],
+          "polling.interval_ms": 30000,
+          "scope.branch_pattern": "symphony/<identifier>",
+          "tracker.transitions": [],
+          "hooks.timeout_ms": 60000,
+          "agent.agent_by_label": {},
+          "agent.max_concurrent_agents": 10,
+          "agent.max_turns": 20,
+          "agent.max_retry_backoff_ms": 300000,
+          "agent.max_concurrent_agents_by_state": {},
+          "codex.command": "codex app-server",
+          "codex.turn_timeout_ms": 3600000,
+          "codex.read_timeout_ms": 5000,
+          "codex.stall_timeout_ms": 300000,
+          "compute.kind": "local",
+          "compute.sharing": "exclusive",
+          "compute.sharing_key": "repository"
+        }
+      }
+    },
+    {
+      "id": "explicit-values-are-preserved",
+      "description": "Fields present in the input are not overwritten by defaults.",
+      "given": {
+        "config": {
+          "tracker": { "kind": "linear", "project_slug": "proj", "active_states": ["Todo"] },
+          "polling": { "interval_ms": 5000 },
+          "agent": { "max_turns": 50, "max_retry_backoff_ms": 60000 }
+        }
+      },
+      "expect": {
+        "resolved": {
+          "tracker.active_states": ["Todo"],
+          "polling.interval_ms": 5000,
+          "agent.max_turns": 50,
+          "agent.max_retry_backoff_ms": 60000,
+          "agent.max_concurrent_agents": 10
+        }
+      }
+    }
+  ]
+}

@@ -3410,6 +3410,11 @@ on_retry_timer(issue_id, state):
 A conforming implementation SHOULD include tests that cover the behaviors defined in this
 specification.
 
+The deterministic, host-independent subset of these checks is also published as a machine-readable,
+language-neutral vector corpus under `conformance/` (RECOMMENDED); an implementation runs it against
+its own binary and records the result in its Conformance Statement (Section 19). The corpus does not
+restate or replace the checks below.
+
 Validation profiles:
 
 - `Core Conformance`: deterministic tests REQUIRED for all conforming implementations. It comprises
