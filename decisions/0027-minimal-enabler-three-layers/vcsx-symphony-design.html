@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Symphony · layering, topologies, config</title>
+<style>
+  :root {
+    --generic: #3b78c3; --generic-bg: #e7f0fb;
+    --repo: #c9962b;    --repo-bg: #fdf1d6;
+    --secret: #c0392b;  --secret-bg: #fce3e3;
+    --sandbox: #3d9a5b; --sandbox-bg: #e8f6ec;
+    --daemon: #6a4caf;  --daemon-bg: #ede7f6;
+    --ink: #1c2430; --muted: #5c6675; --line: #d8dee6;
+  }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); margin: 0; background: #fafbfc; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 21px; margin: 44px 0 6px; padding-top: 14px; border-top: 2px solid var(--line); }
+  h3 { font-size: 16px; margin: 26px 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  .principle { background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--generic);
+               padding: 14px 18px; border-radius: 6px; margin: 18px 0; }
+  .principle strong { color: var(--generic); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 20px;
+          font-size: 13px; border: 1px solid; font-weight: 600; }
+  .chip i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .c-generic { background: var(--generic-bg); border-color: var(--generic); color: #16314f; } .c-generic i { background: var(--generic); }
+  .c-repo { background: var(--repo-bg); border-color: var(--repo); color: #5a4410; } .c-repo i { background: var(--repo); }
+  .c-secret { background: var(--secret-bg); border-color: var(--secret); color: #5a1a14; } .c-secret i { background: var(--secret); }
+  .c-sandbox { background: var(--sandbox-bg); border-color: var(--sandbox); color: #16401f; } .c-sandbox i { background: var(--sandbox); }
+  .c-daemon { background: var(--daemon-bg); border-color: var(--daemon); color: #3a2069; } .c-daemon i { background: var(--daemon); }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px 4px; margin: 14px 0; overflow-x: auto; }
+  pre.mermaid { background: transparent; text-align: center; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: #f1f4f8; }
+  code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; font-size: 13px;
+         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre.code { background: #1e2530; color: #e6edf3; border-radius: 8px; padding: 16px 18px; overflow-x: auto;
+             font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre.code .cmt { color: #8b98a9; } pre.code .key { color: #79c0ff; } pre.code .str { color: #a5d6a4; } pre.code .sec { color: #ff9b8a; }
+  .filetag { display: inline-block; background: #2d3340; color: #c9d4e2; font-size: 12px; padding: 3px 10px;
+             border-radius: 6px 6px 0 0; font-family: ui-monospace, monospace; }
+  .note { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+  .trust.in { color: var(--sandbox); font-weight: 700; }
+  .trust.host { color: var(--secret); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Symphony · layering, topologies, config</h1>
+  <p class="sub">A minimal credential broker; <code>vcsx</code> as a tiny VCS engine; an autonomous daemon
+     that adds task management + a policy graph; the repo owns its Way of Working.
+     <em>Design sketch — not normative.</em></p>
+
+  <div class="principle">
+    <strong>Governing principle.</strong> Symphony <strong>enables</strong> Ways of Working; it
+    <strong>enforces</strong> none. Its one irreducible guarantee is the <strong>secret-isolation
+    invariant</strong>: the agent never needs VCS or Forge credentials. Everything WoW-shaped is
+    repo-owned config and configurable seams. <code>vcsx</code> is the optional reference engine; a
+    100%-custom WoW is just a different wiring.
+  </div>
+
+  <h2>The three layers</h2>
+  <div class="legend">
+    <span class="chip c-daemon"><i></i>Daemon — autonomous layer (topology 1 only)</span>
+    <span class="chip c-generic"><i></i>Broker core / vcsx engine</span>
+    <span class="chip c-sandbox"><i></i>Sandbox — credential-less</span>
+    <span class="chip c-repo"><i></i>Repo-owned WoW</span>
+    <span class="chip c-secret"><i></i>Secret-bearing — host-side</span>
+  </div>
+
+  <div class="card">
+<pre class="mermaid">
+flowchart TB
+  classDef generic fill:#e7f0fb,stroke:#3b78c3,color:#16314f;
+  classDef repo fill:#fdf1d6,stroke:#c9962b,color:#5a4410;
+  classDef secret fill:#fce3e3,stroke:#c0392b,color:#5a1a14;
+  classDef sandbox fill:#e8f6ec,stroke:#3d9a5b,color:#16401f;
+  classDef daemon fill:#ede7f6,stroke:#6a4caf,color:#3a2069;
+
+  H["Human"]:::generic
+  TR[("Issue Tracker")]:::generic
+
+  subgraph AUTO["Autonomous driver — daemon · topology 1 ONLY"]
+    DA["poll · dispatch · concurrency · multi-repo"]:::daemon
+    TM["Task manager<br/>seed · track · complete · need-help"]:::daemon
+  end
+
+  EX{"vcsx policy-graph executor<br/>reads repo.policy.toml — ONE engine, two front-ends"}:::generic
+  PR["vcsx primitives + typed results<br/>commit · integrate · push · pr"]:::generic
+
+  subgraph CORE["Broker core ≈ decision 0003/0004 · topologies 1 &amp; 2"]
+    SEC[["Secret store<br/>OUTWARD credentials ONLY"]]:::secret
+    SK(["per-run socket + scope"]):::generic
+  end
+
+  AG["Agent<br/>(sandbox, no creds)"]:::sandbox
+  WOW["repo.policy.toml — the WoW<br/>host-side from BASE · in-sandbox from WORKTREE"]:::repo
+  FG[("Forge / git remote")]:::generic
+
+  H -->|"ship / land (human driver, escalate to human)"| EX
+  TR --> DA
+  DA -->|"tasks:all_closed runs ship (escalate to agent task)"| EX
+  DA --> TM
+  TM <-->|task verbs| SK
+  EX -. reads .-> WOW
+  EX --> PR
+  PR --> FG
+  SEC -. creds .-> PR
+  SK <-->|socket| AG
+  AG -->|commit + in-sandbox gate| WOW
+</pre>
+  </div>
+
+  <table>
+    <tr><th>Layer</th><th>Owns</th><th>Used by</th></tr>
+    <tr><td><code>vcsx</code> engine</td><td>primitives + typed results; <strong>the policy-graph executor</strong> that reads <code>repo.policy.toml</code>; <code>ship</code>/<code>land</code> entry points; runs the WoW hooks</td><td>all three topologies</td></tr>
+    <tr><td>Broker core (≈ 0003/0004)</td><td>secret isolation, per-run socket, scope enforcement, credentialed-op mediation</td><td>topologies 1 &amp; 2</td></tr>
+    <tr><td>Daemon — autonomous driver</td><td>poll/dispatch/concurrency/multi-repo + task management + the autonomous <strong>bindings</strong> (initiator <code>tasks:all_closed</code>; <code>escalate</code> → agent task). <em>Not a second executor.</em></td><td>topology 1 only</td></tr>
+  </table>
+  <p class="note"><code>vcsx ship</code>/<code>land</code> and the daemon are <strong>two front-ends over one
+     executor reading one <code>repo.policy.toml</code></strong> — which is what makes them provably
+     consistent. So <code>vcsx</code> is <em>not</em> tiny (it owns the executor); what stays tiny is
+     Symphony's marginal code over it — task management + autonomous bindings + poll/dispatch.</p>
+
+  <h2>Trust &amp; config sourcing</h2>
+  <p class="sub">The repo owns the WoW, so an operator configuring Symphony needs no WoW knowledge.
+     Integrity comes not from a "do not edit" flag but from <strong>where Symphony reads each part</strong>.</p>
+  <table>
+    <tr><th>Part of the WoW</th><th>Runs</th><th>Read from</th><th>Why safe</th></tr>
+    <tr><td><code>before:commit</code> gate (<code>mise run check</code>), <code>scan-content</code></td><td class="trust in">in-sandbox</td><td>the <strong>worktree</strong> (agent's branch)</td><td>only affects the sandbox; can't escalate; correctly runs a PR's own gate change</td></tr>
+    <tr><td>host-side hooks, engine selection, policy graph, branch-name pattern</td><td class="trust host">host-side</td><td>the protected <strong>base revision</strong></td><td>agent can't push to base; WoW-trust = base-branch trust (review-gated)</td></tr>
+    <tr><td>scope <em>invariant</em> (work-branch-only, assigned-issue-only)</td><td class="trust host">host-side</td><td>broker-core <strong>built-in</strong></td><td>always enforced regardless of any config</td></tr>
+  </table>
+  <p class="note"><strong>Secret vs. integrity value.</strong> The broker secret store holds only
+     <em>outward credentials</em> (forge/VCS/tracker tokens — the isolation invariant). The gate-cache
+     HMAC is <em>not</em> a broker secret: it is a repo-internal integrity value ("raise the bar a little"),
+     held in the repo's host-side hook environment, never broker-mediated.</p>
+
+  <h2>Topology 1 — Daemon (autonomous, task-managed)</h2>
+  <p class="sub">Tracker dispatches; the agent works under task management; completion is
+     <strong>computed</strong> ("all tasks closed"), not asserted. The policy graph turns a conflict
+     into an agent task and a <code>need-help</code> into a human escalation.</p>
+  <div class="card">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant TR as Issue Tracker
+  participant DA as Daemon (poll + policy graph)
+  participant TM as Task manager
+  participant BK as Broker core (secrets + socket)
+  participant AG as Agent (sandbox, no creds)
+  participant VX as vcsx primitives + repo hooks
+  participant FG as Forge / git remote
+
+  TR->>DA: poll, candidate issue
+  DA->>TM: seed tasks from ticket
+  alt ticket has no checklist
+    DA->>AG: planning turn, create the task list
+    AG->>TM: task add (one per planned step)
+  end
+  DA->>BK: dispatch and launch sandboxed agent (no secrets)
+  loop until all tasks closed
+    AG->>VX: in-sandbox gate (before:commit) + git commit
+    AG->>TM: task close
+    opt agent is stuck
+      AG->>TM: task need-help
+      Note over DA: policy task:needs_help maps to set_state Blocked and notify human
+      DA-->>TR: state Blocked
+    end
+  end
+  Note over DA: tasks:all_closed maps to ship (the same verb the human types)
+  DA->>VX: ship (broker mediates credentials)
+  Note over VX: ship runs the policy flow, push then integrate on non_fast_forward
+  VX->>FG: push
+  FG-->>VX: rejected (non_fast_forward)
+  VX-->>DA: escalate resolve-conflicts (merge_conflicts, worktree mid-merge)
+  Note over DA: daemon binds escalate to an agent task
+  DA->>AG: new turn, resolve the conflicts
+  AG->>VX: resolve in worktree
+  AG->>TM: task close resolve-conflicts
+  Note over DA: task done, resume ship
+  DA->>VX: ship (resume, broker mediates credentials)
+  VX->>FG: integrate continue, push, create PR (plus publish)
+  FG-->>DA: PR url
+  DA-->>TR: set_state In Review
+</pre>
+  </div>
+
+  <h2>Topology 2 — Interactive agent, secrets secured</h2>
+  <p class="sub">A human is present, so there is <strong>no task manager and no policy graph</strong> —
+     the human drives <code>vcsx ship</code>/<code>land</code> with simple commands. The broker core
+     still keeps the agent credential-less; escalations go to the human via typed results.</p>
+  <div class="card">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant H as Human
+  participant BK as Broker core (secrets + socket)
+  participant AG as Agent (sandbox, no creds)
+  participant VX as vcsx ship/land (+ repo hooks)
+  participant FG as Forge / git remote
+
+  H->>BK: start interactive session (broker holds creds)
+  BK->>AG: launch sandboxed + worktree (socket only, no secrets)
+  H->>AG: "implement issue X"
+  AG->>VX: in-sandbox gate (before:commit) + git commit
+  H->>VX: vcsx ship
+  Note over VX: same executor + repo.policy.toml as the daemon
+  VX->>FG: push (broker mediates credential)
+  alt non-fast-forward / conflict
+    VX-->>H: WoW escalate, bound here to the human (typed result)
+    H->>AG: "resolve the conflicts"
+    AG->>VX: resolve in worktree
+    H->>VX: vcsx ship (re-run)
+  end
+  VX->>FG: push + create PR (broker mediates credentials)
+  FG-->>VX: PR url
+  VX-->>H: PR opened — agent never saw a secret
+  Note over H,FG: later — vcsx land squash-merges once CI is green
+</pre>
+  </div>
+
+  <h2>Topology 3 — <code>vcsx</code> direct (no broker)</h2>
+  <p class="sub">Operator trusted with secrets; no sandbox, no broker. Same <code>ship</code>/<code>land</code>,
+     same repo hooks. The lower bound of "as little as possible".</p>
+  <div class="card">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant DEV as Developer / agent (own creds)
+  participant VX as vcsx ship / land
+  participant FG as Forge / git remote
+
+  DEV->>VX: vcsx ship --message-file ...
+  VX->>VX: before:commit gate + scan-content
+  VX->>FG: push + create PR (developer's own creds)
+  FG-->>VX: PR url
+  DEV->>VX: vcsx land (CI green)
+  VX->>FG: squash-merge
+  Note over DEV,FG: no broker, no sandbox, no isolation invariant to keep
+</pre>
+  </div>
+
+  <h2>The action-policy machine (one executor, two front-ends)</h2>
+  <p class="sub">One mechanism: <code>(trigger) → (action)</code>, run by a single executor in <code>vcsx</code>.
+     Hooks are not a separate axis — they are policy edges on lifecycle positions. The WoW edges are
+     <strong>shared</strong>; only the <em>initiator</em> and the <code>escalate</code> binding differ per
+     front-end (<code>ship</code>/<code>land</code> ↔ human, daemon ↔ agent task). Triggers and actions:</p>
+  <table>
+    <tr><th>Triggers</th><th>Actions</th></tr>
+    <tr><td>
+      <code>before:commit</code>, <code>before:push</code>, <code>before:create_pr</code>, <code>before:merge</code> (positions)<br/>
+      <code>push:ok</code>, <code>push:non_fast_forward</code>, <code>integrate:merge_conflicts</code> (typed results)<br/>
+      <code>tasks:all_closed</code>, <code>task:#needs_help</code>, <code>task:closed</code> (task state)
+    </td><td>
+      <code>run_op</code> (a vcsx primitive) · <code>run</code> (a hook command)<br/>
+      <code>escalate</code> (abstract; bound per front-end) · <code>create_task</code> · <code>set_state</code><br/>
+      <code>notify</code> · <code>park</code> · <code>fail</code>
+    </td></tr>
+  </table>
+  <h3>Matching: most-specific-wins, with <code>#class</code> fallback</h3>
+  <p class="sub">You never enumerate every code. Each outcome carries a proto class
+     (<code>done</code> / <code>needs_caller</code> / <code>error</code>), giving fallback rungs:</p>
+<pre class="code"><span class="key">push:non_fast_forward</span>   <span class="cmt"># 1. exact reason</span>
+<span class="key">push:#needs_caller</span>      <span class="cmt"># 2. any recoverable push outcome not named</span>
+<span class="key">push:#error</span>             <span class="cmt"># 3. ANY other push error code</span>
+<span class="key">#error</span>                  <span class="cmt"># 4. any error from any operation</span>
+<span class="cmt">&lt;built-in default&gt;      # 5. nothing matched → FAIL-SAFE (park/fail + surface reason),</span>
+<span class="cmt">                        #    NOT a silent no-op (that no-op is only for unmatched signals)</span></pre>
+
+  <h2>Configuration — two files</h2>
+  <p class="sub">The repo expresses its WoW once; all topologies honor it. The operator config needs no
+     WoW knowledge.</p>
+
+  <h3>1 · <code>repo.policy.toml</code> — repo-owned (the WoW; <code>vcsx.toml</code> merged in)</h3>
+  <span class="filetag">repo.policy.toml</span>
+<pre class="code"><span class="cmt"># Host-side parts are read by Symphony from the protected BASE revision (the agent</span>
+<span class="cmt"># cannot push to base). The in-sandbox gate is read from the WORKTREE. vcsx</span>
+<span class="cmt"># (standalone) reads [engine] + the in-sandbox edges; ignores the policy graph.</span>
+
+[<span class="key">engine</span>]                        <span class="cmt"># was vcsx.toml — engine choice is a repo decision</span>
+<span class="key">kind</span>             = <span class="str">"vcsx"</span>        <span class="cmt"># or "command" for a 100%-custom WoW</span>
+<span class="key">backend.prefer</span>   = [<span class="str">"jj"</span>, <span class="str">"git"</span>]
+<span class="key">transport.kind</span>   = <span class="str">"direct"</span>      <span class="cmt"># "command" for an authorized-access remote</span>
+<span class="key">forge.kind</span>       = <span class="str">"github"</span>
+<span class="key">base_branch</span>      = <span class="str">"main"</span>
+
+[<span class="key">scope</span>]
+<span class="key">branch_pattern</span> = <span class="str">"symphony/{issue.identifier}"</span>  <span class="cmt"># the NAME is WoW; work-branch-only INVARIANT is built-in</span>
+
+<span class="cmt"># ---- In-sandbox edge (read from WORKTREE; agent-editable; cannot escalate) ----</span>
+[[<span class="key">policy</span>]]
+<span class="key">on</span> = <span class="str">"before:commit"</span>
+<span class="key">do</span> = { run = [[<span class="str">"mise"</span>,<span class="str">"run"</span>,<span class="str">"check"</span>], [<span class="str">"scripts/vcs/forbidden-token-scan"</span>,<span class="str">"--pending"</span>]],
+       in_sandbox = <span class="str">true</span>, block_on_nonzero = <span class="str">true</span> }
+
+<span class="cmt"># ---- The ship / land flow + hooks (SHARED: these edges DEFINE what ship/land do) ----</span>
+[[<span class="key">policy</span>]]                       <span class="cmt"># host-side (read from BASE); was [hooks.after_push]</span>
+<span class="key">on</span> = <span class="str">"push:ok"</span>
+<span class="key">do</span> = { run = [<span class="str">"scripts/gate_cache_transport.py"</span>,<span class="str">"publish"</span>,<span class="str">"--branch"</span>,<span class="str">"{branch}"</span>],
+       env = <span class="sec">"GATE_CACHE_KEY"</span>,        <span class="cmt"># repo-internal integrity value — NOT a broker secret</span>
+       best_effort = <span class="str">true</span> }
+
+[[<span class="key">policy</span>]]
+<span class="key">on</span> = <span class="str">"push:ok"</span>
+<span class="key">do</span> = { run_op = <span class="str">"create_pr"</span> }
+
+[[<span class="key">policy</span>]]                       <span class="cmt"># land-time: derive the squash message from the PR (title verbatim, body strip-linear)</span>
+<span class="key">on</span> = <span class="str">"before:merge"</span>
+<span class="key">do</span> = { run = [<span class="str">"scripts/vcs/forbidden-token-scan"</span>,<span class="str">"--strip-linear"</span>], transform = <span class="str">"pr_to_squash"</span> }
+
+[[<span class="key">policy</span>]]
+<span class="key">on</span> = <span class="str">"push:non_fast_forward"</span>
+<span class="key">do</span> = { run_op = <span class="str">"integrate_base"</span> }
+
+[[<span class="key">policy</span>]]
+<span class="key">on</span> = <span class="str">"integrate:done"</span>
+<span class="key">do</span> = { run_op = <span class="str">"push"</span> }
+
+[[<span class="key">policy</span>]]                       <span class="cmt"># WoW names the NEED; the front-end binds the resolver</span>
+<span class="key">on</span> = <span class="str">"integrate:merge_conflicts"</span>
+<span class="key">do</span> = { escalate = <span class="str">"resolve-conflicts"</span> }
+
+[[<span class="key">policy</span>]]                       <span class="cmt"># any other push error → park, surface the proto reason</span>
+<span class="key">on</span> = <span class="str">"push:#error"</span>
+<span class="key">do</span> = { park = <span class="str">"push-failed"</span> }
+
+[[<span class="key">policy</span>]]                       <span class="cmt"># last resort across all operations</span>
+<span class="key">on</span> = <span class="str">"#error"</span>
+<span class="key">do</span> = { fail = <span class="str">true</span> }
+
+<span class="cmt"># ---- Autonomous driver (DAEMON only: what ship/land get from the human instead) ----</span>
+[<span class="key">driver</span>]
+<span class="key">on</span>       = <span class="str">"tasks:all_closed"</span>       <span class="cmt"># computed completion ...</span>
+<span class="key">run</span>      = <span class="str">"ship"</span>                  <span class="cmt"># ... runs ship — the same verb the interactive human types</span>
+<span class="key">escalate</span> = { create_task = <span class="str">true</span>, assignee = <span class="str">"agent"</span> }  <span class="cmt"># interactive binds escalate → return to human</span>
+
+[[<span class="key">policy</span>]]                       <span class="cmt"># resume after the agent closes the escalation task</span>
+<span class="key">on</span> = <span class="str">"task:resolve-conflicts:done"</span>
+<span class="key">do</span> = { run_op = <span class="str">"integrate_continue"</span> }
+
+[[<span class="key">policy</span>]]                       <span class="cmt"># agent asked for help → escalate to a human</span>
+<span class="key">on</span> = <span class="str">"task:#needs_help"</span>
+<span class="key">do</span> = { set_state = <span class="str">"Blocked"</span>, notify = <span class="str">"human"</span> }
+
+<span class="cmt"># ---- Task seeding (DAEMON only) ----</span>
+[<span class="key">tasks</span>]
+<span class="key">seed_from_ticket</span> = <span class="str">true</span>            <span class="cmt"># derive from checklist / sub-issues when the tracker exposes them</span>
+<span class="key">plan_if_empty</span>    = <span class="str">true</span>            <span class="cmt"># else open with a planning turn</span>
+<span class="key">sync_to_tracker</span>  = <span class="str">"if_supported"</span>
+
+<span class="cmt"># ---- Tracker workflow transitions (decision 0017) ----</span>
+[[<span class="key">tracker.transitions</span>]]
+<span class="key">from</span> = <span class="str">"In Progress"</span>
+<span class="key">on</span>   = <span class="str">"pull_request_opened"</span>
+<span class="key">to</span>   = <span class="str">"In Review"</span>
+
+[[<span class="key">tracker.transitions</span>]]
+<span class="key">from</span> = <span class="str">"In Review"</span>
+<span class="key">on</span>   = <span class="str">"tasks:all_closed"</span>
+<span class="key">to</span>   = <span class="str">"Done"</span></pre>
+
+  <h3>2 · <code>symphony.operator.toml</code> — operator-owned (no WoW knowledge needed)</h3>
+  <span class="filetag">symphony.operator.toml</span>
+<pre class="code"><span class="cmt"># Holds ONLY what enforces the secret-isolation invariant + where things are.</span>
+
+[<span class="key">secrets</span>]                          <span class="cmt"># OUTWARD credentials only — scrubbed before the sandbox forks</span>
+<span class="key">provider</span>      = <span class="str">"env"</span>
+<span class="key">vcs_token</span>     = <span class="sec">"GITHUB_TOKEN"</span>      <span class="cmt"># the agent must never hold these</span>
+<span class="key">forge_token</span>   = <span class="sec">"GITHUB_TOKEN"</span>
+<span class="key">tracker_token</span> = <span class="sec">"LINEAR_API_KEY"</span>
+<span class="cmt"># gate-cache HMAC is NOT here — it is a repo-internal integrity value (repo-owned)</span>
+
+[<span class="key">sandbox</span>]
+<span class="key">profile</span> = <span class="str">"strict"</span>                <span class="cmt"># reference baseline: jai Strict (decision 0004)</span>
+
+[<span class="key">repo."acme/widgets"</span>]
+<span class="key">policy</span> = <span class="str">"repo.policy.toml"</span>        <span class="cmt"># the WoW lives in the repo; host-side parts read from base</span></pre>
+
+  <p class="note" style="margin-top:8px">A repo-owned <code>WORKFLOW.md</code> still carries the agent
+     <strong>prompt</strong> (in-sandbox, worktree-read); the in-sandbox gate/scan it used to hold are now
+     <code>before:commit</code> edges above.</p>
+
+  <p class="note" style="margin-top:22px">For a different WoW, only <code>repo.policy.toml</code> changes —
+     the broker core, the secret-isolation invariant, and the sandbox boundary are identical.</p>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose',
+                       sequence: { useMaxWidth: true, wrap: true } });
+</script>
+</body>
+</html>

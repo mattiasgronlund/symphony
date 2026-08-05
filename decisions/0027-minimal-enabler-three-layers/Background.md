@@ -64,4 +64,4 @@ practice be exercised without the daemon.
 The decision is **Accepted**; the corresponding `SPEC.md` change is **not** made yet. Application is
 deferred and batched with decisions 0028–0032, because 0027's planned spec text forward-references
 that still-`Proposed` framing (see `Plan.md` Status). The design sketch behind it is
-`tmp/vcsx-symphony-design.html`.
+`vcsx-symphony-design.html`, alongside this file.

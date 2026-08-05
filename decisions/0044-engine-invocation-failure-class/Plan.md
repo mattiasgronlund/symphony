@@ -71,4 +71,8 @@ Removed — none. Renamed — none.
 
 ## Status
 
-Not started. Decision Accepted; the `SPEC.md` edit above is planned and not yet applied.
+Applied to `SPEC.md`, as planned and with no deviations. `Engine Invocation Failures` is core class
+7; `Node Provisioning Failures` and `Executor Bring-up Failures` shifted to 8 and 9, and the closing
+note of Section 14.1 now reads "classes 8 and 9". The class carries an `Important boundary:` aside
+naming Section 9.12 as the owner of outcomes for operations that did run, so the two mechanisms stay
+disjoint.

@@ -863,5 +863,5 @@ instance-wide disposition mis-scopes a repository-owned floor; C rely on the pol
 unmatched-outcome fail-safe, which by construction cannot fire when no operation ran; D per-worker
 backoff retry, which never converges on a configuration defect. Surfaced while verifying 0042's
 post-conditions and predates it. Depends on 0028, 0040; relates to 0034 (the recovery shape it
-mirrors) and 0030 (the boundary it stops at). Accepted; the `SPEC.md` edit (Sections 14.1, 14.2, 17.4,
-18.1.4) is planned in `Plan.md` and not yet applied.
+mirrors) and 0030 (the boundary it stops at). Accepted and applied to `SPEC.md` (Sections 14.1, 14.2,
+17.4, 18.1.4): the class is core class 7, shifting the two OPTIONAL remote classes to 8 and 9.

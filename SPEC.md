@@ -2824,19 +2824,33 @@ API design notes:
    - Dashboard render errors
    - Log sink configuration failure
 
-7. `Node Provisioning Failures` (OPTIONAL, remote execution — Section 9.11)
+7. `Engine Invocation Failures`
+   - The VCS engine is unavailable — not installed, not executable, or not resolvable at the
+     pinned version
+   - The engine does not conform to the invocation contract (an unreadable or malformed result
+     envelope)
+   - The engine refuses because it is below the repository's declared `version_floor`
+   - The engine returns a usage or configuration result in which the policy did not run — for
+     example an invalid `repo.policy.toml`
+
+   Important boundary: this class covers only failures in which the policy never ran. The outcome of
+   an operation that *did* run is owned by the action-policy machine (Section 9.12), which matches
+   `<op>:<reason>` edges with the `#class` fallback and is fail-safe on an unmatched outcome; such
+   outcomes are not this class.
+
+8. `Node Provisioning Failures` (OPTIONAL, remote execution — Section 9.11)
    - The node-scheduler cannot supply a node (no capacity, transport error, invalid placement
      configuration)
    - Node-scheduler authentication/credential failure (the scheduler's own credentials)
 
-8. `Executor Bring-up Failures` (OPTIONAL, remote execution — Section 9.11)
+9. `Executor Bring-up Failures` (OPTIONAL, remote execution — Section 9.11)
    - Remote executor process fails to start, or fails mutual authentication (Section 15.3)
    - The sandbox, per-run broker socket, or secret-isolation boundary cannot be instantiated on the
      node (Section 9.6) — fail-closed: the run MUST NOT proceed without the boundary
 
 Note: an OPTIONAL extension MAY define additional failure categories outside this core list. For
 example, the token budget guards extension (Section 8.8) defines `token_budget_exceeded`, which is
-parked rather than retried (Section 14.2); classes 7 and 8 above are defined by the OPTIONAL
+parked rather than retried (Section 14.2); classes 8 and 9 above are defined by the OPTIONAL
 node-scheduler extension (Section 9.11).
 
 ### 14.2 Recovery Behavior
@@ -2855,6 +2869,18 @@ node-scheduler extension (Section 9.11).
   - Keep the service alive and retry on a later tick. Do not convert to a per-worker backoff retry.
   - Persistent authentication/credential or invalid-store-path failures MAY be parked rather than
     retried indefinitely; the choice is `Implementation-defined` and MUST be documented.
+
+- Engine invocation failures:
+  - Skip new dispatches for the affected repository. The `version_floor` and the operation flow are
+    declared in that repository's `repo.policy.toml`, so the failure is repo-scoped, not a single
+    worker's. Other repositories are unaffected.
+  - An unavailable or non-conforming engine skips dispatch for every repository that requires one,
+    because no repository's policy can be executed.
+  - Keep the service alive and retry on a later tick. Do not convert to a per-worker backoff retry:
+    a below-floor engine, a missing engine, and an invalid policy are configuration defects rather
+    than transients, and backoff does not converge on them.
+  - Persistent failures MAY be parked rather than retried indefinitely; the choice is
+    `Implementation-defined` and MUST be documented.
 
 - Node provisioning failures (OPTIONAL extension, Section 9.11):
   - Skip the affected dispatch scope and retry on a later tick, mirroring repository provisioning
@@ -3547,6 +3573,9 @@ These checks are `Daemon Conformance`.
   and running workers untouched; it is not converted to a per-worker backoff retry
 - A persistent repository authentication/credential or invalid-store-path failure follows the
   documented `Implementation-defined` park-vs-retry policy
+- A below-`version_floor` refusal or a usage/configuration engine result (`Engine Invocation
+  Failures`) skips that repository's dispatches for the tick and is retried on a later tick, leaving
+  other repositories and running workers untouched; it is not converted to a per-worker backoff
 - If a snapshot API is implemented, it returns running rows, retry rows, token totals, and rate
   limits
 - If a snapshot API is implemented, timeout/unavailable cases are surfaced
@@ -3785,6 +3814,9 @@ that uses one, not a restatement of the engine's checklist.
 - Message formulation (Sections 9.8–9.10): commit authored + `scan-content`; PR composed
   (auto-compose default, agent prose overrides) with strict-title / relaxed-body scans; squash
   mechanically transformed via `pr_to_squash` at `before:merge`
+- The deployment declares a `version_floor` for the engine, and classifies a below-floor refusal, an
+  unavailable or non-conforming engine, and a usage/configuration result in which the policy did not
+  run as `Engine Invocation Failures`, recovered repo-scoped per Section 14.2
 
 ### 18.2 RECOMMENDED Extensions (Not REQUIRED for Conformance)
 
