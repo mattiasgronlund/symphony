@@ -109,4 +109,19 @@ Removed — none. Renamed — none.
 
 ## Status
 
-Not started. Decision Accepted; the `SPEC.md` edit above is planned and not yet applied.
+Applied to `SPEC.md`. Two deviations from the plan as written, both recorded here rather than
+silently absorbed:
+
+- **Four groups under Section 18.1, not three.** Five items are genuinely shared by both layer
+  profiles — the Section 3.4 layering statement, the typed config layer, the three configuration
+  artifacts, and the two structured-logging items — so they form `18.1.1 Both Layer Profiles` ahead
+  of the Broker Core, Daemon, and VCS Engine groups. Forcing them into one layer would have
+  misclassified them; the fourth group keeps Section 18.1 consistent with Section 17, where 17.1 and
+  17.6 are likewise `Core Conformance` rather than single-profile.
+- **Section 17.2 is mixed too.** Step 6 named only 17.1 and 17.3 as mixed, but "Workspace Manager and
+  Safety" also carries seven engine bullets (work branch, back-merge, one-PR-per-issue, forge
+  plugin, action-policy machine, message formulation). They are tagged `VCS Engine` in place, and the
+  subsection's profile line states the exception.
+
+The Section 18.1 regrouping was verified lossless: the multiset of 36 bullets is byte-identical
+before and after, with none added, dropped, or duplicated.

@@ -192,7 +192,8 @@ That principle factors the service into three layers:
    - Secret isolation, the per-run scope guard, the per-run broker socket, and
      credentialed-operation mediation (Sections 9.6, 10.8, 15.3). It is the only Core-Conformance
      guarantee in the VCS/Forge/tracker domain and is independently conformant: it can be satisfied
-     for a single interactive agent session with no polling daemon.
+     for a single interactive agent session with no polling daemon. Its conformance profile is
+     `Broker Core Conformance` (Section 17).
 
 2. `VCS Engine` (OPTIONAL)
    - The VCS-workflow mechanics: the `ship`/`land` entry points and one policy-graph executor that
@@ -207,7 +208,13 @@ That principle factors the service into three layers:
 
 3. `Autonomous Daemon`
    - Polling, dispatch, bounded concurrency, multi-repo routing, task management (Section 4.1.9),
-     and the autonomous driver. It is layered on the Broker Core and consumes the VCS Engine.
+     and the autonomous driver. It is layered on the Broker Core and consumes the VCS Engine. Its
+     conformance profile is `Daemon Conformance` (Section 17).
+
+Conformance follows the layers, not the topologies: each layer has its own profile, and a topology
+claims the profiles it composes (below). The engine layer has no profile in this specification — a
+conforming engine's obligations are those of the engine contract and its specification, and Section
+18.1 states only the condition under which a conforming engine is REQUIRED.
 
 One executor, two front-ends: interactive `ship`/`land` and the autonomous daemon — the engine's
 embedded-driver front-end — run the **same** policy-graph executor over the **same** repository Way of
@@ -218,13 +225,15 @@ flow through either front-end.
 Three deployment topologies compose the layers:
 
 - `daemon` — the autonomous daemon over the Broker Core, optionally driving the VCS Engine. The full
-  service described by this specification.
+  service described by this specification. Claims `Broker Core Conformance` and
+  `Daemon Conformance`, plus a conforming engine where it performs remote VCS or forge operations
+  (Section 18.1).
 - `interactive-agent` — the Broker Core plus the VCS Engine's `ship`/`land`, driving one interactive
   agent session with no polling daemon. It gets secret isolation and Way-of-Working automation
-  without dispatch.
+  without dispatch. Claims `Broker Core Conformance` plus a conforming engine.
 - `engine-direct` — the VCS Engine alone, run directly by an operator who holds the credentials, with
   no Broker Core sandbox. It is outside the agent-secret-isolation model, for a human-driven
-  workflow.
+  workflow. Claims a conforming engine only, and therefore no profile defined here.
 
 The Broker Core's secret-isolation invariant holds in every topology that runs a coding agent
 (`daemon` and `interactive-agent`); `engine-direct` has no sandboxed agent and therefore no
@@ -1203,9 +1212,9 @@ Keying:
 
 ### 8.8 Token Budget Guards (OPTIONAL)
 
-An OPTIONAL extension that bounds token spend. The unit of account is tokens; a cost/currency layer
-is deferred (see below). Budgets are enforced against Symphony-attributed cumulative usage
-(Section 13.5), not provider account totals.
+An OPTIONAL extension of `Daemon Conformance` that bounds token spend. The unit of account is
+tokens; a cost/currency layer is deferred (see below). Budgets are enforced against
+Symphony-attributed cumulative usage (Section 13.5), not provider account totals.
 
 Budget scopes and exhaustion semantics:
 
@@ -1264,10 +1273,10 @@ Configuration:
 
 ### 8.9 Provider Quota Backpressure (OPTIONAL)
 
-An OPTIONAL extension that pauses taking on new work when the underlying provider account is near a
-usage limit. It governs account headroom, which is distinct from Symphony's own token budgets
-(Section 8.8): account-wide quota MUST NOT be summed into Symphony-attributed consumed-token totals
-or budgets.
+An OPTIONAL extension of `Daemon Conformance` that pauses taking on new work when the underlying
+provider account is near a usage limit. It governs account headroom, which is distinct from
+Symphony's own token budgets (Section 8.8): account-wide quota MUST NOT be summed into
+Symphony-attributed consumed-token totals or budgets.
 
 Normalized quota snapshot:
 
@@ -1314,7 +1323,8 @@ Configuration:
 
 ### 8.10 Autonomous Task Management (OPTIONAL)
 
-An OPTIONAL, daemon-only extension that makes run completion *computed* rather than asserted.
+An OPTIONAL extension of `Daemon Conformance` that makes run completion *computed* rather than
+asserted. It is daemon-only.
 Interactive sessions use `ship`/`land` and have no task manager. Tasks are the `Task` entity (Section
 4.1.9); their configuration is `[tasks]` / `[driver]` in `repo.policy.toml` (Section 5.6).
 
@@ -1659,10 +1669,11 @@ Capability descriptor:
 
 ### 9.11 Node-Scheduler Adapter (OPTIONAL)
 
-An OPTIONAL extension that lets the executor (Section 3.1) run on a remote node instead of in the
-orchestrator's process. Symphony connects to an external *node-scheduler* that owns node lifetimes —
-provisioning and reaping nodes, deploying the executor software, bootstrapping the mutual-auth trust
-material (Section 15.3), and everything cloud-shaped: vendor APIs, the instance-variant catalog and
+An OPTIONAL extension of `Daemon Conformance` that lets the executor (Section 3.1) run on a remote
+node instead of in the orchestrator's process. Symphony connects to an external *node-scheduler*
+that owns node lifetimes — provisioning and reaping nodes, deploying the executor software,
+bootstrapping the mutual-auth trust material (Section 15.3), and everything cloud-shaped: vendor
+APIs, the instance-variant catalog and
 its selection logic, pooling, autoscaling, billing, and teardown timing. Those are the scheduler's and
 are `Implementation-defined`; Symphony treats a node as opaque. The adapter is a sibling of the tracker
 (Section 11.7), VCS (Section 9.7), and forge (Section 9.10) adapters, selected by `compute.kind`,
@@ -2461,8 +2472,8 @@ Requirements:
 
 ### 13.3 Runtime Snapshot / Monitoring Interface (OPTIONAL but RECOMMENDED)
 
-If the implementation exposes a synchronous runtime snapshot (for dashboards or monitoring), it
-SHOULD return:
+An OPTIONAL extension of `Daemon Conformance`. If the implementation exposes a synchronous runtime
+snapshot (for dashboards or monitoring), it SHOULD return:
 
 - `running` (list of running session rows)
 - each running row SHOULD include `turn_count`
@@ -2483,7 +2494,7 @@ RECOMMENDED snapshot error modes:
 ### 13.4 OPTIONAL Human-Readable Status Surface
 
 A human-readable status surface (terminal output, dashboard, etc.) is OPTIONAL and
-implementation-defined.
+implementation-defined. It extends whichever layer profile the deployment claims.
 
 If present, it SHOULD draw from orchestrator state/metrics only and MUST NOT be REQUIRED for
 correctness.
@@ -2527,9 +2538,10 @@ Rate-limit tracking:
 
 ### 13.6 Per-Execution Usage Ledger (OPTIONAL)
 
-An OPTIONAL durable, append-only record of per-execution token usage, suitable for audit, for
-debugging an expensive or looping run, and for cost attribution. It is also the RECOMMENDED
-realization of the `Durable` recovery class (Section 14.3): replaying the ledger yields the
+An OPTIONAL extension of `Broker Core Conformance`, since the executor produces the records: a
+durable, append-only record of per-execution token usage, suitable for audit, for debugging an
+expensive or looping run, and for cost attribution. It is also the RECOMMENDED realization of the
+`Durable` recovery class (Section 14.3): replaying the ledger yields the
 cumulative total and re-seeds an enforcement counter idempotently, so a budgeting extension (when
 present) MAY source its durable spend from it. The `Durable` contract stays abstract — a non-ledger
 durable counter also conforms.
@@ -2585,7 +2597,8 @@ Scope and configuration:
 
 ### 13.7 Humanized Agent Event Summaries (OPTIONAL)
 
-Humanized summaries of raw agent protocol events are OPTIONAL.
+Humanized summaries of raw agent protocol events are OPTIONAL. They extend
+`Broker Core Conformance`, where the agent events originate.
 
 If implemented:
 
@@ -2594,7 +2607,8 @@ If implemented:
 
 ### 13.8 OPTIONAL HTTP Server Extension
 
-This section defines an OPTIONAL HTTP interface for observability and operational control.
+This section defines an OPTIONAL HTTP interface for observability and operational control, extending
+`Daemon Conformance`.
 
 If implemented:
 
@@ -3370,16 +3384,31 @@ specification.
 
 Validation profiles:
 
-- `Core Conformance`: deterministic tests REQUIRED for all conforming implementations.
+- `Core Conformance`: deterministic tests REQUIRED for all conforming implementations. It comprises
+  two layer profiles, and an implementation claims the ones its topology composes (Section 3.4):
+  - `Broker Core Conformance`: the secret-isolation invariant and the per-run execution boundary —
+    the per-run broker socket and scope guard, the sandbox, the secret split, the executor, the
+    workspace manager, the agent runner and its adapters, and the broker-mediated tracker writes.
+  - `Daemon Conformance`: the autonomous layer — polling, candidate selection and enumeration,
+    concurrency, retry, reconciliation, multi-repository routing, the tracker read surface, and the
+    workflow file and prompt template.
 - `Extension Conformance`: REQUIRED only for OPTIONAL features that an implementation chooses to
-  ship.
+  ship. Each OPTIONAL feature declares the layer profile it extends.
 - `Real Integration Profile`: environment-dependent smoke/integration checks RECOMMENDED before
   production use.
 
-Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bullets that begin with
-`If ... is implemented` are `Extension Conformance`.
+The VCS engine has no profile here. A conforming engine's own obligations are those of the engine
+contract and its specification (Section 3.4); this document states only the condition under which a
+conforming engine is REQUIRED (Section 18.1).
+
+Each subsection below states the profile its checks belong to; where a subsection is mixed, a bullet
+carries its own profile in parentheses. Bullets that begin with `If ... is implemented` are
+`Extension Conformance`.
 
 ### 17.1 Workflow and Config Parsing
+
+These checks are `Core Conformance`: the configuration layer is shared by both layer profiles,
+except where a bullet states otherwise.
 
 - Workflow file path precedence:
   - explicit runtime path is used when provided
@@ -3402,10 +3431,14 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 - `~` path expansion works
 - `codex.command` is preserved as a shell command string
 - Per-state concurrency override map normalizes state names and ignores invalid values
-- Prompt template renders `issue` and `attempt`
-- Prompt rendering fails on unknown variables (strict mode)
+  (`Daemon Conformance`)
+- Prompt template renders `issue` and `attempt` (`Daemon Conformance`)
+- Prompt rendering fails on unknown variables (strict mode) (`Daemon Conformance`)
 
 ### 17.2 Workspace Manager and Safety
+
+These checks are `Broker Core Conformance`, except the bullets marked `VCS Engine`, which a
+deployment satisfies by using a conforming engine rather than by implementing them here.
 
 - Deterministic workspace path per issue identifier
 - Missing workspace directory is created
@@ -3430,29 +3463,35 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
   push/back-merge and pull-request/review writes through the VCS engine and its forge plugin (Sections
   9.7–9.10)
 - The work branch is Symphony-derived from `scope.branch_pattern` (`symphony/<identifier>`) and the
-  push refspec is pinned to it
+  push refspec is pinned to it (`VCS Engine`)
 - Back-merge is attempted at run start and postponed on conflict; conflict resolution is required
-  only on push-reject
+  only on push-reject (`VCS Engine`)
 - One pull request per issue is created then updated; the base is the repository's base branch
-  (`repo.policy.toml`), and the title/body are composed (Section 9.10)
+  (`repo.policy.toml`), and the title/body are composed (Section 9.10) (`VCS Engine`)
 - The engine's forge plugin owns pull-request and review writes and advertises a capability
   descriptor; review-thread writes (post/reply/resolve) are OPTIONAL and capability-gated
+  (`VCS Engine`)
 - Configuration trust sourcing (Section 15.4): an agent worktree edit to a host-side hook does not
   change host-side behavior (it is read from the base revision), an in-sandbox `before:commit` change
   is honored, and a repo-internal integrity value never enters the sandbox
 - The action-policy machine (Section 9.12): an `op:#class` edge catches an unnamed operation reason,
   an unmatched operation outcome is fail-safe (parked, not silently dropped), and an unmatched signal
-  is a benign no-op
+  is a benign no-op (`VCS Engine`)
 - Message formulation (Section 9.10): the squash message is `transform(PR)` via `pr_to_squash` at
   `before:merge` (title verbatim, body laundered); the PR title is strict-scanned while the PR body
   retains tracker keys; the commit message passes `before:commit`/`scan-content`; the default PR body
   is auto-composed from ticket + closed task list + commit subjects and agent prose replaces it
+  (`VCS Engine`)
 - Deployment topologies (Sections 3.4, 9.12): the Broker Core secret-isolation invariant holds in the
   `daemon` and `interactive-agent` topologies; the same `repo.policy.toml` yields the same operation
   flow through `ship` (interactive) and the daemon; `escalate` binds to an agent task under the daemon
   and to a human return interactively
 
 ### 17.3 Issue Tracker Client
+
+These checks split by surface: the broker-mediated write surface (Section 11.5) is `Broker Core
+Conformance`, because a Way of Working performs `set_state` in any topology that runs one; the read
+surface (Section 11.1) is `Daemon Conformance`, because it exists to find and reconcile work.
 
 - At least the `linear` and `forgejo` tracker adapters implement the read and write operations
 - Tracker writes (`add_comment`, `set_state`, `link_pull_request`) are performed by the broker with
@@ -3483,6 +3522,8 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
   malformed payloads (the transport-neutral categories of Section 11.4)
 
 ### 17.4 Orchestrator Dispatch, Reconciliation, and Retry
+
+These checks are `Daemon Conformance`.
 
 - One instance can manage multiple repositories; each issue routes to exactly one repository via the
   policy mapping
@@ -3550,6 +3591,9 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 
 ### 17.5 Coding-Agent Adapters
 
+These checks are `Broker Core Conformance`: the executor composes the agent runner and the per-run
+broker, and an `interactive-agent` deployment drives an agent session with no daemon.
+
 - At least the `codex` and `claude_code` adapters implement the neutral runner contract
 - Agent and effort are selected from policy (`default_agent`/`default_effort`); `agent_by_label`
   overrides per issue, and `effort` is passed through as the agent's native value
@@ -3589,6 +3633,8 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
 
 ### 17.6 Observability
 
+These checks are `Core Conformance`: structured logging and its sinks serve both layer profiles.
+
 - Validation failures are operator-visible
 - Structured logging includes issue/session context fields
 - Logging sink failures do not crash orchestration
@@ -3604,6 +3650,8 @@ Unless otherwise noted, Sections 17.1 through 17.7 are `Core Conformance`. Bulle
   orchestration and reads skip truncated/malformed/unrecognized-`schema_version` lines
 
 ### 17.7 CLI and Host Lifecycle
+
+These checks are `Daemon Conformance`: they describe the long-running host process.
 
 - CLI accepts a positional workflow path argument (`path-to-WORKFLOW.md`)
 - CLI uses `./WORKFLOW.md` when no workflow path argument is provided
@@ -3629,25 +3677,37 @@ network access, or external service permissions are unavailable.
 
 Use the same validation profiles as Section 17:
 
-- Section 18.1 = `Core Conformance`
+- Section 18.1 = `Core Conformance`, grouped by the layer profile each item belongs to
 - Section 18.2 = `Extension Conformance`
 - Section 18.3 = `Real Integration Profile`
 
 ### 18.1 REQUIRED for Conformance
 
-- Workflow path selection supports explicit runtime path and cwd default
-- `WORKFLOW.md` loader with YAML front matter + prompt body split
+The items below are grouped by the layer that owns them (Section 3.4). An implementation satisfies
+the groups its topology composes: `interactive-agent` satisfies Sections 18.1.1, 18.1.2 and 18.1.4;
+`daemon` adds Section 18.1.3.
+
+#### 18.1.1 Both Layer Profiles
+
+Required of every conforming implementation, whichever profiles its topology claims.
+
+- Enabler-not-enforcer layering (Section 3.4): the Broker Core (secret isolation + scope) is the only
+  enforced guarantee and is independently conformant; the VCS engine and autonomous daemon are
+  OPTIONAL layers; the `daemon`, `interactive-agent`, and `engine-direct` topologies compose them
 - Typed config layer with defaults, secret-provider resolution, and `$` expansion for non-secret
   paths
 - Three configuration artifacts (Section 5): operator policy config, repository-owned
   `repo.policy.toml` (Way of Working; host-side sections base-sourced), and repository-owned
   `WORKFLOW.md` (in-sandbox, worktree-sourced); dynamic watch/reload/re-apply for all three with
   last-known-good on invalid reload
-- Enabler-not-enforcer layering (Section 3.4): the Broker Core (secret isolation + scope) is the only
-  enforced guarantee and is independently conformant; the VCS engine and autonomous daemon are
-  OPTIONAL layers; the `daemon`, `interactive-agent`, and `engine-direct` topologies compose them
-- Polling orchestrator with single-authority mutable state
-- Issue tracker client with candidate fetch + state refresh + terminal fetch
+- Structured logs with `issue_id`, `issue_identifier`, and `session_id`
+- Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)
+
+#### 18.1.2 Broker Core Conformance
+
+Required wherever a coding agent runs — the `daemon` and `interactive-agent` topologies
+(Section 3.4).
+
 - Workspace manager with sanitized per-issue workspaces
 - Workspace lifecycle hooks at two trust levels sourced by trust (host-side hooks in
   `repo.policy.toml` from the base revision; `WORKFLOW.md` hooks in the sandbox from the worktree,
@@ -3660,32 +3720,6 @@ Use the same validation profiles as Section 17:
   resources; adapters emit the neutral event vocabulary and token-usage record (`input_tokens`,
   `output_tokens`, `total_tokens`) and advertise a capability descriptor (resume mode, native step
   cap, accepted effort); one adapter per (agent, transport) with no protocol impersonation
-- Agent and effort selected from policy (`default_agent`/`default_effort`) with `agent_by_label`
-  per-issue overrides
-- Repository provisioning (host-side, Broker Core) plus a VCS engine (Section 3.4) whose plugin layer
-  (`github`, `forgejo`) realizes push/back-merge and the forge operations; a
-  `scope.branch_pattern`-derived work branch and configurable authorship
-- The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
-  writes (post/reply/resolve), advertising a static forge-capability descriptor
-- The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback, an
-  unmatched operation outcome fail-safe, an unmatched signal a no-op, and abstract `escalate` bound
-  per front-end
-- Message formulation (Sections 9.8–9.10): commit authored + `scan-content`; PR composed
-  (auto-compose default, agent prose overrides) with strict-title / relaxed-body scans; squash
-  mechanically transformed via `pr_to_squash` at `before:merge`
-- Tracker adapter (`linear`, `forgejo`) with reads and writes; Symphony-driven lifecycle via a
-  repository-owned transition graph (`tracker.transitions` in `repo.policy.toml`, a `set_state`
-  binding in the action-policy machine) keyed on agent milestone signals and observed run outcomes;
-  each adapter advertises a static write-capability descriptor and an unsupported write surfaces
-  `tracker_unsupported_operation` rather than a silent no-op
-- `set_state` is idempotent and surfaces `tracker_state_unreachable` / `tracker_state_conflict`
-  rather than silently succeeding; a transition failure is logged and does not fail the run
-- Tracker adapters declare an auth mode (`secret` | `none`); `api_key`/`endpoint` and the secret
-  provider apply only to `secret`-mode, and a `none`-mode local adapter keeps its store host-side
-- `fetch_candidate_issues` enumerates the complete matching set (adapter paginates internally); a
-  silent partial result is non-conformant
-- Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
-  polling; workspace/concurrency keyed by (repository, issue)
 - Repository object-store provisioning (host-side credentialed clone, then refresh fetches) runs
   before per-issue worktree provisioning; clone/fetch failures are classified as `Repository
   Provisioning Failures` and recovered repo-scoped (skip the repository's dispatches, retry on a
@@ -3700,6 +3734,30 @@ Use the same validation profiles as Section 17:
   always-present orchestrator↔executor seam; local execution is its in-process transport, and the
   executor instantiates the sandbox, per-run broker socket, and credential-less agent wherever it runs
 - Codex adapter launch command config (`codex.command`, default `codex app-server`)
+- Tracker adapter (`linear`, `forgejo`) with reads and writes; Symphony-driven lifecycle via a
+  repository-owned transition graph (`tracker.transitions` in `repo.policy.toml`, a `set_state`
+  binding in the action-policy machine) keyed on agent milestone signals and observed run outcomes;
+  each adapter advertises a static write-capability descriptor and an unsupported write surfaces
+  `tracker_unsupported_operation` rather than a silent no-op
+- `set_state` is idempotent and surfaces `tracker_state_unreachable` / `tracker_state_conflict`
+  rather than silently succeeding; a transition failure is logged and does not fail the run
+- Tracker adapters declare an auth mode (`secret` | `none`); `api_key`/`endpoint` and the secret
+  provider apply only to `secret`-mode, and a `none`-mode local adapter keeps its store host-side
+
+#### 18.1.3 Daemon Conformance
+
+Required of the `daemon` topology only.
+
+- Workflow path selection supports explicit runtime path and cwd default
+- `WORKFLOW.md` loader with YAML front matter + prompt body split
+- Polling orchestrator with single-authority mutable state
+- Issue tracker client with candidate fetch + state refresh + terminal fetch
+- Agent and effort selected from policy (`default_agent`/`default_effort`) with `agent_by_label`
+  per-issue overrides
+- `fetch_candidate_issues` enumerates the complete matching set (adapter paginates internally); a
+  silent partial result is non-conformant
+- Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
+  polling; workspace/concurrency keyed by (repository, issue)
 - Strict prompt rendering with `issue` and `attempt` variables
 - Exponential retry queue with continuation retries after normal exit
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)
@@ -3707,10 +3765,32 @@ Use the same validation profiles as Section 17:
 - Every Orchestrator Runtime State field is assigned and documented as a recovery class
   (`Reconstructable` / `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3)
 - Workspace cleanup for terminal issues (startup sweep + active transition)
-- Structured logs with `issue_id`, `issue_identifier`, and `session_id`
-- Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)
+
+#### 18.1.4 VCS Engine
+
+A conforming VCS engine is REQUIRED of any deployment that performs a remote VCS or forge
+operation — push, back-merge, pull-request creation, or merge. A deployment that performs none of
+them needs no engine. The engine's own obligations are those of the engine contract and its
+specification (Section 3.4); the items below are what this specification requires of a deployment
+that uses one, not a restatement of the engine's checklist.
+
+- Repository provisioning (host-side, Broker Core) plus a VCS engine (Section 3.4) whose plugin layer
+  (`github`, `forgejo`) realizes push/back-merge and the forge operations; a
+  `scope.branch_pattern`-derived work branch and configurable authorship
+- The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
+  writes (post/reply/resolve), advertising a static forge-capability descriptor
+- The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback, an
+  unmatched operation outcome fail-safe, an unmatched signal a no-op, and abstract `escalate` bound
+  per front-end
+- Message formulation (Sections 9.8–9.10): commit authored + `scan-content`; PR composed
+  (auto-compose default, agent prose overrides) with strict-title / relaxed-body scans; squash
+  mechanically transformed via `pr_to_squash` at `before:merge`
 
 ### 18.2 RECOMMENDED Extensions (Not REQUIRED for Conformance)
+
+Each extension below extends the layer profile named in its own section: the HTTP server, token
+budget guards, provider quota backpressure, the node-scheduler, and autonomous task management
+extend `Daemon Conformance`; the per-execution usage ledger extends `Broker Core Conformance`.
 
 - HTTP server extension honors CLI `--port` over `server.port`, uses a safe default bind host, and
   exposes the baseline endpoints/error semantics in Section 13.8 if shipped.

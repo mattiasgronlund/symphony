@@ -833,5 +833,6 @@ definitions (rejected — nothing states what a claim requires); D relax Section
 `Core Conformance` = daemon (rejected — re-opens 0027's headline as partly `Superseded`). Engine
 coupling: B1 conditional on remote operations (chosen) over B2 unconditional for the daemon profile.
 Depends on 0027, 0028, 0042; relates to 0040 (the deferral pattern it reuses for engine conformance).
-Accepted; the `SPEC.md` edit (Sections 3.4, 17, 18.1, 18.2, and a profile declaration per OPTIONAL
-extension) is planned in `Plan.md` and not yet applied.
+Accepted and applied to `SPEC.md` (Sections 3.4, 17, 18.1, 18.2, and a profile declaration per
+OPTIONAL extension); Section 18.1 gained a fourth `Both Layer Profiles` group for the five genuinely
+shared items, and Section 17.2 proved mixed as well — both recorded in `Plan.md`.
