@@ -764,3 +764,74 @@ no drift; the same single-source principle governs the instruction files, so the
 states the workflow is **dormant** until implementation is explicitly begun, so the near-term focus
 stays on refining `SPEC.md`; no requirement IDs, roadmap, or traceability rows are generated yet.
 `scripts/validate_workflow_bundle.py` passes. No `SPEC.md` edit made.
+
+## 0042 — Realize `vcsx` as a separate deliverable, engine-direct first
+
+**State:** Accepted
+**Folder:** [decisions/0042-vcsx-realization-separate-deliverable/](decisions/0042-vcsx-realization-separate-deliverable/)
+
+Fixes realization and sequencing for the VCS engine layer, whose shape decisions 0027, 0028, 0039 and
+0040 already settled and applied. Two facts bound the space first: a Symphony-native VCS/forge
+implementation is foreclosed by Section 9.7 ("there are no parallel Symphony VCS/forge adapters for
+those operations"), so choosing one would re-open 0028 rather than answer this decision; and `OPTIONAL`
+in Section 3.4 is topology-scoped, not build-scoped, since Section 18.1 requires a VCS engine and the
+action-policy machine for Core Conformance — the engine is skippable only by not building the daemon.
+Realization options: A a separate deliverable from the start (chosen) — its own codebase, pinned by
+`version_floor`, reached over the `VCSX-SPEC.md` invocation contract; B an in-process module behind the
+same contract, extracted later (sanctioned by `VCSX-SPEC.md` Section 8, "only the encoding differs", but
+the boundary holds only while a dual-encoding conformance suite enforces it, and standalone reuse waits
+on extraction); C generalize an existing wrapper layer into the engine (proven code, but shaped by one
+repository's Way of Working — the pull 0027 rejected; admissible as a seed, not exclusive with A or B);
+D a minimal fixed-policy subset with the policy machine deferred (rejected — the monolith 0027
+rejected, expensive to retrofit). Sequencing options: `engine-direct` first (chosen), `interactive-agent`
+first, `daemon` first. The two chosen axes compose: the cross-repo tax that argues against a separate
+deliverable is only paid while both codebases are in motion, and `engine-direct` first means only one
+is — while putting the artifact most likely to be wrong, the policy vocabulary and the
+`repo.policy.toml` schema, in front of a real user before Symphony freezes it. Carried from the first
+commit so later layers extend rather than retrofit: execution-context labeling (`host_side` /
+`in_sandbox`, the seam the Broker Core later splits on) and the fail-closed `version_floor` pin.
+Accepted residual risk: the secret-isolation invariant — Symphony's one enforced guarantee — stays
+unproven longest, a deliberate trade since its design is already fixed by 0003/0004 and `engine-direct`
+has no sandboxed agent to inform it. Reconsider if parallel Symphony/engine development makes the
+cross-repo cost dominate (Option B needs no re-decision, the contract being identical across
+encodings), if `engine-direct` usage warps the engine toward the human case, or if no second consumer
+materializes. Depends on 0027, 0028, 0039, 0040. Accepted; no `SPEC.md` edit follows — Section 3.4
+already states the engine is an independent deliverable pinned as an external tool, and Section 5.6
+already defers the `repo.policy.toml` field schema. Leaves one follow-on, taken up by 0043:
+conformance profiles, which are what reconciles Section 3.4's `OPTIONAL` with Section 18.1's REQUIRED.
+
+## 0043 — Layer-keyed conformance profiles
+
+**State:** Accepted
+**Folder:** [decisions/0043-layer-keyed-conformance-profiles/](decisions/0043-layer-keyed-conformance-profiles/)
+
+Closes the gap 0027 opened and 0042 named. Section 3.4 makes the Broker Core "independently
+conformant … for a single interactive agent session with no polling daemon", but Section 18.1 requires
+the polling orchestrator, the tracker client, complete candidate enumeration, multi-repo routing, the
+retry queue, and reconciliation — so `Core Conformance` has meant *the `daemon` topology*, and the unit
+0027 elevated to a standalone deliverable had no profile to claim, while `interactive-agent` and
+`engine-direct` were described in Section 3.4 and unrepresented in Sections 17 and 18. **The layer, not
+the topology, becomes the unit of conformance**: `Broker Core Conformance` and `Daemon Conformance` are
+defined as the two components of `Core Conformance` (kept as the umbrella, so every existing "Core
+conformance does not require these fields" clause stays true), engine conformance is *deferred* to
+`VCSX-SPEC.md` Section 13 rather than restated, and the three topologies are declared compositions —
+`engine-direct` = engine alone, `interactive-agent` = Broker Core + engine, `daemon` = Broker Core +
+Daemon + engine. Section 18.1's flat list is regrouped under the layer that owns each bullet (none
+added, none removed) and Sections 17.1–17.7 gain a per-subsection profile scope, with item-level
+scoping only in the two mixed subsections — so each profile's subset is *derived from one list* rather
+than restated. Two allocation calls are made rather than left to the editor: the tracker adapter splits
+on the line the document already draws, its read surface (`fetch_candidate_issues`, state refresh,
+terminal fetch) being `Daemon Conformance` and its broker-mediated write surface (`set_state`,
+comments) `Broker Core Conformance`; and the Agent Runner with its adapters is `Broker Core
+Conformance` while the prompt template and `WORKFLOW.md` loader are `Daemon Conformance`. The engine
+layer is REQUIRED **conditionally** — of any deployment performing a remote VCS or forge operation
+(push, back-merge, `create_pr`, merge) — which leaves Section 3.4's "optionally driving the VCS Engine"
+intact and reads the way `Extension Conformance` already does. Options: A layer-keyed with structural
+per-item scoping (chosen); B one profile per topology (rejected — the topologies nest, so each list
+restates the previous and one change must land in three places); C per-item tags with no profile
+definitions (rejected — nothing states what a claim requires); D relax Section 3.4 and accept
+`Core Conformance` = daemon (rejected — re-opens 0027's headline as partly `Superseded`). Engine
+coupling: B1 conditional on remote operations (chosen) over B2 unconditional for the daemon profile.
+Depends on 0027, 0028, 0042; relates to 0040 (the deferral pattern it reuses for engine conformance).
+Accepted; the `SPEC.md` edit (Sections 3.4, 17, 18.1, 18.2, and a profile declaration per OPTIONAL
+extension) is planned in `Plan.md` and not yet applied.
