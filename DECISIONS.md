@@ -836,3 +836,32 @@ Depends on 0027, 0028, 0042; relates to 0040 (the deferral pattern it reuses for
 Accepted and applied to `SPEC.md` (Sections 3.4, 17, 18.1, 18.2, and a profile declaration per
 OPTIONAL extension); Section 18.1 gained a fourth `Both Layer Profiles` group for the five genuinely
 shared items, and Section 17.2 proved mixed as well — both recorded in `Plan.md`.
+
+## 0044 — Engine invocation failure class
+
+**State:** Accepted
+**Folder:** [decisions/0044-engine-invocation-failure-class/](decisions/0044-engine-invocation-failure-class/)
+
+Supplies the consumer-side half of a contract whose engine side was already specified. `VCSX-SPEC.md`
+Section 8.5 has an engine below the repository's `version_floor` refuse to run fail-closed "rather than
+mis-executing a policy that assumes newer surface", and Section 8.3 makes that outcome distinct — exit
+`2`, "usage or configuration error; the policy did not run" — but `SPEC.md` Section 14.1 had no class
+for it, Section 14.2 no recovery behavior, and Section 18.1's engine group required a conforming engine
+without saying what happens when the one present is not. A new core class `Engine Invocation Failures`
+covers exactly the cases in which **the policy never ran**: the engine unavailable, not conforming to
+the invocation contract, refusing below the floor, or returning a usage/configuration result. The
+scoping is the substance — once the policy runs, the action-policy machine (Section 9.12) already owns
+every operation outcome through the `#class` ladder and its unmatched-outcome fail-safe, so drawing the
+boundary at *did the policy run* keeps the two mechanisms disjoint and makes the class decidable
+straight from the result envelope. Recovery mirrors `Repository Provisioning Failures` (0034) because
+the blast radius is identical — the floor and the operation flow are declared in that repository's
+`repo.policy.toml` — so it is repository-scoped: skip that repository's dispatches, keep the service
+alive, retry on a later tick, never convert to a per-worker backoff, and park persistent cases under a
+documented `Implementation-defined` policy. Options: A the scoped class (chosen); B extend
+`Workflow/Config Failures`, whose "Missing coding-agent executable" is a real precedent but whose
+instance-wide disposition mis-scopes a repository-owned floor; C rely on the policy machine's
+unmatched-outcome fail-safe, which by construction cannot fire when no operation ran; D per-worker
+backoff retry, which never converges on a configuration defect. Surfaced while verifying 0042's
+post-conditions and predates it. Depends on 0028, 0040; relates to 0034 (the recovery shape it
+mirrors) and 0030 (the boundary it stops at). Accepted; the `SPEC.md` edit (Sections 14.1, 14.2, 17.4,
+18.1.4) is planned in `Plan.md` and not yet applied.
