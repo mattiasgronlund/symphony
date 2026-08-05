@@ -865,3 +865,42 @@ backoff retry, which never converges on a configuration defect. Surfaced while v
 post-conditions and predates it. Depends on 0028, 0040; relates to 0034 (the recovery shape it
 mirrors) and 0030 (the boundary it stops at). Accepted and applied to `SPEC.md` (Sections 14.1, 14.2,
 17.4, 18.1.4): the class is core class 7, shifting the two OPTIONAL remote classes to 8 and 9.
+
+## 0045 — Multi-implementation conformance: the Conformance Statement
+
+**State:** Accepted
+**Folder:** [decisions/0045-multi-implementation-conformance-statement/](decisions/0045-multi-implementation-conformance-statement/)
+
+Answers how to run several implementations of `SPEC.md`, potentially in different languages, without
+fragmenting the contract. "Language-specific choice" is two things: **contract-visible variation** an
+implementation makes and a consumer can observe — the 26 `Implementation-defined` / `MUST document`
+obligations, the profile and topology claimed (0043), the OPTIONAL extensions shipped (Section 18.2),
+the engine `version_floor` and agent protocol floor pinned (Sections 8.5, 10.2), the recovery class
+assigned each Orchestrator Runtime State field (Section 14.3) — and **idiomatic realization**
+(concurrency model, error idiom, libraries, layout) the contract cannot see and the spec is silent
+on. Each is already required to be documented *somewhere*, but nothing says *where* or gathers them,
+so implementations cannot be compared and a silently-skipped obligation stays invisible. Introduce a
+normative, human-readable **Conformance Statement** — a per-implementation published artifact that
+consolidates exactly the contract-visible choices — with a repo-owned template
+(`CONFORMANCE-STATEMENT-TEMPLATE.md`) that pre-enumerates every obligation and every runtime-state
+field. The Statement adds no obligation: it is a *view* over 0043's profiles, Section 18.2's
+extensions, the version floors, the `Implementation-defined` clauses, and Section 14.3's recovery
+classes — the same single-source derivation 0043 used so a checklist cannot drift into three, and it
+keeps `SPEC.md` language-agnostic because the choices are recorded *outside* the normative text.
+Options: A the human-readable Statement with template (chosen); B leave the obligations scattered
+(rejected — defeats the comparability that is the point of multiple implementations); C fold into the
+Section 18 checklist only (rejected — a definition-of-done bullet is not a published declaration and
+cannot carry a filled-in value); D a machine-readable manifest schema (deferred — over-commits to a
+wire format before an implementation exists to shape it, against 0040's defer-schema discipline;
+the natural successor once a second implementation or a conformance harness creates demand). Around
+the Statement, three positions are recorded rather than built: a shared, language-neutral
+**conformance corpus** (data-driven vectors turning Sections 17–18's prose into objective pass/fail
+in every language) as the follow-on authored when implementation begins; **decision-log hygiene**
+(this log binds all implementations, idiomatic choices live in each implementation's own log, and a
+language that exposes a genuine `SPEC.md` gap routes a decision back *here*); and **live-state
+interoperability** as an explicit non-goal (Sections 14.3–14.4 give containment, not handoff of a
+running issue between implementations — its own decision if ever wanted). Depends on 0027, 0040,
+0042, 0043; relates to 0002 (the stable-addressing discipline the Statement and template follow).
+Accepted and applied: `CONFORMANCE-STATEMENT-TEMPLATE.md` is created, and `SPEC.md` gains Section 19
+`Conformance Statement`, a `Both Layer Profiles` checklist item (Section 18.1.1), and pointers to it
+from the Section 1, 9.6, and 14.3 documentation clauses.

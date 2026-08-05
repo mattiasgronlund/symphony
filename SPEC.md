@@ -28,8 +28,9 @@ The service solves four operational problems:
   settings with their code.
 - It provides enough observability to operate and debug multiple concurrent agent runs.
 
-Implementations are expected to document their trust and safety posture explicitly. This
-specification does not require a single approval, sandbox, or operator-confirmation policy; some
+Implementations are expected to document their trust and safety posture explicitly, in the
+Conformance Statement (Section 19). This specification does not require a single approval, sandbox,
+or operator-confirmation policy; some
 implementations target trusted environments with a high-trust configuration, while others require
 stricter approvals or sandboxing.
 
@@ -1485,7 +1486,8 @@ Sandbox profile:
 
 - The reference baseline is `jai` (https://jai.scs.stanford.edu) in its `Strict` mode on Linux — a
   containment tool for AI agents — with an equivalent local mechanism on other platforms. The
-  selected profile is `Implementation-defined` and MUST be documented.
+  selected profile is `Implementation-defined` and MUST be documented in the Conformance Statement
+  (Section 19).
 - `jai` describes itself as a casual sandbox that reduces rather than eliminates risk, so
   deployments needing stronger isolation SHOULD layer additional controls (container, VM, or network
   policy).
@@ -2912,8 +2914,8 @@ node-scheduler extension (Section 9.11).
 
 Every field of the Orchestrator Runtime State (Section 4.1.8) — and any state introduced by an
 OPTIONAL extension — MUST be assigned exactly one recovery class, and the assignment MUST be
-documented. The class governs what happens to the value across a process restart and when a current
-value is unavailable.
+documented in the implementation's Conformance Statement (Section 19). The class governs what happens
+to the value across a process restart and when a current value is unavailable.
 
 - `Reconstructable` (`R`)
   - An authoritative source of truth lives outside the orchestrator (config, tracker state, the VCS,
@@ -3731,6 +3733,9 @@ Required of every conforming implementation, whichever profiles its topology cla
   last-known-good on invalid reload
 - Structured logs with `issue_id`, `issue_identifier`, and `session_id`
 - Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)
+- A published Conformance Statement (Section 19) recording the claimed profiles and topology, the
+  OPTIONAL extensions shipped, the engine and agent-runner floors, every `Implementation-defined`
+  resolution, each Orchestrator Runtime State field's recovery class, and the trust and safety posture
 
 #### 18.1.2 Broker Core Conformance
 
@@ -3862,3 +3867,34 @@ extend `Daemon Conformance`; the per-execution usage ledger extends `Broker Core
 - Verify hook execution and workflow path resolution on the target host OS/shell environment.
 - If the OPTIONAL HTTP server is shipped, verify the configured port behavior and loopback/default
   bind expectations on the target environment.
+
+## 19. Conformance Statement
+
+A conforming implementation MUST publish a Conformance Statement: a single document recording the
+choices this specification leaves to the implementation, so a consumer, auditor, or peer
+implementation can determine what the implementation does without reading its source. It is the home
+for the "MUST document" obligations dispersed through this specification, gathering those choices in
+one place rather than restating their requirements.
+
+The Statement MUST record:
+
+- The layer profiles claimed and the deployment topology provided, by the names Section 3.4 and the
+  Section 17 validation profiles define (`Broker Core Conformance`, `Daemon Conformance`;
+  `engine-direct`, `interactive-agent`, `daemon`).
+- The OPTIONAL extensions shipped and the configuration namespace each owns (Section 18.2).
+- The engine `version_floor` the deployment declares (Section 18.1.4) and the agent-runner protocol
+  floor the implementation advertises at bring-up (Section 10).
+- A resolution for every `Implementation-defined` behavior and every other "MUST document" obligation
+  in this specification, including: the agent sandbox profile and effective egress policy
+  (Section 9.6); the approval, sandbox, operator-confirmation, and user-input-required policy
+  (Section 10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the
+  park-vs-retry disposition of `Repository Provisioning Failures` and `Engine Invocation Failures`
+  (Section 14.2); the durable-store degradation when no store is configured (Section 14.3); and the
+  host-side object-store path (Section 16.5).
+- The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8) and to any
+  state an OPTIONAL extension introduces (Section 14.3).
+- The trust and safety posture (Sections 1, 9.6, 15).
+
+The Statement's format is `Implementation-defined`. `CONFORMANCE-STATEMENT-TEMPLATE.md` in the
+specification repository is the RECOMMENDED shape: it enumerates each obligation above as a row an
+implementation fills.
