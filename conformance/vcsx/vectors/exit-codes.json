@@ -1,0 +1,41 @@
+{
+  "function": "exit_code_for_status",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 8.3 \"Exit Codes\"",
+    "VCSX-SPEC.md Section 8.2 \"Result Envelope\"",
+    "VCSX-SPEC.md Section 8.5 \"Versioning and the Version Grammar\""
+  ],
+  "description": "Map an invocation status to the process exit code of the subprocess encoding.",
+  "given": "the invocation status (Section 8.2)",
+  "expect": "the process exit code",
+  "notes": [
+    "Part of the major-stable surface (Section 8.5): the mapping does not change within a MAJOR.",
+    "Small but load-bearing. Exit codes in the same domain are not interchangeable across projects, and `2` here means the policy did not run, not `needs_caller`.",
+    "The JSON envelope is emitted regardless of exit code (Section 8.3), which is a behavior of the process rather than of this function."
+  ],
+  "vectors": [
+    {
+      "id": "ok_is_zero",
+      "description": "All steps done (Section 8.2).",
+      "given": { "status": "ok" },
+      "expect": { "exit_code": 0 }
+    },
+    {
+      "id": "needs_caller_is_ten",
+      "description": "An escalation is present (Section 8.4).",
+      "given": { "status": "needs_caller" },
+      "expect": { "exit_code": 10 }
+    },
+    {
+      "id": "error_is_twenty",
+      "given": { "status": "error" },
+      "expect": { "exit_code": 20 }
+    },
+    {
+      "id": "usage_or_config_is_two",
+      "description": "A usage or configuration error (Section 6.10); the policy did not run.",
+      "given": { "status": "usage_or_config" },
+      "expect": { "exit_code": 2 }
+    }
+  ]
+}

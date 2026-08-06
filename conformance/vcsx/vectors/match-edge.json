@@ -1,0 +1,260 @@
+{
+  "function": "match_edge",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 5.3 \"Matching Algorithm and the `#class` Fallback\"",
+    "VCSX-SPEC.md Section 5.4 \"Unmatched Policy and Determinism\"",
+    "VCSX-SPEC.md Section 12.1 \"Match a Trigger\"",
+    "VCSX-SPEC.md Section 6.5 \"`[policy]` Edges\""
+  ],
+  "description": "Select at most one policy edge for a trigger by most-specific-wins over the fallback ladder, or fall through to the built-in default.",
+  "given": "an edge set, a trigger token, and the from-context the trigger fires in",
+  "expect": "the `on` key of the selected edge (null when none matched), the resulting action, and any action argument the vector pins",
+  "notes": [
+    "A proto class is not supplied: the implementation derives it from the Section 4.3 registry, as `proto_class(op, reason)` in Section 12.1 does.",
+    "`action` is the matched edge's `do`, or the Section 5.4 built-in default. `continue` and `no_op` are Section 5.4 outcomes, not Section 5.2 actions.",
+    "Keys absent from `expect` are unconstrained, so a vector may assert the selection without asserting an unspecified default."
+  ],
+  "vectors": [
+    {
+      "id": "exact_beats_op_class_and_bare_class",
+      "description": "Most-specific-wins: the exact op:reason edge is selected over both fallbacks.",
+      "given": {
+        "edges": [
+          { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" },
+          { "on": "push:#needs_caller", "do": "escalate" },
+          { "on": "#needs_caller", "do": "escalate" }
+        ],
+        "trigger": "push:non_fast_forward",
+        "from_context": null
+      },
+      "expect": { "matched": "push:non_fast_forward", "action": "run_op" }
+    },
+    {
+      "id": "op_class_catches_unnamed_reason",
+      "description": "An op:#class edge catches a reason of that class with no exact edge (Section 13.1).",
+      "given": {
+        "edges": [
+          { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" },
+          { "on": "push:#needs_caller", "do": "escalate" }
+        ],
+        "trigger": "push:pr_closed",
+        "from_context": null
+      },
+      "expect": { "matched": "push:#needs_caller", "action": "escalate" }
+    },
+    {
+      "id": "bare_class_catches_otherwise_unmatched",
+      "description": "A #class edge catches an otherwise-unmatched result (Section 13.1).",
+      "given": {
+        "edges": [
+          { "on": "#error", "do": "escalate" }
+        ],
+        "trigger": "merge:checks_failed",
+        "from_context": null
+      },
+      "expect": { "matched": "#error", "action": "escalate" }
+    },
+    {
+      "id": "op_class_beats_bare_class",
+      "description": "The ladder prefers op:#class over the bare #class rung.",
+      "given": {
+        "edges": [
+          { "on": "#error", "do": "escalate" },
+          { "on": "push:#error", "do": "fail", "reason": "push_failed" }
+        ],
+        "trigger": "push:rejected",
+        "from_context": null
+      },
+      "expect": { "matched": "push:#error", "action": "fail" }
+    },
+    {
+      "id": "class_edge_of_other_class_does_not_catch",
+      "description": "A push:#error edge does not catch a needs_caller reason on the same operation.",
+      "given": {
+        "edges": [
+          { "on": "push:#error", "do": "fail", "reason": "push_failed" }
+        ],
+        "trigger": "push:non_fast_forward",
+        "from_context": null
+      },
+      "expect": { "matched": null, "action": "escalate" }
+    },
+    {
+      "id": "class_edge_of_other_operation_does_not_catch",
+      "description": "An op:#class edge is scoped to its operation; a same-class reason on another operation falls through.",
+      "given": {
+        "edges": [
+          { "on": "merge:#needs_caller", "do": "escalate" }
+        ],
+        "trigger": "push:pr_closed",
+        "from_context": null
+      },
+      "expect": { "matched": null, "action": "escalate" }
+    },
+    {
+      "id": "default_for_error_is_fail",
+      "description": "Built-in default for the error class (Section 5.4).",
+      "given": { "edges": [], "trigger": "merge:blocked", "from_context": null },
+      "expect": { "matched": null, "action": "fail" }
+    },
+    {
+      "id": "default_for_needs_caller_is_escalate",
+      "description": "Built-in default for the needs_caller class (Section 5.4).",
+      "given": { "edges": [], "trigger": "integrate:merge_conflicts", "from_context": null },
+      "expect": { "matched": null, "action": "escalate" }
+    },
+    {
+      "id": "default_for_done_is_continue",
+      "description": "A done result with no edge continues the flow (Section 5.4).",
+      "given": { "edges": [], "trigger": "commit:ok", "from_context": null },
+      "expect": { "matched": null, "action": "continue" }
+    },
+    {
+      "id": "done_edge_matches_when_present",
+      "description": "A done result is an ordinary trigger when the policy binds it.",
+      "given": {
+        "edges": [
+          { "on": "commit:nothing_to_commit", "do": "run_op", "op": "push" }
+        ],
+        "trigger": "commit:nothing_to_commit",
+        "from_context": null
+      },
+      "expect": { "matched": "commit:nothing_to_commit", "action": "run_op" }
+    },
+    {
+      "id": "done_class_edge_catches_done_reason",
+      "description": "The #class ladder applies to the done class as it does to the other two.",
+      "given": {
+        "edges": [
+          { "on": "create_pr:#done", "do": "notify", "channel": "team" }
+        ],
+        "trigger": "create_pr:updated",
+        "from_context": null
+      },
+      "expect": { "matched": "create_pr:#done", "action": "notify" }
+    },
+    {
+      "id": "lifecycle_position_matches_exactly",
+      "description": "A lifecycle position is matched exactly (Section 5.3).",
+      "given": {
+        "edges": [
+          { "on": "before:commit", "do": "run", "hook": "scan-content", "context": "in_sandbox" }
+        ],
+        "trigger": "before:commit",
+        "from_context": null
+      },
+      "expect": { "matched": "before:commit", "action": "run" }
+    },
+    {
+      "id": "lifecycle_position_has_no_class_fallback",
+      "description": "Class edges never catch a lifecycle position (Section 5.3, \"No class fallback\"), so the position is unmatched and the operation proceeds (Section 5.4).",
+      "given": {
+        "edges": [
+          { "on": "#needs_caller", "do": "escalate" },
+          { "on": "#error", "do": "fail", "reason": "policy_error" }
+        ],
+        "trigger": "before:push",
+        "from_context": null
+      },
+      "expect": { "matched": null, "action": "continue" }
+    },
+    {
+      "id": "unbound_lifecycle_position_proceeds",
+      "description": "A policy that binds only some of the required positions leaves the rest unbound; the operation proceeds (Section 5.4).",
+      "given": {
+        "edges": [
+          { "on": "before:commit", "do": "run", "hook": "scan-content", "context": "in_sandbox" }
+        ],
+        "trigger": "before:merge",
+        "from_context": null
+      },
+      "expect": { "matched": null, "action": "continue" }
+    },
+    {
+      "id": "signal_matches_exactly",
+      "description": "A consumer-raised signal is matched by an exact edge (Section 5.1).",
+      "given": {
+        "edges": [
+          { "on": "ready-for-review", "do": "run_op", "op": "create_pr" }
+        ],
+        "trigger": "ready-for-review",
+        "from_context": null
+      },
+      "expect": { "matched": "ready-for-review", "action": "run_op" }
+    },
+    {
+      "id": "unmatched_signal_is_benign_noop",
+      "description": "An unmatched signal is a benign no-op, and a #class edge does not catch it (Section 5.4).",
+      "given": {
+        "edges": [
+          { "on": "#error", "do": "fail", "reason": "policy_error" }
+        ],
+        "trigger": "blocked",
+        "from_context": null
+      },
+      "expect": { "matched": null, "action": "no_op" }
+    },
+    {
+      "id": "task_state_event_matches_exactly",
+      "description": "A task-state event is a signal-kind trigger (Section 5.1).",
+      "given": {
+        "edges": [
+          { "on": "tasks:all_closed", "do": "notify", "channel": "team" }
+        ],
+        "trigger": "tasks:all_closed",
+        "from_context": null
+      },
+      "expect": { "matched": "tasks:all_closed", "action": "notify" }
+    },
+    {
+      "id": "hash_shaped_task_event_is_an_ordinary_token",
+      "description": "`task:#needs_help` is a signal token naming a condition across tasks, not a class-fallback rung; it is matched exactly (Section 5.1).",
+      "given": {
+        "edges": [
+          { "on": "task:#needs_help", "do": "escalate" }
+        ],
+        "trigger": "task:#needs_help",
+        "from_context": null
+      },
+      "expect": { "matched": "task:#needs_help", "action": "escalate" }
+    },
+    {
+      "id": "signal_takes_no_class_fallback",
+      "description": "A signal carries no proto class, so no #class edge catches it and it falls to the unmatched-signal default (Sections 5.1, 5.3).",
+      "given": {
+        "edges": [
+          { "on": "#needs_caller", "do": "escalate" },
+          { "on": "#done", "do": "notify", "channel": "team" }
+        ],
+        "trigger": "task:#needs_help",
+        "from_context": null
+      },
+      "expect": { "matched": null, "action": "no_op" }
+    },
+    {
+      "id": "from_context_disambiguates_same_trigger",
+      "description": "The same trigger takes different transition edges at different from-contexts (Section 5.4, \"from-context\"; `from` is a transition-edge key, Section 6.5).",
+      "given": {
+        "edges": [
+          { "from": "In Progress", "on": "ready-for-review", "do": "set_state", "target": "Human Review" },
+          { "from": "Human Review", "on": "ready-for-review", "do": "set_state", "target": "Done" }
+        ],
+        "trigger": "ready-for-review",
+        "from_context": "Human Review"
+      },
+      "expect": { "matched": "ready-for-review", "action": "set_state", "target": "Done" }
+    },
+    {
+      "id": "from_context_scoped_edge_does_not_leak",
+      "description": "A transition edge keyed to a from-context does not fire in another context; the trigger is then an unmatched signal (Section 5.4).",
+      "given": {
+        "edges": [
+          { "from": "In Progress", "on": "ready-for-review", "do": "set_state", "target": "Human Review" }
+        ],
+        "trigger": "ready-for-review",
+        "from_context": "Done"
+      },
+      "expect": { "matched": null, "action": "no_op" }
+    }
+  ]
+}

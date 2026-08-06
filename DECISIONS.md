@@ -984,3 +984,299 @@ on the first run collides with strict unknown-variable failure (so only a presen
 is tested) — both open spec-clarification candidates. Depends on 0046; relates to 0044 (the failure
 class its error vectors name) and 0047 (the finding-to-decision path it reuses). Accepted and applied
 to the corpus (now 8 files / 39 vectors); no `SPEC.md` change follows.
+
+## 0049 — Implement `vcsx` in Rust as a separate repository
+
+**State:** Accepted
+**Folder:** [decisions/0049-vcsx-rust-separate-repository/](decisions/0049-vcsx-rust-separate-repository/)
+
+Fixes the three things 0042 deliberately left open when it made the engine a separate deliverable and
+put `engine-direct` first: the implementation language, the repository that holds it, and where that
+implementation's own decision log lives — the axes 0045 classified as contract-invisible. **Rust**, in
+its **own repository**, `engine-direct` first (0042 confirmed, not re-opened; nothing in the language
+or repository choice bears on sequencing). Language options: A Rust (chosen), B Go, C Python. The
+engine's centre of gravity is a policy machine over a closed vocabulary whose proto classes are frozen
+within a major version (`VCSX-SPEC.md` Sections 4.2, 4.3, 8.5) — three of Section 13.1's eight checks
+are about that machine, and a mis-classified reason routes to a different `#class` edge with no build
+or test failure anywhere. That is a type-system problem before it is a plumbing problem, and Rust's
+exhaustive matching turns most of the cluster into compile errors; the forge plugins, where Rust is
+weakest, are the part most insulated behind a neutral interface (Section 9.2) and least likely to be
+where correctness is lost. Go was rejected for moving that same cluster from the compiler back into
+tests despite the better forge ecosystem and the same static-binary property; Python for needing an
+interpreter wherever the engine runs, against the pinned-external-tool model 0028 fixed. Repository
+options: A separate (chosen), B beside the specification, C a monorepo with a future Symphony
+implementation. Co-locating exactly one implementation with a contract meant to bind several makes
+neutrality a matter of discipline rather than structure — the property 0045's whole model rests on —
+and a separate repository gives idiomatic choices a home that does not dilute this log; the monorepo
+buys nothing while only one codebase is in motion, which is 0042's own cross-repo-tax reasoning. The
+embedding repository's `scripts/vcs/` wrapper layer — 0042's Option C seed — is recorded as a **design
+seed, not liftable code**: the escalate-on-ambiguity bias, one JSON object on stdout, the `done` /
+`needs_caller` / `error` proto classes, forge rate-limit ride-out, and jj secondary-workspace slug and
+branch derivation all transfer, but its exit codes (`0`/`2`/`10`/`64`) collide with Section 8.3's
+(`0`/`10`/`20`/`2`), reusing `2` and `10` with different meanings, so carried code would satisfy its
+own tests while silently violating the invocation contract. Decision-log hygiene per 0045 is unchanged:
+an engine-document change or a gap it exposes routes a decision back here, while crate layout, whether
+the engine is async at all, the error idiom, and the HTTP client stay in the engine repository's log.
+Reconsider if the forge plugin layer comes to dominate the work, or if the cross-repo cost dominates
+while both codebases are in motion — the case 0042 anticipated, noting its Option B needs no
+re-decision. Depends on 0042, 0045; relates to 0027, 0028. Accepted; no specification edit follows.
+Leaves three follow-ons, taken up as 0050, 0051, and 0052.
+
+## 0050 — Publish an engine Conformance Statement
+
+**State:** Accepted
+**Folder:** [decisions/0050-engine-conformance-statement/](decisions/0050-engine-conformance-statement/)
+
+Closes a gap 0043 opened and 0049 made live. 0043 *deferred* engine conformance rather than restating
+it — `SPEC.md` Section 17 says "The VCS engine has no profile here" and the Symphony statement template
+defers to `VCSX-SPEC.md` Section 13 — but Section 13 receives that deferral with a test matrix and an
+implementation checklist and no place to *publish* what an engine chose. The engine specification
+carries five `Implementation-defined` obligations of its own (checkout-mode detection, Section 3.3;
+`repo.policy.toml` discovery precedence, Section 6.1; the form of a hook's engine-invoked `run` unit,
+Section 6.6; entry-point argument encodings, Section 8.1; the escalation `detail`, Section 8.4) plus
+three documentation duties phrased without the keyword — reasons added beyond the Section 4.3 registry,
+the `need` vocabulary (Section 8.4), and the plugin capability descriptors (Section 9.3). The gap is
+sharpest for what 0049 builds first: `SPEC.md` Section 3.4 gives `engine-direct` no Symphony profile,
+so a pure engine has no publication surface at all. Introduce a per-engine Conformance Statement with a
+minimal repo-owned template (`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`) and a `VCSX-SPEC.md` Section
+13.3 clause requiring it — mirroring `SPEC.md` Section 19 in structure and register at the engine's
+much smaller scale. Options: A the template (chosen); B the Section 13.2 checklist plus a
+per-implementation README (rejected — a ticked checklist item cannot carry a filled-in value, which is
+the reasoning 0045 already applied to Symphony); C an engine section inside the Symphony template
+(rejected — wrong owner, since an engine is conformant independently of Symphony and this would make a
+Symphony artifact a precondition for an engine that may never be embedded, re-coupling what 0043
+decoupled); D defer until a second engine exists (rejected — 0045's deferral was justified by
+over-committing to a *wire format*, which a human-readable statement does not have, and its stated
+trigger has fired). Like 0045's, the Statement adds no obligation: it is a view over obligations that
+already exist. Including the capability descriptors is the one addition beyond the
+`Implementation-defined` clauses and earns its place, because Section 9.3 makes an undeclared
+capability an `error`-class result and Section 6.10 makes a policy requiring an unsupported one a
+configuration error, so what a build declares is load-bearing for anyone authoring `repo.policy.toml`
+against it. The Statement is a published declaration, not a gate; Sections 13.1 and 13.2 keep their
+roles. Reconsider if the engine ever ceases to be an independent deliverable (0042's Option B), since a
+single embedded artifact would have a single owner again. Depends on 0043, 0045, 0049; relates to 0002.
+Accepted and applied: `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` is created and `VCSX-SPEC.md` gains
+Section 13.3.
+
+## 0051 — The engine token vocabulary as data
+
+**State:** Accepted
+**Folder:** [decisions/0051-engine-vocabulary-as-data/](decisions/0051-engine-vocabulary-as-data/)
+
+Mechanizes `VCSX-SPEC.md` Section 14's alignment rule — every token shared between the engine
+specification and its contract surface MUST be spelled identically in both — now that 0049 has made an
+implementation in a separate repository a **third** spelling on its own cadence, with nothing
+mechanical connecting it. The rule's enforcement has been review, and review across two repositories is
+where this drift survives longest: the failure is silent, since a reason carrying the wrong proto class
+routes to a different `#class` edge and changes which policy fires with no build or test failure
+anywhere. The vocabulary is also unusually suited to being data — Section 4.3 is already a 26-row
+table, Section 4.1 a closed list of eight operations and four positions, Section 4.2 three classes,
+Section 5.2 eight actions, Section 8.3 four exit codes — enumerations typeset as prose whose
+correctness properties are exactly what a machine checks well. Publish them as
+`conformance/vcsx/vocabulary.json` with a `conformance/vcsx/README.md` defining the schema and the
+precedence rule. Options: A the registry (chosen); B a script extracting and diffing the token sets out
+of the two documents (rejected — a brittle parser over prose that does nothing for the third spelling,
+which is the part 0049 actually made worse); C prose discipline plus a pinned specification revision in
+the engine repository (rejected — leaves a silent failure mode enforced by cross-repository review).
+**The prose governs; the artifact is derived**, exactly as `SPEC.md` governs the Symphony corpus under
+0046: every entry is read from the sections its `spec_refs` cite, entries carry names and the
+properties the specification fixes about them rather than the prose of the rules those properties feed,
+and a disagreement is a bug in the registry. Two normalizations are recorded — the combined
+`status` / `diff` registry row expands to two entries, so 26 table rows yield 27; and operations gated
+at no fixed position carry an explicit null rather than omitting the field. The artifact sits in its
+own `vcsx/` subtree rather than folded into the Symphony corpus: the two derive from different
+specifications, have different schemas, and are consumed by different implementations — one is a set of
+behavior vectors, this is a vocabulary registry. This is 0045's deferred Option D taken up on its own
+stated trigger ("once a second implementation or a conformance harness creates demand"). Reconsider if
+the registry begins accumulating properties the prose does not fix, the sign it has stopped being a
+derived view; the remedy is then to move the concept into `VCSX-SPEC.md` and re-derive, not to let the
+registry lead. An engine conformance *corpus* — vectors over the matching ladder and the Section
+5.3–5.4 fail-safe rules, in 0046's shape — is the natural successor and is deliberately not taken here.
+Depends on 0045, 0049; relates to 0046 and to `VCSX-SPEC.md` Section 14, whose rule it mechanizes
+without changing. Accepted and applied: `conformance/vcsx/` is created; no specification edit follows.
+
+## 0052 — `notify` with no consumer that can effect it
+
+**State:** Accepted
+**Folder:** [decisions/0052-no-consumer-notify-semantics/](decisions/0052-no-consumer-notify-semantics/)
+
+Resolves a gap 0049 made live by scheduling `engine-direct` first. `VCSX-SPEC.md` Section 5.2 makes
+`create_task`, `set_state`, and `notify` the consumer's to effect, and Section 1.3 admits a consumer
+that is "a human at an interactive prompt" — with no task model, no tracker binding, and no
+notification channel — so every policy using these actions can run through a consumer that cannot
+perform them. The specification resolves that case for two of the three, inconsistently: `create_task`
+is "a no-op when the consumer runs no task model" (Section 5.2), a `set_state` binding without a
+consumer that can apply it is a configuration error caught at validation (Section 6.10), and `notify`
+is unstated. The asymmetry is coherent rather than accidental — a dropped `set_state` strands control
+flow while a missed notification costs only observability — so `notify` is classified with
+`create_task` as a benign no-op, stating the existing logic rather than adding a rule. What is
+genuinely added is the surfacing requirement, imported rather than invented: Section 5.4 already
+forbids silently dropping an unmatched operation outcome because a dropped outcome strands a flow, and
+an emitted intent no consumer performed is the same failure one level up. Surfacing is extended to
+`create_task` as well, since special-casing `notify` would leave the identical silent-drop hazard for
+the other no-op; `set_state` never reaches the path. The intents ride in the existing envelope under
+`outputs.unperformed_intents` (Section 8.2), a named key rather than an `Implementation-defined`
+representation — which avoids adding a sixth such site to a specification whose whole surface is five,
+and makes the requirement mechanically checkable. Options: A the surfaced no-op (chosen); B uniform
+intent emission in every front-end (rejected — a larger Section 8.2 change that alters what a *capable*
+consumer receives and puts `set_state` on the emission path against Section 6.10's refusal to run at
+all); C make every consumer-effected action without a consumer a configuration error (rejected —
+contradicts Section 5.2's settled `create_task` clause and would make a policy that legitimately
+degrades refuse to run). Section 5.5's "`escalate` is the single point at which their behavior
+legitimately differs" is preserved, not weakened: the engine's behavior is identical in either
+front-end and only the consumer's capability varies. Reconsider if a further consumer-effected action
+arrives whose omission strands control flow the way `set_state`'s does — it belongs at validation, not
+with the surfaced no-ops — or if a consumer emerges whose capability is dynamic rather than known
+before the policy runs. Depends on 0049; relates to 0030 and 0042. Accepted and applied to
+`VCSX-SPEC.md` (Sections 5.2, 8.2); no `VCSX-CONTRACT.md` edit is required, since its Section 11
+defers the result envelope to `VCSX-SPEC.md` Section 8 and no shared token changes.
+
+## 0053 — Engine conformance corpus, first slice
+
+**State:** Accepted
+**Folder:** [decisions/0053-engine-conformance-corpus-first-slice/](decisions/0053-engine-conformance-corpus-first-slice/)
+
+Takes the successor 0051 named and deliberately did not take: vectors that exercise the machine *over*
+the vocabulary that decision published. `VCSX-SPEC.md` Section 13.1's test matrix is prose — eight
+bullets a conforming engine "SHOULD include tests covering" — and prose is neither pass/fail nor
+transferable, since two engines can each believe they satisfy the matching bullet while disagreeing
+about what an `op:#class` edge catches. 0046 solved this for `SPEC.md`; the reasoning carries over
+unchanged to an engine that 0042 made an independently released deliverable consumed over a
+version-pinned contract, and 0049 makes it timely by putting a Rust implementation about to be built
+against the specification rather than against its own reading of it. Options: A a pure,
+host-independent first slice authored from the specification (chosen); B wait for the engine and derive
+vectors from its behavior (rejected — inverts the direction of derivation, encoding one
+implementation's reading, bugs included, as the cross-implementation contract); C fold the vectors into
+`vocabulary.json` (rejected — a registry and a vector set have different schemas and different jobs,
+and merging them makes the registry's derivation rule unstatable); D rely on Section 13.1 plus each
+implementation's own tests (rejected — the status quo whose weakness prompts the decision). Four
+functions, 49 vectors, all pure over their inputs: `match_edge` (18) and `validate_policy` (18) carry
+the slice because three of Section 13.1's eight bullets are about the action-policy machine;
+`resolve_base` (9) because longest-prefix-wins with a required empty-prefix default reads simple, is
+easy to implement as first-match, and fails as a silently wrong base branch; and
+`exit_code_for_status` (4) because 0049 recorded a live hazard for exactly that mapping — the wrapper
+layer offered as a design seed numbers `0`/`2`/`10`/`64` against Section 8.3's `0`/`10`/`20`/`2`,
+colliding on `2` and `10` with different meanings. `proto_class` is **deliberately omitted**: it is a
+lookup over the Section 4.3 registry that `vocabulary.json` already is, so a file would restate it with
+no assertion added, and `match_edge` exercises it in composition by supplying a trigger token rather
+than its class — as Section 12.1's algorithm does. Conventions are reused, not re-invented: 0048's
+success-or-error union, and the Symphony corpus's "keys absent from `expect` are unconstrained" rule,
+which earns its keep immediately by letting a vector pin what the specification fixes without pinning
+what it leaves open. No `profile` field, because 0043 deferred engine conformance rather than defining
+profiles. Authoring surfaced three gaps, all recorded rather than guessed: an unmatched **lifecycle
+position** has no stated default (Section 5.4 fixes the unmatched-outcome and unmatched-signal cases
+only); the **class form of a concrete task-state event** is undefined, `needs_help` not being a proto
+class; and **configuration errors carry no reason token**, so a caller can tell that a policy was
+refused but not why without parsing `message` — the most substantive of the three for an engine whose
+contract is otherwise built on stable tokens. Reconsider the pure-only boundary once a fixture harness
+is cheap, at which point the `ship`/`land` sequences, plugin and checkout-mode behavior, message
+formulation, and hook execution become a second slice. Depends on 0049, 0051; relates to 0046 (the
+discipline and shape it reuses), 0048 (the error-vector convention), 0043 (why there is no profile
+field), and 0052 (whose `notify` disposition one validation vector pins). Accepted and applied:
+`conformance/vcsx/vectors/` (4 files, 49 vectors) and an extended `conformance/vcsx/README.md` are
+created, and `VCSX-SPEC.md` Section 13.1 gains the corpus pointer that mirrors what 0046 added to
+`SPEC.md` Section 17.
+
+## 0054 — An unmatched lifecycle position proceeds
+
+**State:** Accepted
+**Folder:** [decisions/0054-unmatched-lifecycle-position/](decisions/0054-unmatched-lifecycle-position/)
+
+Resolves the first of three gaps 0053 surfaced. `VCSX-SPEC.md` Section 5.4 fixed the unmatched
+behavior of two of the three trigger kinds — a signal is a benign no-op, an operation outcome MUST be
+fail-safe with a built-in default per proto class — and said nothing about a lifecycle position with no
+edge, while Section 5.3 established only the negative that a position takes no class fallback. The
+silence sat on the ordinary case: Section 4.1 defines four required positions and a policy binds
+whichever it needs, so under a reading that generalized the fail-safe rule the minimal policy in the
+corpus, which binds `before:commit` alone, could not run. Options: A a benign no-op, the operation
+proceeds (chosen); B fail-safe as for an operation outcome (rejected — makes every policy that does not
+bind all four positions unrunnable, contradicting Section 6.5's own examples); C a configuration error
+requiring every position to be bound (rejected — same objection moved earlier, converting an offered
+interposition point into an obligation). The reasoning worth recording is the distinction rather than
+the outcome, the outcome being the only workable one: **an operation outcome is a result that must be
+disposed of**, and dropping it strands a flow, which is what that bullet already says; **a lifecycle
+position is an offered interposition point**, and declining to interpose strands nothing because the
+operation it gates still runs. The same distinction explains the negative Section 5.3 already stated —
+a position has no class fallback because there is no outcome to classify — so the edit adds the rule
+*and* its rationale, to keep a later reader from re-deriving the generalization and reaching Option B.
+Reconsider if a position were ever introduced whose whole purpose is to force a decision, since such a
+position would not be an interposition point in this sense and would belong with the fail-safe
+outcomes. Depends on 0053; relates to 0030 and to 0055, its sibling clarification. Accepted and applied
+to `VCSX-SPEC.md` (Section 5.4) and the corpus (`match-edge.json` asserts the outcome and gains
+`unbound_lifecycle_position_proceeds`).
+
+## 0055 — Signals are matched exactly; the `#class` fallback is result-only
+
+**State:** Accepted
+**Folder:** [decisions/0055-signals-matched-exactly/](decisions/0055-signals-matched-exactly/)
+
+Resolves the second gap 0053 surfaced. `VCSX-SPEC.md` Section 5.3's signal ladder fell back to "(for a
+`#class`-shaped event token such as `task:#needs_help`) its class form", which is not resolvable:
+`needs_help` is not one of the three proto classes, so the token is not a `#class` form in the sense
+the same section uses two bullets earlier, and if it is instead the class form of some concrete task
+event, no concrete-to-class mapping is defined anywhere. Section 12.1's `ladder()` carried the same
+undefined `class_form` step. Two facts bound the resolution: a proto class is a property of an
+*operation result* (Section 4.2 defines it over `<op>:<reason>`), so a consumer-raised signal has none
+and the machinery has nothing to compute over; and Section 7.3 assigns the task model to the driver —
+"`vcsx` only consumes the resulting events" — so defining a class taxonomy for task events would have
+the engine specifying a subsystem it explicitly does not own. Options: A drop the rung, signals match
+exactly (chosen); B define an event-class vocabulary for task events (rejected — invents a second class
+system and forces the engine to fix a concrete event vocabulary, the coupling Section 7.3 avoids);
+C let the consumer declare each signal's class form (rejected — adds schema and a validation surface at
+the consumer boundary for a mechanism with no current use, and makes matching depend on per-invocation
+data rather than the policy). Choosing A makes Section 5.3's three bullets consistent for the first
+time: a lifecycle position has no class form because there is no outcome to classify (0054), a signal
+has none for the same reason, and a typed result has one because it is the only trigger kind carrying a
+class — what read as an inconsistent special case was the ladder reaching for a property only one
+trigger kind has. `task:#needs_help` keeps its spelling, so no anchor changes, but the `#` is now
+documented as naming a *condition across tasks* — raised once when any task needs human help — matching
+`VCSX-CONTRACT.md` Section 8, where the task surface's events are the two aggregate ones rather than a
+per-task stream. The accepted cost is that a policy reacting to several task conditions binds each
+token, which is the cost already accepted for the three agent milestone signals; and unlike operation
+reasons, where Section 8.5 lets a `MINOR` add tokens an existing policy must absorb, the signal
+vocabulary is raised by the consumer, so a consumer never surprises its own policy — the `#class`
+fallback exists to absorb *upstream* additions, and signals have no upstream. Reconsider if a
+consumer's signal vocabulary grew large enough that grouping became a real need, or if the engine
+began raising signals of its own. Depends on 0053; relates to 0030, 0031, and 0054. Accepted and
+applied to `VCSX-SPEC.md` (Sections 5.1, 5.3, 12.1), the vocabulary registry, and the corpus.
+
+## 0056 — A configuration-error reason registry and the `usage_or_config` status
+
+**State:** Accepted
+**Folder:** [decisions/0056-configuration-error-reason-registry/](decisions/0056-configuration-error-reason-registry/)
+
+Resolves the third and most substantive gap 0053 surfaced, and a second defect found while resolving
+it. `VCSX-SPEC.md` Section 6.10 enumerated five refusal conditions and Section 8.3 mapped them to exit
+`2` while naming no token for any of them, leaving the one error class a caller most needs to act on as
+the only one requiring prose parsing — a sharp inconsistency in an engine whose contract is otherwise
+built on stable tokens, Section 4.3 giving every operation outcome a registry reason and Section 8.3
+stating the same goal of branching "without parsing". The second defect: Section 8.2 defined `status`
+as three proto-class values while Section 8.3 defined four exit codes, so **no `status` corresponded to
+exit `2`** — an engine following Section 8.2 literally must report a refused policy as `error`, which
+Section 8.3 maps to `20`, and the two sections could not both be satisfied. Options for the cause:
+A a configuration-reason registry carried in the existing `reason` field with null `op`/`class`
+(chosen); B leave it in `message` (rejected — the status quo the gap describes); C a structured
+`errors` array (rejected — a second, differently-shaped error channel in an envelope whose virtue is
+one shape). Options for the status: D a fourth value `usage_or_config` (chosen — makes the mapping
+total and keeps Section 8.3's mirror property literally true); E report `error` and derive exit `2`
+from the reason (rejected — breaks branching on status alone, the property Section 8.3 exists for).
+Nine tokens: `unknown_trigger`, `unknown_action`, `unknown_operation`, `unknown_hook`,
+`duplicate_edge`, `duplicate_transition`, `base_unresolvable`, `set_state_unbound`,
+`version_floor_unmet`. Section 6.10's compound first condition is split into four rather than one
+`unknown_name`, because the four are found at different points and repaired differently; the subtle
+boundary is stated explicitly, since Section 6.5 recognizes a trigger only as an `op:reason` form *over
+a known operation*, making a bad operation in a trigger `unknown_trigger` while `unknown_operation` is
+the `run_op` argument case. **Configuration reasons carry no proto class** — a refused policy has no
+operation result to classify — which also settles absorption: a new configuration reason arrives in a
+`MINOR` not through the `#class` fallback, which has nothing to fall back on, but through the
+`usage_or_config` status, which does not change. The status fix is not scope creep: the tokens are
+carried in an envelope whose `status` had no value for the case producing them, so defining them alone
+would have yielded a registry no conforming engine could report — and Section 8.5 makes both surfaces
+major-stable, so fixing it before 0049's engine exists costs nothing and later would not. Accepted
+cost: one new `Implementation-defined` site, for which reason is reported when several conditions hold,
+since no useful total order exists and inventing one would be worse than documenting the choice; the
+corpus deliberately does not exercise it, every failing vector holding exactly one condition.
+Reconsider Option C if one-reason-at-a-time repair loops proved the dominant cost of authoring a
+policy. Depends on 0053; relates to 0044 (whose `Engine Invocation Failures` class covers the refusal
+this makes legible) and 0051. Accepted and applied to `VCSX-SPEC.md` (Sections 6.10, 8.2, 8.3, 8.5,
+13.3), the vocabulary registry, the corpus, and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.

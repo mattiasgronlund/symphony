@@ -230,7 +230,10 @@ A trigger is one of:
 - **Typed operation results** `<op>:<reason>` (Section 4.3).
 - **Signals** raised by the consumer, including agent milestone signals (`ready-for-review`, `blocked`,
   `done`) and **task-state events** (`tasks:all_closed`, `task:#needs_help`) when the consumer runs the
-  task model (Section 7.3).
+  task model (Section 7.3). A signal is matched exactly and has no class form: the consumer raises the
+  token the policy binds. The `#` in `task:#needs_help` names a *condition across tasks* rather than a
+  proto class — the consumer raises it when any task needs human help, not one event per task — so it
+  is an ordinary signal token, not a fallback rung.
 
 ### 5.2 Actions
 
@@ -244,13 +247,31 @@ An action is one of:
 - `create_task(spec)` — create a task through the consumer's task model (Section 7.3); a no-op when the
   consumer runs no task model.
 - `set_state(target)` — apply a workflow-state transition through the consumer (Section 6.7).
-- `notify(channel, payload)` — emit a notification through the consumer.
+- `notify(channel, payload)` — emit a notification through the consumer; a no-op when the consumer
+  cannot deliver it.
 - `park` — stop the flow and hold for intervention without failing it.
 - `fail(reason)` — end the flow as failed.
 
 `create_task`, `set_state`, and `notify` are effected by the consumer, because they touch systems
 (a task model, an issue tracker, a notification channel) outside the VCS/forge domain; the engine
 emits the intent and the consumer performs it. `run_op` and `run` are the engine's own.
+
+A consumer need not be able to effect every such action. A consumer may be a human at an interactive
+prompt (Section 1.3), with no task model, no tracker binding, and no notification channel, so a policy
+using these actions MUST behave predictably against a consumer that cannot perform them. Each action's
+disposition is fixed:
+
+- `create_task` and `notify` are benign no-ops. The engine MUST surface each such intent in the result
+  envelope (Section 8.2) rather than drop it, on the same principle that forbids silently dropping an
+  unmatched operation outcome (Section 5.4): an intent the engine emitted and no consumer performed is
+  reported, so a policy that degrades against a lesser consumer degrades visibly.
+- `set_state` is a configuration error, caught before the policy runs (Section 6.10), because a
+  workflow state that never advances strands the flow rather than merely losing information.
+
+This is not a second point of front-end divergence. The engine's behavior is identical in either
+front-end — it emits the intent and records whether a consumer performed it — and only the consumer's
+capability varies; `escalate` remains the single point at which the engine itself branches
+(Section 5.5).
 
 ### 5.3 Matching Algorithm and the `#class` Fallback
 
@@ -260,14 +281,22 @@ Given a trigger, the executor selects at most one edge by most-specific-wins ove
 - For a **typed result** `op:reason`: try, in order, `op:reason` → `op:#class` → `#class` → a built-in
   default, where `#class` is the reason's proto class (Section 4.2). Example ladder:
   `push:non_fast_forward` → `push:#needs_caller` → `#needs_caller` → default.
-- For a **signal / task-state event** `s`: try `s` → (for a `#class`-shaped event token such as
-  `task:#needs_help`) its class form → the unmatched-signal default (Section 5.4).
+- For a **signal / task-state event** `s`: match an edge keyed exactly `s`, then the unmatched-signal
+  default (Section 5.4). No class fallback — a signal carries no proto class, because it is a
+  consumer-raised condition rather than an operation result (Section 5.1).
 
 The `#class` fallback lets a policy branch on the three stable classes without enumerating every
-reason, so a new reason token added in a compatible release routes to an existing class edge.
+reason, so a new reason token added in a compatible release routes to an existing class edge. It
+applies to typed operation results alone: those are the only triggers with a proto class to fall back
+on.
 
 ### 5.4 Unmatched Policy and Determinism
 
+- An unmatched **lifecycle position** is a benign no-op: nothing runs at the position and the operation
+  proceeds. A position is an offered interposition point, not a result requiring disposition — the
+  required positions (Section 4.1) are available to every policy and most policies bind only some, so
+  leaving one unbound is the ordinary case rather than an omission. This is also why a position has no
+  class fallback (Section 5.3): there is no outcome to classify.
 - An unmatched **signal** (including a task-state event) is a benign no-op.
 - An unmatched **operation outcome** MUST be fail-safe: the executor parks or fails the flow with the
   operation's proto reason surfaced. It MUST NOT be silently dropped, because a dropped operation
@@ -437,16 +466,29 @@ These tables are inert when the consumer runs no task model (for example the int
 
 ### 6.10 Validation
 
-A policy is validated before use. The following are configuration errors:
+A policy is validated before use. Each configuration error carries a stable reason token, surfaced in
+the result envelope (Section 8.2), so a caller can branch on the cause without parsing `message`:
 
-- an unknown trigger, action, operation, or hook name;
-- a duplicate `(from, on)` edge or transition (non-determinism, Section 5.4);
-- a `by_prefix` base resolution with no empty-prefix default;
-- a `set_state`/transition binding without a consumer that can apply it;
-- a `version_floor` above the running engine version (Section 8.5).
+| Condition | Reason |
+|-----------|--------|
+| An edge's `on` is not a trigger the engine recognizes (Section 6.5) | `unknown_trigger` |
+| An edge's `do` is not a known action (Section 5.2) | `unknown_action` |
+| A `run_op` names an operation the engine does not define (Section 4.1) | `unknown_operation` |
+| A `run` names a hook the `[hooks]` table does not declare (Section 6.6) | `unknown_hook` |
+| A duplicate `(from, on)` policy edge — non-determinism (Section 5.4) | `duplicate_edge` |
+| A duplicate `(from, on)` transition (Section 6.7) | `duplicate_transition` |
+| A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map (Section 6.4) | `base_unresolvable` |
+| A `set_state`/transition binding without a consumer that can apply it (Section 5.2) | `set_state_unbound` |
+| A `version_floor` above the running engine version (Section 8.5) | `version_floor_unmet` |
+
+Configuration reasons carry no proto class: a refused policy has no operation result to classify. They
+are reported under the `usage_or_config` status (Section 8.2) rather than through the `#class` fallback,
+which is why a new configuration reason does not need an existing class edge to absorb it. An engine
+MUST document any configuration reason it adds beyond this registry (Section 13.3).
 
 On a configuration error the engine refuses to run and returns a usage/config result (Section 8.3); it
-does not run a partial policy.
+does not run a partial policy. Where more than one condition holds, which reason is reported is
+`Implementation-defined` and MUST be documented; an engine MAY report several.
 
 ## 7. Front-Ends
 
@@ -519,23 +561,28 @@ Every invocation returns one structured result:
 }
 ```
 
-- `status` is the invocation's overall proto class: `ok` (all steps `done`), `needs_caller`, or
-  `error`.
+- `status` is the invocation's outcome. For a run that executed the policy it is the overall proto
+  class: `ok` (all steps `done`), `needs_caller`, or `error`. For a run in which the policy did not
+  run it is `usage_or_config` (Section 6.10).
 - `op` / `reason` / `class` describe the decisive operation result (null for a clean `ok` with no
-  decisive operation).
+  decisive operation). Under `usage_or_config` there is no operation result: `op` and `class` are null
+  and `reason` carries the configuration reason (Section 6.10).
 - `escalation` is present exactly when `status == "needs_caller"` (Section 8.4).
 - `outputs` carries entry-specific structured data (for example `status` fields, the pull-request
-  number/state).
+  number/state). It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
+  the engine emitted and no consumer performed, each naming its `action` and that action's arguments.
+  The key is absent or empty when every emitted intent was performed.
 - A consumer MAY add fields but SHOULD NOT break the fields above within a major version.
 
 ### 8.3 Exit Codes
 
-For the subprocess encoding, exit codes mirror the proto classes so a caller can branch without parsing:
+For the subprocess encoding, exit codes mirror the invocation status (Section 8.2) so a caller can
+branch without parsing:
 
 - `0` — `ok` (all `done`).
 - `10` — `needs_caller` (an escalation is present).
 - `20` — `error`.
-- `2` — usage or configuration error (Section 6.10); the policy did not run.
+- `2` — `usage_or_config` (Section 6.10); the policy did not run.
 
 The JSON result is emitted regardless of exit code so a caller MAY always read structured detail.
 
@@ -549,11 +596,14 @@ MUST be documented and stable within a major version.
 
 ### 8.5 Versioning and the Version Grammar
 
-- The engine version is `MAJOR.MINOR`. The invocation envelope, the proto classes, the exit-code
-  mapping, the `need` vocabulary, and the class of every listed reason (Section 4.3) are the
-  **major-stable surface**: they do not change within a `MAJOR`.
-- New reason tokens, new `need` tokens, new operations, and new plugin backends MAY be introduced in a
-  `MINOR` release; existing consumers absorb new reasons through the `#class` fallback (Section 5.3).
+- The engine version is `MAJOR.MINOR`. The invocation envelope, the invocation status values, the proto
+  classes, the exit-code mapping, the `need` vocabulary, the class of every listed reason
+  (Section 4.3), and the configuration reasons (Section 6.10) are the **major-stable surface**: they do
+  not change within a `MAJOR`.
+- New reason tokens, new `need` tokens, new configuration reasons, new operations, and new plugin
+  backends MAY be introduced in a `MINOR` release; existing consumers absorb new operation reasons
+  through the `#class` fallback (Section 5.3), and a new configuration reason through the
+  `usage_or_config` status, which does not change.
 - A consumer declares a `version_floor` (Section 6.2); an engine below the floor refuses to run
   (fail-closed) with a usage/config result rather than mis-executing a policy that assumes newer
   surface.
@@ -683,7 +733,7 @@ function ladder(trigger):
     class = proto_class(op, reason)
     return [ "op:reason", "op:#class", "#class" ]  # substituting op/reason/class
   if trigger is a signal or task event s:
-    return [ s, class_form(s) if any ]
+    return [ s ]                              # exact only; signals carry no proto class
 ```
 
 ### 12.2 `ship` Sequence
@@ -757,6 +807,11 @@ function compose_pr_body(inputs, agent_prose, source):
 
 ### 13.1 Test Matrix
 
+The deterministic, host-independent subset of these checks is also published as a machine-readable,
+language-neutral vector corpus under `conformance/vcsx/` (RECOMMENDED); an engine runs it against its
+own binary and records the result in its Conformance Statement (Section 13.3). The corpus does not
+restate or replace the checks below.
+
 A conforming engine SHOULD include tests covering:
 
 - Matching: an `op:#class` edge catches an unnamed reason of that class; a `#class` edge catches an
@@ -792,6 +847,36 @@ A conforming engine SHOULD include tests covering:
 - The plugin API with VCS and forge backends and their capability descriptors.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in format.
 - Checkout-mode handling (git, jj, jj secondary workspace) and a pinned, never-forced push refspec.
+
+### 13.3 Conformance Statement
+
+A conforming engine MUST publish a Conformance Statement: a single document recording the choices this
+specification leaves to the engine, so a consumer, auditor, or peer engine can determine what the
+engine does without reading its source. It is the home for the `Implementation-defined` and "MUST
+document" obligations dispersed through this specification, gathering those choices in one place
+rather than restating their requirements.
+
+The Statement MUST record:
+
+- The engine version and the major-stable surface it claims (Section 8.5), including the lowest
+  `version_floor` the build satisfies.
+- A resolution for every `Implementation-defined` behavior in this specification: checkout-mode
+  detection (Section 3.3), `repo.policy.toml` discovery precedence (Section 6.1), the form of a hook's
+  engine-invoked `run` unit (Section 6.6), which reason is reported when several configuration
+  conditions hold (Section 6.10), the entry-point argument encodings (Section 8.1), and the escalation
+  `detail` field (Section 8.4).
+- Any reason token the engine adds beyond a registry: an operation reason with its proto class
+  (Section 4.3), or a configuration reason (Section 6.10).
+- The `need` vocabulary the engine emits (Section 8.4).
+- The capability descriptors its VCS and forge plugins advertise (Section 9.3).
+
+The Statement is a published declaration, not a precondition for running the engine: Section 13.1 and
+Section 13.2 keep their roles as the test matrix and the definition of done. Its format is
+`Implementation-defined`. `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` in the specification repository is
+the RECOMMENDED shape: it enumerates each obligation above as a row an engine fills.
+
+A deployment that embeds this engine declares it from the consumer's side as a version pin, in the
+consumer's own statement; an `engine-direct` deployment publishes this Statement alone.
 
 ## 14. Alignment with `VCSX-CONTRACT.md`
 

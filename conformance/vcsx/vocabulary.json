@@ -1,0 +1,235 @@
+{
+  "artifact": "vcsx-token-vocabulary",
+  "schema_version": 1,
+  "governed_by": "VCSX-SPEC.md",
+  "description": "The shared token vocabulary VCSX-SPEC.md Section 14 requires to be spelled identically in VCSX-SPEC.md, VCSX-CONTRACT.md, and any engine implementation. A derived view: the specification governs, this file restates no requirement's substance, and a disagreement is a bug here.",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 14 \"Alignment with `VCSX-CONTRACT.md`\""
+  ],
+
+  "proto_classes": {
+    "spec_refs": ["VCSX-SPEC.md Section 4.2 \"Operation Result Envelope and Proto Classes\""],
+    "note": "Part of the major-stable surface (Section 8.5). A listed reason's class MUST NOT change within a MAJOR.",
+    "entries": [
+      { "token": "done", "meaning": "The operation reached its intended effect, including a benign no-op." },
+      { "token": "needs_caller", "meaning": "The operation cannot proceed without a decision or action from the caller; not an engine failure." },
+      { "token": "error", "meaning": "The operation failed." }
+    ]
+  },
+
+  "operations": {
+    "spec_refs": ["VCSX-SPEC.md Section 4.1 \"Operation Set\""],
+    "note": "The required set. An engine MAY define additional operations and their before:<op> positions.",
+    "entries": [
+      { "token": "status", "read_only": true, "lifecycle_position": null },
+      { "token": "diff", "read_only": true, "lifecycle_position": null },
+      { "token": "commit", "read_only": false, "lifecycle_position": "before:commit" },
+      { "token": "integrate", "read_only": false, "lifecycle_position": null },
+      { "token": "push", "read_only": false, "lifecycle_position": "before:push" },
+      { "token": "create_pr", "read_only": false, "lifecycle_position": "before:create_pr" },
+      { "token": "merge", "read_only": false, "lifecycle_position": "before:merge" },
+      { "token": "pull", "read_only": false, "lifecycle_position": null }
+    ]
+  },
+
+  "lifecycle_positions": {
+    "spec_refs": ["VCSX-SPEC.md Sections 4.1 \"Operation Set\", 5.1 \"Triggers\""],
+    "note": "The required positions. Matched exactly; a lifecycle position has no #class form (Section 5.3).",
+    "entries": ["before:commit", "before:push", "before:create_pr", "before:merge"]
+  },
+
+  "reasons": {
+    "spec_refs": ["VCSX-SPEC.md Section 4.3 \"Reason-Token Registry\""],
+    "note": "The Section 4.3 table normalized to one entry per (operation, reason); its `status` / `diff` row expands to two entries. An engine MUST document any reason it adds beyond this set, with its class.",
+    "entries": [
+      { "token": "commit:ok", "operation": "commit", "reason": "ok", "class": "done" },
+      { "token": "commit:nothing_to_commit", "operation": "commit", "reason": "nothing_to_commit", "class": "done" },
+      { "token": "commit:blocked", "operation": "commit", "reason": "blocked", "class": "needs_caller" },
+      { "token": "commit:failed", "operation": "commit", "reason": "failed", "class": "error" },
+
+      { "token": "integrate:ok", "operation": "integrate", "reason": "ok", "class": "done" },
+      { "token": "integrate:up_to_date", "operation": "integrate", "reason": "up_to_date", "class": "done" },
+      { "token": "integrate:merge_conflicts", "operation": "integrate", "reason": "merge_conflicts", "class": "needs_caller" },
+      { "token": "integrate:base_unresolved", "operation": "integrate", "reason": "base_unresolved", "class": "error" },
+
+      { "token": "push:ok", "operation": "push", "reason": "ok", "class": "done" },
+      { "token": "push:up_to_date", "operation": "push", "reason": "up_to_date", "class": "done" },
+      { "token": "push:non_fast_forward", "operation": "push", "reason": "non_fast_forward", "class": "needs_caller" },
+      { "token": "push:pr_closed", "operation": "push", "reason": "pr_closed", "class": "needs_caller" },
+      { "token": "push:rejected", "operation": "push", "reason": "rejected", "class": "error" },
+
+      { "token": "create_pr:created", "operation": "create_pr", "reason": "created", "class": "done" },
+      { "token": "create_pr:updated", "operation": "create_pr", "reason": "updated", "class": "done" },
+      { "token": "create_pr:base_mismatch", "operation": "create_pr", "reason": "base_mismatch", "class": "error" },
+      { "token": "create_pr:conflict", "operation": "create_pr", "reason": "conflict", "class": "needs_caller" },
+
+      { "token": "merge:ok", "operation": "merge", "reason": "ok", "class": "done" },
+      { "token": "merge:not_open", "operation": "merge", "reason": "not_open", "class": "needs_caller" },
+      { "token": "merge:checks_pending", "operation": "merge", "reason": "checks_pending", "class": "needs_caller" },
+      { "token": "merge:checks_failed", "operation": "merge", "reason": "checks_failed", "class": "error" },
+      { "token": "merge:conflict", "operation": "merge", "reason": "conflict", "class": "needs_caller" },
+      { "token": "merge:blocked", "operation": "merge", "reason": "blocked", "class": "error" },
+
+      { "token": "pull:ok", "operation": "pull", "reason": "ok", "class": "done" },
+      { "token": "pull:conflict", "operation": "pull", "reason": "conflict", "class": "needs_caller" },
+
+      { "token": "status:ok", "operation": "status", "reason": "ok", "class": "done" },
+      { "token": "diff:ok", "operation": "diff", "reason": "ok", "class": "done" }
+    ]
+  },
+
+  "config_reasons": {
+    "spec_refs": ["VCSX-SPEC.md Section 6.10 \"Validation\""],
+    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — a refused policy has no operation result to classify. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds.",
+    "entries": [
+      { "token": "unknown_trigger", "meaning": "An edge's `on` is not a trigger the engine recognizes." },
+      { "token": "unknown_action", "meaning": "An edge's `do` is not a known action." },
+      { "token": "unknown_operation", "meaning": "A `run_op` names an operation the engine does not define." },
+      { "token": "unknown_hook", "meaning": "A `run` names a hook the `[hooks]` table does not declare." },
+      { "token": "duplicate_edge", "meaning": "A duplicate `(from, on)` policy edge — non-determinism." },
+      { "token": "duplicate_transition", "meaning": "A duplicate `(from, on)` transition." },
+      { "token": "base_unresolvable", "meaning": "A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map." },
+      { "token": "set_state_unbound", "meaning": "A `set_state`/transition binding without a consumer that can apply it." },
+      { "token": "version_floor_unmet", "meaning": "A `version_floor` above the running engine version." }
+    ]
+  },
+
+  "invocation_statuses": {
+    "spec_refs": ["VCSX-SPEC.md Sections 8.2 \"Result Envelope\", 8.3 \"Exit Codes\""],
+    "note": "Part of the major-stable surface (Section 8.5). The first three are the overall proto class of a run that executed the policy; `usage_or_config` covers a run in which it did not.",
+    "entries": [
+      { "token": "ok", "exit_code": 0 },
+      { "token": "needs_caller", "exit_code": 10 },
+      { "token": "error", "exit_code": 20 },
+      { "token": "usage_or_config", "exit_code": 2 }
+    ]
+  },
+
+  "trigger_kinds": {
+    "spec_refs": ["VCSX-SPEC.md Sections 5.1 \"Triggers\", 5.3 \"Matching Algorithm and the `#class` Fallback\""],
+    "entries": [
+      { "kind": "lifecycle_position", "form": "before:<op>", "class_fallback": false },
+      { "kind": "typed_result", "form": "<op>:<reason>", "class_fallback": true, "ladder": ["op:reason", "op:#class", "#class", "built-in default"] },
+      { "kind": "signal", "form": "<signal>", "class_fallback": false }
+    ]
+  },
+
+  "signals": {
+    "spec_refs": ["VCSX-SPEC.md Section 5.1 \"Triggers\""],
+    "note": "Raised by the consumer. An unmatched signal is a benign no-op (Section 5.4).",
+    "entries": [
+      { "token": "ready-for-review", "kind": "agent_milestone" },
+      { "token": "blocked", "kind": "agent_milestone" },
+      { "token": "done", "kind": "agent_milestone" },
+      { "token": "tasks:all_closed", "kind": "task_state_event" },
+      { "token": "task:#needs_help", "kind": "task_state_event" }
+    ]
+  },
+
+  "actions": {
+    "spec_refs": ["VCSX-SPEC.md Section 5.2 \"Actions\""],
+    "note": "`effected_by` records who performs the action: the engine's own, or the consumer's, because it touches a system outside the VCS/forge domain.",
+    "entries": [
+      { "token": "run_op", "effected_by": "engine", "args": ["op", "args?"] },
+      { "token": "run", "effected_by": "engine", "args": ["hook", "context"] },
+      { "token": "escalate", "effected_by": "engine", "args": ["reason"], "note": "Abstract; the front-end binds the resolver (Section 5.5)." },
+      { "token": "create_task", "effected_by": "consumer", "args": ["spec"] },
+      { "token": "set_state", "effected_by": "consumer", "args": ["target"] },
+      { "token": "notify", "effected_by": "consumer", "args": ["channel", "payload"] },
+      { "token": "park", "effected_by": "engine", "args": [] },
+      { "token": "fail", "effected_by": "engine", "args": ["reason"] }
+    ]
+  },
+
+  "needs": {
+    "spec_refs": ["VCSX-SPEC.md Section 8.4 \"Escalation Payload\""],
+    "note": "Part of the public contract: documented and stable within a MAJOR. The set below is the specification's named vocabulary; an engine documents any it adds.",
+    "entries": ["integrate_then_retry", "resolve_conflicts", "await_checks", "human_review"]
+  },
+
+  "envelope_fields": {
+    "spec_refs": ["VCSX-SPEC.md Section 8.2 \"Result Envelope\""],
+    "note": "Part of the major-stable surface. A consumer MAY add fields but SHOULD NOT break these within a MAJOR.",
+    "entries": ["vcsx_version", "entry", "status", "op", "reason", "class", "escalation", "outputs", "message"]
+  },
+
+  "escalation_fields": {
+    "spec_refs": ["VCSX-SPEC.md Section 8.4 \"Escalation Payload\""],
+    "entries": ["need", "op", "detail"]
+  },
+
+  "exit_codes": {
+    "spec_refs": ["VCSX-SPEC.md Section 8.3 \"Exit Codes\""],
+    "note": "Subprocess encoding. Part of the major-stable surface. The JSON envelope is emitted regardless of exit code.",
+    "entries": [
+      { "code": 0, "status": "ok" },
+      { "code": 10, "status": "needs_caller" },
+      { "code": 20, "status": "error" },
+      { "code": 2, "status": "usage_or_config", "note": "The policy did not run (Section 6.10)." }
+    ]
+  },
+
+  "entry_points": {
+    "spec_refs": ["VCSX-SPEC.md Sections 7 \"Front-Ends\", 8.1 \"Entry Points and Arguments\""],
+    "entries": [
+      { "token": "ship", "kind": "front_end_sequence" },
+      { "token": "land", "kind": "front_end_sequence" },
+      { "token": "status", "kind": "operation" },
+      { "token": "diff", "kind": "operation" },
+      { "token": "commit", "kind": "operation" },
+      { "token": "integrate", "kind": "operation" },
+      { "token": "push", "kind": "operation" },
+      { "token": "create_pr", "kind": "operation" },
+      { "token": "merge", "kind": "operation" },
+      { "token": "pull", "kind": "operation" }
+    ]
+  },
+
+  "execution_contexts": {
+    "spec_refs": ["VCSX-SPEC.md Section 3.2 \"Execution Contexts (Trust)\""],
+    "entries": ["host_side", "in_sandbox"]
+  },
+
+  "checkout_modes": {
+    "spec_refs": ["VCSX-SPEC.md Section 3.3 \"Checkout Modes\""],
+    "note": "Detection mechanism is Implementation-defined and MUST be documented. `jj` includes a colocated checkout and a secondary workspace with no colocated git storage.",
+    "entries": ["git", "jj"]
+  },
+
+  "repo_policy_sections": {
+    "spec_refs": ["VCSX-SPEC.md Section 6 \"`repo.policy.toml` Schema\""],
+    "note": "`vcsx.toml` is merged in per Section 6.1.",
+    "entries": [
+      { "token": "[engine]", "spec_ref": "Section 6.2" },
+      { "token": "[scope]", "spec_ref": "Section 6.3" },
+      { "token": "[base]", "spec_ref": "Section 6.4" },
+      { "token": "[policy]", "spec_ref": "Section 6.5" },
+      { "token": "[hooks]", "spec_ref": "Section 6.6" },
+      { "token": "tracker.transitions", "spec_ref": "Section 6.7" },
+      { "token": "[messages]", "spec_ref": "Section 6.8" },
+      { "token": "[tasks]", "spec_ref": "Section 6.9" },
+      { "token": "[driver]", "spec_ref": "Section 6.9" }
+    ]
+  },
+
+  "message_formulation": {
+    "spec_refs": ["VCSX-SPEC.md Section 10 \"Message Formulation\"", "VCSX-CONTRACT.md Section 9 \"Message Formulation\""],
+    "note": "The engine supplies the seams; the repository supplies the format. Scan profile names such as `strict` and `relaxed` are repository-bound, not engine tokens.",
+    "entries": [
+      { "token": "scan-content", "kind": "hook", "spec_ref": "Section 10.4" },
+      { "token": "pr_to_squash", "kind": "transform", "position": "before:merge", "spec_ref": "Section 10.3" },
+      { "token": "title_scan", "kind": "scan_profile_binding", "spec_ref": "Section 10.2" },
+      { "token": "body_scan", "kind": "scan_profile_binding", "spec_ref": "Section 10.2" },
+      { "token": "body_source", "kind": "config_key", "values": ["auto", "agent", "template"], "spec_ref": "Section 10.2" }
+    ]
+  },
+
+  "task_model": {
+    "spec_refs": ["VCSX-SPEC.md Section 7.3 \"The Embedded-Driver Contract\"", "VCSX-CONTRACT.md Section 8 \"Task Model and Broker Task Verbs\""],
+    "note": "The task model is the consumer's; the engine consumes only the resulting task-state events. The broker task verbs are exposed by the consumer's broker CLI, not by the engine.",
+    "fields": ["id", "description", "status", "assignee", "parent", "tracker_link"],
+    "status_values": ["open", "closed", "blocked"],
+    "assignee_values": ["agent", "human"],
+    "broker_verbs": ["add", "split", "close", "need-help", "update"]
+  }
+}

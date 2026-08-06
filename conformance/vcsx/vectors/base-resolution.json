@@ -1,0 +1,115 @@
+{
+  "function": "resolve_base",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 6.4 \"`[base]` and Base Resolution\"",
+    "VCSX-SPEC.md Section 12.4 \"Resolve Base\""
+  ],
+  "description": "Resolve the base branch for a work branch from the [base] configuration.",
+  "given": "a work-branch name and a [base] configuration",
+  "expect": "the resolved base branch name",
+  "notes": [
+    "Only valid configurations appear here. A `by_prefix` map with no empty-prefix default is a configuration error caught before the policy runs (Section 6.10), so it is a `validate_policy` vector, not a resolution vector.",
+    "The empty prefix is a prefix of every branch name, so longest-prefix-wins makes it the fallback without a separate rule."
+  ],
+  "vectors": [
+    {
+      "id": "fixed_is_the_default_strategy",
+      "description": "With `resolve` unset, `branch` is the base (Section 6.4).",
+      "given": {
+        "work_branch": "symphony/ABC-123",
+        "base": { "branch": "main" }
+      },
+      "expect": { "base": "main" }
+    },
+    {
+      "id": "fixed_stated_explicitly",
+      "given": {
+        "work_branch": "symphony/ABC-123",
+        "base": { "branch": "main", "resolve": "fixed" }
+      },
+      "expect": { "base": "main" }
+    },
+    {
+      "id": "fixed_ignores_a_prefixes_table",
+      "description": "`prefixes` is read only under `by_prefix`.",
+      "given": {
+        "work_branch": "exp/thing",
+        "base": { "branch": "main", "resolve": "fixed", "prefixes": { "": "main", "exp/": "experiment" } }
+      },
+      "expect": { "base": "main" }
+    },
+    {
+      "id": "by_prefix_empty_default_catches_unprefixed",
+      "description": "A branch matching no named prefix falls to the required empty-prefix default.",
+      "given": {
+        "work_branch": "symphony/ABC-123",
+        "base": {
+          "branch": "main",
+          "resolve": "by_prefix",
+          "prefixes": { "": "main", "exp/": "experiment", "exp/deep/": "deep-experiment" }
+        }
+      },
+      "expect": { "base": "main" }
+    },
+    {
+      "id": "by_prefix_selects_named_prefix",
+      "given": {
+        "work_branch": "exp/widget",
+        "base": {
+          "branch": "main",
+          "resolve": "by_prefix",
+          "prefixes": { "": "main", "exp/": "experiment", "exp/deep/": "deep-experiment" }
+        }
+      },
+      "expect": { "base": "experiment" }
+    },
+    {
+      "id": "by_prefix_longest_wins_not_first",
+      "description": "Two prefixes match; the longer one is selected (Section 6.4, longest-prefix-wins).",
+      "given": {
+        "work_branch": "exp/deep/widget",
+        "base": {
+          "branch": "main",
+          "resolve": "by_prefix",
+          "prefixes": { "": "main", "exp/": "experiment", "exp/deep/": "deep-experiment" }
+        }
+      },
+      "expect": { "base": "deep-experiment" }
+    },
+    {
+      "id": "by_prefix_matches_on_string_prefix_not_path_segment",
+      "description": "Prefix matching is over the branch name; `exp/` does not match `experimental/x` only because that name does not start with it, while `exp` would.",
+      "given": {
+        "work_branch": "experimental/widget",
+        "base": {
+          "branch": "main",
+          "resolve": "by_prefix",
+          "prefixes": { "": "main", "exp/": "experiment" }
+        }
+      },
+      "expect": { "base": "main" }
+    },
+    {
+      "id": "by_prefix_prefix_equal_to_branch_name",
+      "description": "A work branch identical to a named prefix matches it.",
+      "given": {
+        "work_branch": "exp/",
+        "base": {
+          "branch": "main",
+          "resolve": "by_prefix",
+          "prefixes": { "": "main", "exp/": "experiment" }
+        }
+      },
+      "expect": { "base": "experiment" }
+    },
+    {
+      "id": "by_prefix_with_only_the_empty_default",
+      "description": "A map carrying only the required default resolves everything to it.",
+      "given": {
+        "work_branch": "anything/at/all",
+        "base": { "branch": "main", "resolve": "by_prefix", "prefixes": { "": "trunk" } }
+      },
+      "expect": { "base": "trunk" }
+    }
+  ]
+}
