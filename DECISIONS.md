@@ -931,4 +931,30 @@ than guessed at, the corpus doing its second job of exercising the spec. Depends
 0002 (stable addressing) and 0044 (the Section 17.8 profile boundary it defers integration vectors
 to). Accepted and applied: the `conformance/` tree (README + 7 vector files, 31 vectors) is created,
 and `SPEC.md` Section 17's intro points at it as the RECOMMENDED machine-readable realization of its
-deterministic checks; the non-ASCII sanitization clarification remains a separate follow-on decision.
+deterministic checks; the non-ASCII sanitization clarification is resolved by decision 0047.
+
+## 0047 — Workspace-key sanitization operates on UTF-8 bytes
+
+**State:** Accepted
+**Folder:** [decisions/0047-workspace-key-utf8-byte-sanitization/](decisions/0047-workspace-key-utf8-byte-sanitization/)
+
+Resolves the gap 0046 surfaced. Section 9.5 Invariant 3 and Section 4.2 replaced "any character not
+in `[A-Za-z0-9._-]`" with `_` but never fixed what a "character" is; the allowed set is all ASCII, so
+the ambiguity bites only on non-ASCII input, where byte, code point, and grapheme readings diverge
+and precomposed vs. decomposed accents would differ. Fix the unit to the **UTF-8 byte**: replace
+every byte of the identifier's UTF-8 encoding not in `[A-Za-z0-9._-]` with `_`, so a non-ASCII code
+point yields one `_` per byte. It is the only reading trivially identical in every language
+(UTF-8-encode, scan bytes) with no UTF-16 surrogate handling and no Unicode library, and it always
+yields pure-ASCII output — serving both the invariant (Section 9.5, "the most important portability
+constraint") and the corpus's cross-language determinism. Options: A UTF-8 byte (chosen); B code
+point (rejected — `codePointAt` surrogate care in UTF-16 languages, still normalization-sensitive);
+C grapheme (rejected — needs a UAX-29 library and shifts across Unicode versions, breaking
+cross-version determinism). Accepted costs: a non-ASCII code point expands to several underscores,
+and the rule stays normalization-sensitive because it does not normalize first — tolerable since
+sanitization is already lossy and non-reversible (Section 4.2 makes no round-trip claim), identifiers
+are ASCII in practice, and normalizing would reintroduce the very Unicode dependency this avoids.
+Reconsider if a tracker issues non-ASCII identifiers at scale where key collision or readability
+matters, or if the key ever must round-trip to an identifier (it does not today). Depends on 0046;
+relates to 0002. Accepted and applied to `SPEC.md` (Sections 4.2, 9.5) and the corpus
+(`workspace-key.json` gains precomposed and decomposed non-ASCII vectors; the README finding is
+marked resolved).

@@ -2,7 +2,7 @@
   "function": "sanitize_workspace_key",
   "profile": "Core Conformance",
   "spec_refs": ["Section 4.2", "Section 9.5"],
-  "description": "Derive the workspace directory key from an issue identifier by replacing every character not in [A-Za-z0-9._-] with '_'. The most important portability invariant (Section 9.5, Invariant 3).",
+  "description": "Derive the workspace directory key from an issue identifier by replacing every byte of its UTF-8 encoding not in [A-Za-z0-9._-] with '_' (Section 9.5, Invariant 3; decision 0047). A non-ASCII code point yields one '_' per UTF-8 byte; the identifier is not normalized first. The most important portability invariant.",
   "given": "{ identifier: string }",
   "expect": "{ workspace_key: string }",
   "vectors": [
@@ -29,6 +29,18 @@
       "description": "Disallowed ASCII punctuation is replaced character-for-character.",
       "given": { "identifier": "PROJ-1/sub:2#x" },
       "expect": { "workspace_key": "PROJ-1_sub_2_x" }
+    },
+    {
+      "id": "non-ascii-precomposed-byte-expansion",
+      "description": "A precomposed accented letter (U+00E9, UTF-8 C3 A9) is two disallowed bytes and yields two underscores.",
+      "given": { "identifier": "café-01" },
+      "expect": { "workspace_key": "caf__-01" }
+    },
+    {
+      "id": "non-ascii-decomposed-byte-expansion",
+      "description": "The base letter is kept; the combining accent (U+0301, UTF-8 CC 81) is two disallowed bytes. Byte-wise sanitization is intentionally normalization-sensitive (decision 0047), so this differs from the precomposed form.",
+      "given": { "identifier": "café-01" },
+      "expect": { "workspace_key": "cafe__-01" }
     },
     {
       "id": "all-disallowed",

@@ -82,9 +82,10 @@ harness with fixtures or live services and belong with the `Real Integration Pro
 Authoring vectors exercises `SPEC.md` and surfaces under-specification. Per the multi-implementation
 decision-log hygiene rule, a genuine gap becomes a decision rather than a guessed-at vector:
 
-- **Non-ASCII workspace-key sanitization is under-specified.** Section 9.5 Invariant 3 replaces "any
-  character not in `[A-Za-z0-9._-]`", but does not fix whether "character" is a byte, a Unicode code
-  point, or a grapheme — and a precomposed vs. decomposed accented letter would then sanitize to a
-  different length. Because implementations iterate strings differently by default, a non-ASCII
-  vector would encode an answer the spec does not determine, so none is included. This is filed as a
-  spec-clarification candidate.
+- **Non-ASCII workspace-key sanitization — resolved (decision 0047).** Section 9.5 Invariant 3 did
+  not fix whether "character" is a byte, a Unicode code point, or a grapheme, so a precomposed vs.
+  decomposed accented letter would sanitize differently and no non-ASCII vector could be authored.
+  Decision 0047 fixes the unit to the **UTF-8 byte**: replace every UTF-8 byte not in
+  `[A-Za-z0-9._-]` with `_` — identical in every language with no Unicode library.
+  `vectors/workspace-key.json` now carries precomposed (`café-01` → `caf__-01`) and decomposed
+  (`e`+U+0301 → `cafe__-01`) vectors.

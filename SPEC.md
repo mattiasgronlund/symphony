@@ -419,7 +419,9 @@ Fields:
 - `Issue Identifier`
   - Use for human-readable logs and workspace naming.
 - `Workspace Key`
-  - Derive from `issue.identifier` by replacing any character not in `[A-Za-z0-9._-]` with `_`.
+  - Derive from `issue.identifier` by replacing every byte of its UTF-8 encoding not in
+    `[A-Za-z0-9._-]` with `_` (Section 9.5, Invariant 3); a non-ASCII code point yields one `_` per
+    byte.
   - Use the sanitized value for the workspace directory name.
 - `Normalized Issue State`
   - Compare states after `lowercase`.
@@ -1474,7 +1476,9 @@ Invariant 2: Workspace path MUST stay inside workspace root.
 Invariant 3: Workspace key is sanitized.
 
 - Only `[A-Za-z0-9._-]` allowed in workspace directory names.
-- Replace all other characters with `_`.
+- Operate on the identifier's UTF-8 encoding: replace every byte not in `[A-Za-z0-9._-]` with `_`, so
+  a non-ASCII code point yields one `_` per UTF-8 byte. The identifier is not normalized first; the
+  invariant is a safe directory name, not a reversible one.
 
 ### 9.6 Agent Sandbox and Execution Isolation
 

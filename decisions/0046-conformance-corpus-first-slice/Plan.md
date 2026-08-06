@@ -35,7 +35,8 @@ On acceptance, one normative pointer is added to `SPEC.md`; no existing section 
 4. **Open the non-ASCII sanitization clarification (on acceptance).** Record a follow-on decision
    resolving whether "character" in Section 9.5 Invariant 3 (and Section 4.2 Workspace Key) is a
    byte, a Unicode code point, or a grapheme, then add the corresponding non-ASCII vector. Done when
-   the ambiguity is resolved in `SPEC.md` and a vector encodes it. *(Planned; separate decision.)*
+   the ambiguity is resolved in `SPEC.md` and a vector encodes it. *(Resolved by decision 0047: UTF-8
+   byte; precomposed and decomposed vectors added.)*
 
 ## Cross-cutting sync
 
@@ -55,4 +56,5 @@ Steps 1–3 applied. Step 1: `conformance/vectors/` holds 7 files / 31 vectors, 
 `conformance/README.md` documents the schema, harness contract, coverage, deferrals, and surfaced
 findings. Step 3: `SPEC.md` Section 17's intro points at the corpus as the RECOMMENDED
 machine-readable realization of its deterministic checks. Step 4 (the non-ASCII sanitization
-clarification) remains a separate follow-on decision.
+clarification) is resolved by decision 0047 (UTF-8 byte), which added the precomposed and decomposed
+vectors.
