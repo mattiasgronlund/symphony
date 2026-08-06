@@ -958,3 +958,29 @@ matters, or if the key ever must round-trip to an identifier (it does not today)
 relates to 0002. Accepted and applied to `SPEC.md` (Sections 4.2, 9.5) and the corpus
 (`workspace-key.json` gains precomposed and decomposed non-ASCII vectors; the README finding is
 marked resolved).
+
+## 0048 — Conformance corpus, prompt-rendering slice
+
+**State:** Accepted
+**Folder:** [decisions/0048-conformance-corpus-prompt-rendering-slice/](decisions/0048-conformance-corpus-prompt-rendering-slice/)
+
+Adds the corpus's second pure slice, the one 0046's README named next: `render_prompt`, pure over
+(template, issue, attempt) → string (Section 12.1). Six vectors in
+`conformance/vectors/prompt-rendering.json` cover known-variable substitution, multi-field
+substitution, nested-list iteration (Section 12.2), `attempt` as a present integer, and the two
+strict-mode MUST failures — an unknown variable and an unknown filter, each raising
+`template_render_error` (Sections 5.4, 5.5). Authoring it forces two choices the first slice avoided.
+The vector `expect` is extended to a **success-or-error union**: either the successful result or
+`{ error: <class> }` asserting a raised error class — chosen over a separate `expect_error` field or a
+sentinel value, because a vector is either a success or a failure and this is the convention every
+later error-path vector (config validation, tracker errors) will reuse. And the templates are written
+in **Liquid-compatible reference syntax**: a template needs a syntax, Section 5.4 names Liquid, and
+because `WORKFLOW.md` is repository-owned and must render on every implementation a repository
+targets, the syntax is effectively a cross-implementation contract; templates are single-line and
+delimiter-based so no expected string depends on whitespace control. No `SPEC.md` change. Two gaps are
+surfaced rather than guessed: Section 5.4's "Liquid-compatible semantics are sufficient" is a floor
+not a mandate (tightening it to a shared syntax is a candidate), and `attempt` being "null or absent"
+on the first run collides with strict unknown-variable failure (so only a present-integer `attempt`
+is tested) — both open spec-clarification candidates. Depends on 0046; relates to 0044 (the failure
+class its error vectors name) and 0047 (the finding-to-decision path it reuses). Accepted and applied
+to the corpus (now 8 files / 39 vectors); no `SPEC.md` change follows.

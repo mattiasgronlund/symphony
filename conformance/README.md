@@ -6,9 +6,9 @@ implementation language. The corpus is the shared enforcement mechanism referenc
 multi-implementation strategy: an implementation runs it against its own binary and reports the
 result in its Conformance Statement (see `CONFORMANCE-STATEMENT-TEMPLATE.md`, Section 7 evidence).
 
-This is the **first slice**. It covers only pure, host-independent functions — no sandbox, tracker,
-engine, filesystem, or network — so every implementation can run it on day one with no harness
-infrastructure. Integration-dependent behaviors are deferred (see "Deferred" below).
+The corpus grows in **slices**. Every slice so far covers only pure, host-independent behavior — no
+sandbox, tracker, engine, filesystem, or network — so every implementation can run it on day one with
+no harness infrastructure. Integration-dependent behaviors are deferred (see "Deferred" below).
 
 ## Layout
 
@@ -30,7 +30,8 @@ Each file is a JSON object:
   - `id` (string) — unique within the file.
   - `description` (string, OPTIONAL) — what the case demonstrates.
   - `given` (object) — the inputs.
-  - `expect` (object) — the expected outputs.
+  - `expect` (object) — the expected outputs: either the successful result, or `{ error: <class> }`
+    naming the error class the behavior must raise for a failure vector.
 
 ## Harness contract (language-neutral)
 
@@ -38,20 +39,26 @@ A conforming harness is small and written in each implementation's own language.
 every vector it MUST:
 
 1. Invoke the implementation's realization of `function` with `given`.
-2. Assert the result equals `expect`.
+2. Assert the result equals `expect` — or, when `expect` names an `error`, that the behavior fails
+   and raises that error class.
 
-Two functions carry an interpretation note beyond plain equality:
+Some functions carry an interpretation note beyond plain equality:
 
 - `sort_for_dispatch` — `given.issues` is an unordered list; `expect.order` is the list of
   `identifier`s in the required dispatch order. Assert the produced order equals it.
 - `resolve_config_defaults` — `expect.resolved` is a map of dotted config paths to values. Assert
   the resolved config equals each listed path; paths **not** listed are unconstrained (so
   Implementation-defined defaults are never pinned).
+- `render_prompt` — `expect` is either `{ rendered: <string> }` (assert the rendered string equals
+  it) or `{ error: <class> }` (assert rendering fails with that error class). Templates use
+  Liquid-compatible syntax (Section 5.4).
 
 The harness itself is not specified here — only the contract above. The corpus prescribes no test
 framework, assertion library, or file-loading mechanism.
 
-## What this slice covers
+## What the corpus covers
+
+Slice 1 — pure derivations (decision 0046):
 
 | File | Function | Profile | Derived from |
 |------|----------|---------|--------------|
@@ -62,6 +69,12 @@ framework, assertion library, or file-loading mechanism.
 | `vectors/available-slots.json` | `available_slots` | Daemon | Section 8.3 |
 | `vectors/per-state-concurrency.json` | `per_state_concurrency_limit` | Daemon | Sections 8.3, 4.2 |
 | `vectors/dispatch-ordering.json` | `sort_for_dispatch` | Daemon | Sections 8.2, 16.2 |
+
+Slice 2 — prompt rendering (decision 0048):
+
+| File | Function | Profile | Derived from |
+|------|----------|---------|--------------|
+| `vectors/prompt-rendering.json` | `render_prompt` | Daemon | Sections 5.4, 5.5, 12.2 |
 
 ## Deferred to later slices
 
@@ -74,8 +87,6 @@ harness with fixtures or live services and belong with the `Real Integration Pro
 - **Tracker read/write** surfaces, candidate eligibility over live issues (Section 8.2, 11).
 - **Action-policy machine** outcomes and **message formulation** (Sections 9.8–9.12) — engine-side,
   covered by `VCSX-SPEC.md`'s own matrix.
-- **Prompt rendering** strictness (Section 17.1, Daemon) — deterministic but template-engine shaped;
-  a candidate for the next pure slice.
 
 ## Surfaced findings
 
@@ -89,3 +100,14 @@ decision-log hygiene rule, a genuine gap becomes a decision rather than a guesse
   `[A-Za-z0-9._-]` with `_` — identical in every language with no Unicode library.
   `vectors/workspace-key.json` now carries precomposed (`café-01` → `caf__-01`) and decomposed
   (`e`+U+0301 → `cafe__-01`) vectors.
+- **Template syntax is a floor, not a mandate (open).** Section 5.4 says a "Liquid-compatible
+  semantics are sufficient" engine, which pins the strict-failure MUSTs and the `template_render_error`
+  class but leaves the concrete delimiter/filter syntax to the implementation. Because `WORKFLOW.md`
+  is repository-owned and must render on any implementation Symphony targets, the template syntax is
+  effectively a cross-implementation contract; the slice authors the reference vectors in Liquid
+  syntax. Tightening "sufficient" to a normative shared syntax is a spec-clarification candidate.
+- **`attempt` "null or absent" versus strict mode (open).** Section 5.4 lists `attempt` as
+  `null`/absent on the first run, but strict variable checking says unknown variables MUST fail. Whether
+  a template that reads `attempt` on the first run renders empty (known-but-null) or fails (absent =
+  unknown) is undetermined, so no first-run `attempt` vector is authored; the slice tests `attempt`
+  only with an integer value. A spec-clarification candidate.

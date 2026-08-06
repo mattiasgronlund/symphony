@@ -1,0 +1,70 @@
+{
+  "function": "render_prompt",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 5.4", "Section 5.5", "Section 12.2"],
+  "description": "Render the WORKFLOW.md prompt template against the normalized issue and attempt. Templates use Liquid-compatible syntax (Section 5.4); the variable set (issue, attempt) and the strict-failure semantics are the normative contract, and an engine that is not Liquid-compatible maps these to its equivalent. Strict mode: an unknown variable and an unknown filter MUST fail rendering with error template_render_error (Sections 5.4, 5.5). Templates are single-line and use delimiters rather than inter-token whitespace so the expected output does not depend on an engine's whitespace-control behavior.",
+  "given": "{ template: string, issue: object, attempt: integer | null }",
+  "expect": "{ rendered: string } on success, or { error: string } naming the error class on failure",
+  "vectors": [
+    {
+      "id": "substitute-issue-identifier",
+      "description": "A known issue field renders as its value.",
+      "given": {
+        "template": "Work on {{ issue.identifier }}.",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [] },
+        "attempt": null
+      },
+      "expect": { "rendered": "Work on ENG-42." }
+    },
+    {
+      "id": "substitute-multiple-fields",
+      "description": "Several known fields render in place.",
+      "given": {
+        "template": "{{ issue.identifier }}: {{ issue.title }} [{{ issue.state }}]",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [] },
+        "attempt": null
+      },
+      "expect": { "rendered": "ENG-42: Fix the login bug [In Progress]" }
+    },
+    {
+      "id": "iterate-labels",
+      "description": "A nested list (Section 12.2) can be iterated; delimiters avoid whitespace-control ambiguity.",
+      "given": {
+        "template": "{% for l in issue.labels %}[{{ l }}]{% endfor %}",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": ["bug", "urgent"] },
+        "attempt": null
+      },
+      "expect": { "rendered": "[bug][urgent]" }
+    },
+    {
+      "id": "substitute-attempt-integer",
+      "description": "The attempt variable renders when present as an integer (retry/continuation run).",
+      "given": {
+        "template": "Attempt {{ attempt }}.",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [] },
+        "attempt": 3
+      },
+      "expect": { "rendered": "Attempt 3." }
+    },
+    {
+      "id": "unknown-variable-fails",
+      "description": "Strict mode: a reference to a variable that is neither issue nor attempt MUST fail rendering (Section 5.4).",
+      "given": {
+        "template": "Hello {{ nonexistent }}.",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [] },
+        "attempt": 3
+      },
+      "expect": { "error": "template_render_error" }
+    },
+    {
+      "id": "unknown-filter-fails",
+      "description": "Strict mode: an unknown filter MUST fail rendering (Section 5.4).",
+      "given": {
+        "template": "{{ issue.title | screaming }}",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [] },
+        "attempt": 3
+      },
+      "expect": { "error": "template_render_error" }
+    }
+  ]
+}
