@@ -252,7 +252,7 @@ A trigger is one of:
 An action is one of:
 
 - `run_op(op, args?)` — run an operation (Section 4). Its result is itself a trigger, so a policy is a
-  graph, not a flat list.
+  graph, not a flat list; the number of dispatches in one invocation is bounded (Section 5.6).
 - `run(hook, context)` — run a repository hook (Section 6.6) in the declared execution context
   (Section 3.2).
 - `escalate(reason)` — raise a need whose resolver the front-end binds (Section 5.5).
@@ -339,6 +339,47 @@ divergence, because it names no resolver to bind: `intervention` names a hold ra
 (Section 8.4), so both front-ends surface it and neither resumes the flow. That is what separates the
 two actions: an `escalate` need is one a front-end is expected to meet and `intervention` is one it is
 not, and the difference is readable in the result rather than only in the policy that produced it.
+
+### 5.6 Flow Bound and Termination
+
+A policy is a graph rather than a flat list (Section 5.2), so an invocation traverses it instead of
+walking a fixed sequence, and nothing in the graph itself guarantees the traversal ends. `run_op` is the
+only action whose result re-enters the machine:
+
+- `run` does not re-enter on its own. A `before:*` hook's block surfaces as the gated operation's own
+  reason — `<op>:blocked` or `<op>:failed` (Section 6.6) — so it reaches the machine through that
+  operation, and an `after`/result-triggered hook does not block.
+- `create_task`, `set_state` and `notify` are consumer-effected intents, emitted once (Section 5.2).
+- `escalate`, `park` and `fail` end the flow.
+
+Every non-terminating flow is therefore an unbounded sequence of `run_op` dispatches, and a bound on
+that count bounds every loop the schema can express — including one a lifecycle position introduces,
+where an edge on `before:push` dispatches `integrate` and the retried `push` re-gates the position.
+
+A conforming executor MUST bound one invocation's flow by a count of `run_op` dispatches. The bound's
+value is `Implementation-defined` and MUST be documented (Section 13.3); it MUST admit at least 64
+dispatches, and an engine that lets a deployment configure it MUST hold the configured value to the same
+floor. The floor's exact value is arbitrary; that it is fixed is not, because it is what keeps two
+engines with different bounds in agreement on every policy that terminates within it.
+
+The bound is a count, not a cycle detector. A repeated `(trigger, edge)` pair is ordinary rather than
+pathological: `push:non_fast_forward → integrate → push` is the built-in routing (Section 12.2), and a
+base branch that moved twice produces it twice. An executor that refused a graph containing a cycle
+would refuse that routing, and one that stopped at a repeated edge would abort a correct flow that was
+about to converge. What separates a converging flow from a looping one is how many operations it takes,
+not whether it revisits an edge.
+
+A flow that reaches the bound ends the invocation at `needs_caller` carrying the `flow_exhausted` need
+(Sections 8.2, 8.4). The pending `run_op` is not dispatched; the operations already run stand. Like a
+park this is a hold rather than a request: no automated party can move the flow, so no front-end
+resolves it (Section 8.4), and it introduces no point of front-end divergence (Section 5.5) — both
+front-ends do the same thing with it. It carries a need of its own because the policy did not ask for
+the hold; an exhausted flow says either that the graph does not converge or that the remote is moving
+faster than the engine can follow, neither of which a park would tell the caller.
+
+An engine MAY impose further bounds on a running flow, a wall-clock deadline for example. A flow stopped
+by any bound the engine imposes reaches the same result, so the envelope does not reveal which one
+fired, and the engine MUST document each bound it imposes (Section 13.3).
 
 ## 6. `repo.policy.toml` Schema
 
@@ -589,15 +630,19 @@ Every invocation returns one structured result:
   class: `ok` (all steps `done`), `needs_caller`, or `error`. For a run in which the policy did not
   run it is `usage_or_config` (Section 6.10). A flow the policy stopped with `park` (Section 5.2) is
   `needs_caller`: it did not reach the entry's intended effect, so it is not `ok`, and `park` does not
-  fail the flow, so it is not `error`.
+  fail the flow, so it is not `error`. A flow the executor stopped at its bound (Section 5.6) is
+  `needs_caller` on the same reasoning: the entry's intended effect was not reached, and no operation
+  failed — the executor declined to dispatch the next one.
 - `op` / `reason` / `class` describe the decisive operation result. Where they are non-null, `class` is
   the class `status` reports — `done` under `ok`, `needs_caller` under `needs_caller`, `error` under
   `error` — because the status of a run that executed the policy is that result's proto class. All three
-  are null where the run has no decisive operation result: a clean `ok` with no operation, and a parked
-  flow, which the policy stopped rather than an operation, so no operation asked the caller for anything.
-  Under `usage_or_config` there is no operation result: `op` and `class` are null and `reason` carries
-  the configuration reason (Section 6.10).
-- `escalation` is present exactly when `status == "needs_caller"` (Section 8.4), a parked flow included.
+  are null where the run has no decisive operation result: a clean `ok` with no operation; a parked flow,
+  which the policy stopped rather than an operation; and a flow stopped at its bound, which the executor
+  stopped. In neither of the last two did an operation ask the caller for anything, so there is nothing
+  decisive to report. Under `usage_or_config` there is no operation result: `op` and `class` are null and
+  `reason` carries the configuration reason (Section 6.10).
+- `escalation` is present exactly when `status == "needs_caller"` (Section 8.4), a parked flow and an
+  exhausted one included.
 - `outputs` carries entry-specific structured data (for example `status` fields, the pull-request
   number/state). It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
   the engine emitted and no consumer performed, each naming its `action` and that action's arguments.
@@ -620,17 +665,23 @@ The JSON result is emitted regardless of exit code so a caller MAY always read s
 
 When `status == "needs_caller"`, `escalation` carries: the `need` (a stable token naming what is
 required, for example `integrate_then_retry`, `resolve_conflicts`, `await_checks`, `human_review`,
-`intervention`), the `op` that produced it, and an `Implementation-defined` `detail`. The `op` is null
-where no operation produced the escalation — at a signal, and at a lifecycle position, where the gated
-operation has not run (Section 5.1). A front-end binds the resolver by the `need` token (Section 5.5);
-the `need` vocabulary is part of the public contract and MUST be documented and stable within a major
-version.
+`intervention`, `flow_exhausted`), the `op` that produced it, and an `Implementation-defined` `detail`.
+The `op` is null where no operation produced the escalation — at a signal, at a lifecycle position where
+the gated operation has not run (Section 5.1), and at a bound the executor reached (Section 5.6). A
+front-end binds the resolver by the `need` token (Section 5.5); the `need` vocabulary is part of the
+public contract and MUST be documented and stable within a major version.
 
-`intervention` is the need a parked flow carries (Section 5.2), and the one need no front-end resolves:
-`park` names a hold rather than a request, so a front-end MUST NOT bind a resolver to `intervention` and
-MUST NOT resume the flow on it. The hold is released out of band, by a new invocation. Every other need
-names something a caller can supply, which is what makes `park` and `escalate` distinguishable in the
-result envelope.
+Two needs name a **hold** rather than a request, and neither is resolvable: a front-end MUST NOT bind a
+resolver to either and MUST NOT resume the flow on either. Each hold is released out of band, by a new
+invocation.
+
+- `intervention` — the need a parked flow carries (Section 5.2). The policy asked for the hold.
+- `flow_exhausted` — the need a flow stopped at a bound carries (Section 5.6). The executor imposed the
+  hold, which is a condition to investigate rather than an outcome the policy chose, so it is a token of
+  its own rather than a second use of `intervention`.
+
+Every other need names something a caller can supply, which is what makes `park` and `escalate`
+distinguishable in the result envelope.
 
 ### 8.5 Versioning and the Version Grammar
 
@@ -793,6 +844,8 @@ function ship(identity, message):
   if worktree_dirty():
     dispatch(run_op("commit", message))     # commit:* re-enters the machine
   loop:
+    if flow_bound_reached():                # Section 5.6; counts every run_op, not this loop's turns
+      return flow_exhausted()               # needs_caller, need = flow_exhausted
     run_lifecycle("before:push")
     r = run_op("push")
     if r is push:non_fast_forward:
@@ -813,6 +866,12 @@ function ship(identity, message):
 
 The routing above is the built-in default; a repository's `[policy]` edges override each step. `ship`
 never runs `merge`.
+
+The loop is bounded by the flow bound (Section 5.6) rather than by a step count of its own: every
+`run_op` counts against it wherever it is dispatched, so a `push`/`integrate` pair that never converges —
+against a base branch that moves between every attempt, or through a repository's own edges routing back
+to an earlier operation — ends the invocation at `needs_caller` with the `flow_exhausted` need instead of
+running indefinitely.
 
 ### 12.3 `land` Sequence
 
@@ -869,6 +928,10 @@ A conforming engine SHOULD include tests covering:
   dropped); an unmatched signal is a no-op.
 - Determinism: a duplicate `(from, on)` edge or transition is a configuration error and the engine
   refuses to run.
+- Termination: a policy whose `run_op` results route back to an earlier operation stops at the flow
+  bound (Section 5.6), yielding `needs_caller` with the `flow_exhausted` need and null
+  `op`/`reason`/`class`; a flow that converges within the bound is unaffected; a repeated
+  `(trigger, edge)` pair does not by itself stop a flow.
 - Operations and reasons: each operation returns a registry reason (Section 4.3) with its documented
   proto class; `push:non_fast_forward` is `needs_caller` and routes to `integrate`; `push:pr_closed`
   refuses a push over a CLOSED/MERGED pull request; `create_pr:base_mismatch` is surfaced, not
@@ -891,7 +954,7 @@ A conforming engine SHOULD include tests covering:
 
 - One policy-graph executor run by both front-ends; `ship`/`land` and the embedded-driver contract.
 - The action-policy machine: triggers, actions, the `#class` fallback, fail-safe-on-unmatched-outcome,
-  no-op-on-unmatched-signal, determinism.
+  no-op-on-unmatched-signal, determinism, and a bounded flow.
 - The operation set and the reason-token registry with stable proto classes.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), base resolution, and the
   execution-context labeling.
@@ -914,7 +977,8 @@ The Statement MUST record:
 - The engine version and the major-stable surface it claims (Section 8.5), including the lowest
   `version_floor` the build satisfies.
 - A resolution for every `Implementation-defined` behavior in this specification: checkout-mode
-  detection (Section 3.3), `repo.policy.toml` discovery precedence (Section 6.1), the form of a hook's
+  detection (Section 3.3), the flow bound's value and any further bound the engine imposes
+  (Section 5.6), `repo.policy.toml` discovery precedence (Section 6.1), the form of a hook's
   engine-invoked `run` unit (Section 6.6), which reason is reported when several configuration
   conditions hold (Section 6.10), the entry-point argument encodings (Section 8.1), and the escalation
   `detail` field (Section 8.4).
