@@ -40,46 +40,65 @@
 
   "reasons": {
     "spec_refs": ["VCSX-SPEC.md Section 4.3 \"Reason-Token Registry\""],
-    "note": "The Section 4.3 table normalized to one entry per (operation, reason); its `status` / `diff` row expands to two entries. An engine MUST document any reason it adds beyond this set, with its class.",
+    "note": "The Section 4.3 table normalized to one entry per (operation, reason). Its combined rows expand: the `status` / `diff` row to two entries, and the three universal rows to one entry per operation they cover — `failed` and `unsupported` for every operation, `blocked` for every gated one — each marked `universal: true`. An engine MUST document any reason it adds beyond this set, with its class.",
     "entries": [
       { "token": "commit:ok", "operation": "commit", "reason": "ok", "class": "done" },
       { "token": "commit:nothing_to_commit", "operation": "commit", "reason": "nothing_to_commit", "class": "done" },
-      { "token": "commit:blocked", "operation": "commit", "reason": "blocked", "class": "needs_caller" },
-      { "token": "commit:failed", "operation": "commit", "reason": "failed", "class": "error" },
+      { "token": "commit:blocked", "operation": "commit", "reason": "blocked", "class": "needs_caller", "universal": true },
+      { "token": "commit:failed", "operation": "commit", "reason": "failed", "class": "error", "universal": true },
+      { "token": "commit:unsupported", "operation": "commit", "reason": "unsupported", "class": "error", "universal": true },
 
       { "token": "integrate:ok", "operation": "integrate", "reason": "ok", "class": "done" },
       { "token": "integrate:up_to_date", "operation": "integrate", "reason": "up_to_date", "class": "done" },
       { "token": "integrate:merge_conflicts", "operation": "integrate", "reason": "merge_conflicts", "class": "needs_caller" },
       { "token": "integrate:base_unresolved", "operation": "integrate", "reason": "base_unresolved", "class": "error" },
+      { "token": "integrate:failed", "operation": "integrate", "reason": "failed", "class": "error", "universal": true },
+      { "token": "integrate:unsupported", "operation": "integrate", "reason": "unsupported", "class": "error", "universal": true },
 
       { "token": "push:ok", "operation": "push", "reason": "ok", "class": "done" },
       { "token": "push:up_to_date", "operation": "push", "reason": "up_to_date", "class": "done" },
       { "token": "push:non_fast_forward", "operation": "push", "reason": "non_fast_forward", "class": "needs_caller" },
       { "token": "push:pr_closed", "operation": "push", "reason": "pr_closed", "class": "needs_caller" },
       { "token": "push:rejected", "operation": "push", "reason": "rejected", "class": "error" },
+      { "token": "push:blocked", "operation": "push", "reason": "blocked", "class": "needs_caller", "universal": true },
+      { "token": "push:failed", "operation": "push", "reason": "failed", "class": "error", "universal": true },
+      { "token": "push:unsupported", "operation": "push", "reason": "unsupported", "class": "error", "universal": true },
 
       { "token": "create_pr:created", "operation": "create_pr", "reason": "created", "class": "done" },
       { "token": "create_pr:updated", "operation": "create_pr", "reason": "updated", "class": "done" },
       { "token": "create_pr:base_mismatch", "operation": "create_pr", "reason": "base_mismatch", "class": "error" },
       { "token": "create_pr:conflict", "operation": "create_pr", "reason": "conflict", "class": "needs_caller" },
+      { "token": "create_pr:blocked", "operation": "create_pr", "reason": "blocked", "class": "needs_caller", "universal": true },
+      { "token": "create_pr:failed", "operation": "create_pr", "reason": "failed", "class": "error", "universal": true },
+      { "token": "create_pr:unsupported", "operation": "create_pr", "reason": "unsupported", "class": "error", "universal": true },
 
       { "token": "merge:ok", "operation": "merge", "reason": "ok", "class": "done" },
       { "token": "merge:not_open", "operation": "merge", "reason": "not_open", "class": "needs_caller" },
       { "token": "merge:checks_pending", "operation": "merge", "reason": "checks_pending", "class": "needs_caller" },
       { "token": "merge:checks_failed", "operation": "merge", "reason": "checks_failed", "class": "error" },
       { "token": "merge:conflict", "operation": "merge", "reason": "conflict", "class": "needs_caller" },
-      { "token": "merge:blocked", "operation": "merge", "reason": "blocked", "class": "error" },
+      { "token": "merge:rejected", "operation": "merge", "reason": "rejected", "class": "error" },
+      { "token": "merge:blocked", "operation": "merge", "reason": "blocked", "class": "needs_caller", "universal": true },
+      { "token": "merge:failed", "operation": "merge", "reason": "failed", "class": "error", "universal": true },
+      { "token": "merge:unsupported", "operation": "merge", "reason": "unsupported", "class": "error", "universal": true },
 
       { "token": "pull:ok", "operation": "pull", "reason": "ok", "class": "done" },
       { "token": "pull:conflict", "operation": "pull", "reason": "conflict", "class": "needs_caller" },
+      { "token": "pull:failed", "operation": "pull", "reason": "failed", "class": "error", "universal": true },
+      { "token": "pull:unsupported", "operation": "pull", "reason": "unsupported", "class": "error", "universal": true },
 
       { "token": "status:ok", "operation": "status", "reason": "ok", "class": "done" },
-      { "token": "diff:ok", "operation": "diff", "reason": "ok", "class": "done" }
+      { "token": "status:failed", "operation": "status", "reason": "failed", "class": "error", "universal": true },
+      { "token": "status:unsupported", "operation": "status", "reason": "unsupported", "class": "error", "universal": true },
+
+      { "token": "diff:ok", "operation": "diff", "reason": "ok", "class": "done" },
+      { "token": "diff:failed", "operation": "diff", "reason": "failed", "class": "error", "universal": true },
+      { "token": "diff:unsupported", "operation": "diff", "reason": "unsupported", "class": "error", "universal": true }
     ]
   },
 
   "config_reasons": {
-    "spec_refs": ["VCSX-SPEC.md Section 6.10 \"Validation\""],
+    "spec_refs": ["VCSX-SPEC.md Section 6.10 \"Validation\"", "VCSX-SPEC.md Section 9.3 \"Capability Descriptors\""],
     "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — a refused policy has no operation result to classify. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds.",
     "entries": [
       { "token": "unknown_trigger", "meaning": "An edge's `on` is not a trigger the engine recognizes." },
@@ -90,6 +109,7 @@
       { "token": "duplicate_transition", "meaning": "A duplicate `(from, on)` transition." },
       { "token": "base_unresolvable", "meaning": "A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map." },
       { "token": "set_state_unbound", "meaning": "A `set_state`/transition binding without a consumer that can apply it." },
+      { "token": "capability_unsupported", "meaning": "A policy requiring a capability no configured backend declares (Section 9.3)." },
       { "token": "version_floor_unmet", "meaning": "A `version_floor` above the running engine version." }
     ]
   },

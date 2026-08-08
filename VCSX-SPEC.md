@@ -189,12 +189,17 @@ release (Section 8.5) and existing consumers absorb them through the `#class` fa
 document any reason it adds beyond this registry and MUST NOT change a listed reason's class within a
 major version.
 
+Three reasons are **universal**, carried in the table with `(any)` in place of an operation and listed
+once rather than repeated per operation: `failed` and `unsupported` are defined for every operation,
+and `blocked` for every operation gated at a lifecycle position (Section 4.1).
+
 | Operation | Reason | Class | Meaning |
 |-----------|--------|-------|---------|
+| `(any)` | `failed` | `error` | The operation failed, including when a `before:<op>` hook blocked it with an `error` result (Section 6.6). |
+| `(any gated)` | `blocked` | `needs_caller` | A `before:<op>` gate or scan blocked the operation (Section 6.6). |
+| `(any)` | `unsupported` | `error` | The operation requires a plugin capability the backend does not declare (Section 9.3). |
 | `commit` | `ok` | `done` | A commit was created. |
 | `commit` | `nothing_to_commit` | `done` | No changes to commit; benign no-op. |
-| `commit` | `blocked` | `needs_caller` | A `before:commit` gate/scan blocked the commit. |
-| `commit` | `failed` | `error` | The commit could not be created. |
 | `integrate` | `ok` | `done` | The base was integrated. |
 | `integrate` | `up_to_date` | `done` | Already current; no-op. |
 | `integrate` | `merge_conflicts` | `needs_caller` | Integration stopped on conflicts to resolve. |
@@ -213,10 +218,17 @@ major version.
 | `merge` | `checks_pending` | `needs_caller` | Required checks have not completed. |
 | `merge` | `checks_failed` | `error` | Required checks failed. |
 | `merge` | `conflict` | `needs_caller` | The merge would conflict. |
-| `merge` | `blocked` | `error` | Branch protection or policy blocked the merge. |
+| `merge` | `rejected` | `error` | Branch protection or forge policy refused the merge. |
 | `pull` | `ok` | `done` | The local branch was updated. |
 | `pull` | `conflict` | `needs_caller` | The update stopped on conflicts. |
 | `status` / `diff` | `ok` | `done` | The read completed. |
+
+Every operation therefore has at least one `done` reason and at least one `error` reason, so an
+`error`-class result is expressible for every operation including the read-only ones; every gated
+operation additionally has a `needs_caller` reason. `integrate` and `pull` are gated at no fixed
+position and `status` and `diff` carry no lifecycle position (Section 4.1), so none of the four
+carries `blocked`. An engine that defines an additional operation, and a `before:<op>` position for
+it, defines the same universal reasons for that operation.
 
 ## 5. The Action-Policy Machine
 
@@ -408,7 +420,10 @@ run = "..."
 ```
 
 - A `before:*` (host-side or in-sandbox) hook MAY block by returning a `needs_caller` or `error` result
-  with a stable reason; the engine surfaces it as the operation's `blocked`/`failed` reason.
+  with a stable reason. The engine surfaces the block as the gated operation's own reason, preserving
+  the class: a `needs_caller` result surfaces as `<op>:blocked` and an `error` result as
+  `<op>:failed`. Both are defined for every gated operation, including a `before:<op>` position an
+  engine adds (Section 4.3), so the surfacing is defined at every position.
 - An `after`/result-triggered hook is best-effort and does not block.
 - A host-side hook MAY receive repo-internal integrity values from the consumer's environment; an
   in-sandbox hook MUST NOT receive credentials or integrity values.
@@ -479,6 +494,7 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | A duplicate `(from, on)` transition (Section 6.7) | `duplicate_transition` |
 | A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map (Section 6.4) | `base_unresolvable` |
 | A `set_state`/transition binding without a consumer that can apply it (Section 5.2) | `set_state_unbound` |
+| A policy requiring a capability no configured backend declares (Section 9.3) | `capability_unsupported` |
 | A `version_floor` above the running engine version (Section 8.5) | `version_floor_unmet` |
 
 Configuration reasons carry no proto class: a refused policy has no operation result to classify. They
@@ -619,11 +635,18 @@ Realizes the version-control operations. Required capabilities:
 
 - `detect_mode()` → checkout mode (Section 3.3).
 - `current_branch()`, `is_dirty()`, `is_conflicted()`, `ahead_behind(base)`.
+- `diff(base)` → `diff:*`, the branch delta against the resolved base (Section 6.4). Read-only.
 - `derive_work_branch(pattern, identity)` → the pinned work branch (Section 6.3).
 - `commit(message, identity)` → `commit:*`.
 - `integrate(base)` → `integrate:*`, preserving recorded conflict resolutions where supported.
 - `push(work_branch)` → `push:*`, with the refspec pinned to the work branch and never a force push.
 - `pull(work_branch)` → `pull:*`.
+
+The list is the minimum every backend MUST provide, not a maximum: every operation Section 4.1
+requires of a VCS backend is realizable through it. An engine MAY define additional operations
+(Section 4.1), and where it does it MUST document the capabilities they require of a backend
+(Section 13.3), so a capability beyond this list is visible as the engine's own rather than as shared
+surface.
 
 Descriptor fields: supported modes, whether recorded-resolution reuse is available, and whether the
 backend can operate in a workspace with no colocated remote (Section 3.3).
@@ -636,7 +659,8 @@ Realizes the pull-request and review operations. Required:
   branch and refusing a base mismatch (`create_pr:base_mismatch`).
 - `pr_state(work_branch)` → open/closed/merged, so `push` can refuse a push over a CLOSED/MERGED pull
   request (`push:pr_closed`).
-- `request_merge(pr, strategy)` → `merge:*`, honoring required checks and branch protection.
+- `request_merge(pr, strategy)` → `merge:*`, honoring required checks and branch protection (a forge
+  refusal surfaces as `merge:rejected`).
 
 OPTIONAL:
 
@@ -651,7 +675,9 @@ writes and native issue linking are supported.
 The executor reads a descriptor before invoking a capability and MUST NOT invoke an undeclared one; an
 undeclared capability yields an `error`-class result rather than a silent no-op. A repository policy that
 requires an unsupported capability (for example a squash strategy a forge cannot perform) is a
-configuration error surfaced at validation (Section 6.10) where determinable, otherwise at first use.
+configuration error surfaced at validation where determinable, carrying `capability_unsupported`
+(Section 6.10); where it is not determinable before the policy runs, it surfaces at first use as the
+operation's `unsupported` reason (Section 4.3).
 
 ## 10. Message Formulation
 
@@ -690,7 +716,8 @@ pull-request content.
 ### 10.4 Content Scanning
 
 A scan profile is a repository-owned check (`scan-content`) that inspects content — a commit diff, a
-title, a body — and blocks by returning a `needs_caller`/`error` result with a stable reason. The
+title, a body — and blocks by returning a `needs_caller`/`error` result with a stable reason, which
+the engine surfaces as the scanned operation's `blocked` or `failed` reason (Section 6.6). The
 engine ships no scan rules; profiles such as `strict` and `relaxed` are names a repository binds to its
 own checks. Scanning at `before:commit` runs in-sandbox; scanning title/body during `create_pr` runs in
 the consumer's context.
@@ -754,8 +781,8 @@ function ship(identity, message):
       continue                              # retry push
     if r is push:pr_closed:
       return escalate("human_review")
-    if r.class == error:
-      return fail(r.reason)
+    if r.class != done:
+      return result_of(r)                    # e.g. push:blocked; class default (Section 5.4)
     break                                    # push:ok / up_to_date
   run_lifecycle("before:create_pr")
   p = run_op("create_pr")                    # composes title/body (Section 10.2)
@@ -824,6 +851,8 @@ A conforming engine SHOULD include tests covering:
   proto class; `push:non_fast_forward` is `needs_caller` and routes to `integrate`; `push:pr_closed`
   refuses a push over a CLOSED/MERGED pull request; `create_pr:base_mismatch` is surfaced, not
   overwritten.
+- Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
+  `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6).
 - Front-ends: `ship` stops at the pull request; `land` merges an open, checks-passed pull request,
   applies `pr_to_squash` for a squash, and never authors a message; the same `repo.policy.toml` yields
   the same operation flow through `ship` and an embedded driver.
@@ -831,7 +860,8 @@ A conforming engine SHOULD include tests covering:
   `needs_caller`; a `version_floor` above the running version refuses fail-closed.
 - Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it; the
   squash body is the `pr_to_squash` transform of the pull-request body.
-- Plugins: an undeclared capability yields an `error`-class result, never a silent no-op; git and jj
+- Plugins: an undeclared capability yields `capability_unsupported` at validation where determinable
+  and the operation's `unsupported` reason at first use otherwise, never a silent no-op; git and jj
   checkout modes (including a jj secondary workspace) are handled.
 
 ### 13.2 Implementation Checklist
@@ -868,7 +898,8 @@ The Statement MUST record:
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class
   (Section 4.3), or a configuration reason (Section 6.10).
 - The `need` vocabulary the engine emits (Section 8.4).
-- The capability descriptors its VCS and forge plugins advertise (Section 9.3).
+- The capability descriptors its VCS and forge plugins advertise (Section 9.3), and the capabilities
+  any operation it defines beyond Section 4.1 requires of a backend (Section 9.1).
 
 The Statement is a published declaration, not a precondition for running the engine: Section 13.1 and
 Section 13.2 keep their roles as the test matrix and the definition of done. Its format is

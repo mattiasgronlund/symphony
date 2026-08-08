@@ -120,6 +120,13 @@ configuration error. Declare what each shipped backend advertises.
 |---------|-----------------|---------------------------|-----------------------------------|
 | `<git / jj / …>` | `<...>` | [ ] | [ ] |
 
+Section 9.1's required capabilities are a minimum. If this engine defines operations beyond Section
+4.1, list what it additionally requires of a VCS backend; leave empty if it defines none.
+
+| Capability | Required by (operation) | Signature and result |
+|------------|-------------------------|----------------------|
+| `<...>` | `<...>` | `<...>` |
+
 ### 6.2 Forge Backends (Section 9.2)
 
 | Backend | PR create/update | Merge strategies | Review-thread writes | Native issue linking |
