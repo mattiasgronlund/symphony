@@ -163,10 +163,11 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
 
 - **Front-end sequences** (`ship`, `land`; Sections 7.1–7.2, 12.2–12.3) — they run operations against
   a real repository and forge.
-- **Plugin behavior** — checkout-mode detection, the pinned never-forced push refspec, and both halves
-  of the undeclared-capability case: `capability_unsupported` at validation and the operation's
-  `unsupported` reason at first use (Sections 3.3, 9.1–9.3). Both need a capability descriptor as
-  input, which no vector file supplies.
+- **Plugin behavior** — checkout-mode detection, the pinned never-forced push refspec and the
+  history-preserving work-branch update, and both halves of the undeclared-capability case:
+  `capability_unsupported` at validation and the operation's `unsupported` reason at first use
+  (Sections 3.3, 9.1–9.3). The last two need a capability descriptor as input, which no vector file
+  supplies.
 - **Message formulation** — `scan-content`, pull-request composition, and the `pr_to_squash` transform
   (Section 10), whose formats are repository-owned by construction.
 - **Hook execution** and the execution-context split (Sections 3.2, 6.6) — process and trust-boundary

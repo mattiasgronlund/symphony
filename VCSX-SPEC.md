@@ -161,7 +161,10 @@ returns a typed result (Section 4.2). Read-only operations carry no lifecycle po
   composing its title and body (Section 10.2). Gated at `before:create_pr`.
 - `merge` — merge the pull request using the configured strategy (Section 6.8). Gated at
   `before:merge`; a squash strategy applies the `pr_to_squash` transform (Section 10.3).
-- `pull` — update the local work branch from its remote counterpart.
+- `pull` — update the local work branch from its remote counterpart, preserving the commits already on
+  the branch: the counterpart is merged in, and no commit on the branch is rewritten, dropped, or
+  re-parented (Section 11). `pull:conflict` is therefore a merge conflict, which the caller resolves and
+  `commit` finalizes; the operation set has no step that resumes a sequential replay.
 
 An engine MAY define additional operations and their `before:<op>` positions; the operations above are
 the required set and the four positions `before:commit`, `before:push`, `before:create_pr`,
@@ -220,7 +223,7 @@ and `blocked` for every operation gated at a lifecycle position (Section 4.1).
 | `merge` | `conflict` | `needs_caller` | The merge would conflict. |
 | `merge` | `rejected` | `error` | Branch protection or forge policy refused the merge. |
 | `pull` | `ok` | `done` | The local branch was updated. |
-| `pull` | `conflict` | `needs_caller` | The update stopped on conflicts. |
+| `pull` | `conflict` | `needs_caller` | The merge of the remote counterpart stopped on conflicts. |
 | `status` / `diff` | `ok` | `done` | The read completed. |
 
 Every operation therefore has at least one `done` reason and at least one `error` reason, so an
@@ -713,7 +716,8 @@ Realizes the version-control operations. Required capabilities:
 - `commit(message, identity)` → `commit:*`.
 - `integrate(base)` → `integrate:*`, preserving recorded conflict resolutions where supported.
 - `push(work_branch)` → `push:*`, with the refspec pinned to the work branch and never a force push.
-- `pull(work_branch)` → `pull:*`.
+- `pull(work_branch)` → `pull:*`, merging the remote counterpart into the local branch and rewriting
+  none of its commits (Section 4.1).
 
 The list is the minimum every backend MUST provide, not a maximum: every operation Section 4.1
 requires of a VCS backend is realizable through it. An engine MAY define additional operations
@@ -806,7 +810,10 @@ one:
   can source host-side policy from a trusted revision and in-sandbox policy from the worktree, and can
   mediate the credentialed operations. An in-sandbox edge or hook MUST NOT receive credentials.
 - The engine pins every push refspec to the derived work branch and never force-pushes, so a consumer's
-  scope guard has a fixed target.
+  scope guard has a fixed target. No operation that updates the work branch rewrites, drops, or
+  re-parents a commit already on it — an update that reconciles a divergence merges (Section 4.1) — so
+  the branch remains publishable without a force push. A `rebase` or `squash` merge strategy
+  (Section 6.8) is not an exception: it writes to the base branch.
 - The engine performs no repository provisioning and reads no base or branch from untrusted content;
   base resolution is configuration (Section 6.4).
 
@@ -935,7 +942,8 @@ A conforming engine SHOULD include tests covering:
 - Operations and reasons: each operation returns a registry reason (Section 4.3) with its documented
   proto class; `push:non_fast_forward` is `needs_caller` and routes to `integrate`; `push:pr_closed`
   refuses a push over a CLOSED/MERGED pull request; `create_pr:base_mismatch` is surfaced, not
-  overwritten.
+  overwritten; a divergent `pull` merges rather than rewrites, and the `pull:conflict` it leaves is
+  finalized by `commit`.
 - Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
   `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6).
 - Front-ends: `ship` stops at the pull request; `land` merges an open, checks-passed pull request,
@@ -962,7 +970,8 @@ A conforming engine SHOULD include tests covering:
   `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in format.
-- Checkout-mode handling (git, jj, jj secondary workspace) and a pinned, never-forced push refspec.
+- Checkout-mode handling (git, jj, jj secondary workspace), a pinned, never-forced push refspec, and a
+  history-preserving work-branch update.
 
 ### 13.3 Conformance Statement
 

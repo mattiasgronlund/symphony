@@ -1460,3 +1460,60 @@ rather than a bare hold. Relates to 0059 (whose invariant this builds on and who
 carve-out it widens), 0056, 0057, and 0044 (whose `Engine Invocation Failures` class covers only runs in
 which the policy did not run). Accepted and applied to `VCSX-SPEC.md` (Sections 5.6, 8.2, 8.4, 12.2,
 13.1, 13.2, 13.3), the vocabulary registry, and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0061 — `pull` preserves the work branch's committed history
+
+**State:** Accepted
+**Folder:** [decisions/0061-pull-preserves-history/](decisions/0061-pull-preserves-history/)
+
+Resolves issue #8. `VCSX-SPEC.md` Section 4.1 defines `pull` as "update the local work branch from its
+remote counterpart" and Section 4.3 gives it `pull:ok` and `pull:conflict`; a `conflict` means the
+update reconciles a divergence, and the document never says whether it merges or rewrites, so an engine
+choosing either conformed. The issue routes the defect through Section 11's never-force rule: a
+rebasing `pull` leaves the branch non-fast-forward, Section 12.2 retries through `integrate`, and the
+flow runs to decision 0060's bound. Working it moved that argument both ways. **Narrower:** on git the
+chain does not reach `push:non_fast_forward` at all — `git pull --rebase` replays onto the branch's own
+remote counterpart, so the result descends from the remote tip and the next push is a fast-forward.
+**Wider:** on jj, which the issue names in passing, the rewrite is a dead end rather than a loop, since
+jj rewrites published commits as an ordinary operation and publishing one needs the force push
+Sections 9.1 and 11 forbid without exception — the identical repository state ships on git and does not
+ship on jj, which is Section 2.1's cross-checkout-mode goal failing. **Wider again, and decisive:** the
+*required operation set cannot finish a rebase's conflict*. `pull:conflict` is `needs_caller`,
+`resolve_conflicts` names the need, Section 5.5 has the caller resolve and re-invoke, and Section 12.2
+then dispatches `commit` — which finalizes a merge, a single conflicted state resolved once, and not a
+sequential replay that stops per commit and needs a resume step Section 4.1's required set does not
+contain. So the answer follows from the operation list rather than from either VCS's behavior, the shape
+decision 0060 used to pick its unit. A rewriting update also fights `integrate`, which Section 4.1
+requires to preserve recorded conflict resolutions: linearizing drops the merge those resolutions were
+recorded against. Options: **A** state that the counterpart is merged in and no commit already on the
+branch is rewritten, dropped or re-parented, with the no-rewrite half stated once beside Section 11's
+never-force rule (chosen); **B** forbid the rewrite without naming the reconciliation, the issue's
+literal ask (rejected — it leaves fast-forward-only conforming, under which a divergence has no
+reconciliation to attempt, so `pull:conflict`'s reachability still varies by engine); **C** a
+repository-configurable `[engine] pull_strategy` (rejected — reconciliation is not a Way of Working, and
+it would offer a mode whose conflict the operation set cannot finish); **D** `Implementation-defined`
+with a Section 13.3 row (rejected on the line 0056, 0059 and 0060 hold — it covers mechanisms, never
+what a caller branches on, and here it would leave what the repository *contains* engine-dependent);
+**E** permit the rewrite and add `continue`/`abort` operations (rejected — it grows the required
+operation set for a strategy nothing asks for and still collides with never-force on jj; recorded as the
+surface a future rebase mode needs); **F** fast-forward-only `pull` (rejected — it makes `pull:conflict`
+a dead token, and a work branch legitimately diverges when a forge commits a review suggestion or
+presses "update branch"). The invariant is worth more than the clause it was written for: Section 11
+offered never-force as a scope guarantee, which is only sound if nothing the engine does creates a state
+requiring a force — stating that no operation rewrites a commit on the work branch makes the rule one
+an engine can always keep, and an operation added later is checked against it by asking only whether it
+can rewrite a published commit. It is scoped to updates of the *work branch*, and Section 11 says so:
+a `rebase` or `squash` merge strategy (Section 6.8) rewrites commits but writes the result to the base,
+so the invariant does not narrow the strategies a repository may configure. `integrate` needs no clause
+of its own, agreeing with the issue: "a merge/update-branch" and its recorded-resolution requirement
+already name a history-preserving update.
+No token is added, removed or reclassed, so the vocabulary registry is unchanged. Left open: no built-in
+sequence dispatches `pull` at all (`ship` reconciles through `integrate`), so its recovery path is
+specified and exercised nowhere in the reference algorithms; and a `pull` whose remote counterpart does
+not yet exist, which belongs with the questions issue #9 bundles. Reconsider if a backend appears whose
+only update is a rewrite and which can publish one without a force, at which point the merge requirement
+could relax to the weaker append-only-published-history invariant. Relates to 0060 (whose bound the
+issue's argument routes through, and which this decision finds is not the failure mode), 0058 (which
+last changed Section 9.1's capability list), and 0057 (whose argument for changing settled surface
+before an implementation exists this reuses). Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3,
+9.1, 11, 13.1, 13.2) and `conformance/vcsx/README.md`.
