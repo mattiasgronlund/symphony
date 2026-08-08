@@ -1405,3 +1405,58 @@ response to a park, at which point Option E's finer envelope would start to pay 
 0044, 0056 (the last invocation status found missing), and 0057 (the same
 rule-outruns-its-enumeration shape, one section over). Accepted and applied to `VCSX-SPEC.md` (Sections
 5.2, 5.5, 8.2, 8.4, 13.1), the vocabulary registry, and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0060 — A conforming executor bounds the flow, and an exhausted bound is `needs_caller`
+
+**State:** Accepted
+**Folder:** [decisions/0060-bounded-flow-traversal/](decisions/0060-bounded-flow-traversal/)
+
+Resolves issue #4. `VCSX-SPEC.md` Section 5.2 makes a `run_op` result itself a trigger — "a policy is a
+graph, not a flat list" — and Section 12.2 writes `ship` with an unbounded `loop:` that retries `push`
+after each `integrate`, with no iteration cap, no cycle detector and no deadline anywhere in the
+document. The issue judged this the mildest of the three it filed, since "two engines with different
+bounds agree on every policy that terminates". Working it narrowed one half of that framing and widened
+the other. **Wider:** the hang is reachable without a bad policy. `push:non_fast_forward → integrate →
+retry push` is the built-in routing Section 12.2 itself prescribes, so a base branch that receives a
+push between every one of ours live-locks a correct policy over a correct backend. **Narrower:** a cycle
+detector — the safeguard the issue names — is the wrong mechanism in either form, since the
+`push`/`integrate` cycle *is* the built-in routing (so refusing a cyclic graph refuses Section 12.2) and
+the second time the base moves is ordinary (so stopping at a repeated `(trigger, edge)` pair aborts a
+flow about to converge). What separates a converging flow from a looping one is how many operations it
+takes, not whether it revisits an edge. Options: **A** MUST bound by a `run_op` count with a stated
+floor, exhaustion yielding `needs_caller` with a new `flow_exhausted` need (chosen); **B** leave
+bounding to the engine and publish the choice in Section 13.3, the issue's stated minimum (rejected —
+optional bounding leaves "the engine hangs" conforming, which an autonomous consumer cannot absorb, and
+an `Implementation-defined` *outcome* documents the disagreement rather than removing it, since Section
+8.3 turns status into an exit code and Section 8.5 freezes the mapping for a `MAJOR`); **C** reuse
+`intervention` (rejected — decision 0059 nulls `op`/`reason`/`class` for a hold, so `need` is the only
+structured field left and a consumer could not tell a policy that asked to hold from an engine that
+stopped one, the same objection 0059 raised against `human_review` covering a park); **D** `error`
+(rejected — Section 4.2's `error` is "the operation failed" and none did; it also drags in the `fail`
+envelope 0059 left open and invites a consumer to retry a flow whose defining property is that
+repeating it unchanged changes nothing); **E** `usage_or_config` (rejected — Section 8.2 reserves it for
+a run in which the policy did not run, and non-termination is not statically detectable, so Section 6.10
+cannot catch it either); **F** a wall-clock deadline as the required bound (rejected — not
+deterministic, so no vector can assert it, and the run's wall clock already belongs to the consumer;
+kept as a permitted *additional* bound with the same disposition); **G** a repository-configurable bound
+(rejected for now — it answers a retry-policy question, not the termination question, and is recorded as
+the surface it would land on). The unit carries the decision: **`run_op` is the only action whose result
+re-enters the machine** — `run` reaches it through the gated operation's `<op>:blocked`/`<op>:failed`
+reason and an `after` hook does not block, `create_task`/`set_state`/`notify` are consumer-effected
+intents emitted once, and `escalate`/`park`/`fail` are terminal — so bounding that count is a
+termination proof for every policy the schema can express rather than a heuristic that usually catches
+loops, and the next action added can be checked against it by asking only whether its result re-enters.
+The floor (at least 64 dispatches, roughly an order of magnitude above the built-in sequences' worst
+case) is what makes the issue's own portability claim true rather than hoped-for: with no floor an
+engine whose bound is three conforms and agrees with nobody. `flow_exhausted` and `intervention` are
+both holds — no automated party can move the flow, so no front-end binds a resolver or resumes — and
+Section 8.4 now states that as a property of the pair rather than of a single token; they stay distinct
+because a park is the policy working as written while an exhausted flow says the graph does not converge
+or the remote outruns the engine. The envelope needs no new rule: decision 0059's invariant already
+nulls `op`/`reason`/`class` where nothing is decisive, and 0059's own record anticipated this case.
+Left open: `fail`'s envelope, still, and the configurable bound. Reconsider if a consumer appears that
+can legitimately resume an exhausted flow, at which point `flow_exhausted` would want a resume token
+rather than a bare hold. Relates to 0059 (whose invariant this builds on and whose `intervention`
+carve-out it widens), 0056, 0057, and 0044 (whose `Engine Invocation Failures` class covers only runs in
+which the policy did not run). Accepted and applied to `VCSX-SPEC.md` (Sections 5.6, 8.2, 8.4, 12.2,
+13.1, 13.2, 13.3), the vocabulary registry, and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.

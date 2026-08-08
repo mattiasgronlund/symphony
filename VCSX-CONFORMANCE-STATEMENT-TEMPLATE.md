@@ -67,6 +67,7 @@ concrete choice; do not leave a row blank.
 | Obligation | Section | Resolution |
 |------------|---------|------------|
 | Checkout-mode detection mechanism | 3.3 | `<how git / jj / jj secondary workspace are distinguished>` |
+| Flow bound: the `run_op` count (at least 64), and any further bound imposed | 5.6 | `<count, plus any wall-clock or other bound>` |
 | `repo.policy.toml` discovery precedence (explicit override, then repository default) | 6.1 | `<...>` |
 | Form of a hook's engine-invoked `run` unit | 6.6 | `<executable path / shell string / named task / …>` |
 | Which reason is reported when several configuration conditions hold | 6.10 | `<first found / a documented precedence / all of them>` |
@@ -100,18 +101,20 @@ tokens without a class edge.
 Section 8.4 makes the `need` vocabulary part of the public contract, documented and stable within a
 major version. List every `need` this engine can emit, including the registry-named ones it uses.
 
-| `need` | Emitted by (`op`, position, or action) | Meaning to the resolver |
-|--------|----------------------------------------|-------------------------|
+| `need` | Emitted by (`op`, position, action, or bound) | Meaning to the resolver |
+|--------|-----------------------------------------------|-------------------------|
 | `integrate_then_retry` | `<...>` | `<...>` |
 | `resolve_conflicts` | `<...>` | `<...>` |
 | `await_checks` | `<...>` | `<...>` |
 | `human_review` | `<...>` | `<...>` |
 | `intervention` | `park` (Section 5.2) | `<...>` |
+| `flow_exhausted` | the flow bound (Section 5.6) | `<...>` |
 | `<other>` | `<...>` | `<...>` |
 
-Every conforming engine can emit `intervention`, since `park` is an action any `repo.policy.toml` may
-write, so it is listed rather than left to the `<other>` row. It is the one need no front-end resolves
-(Section 8.4); record how this engine surfaces the hold.
+Every conforming engine can emit `intervention` and `flow_exhausted`: `park` is an action any
+`repo.policy.toml` may write, and Section 5.6 requires the flow bound, so both are listed rather than
+left to the `<other>` row. They are the two needs no front-end resolves (Section 8.4); record how this
+engine surfaces each hold.
 
 ## 6. Plugin Capability Descriptors
 
