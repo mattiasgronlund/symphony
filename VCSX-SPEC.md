@@ -119,8 +119,8 @@ The engine distinguishes two execution contexts, so a consumer that runs an agen
 split one policy across the boundary:
 
 - **Host-side** — operations and hooks that touch the remote or hold credentials (integrate, push,
-  create_pr, merge, host-side hooks). A consumer sources host-side policy from a trusted revision (for
-  example a protected base branch) so an untrusted worktree cannot alter it.
+  pull, create_pr, merge, host-side hooks). A consumer sources host-side policy from a trusted
+  revision (for example a protected base branch) so an untrusted worktree cannot alter it.
 - **In-sandbox** — operations and hooks that run in the working tree without credentials (the
   `before:commit` gate/scan, in-sandbox hooks). A consumer sources these from the worktree.
 
@@ -151,10 +151,14 @@ returns a typed result (Section 4.2). Read-only operations carry no lifecycle po
   `ahead`/`behind` versus the resolved base (Section 6.4), and the pull-request state when a forge is
   configured (number and open/closed/merged). Read-only.
 - `diff` — the branch delta against the resolved base. Read-only.
-- `commit` — create a commit from the working tree, gated at `before:commit` (Section 10.1).
+- `commit` — create a commit from the working tree, gated at `before:commit` (Section 10.1). The
+  operation captures the working tree in full: every change the VCS does not ignore, including
+  content the VCS has not yet recorded. The engine defines no staging operation and no way to commit
+  a subset, so nothing selects the commit's content out of band.
 - `integrate` — bring the resolved base into the work branch (a merge/update-branch), preserving
-  recorded conflict resolutions where the backend supports them. Gated at no fixed position; typically
-  run in response to `push:non_fast_forward`.
+  recorded conflict resolutions where the backend supports them. The base is the branch as the
+  configured remote holds it (Sections 6.2, 6.4), acquired rather than read from the checkout's
+  copy. Gated at no fixed position; typically run in response to `push:non_fast_forward`.
 - `push` — push the work branch to the remote with the refspec pinned to the work branch. Gated at
   `before:push`.
 - `create_pr` — create or update the one pull request for the work branch against the resolved base,
@@ -169,6 +173,14 @@ returns a typed result (Section 4.2). Read-only operations carry no lifecycle po
 An engine MAY define additional operations and their `before:<op>` positions; the operations above are
 the required set and the four positions `before:commit`, `before:push`, `before:create_pr`,
 `before:merge` are the required lifecycle positions.
+
+Note: the operations that reach the remote are exactly those Section 3.2 places host-side — among
+the version-control operations, `integrate`, `push` and `pull`. `status` and `diff` are read-only
+and report against the base as the checkout already holds it, so their `ahead`/`behind` counts and
+their delta MAY be stale where the remote has moved. The asymmetry follows from the trust split
+rather than being an omission: acquiring the base is a host-side act, and marking a read-only
+operation host-side would deny it to a consumer running the engine in-sandbox without credentials
+(Section 3.2). A caller that needs current figures runs `integrate` first.
 
 ### 4.2 Operation Result Envelope and Proto Classes
 
@@ -401,18 +413,38 @@ fired, and the engine MUST document each bound it imposes (Section 13.3).
 - `vcs` (string) — the VCS backend selector (for example `git`, `jj`); MAY be `auto` for detection
   (Section 3.3).
 - `forge` (string) — the forge backend selector (for example `github`, `forgejo`).
+- `remote` (string, OPTIONAL) — the name of the remote the operations that touch one act against
+  (`integrate`, `push`, `pull`; Sections 3.2, 9.1).
+  - Default: unset — the backend's default remote for the checkout mode, which is
+    `Implementation-defined` and MUST be documented (Section 13.3).
 
 The backend selection is read here in both standalone and embedded use. An embedding consumer supplies
 the *credential* the selected backend uses (Section 9), not the selection — so which code host a
 repository targets is repository-owned, while the credential for it is the consumer's.
 
+The remote is repository-owned on the same reasoning: a repository that publishes its work branch to
+a fork, or that carries more than one remote, states which one here rather than leaving two
+conforming engines to push the same branch to different places. The engine resolves the remote once
+per invocation and supplies it to each capability that takes one (Section 9.1); a backend does not
+read it from the policy itself, and does not infer it from the work branch's own upstream binding,
+which need not exist — the work branch is engine-derived (Section 6.3) and MAY be absent from the
+checkout at the first push.
+
+The engine performs no repository provisioning (Section 1.3), so the named remote is one the
+provisioned checkout already carries. A name the checkout does not carry is not a configuration
+error — Section 6.10's validation reads the policy alone, and whether a remote exists is a property
+of the checkout — so it surfaces at first use as the operation's `failed` reason (Section 4.3).
+
 ### 6.3 `[scope]`
 
-- `branch_pattern` (string) — the work-branch name pattern (for example `symphony/<identifier>` or
-  `feature/<slug>`). The engine derives the work branch from this pattern and the caller-supplied
-  identity; it does not accept an arbitrary caller-named branch. Only the branch *name* is configured
-  here; any scope *enforcement* (restricting which branch may be pushed) is the consumer's, and the
-  engine pins the push refspec to the derived work branch regardless.
+- `branch_pattern` (string, OPTIONAL) — the work-branch name pattern (for example
+  `symphony/<identifier>` or `feature/<slug>`). The engine derives the work branch from this pattern
+  and the caller-supplied identity; it does not accept an arbitrary caller-named branch. Only the
+  branch *name* is configured here; any scope *enforcement* (restricting which branch may be pushed)
+  is the consumer's, and the engine pins the push refspec to the derived work branch regardless.
+  - Default: unset — the work branch is the checkout's current branch (Section 9.1
+    `current_branch`). A checkout with no current branch then has no work branch to derive, which
+    Section 8.6 reports.
 
 ### 6.4 `[base]` and Base Resolution
 
@@ -631,19 +663,20 @@ Every invocation returns one structured result:
 
 - `status` is the invocation's outcome. For a run that executed the policy it is the overall proto
   class: `ok` (all steps `done`), `needs_caller`, or `error`. For a run in which the policy did not
-  run it is `usage_or_config` (Section 6.10). A flow the policy stopped with `park` (Section 5.2) is
-  `needs_caller`: it did not reach the entry's intended effect, so it is not `ok`, and `park` does not
-  fail the flow, so it is not `error`. A flow the executor stopped at its bound (Section 5.6) is
-  `needs_caller` on the same reasoning: the entry's intended effect was not reached, and no operation
-  failed — the executor declined to dispatch the next one.
-- `op` / `reason` / `class` describe the decisive operation result. Where they are non-null, `class` is
-  the class `status` reports — `done` under `ok`, `needs_caller` under `needs_caller`, `error` under
-  `error` — because the status of a run that executed the policy is that result's proto class. All three
-  are null where the run has no decisive operation result: a clean `ok` with no operation; a parked flow,
-  which the policy stopped rather than an operation; and a flow stopped at its bound, which the executor
-  stopped. In neither of the last two did an operation ask the caller for anything, so there is nothing
-  decisive to report. Under `usage_or_config` there is no operation result: `op` and `class` are null and
-  `reason` carries the configuration reason (Section 6.10).
+  run it is `usage_or_config` (Sections 6.10, 8.6). A flow the policy stopped with `park`
+  (Section 5.2) is `needs_caller`: it did not reach the entry's intended effect, so it is not `ok`,
+  and `park` does not fail the flow, so it is not `error`. A flow the executor stopped at its bound
+  (Section 5.6) is `needs_caller` on the same reasoning: the entry's intended effect was not
+  reached, and no operation failed — the executor declined to dispatch the next one.
+- `op` / `reason` / `class` describe the decisive operation result. Where they are non-null, `class`
+  is the class `status` reports — `done` under `ok`, `needs_caller` under `needs_caller`, `error`
+  under `error` — because the status of a run that executed the policy is that result's proto class.
+  All three are null where the run has no decisive operation result: a clean `ok` with no operation;
+  a parked flow, which the policy stopped rather than an operation; and a flow stopped at its bound,
+  which the executor stopped. In neither of the last two did an operation ask the caller for
+  anything, so there is nothing decisive to report. Under `usage_or_config` there is no operation
+  result: `op` and `class` are null and `reason` carries the configuration reason (Section 6.10) or
+  the precondition reason (Section 8.6).
 - `escalation` is present exactly when `status == "needs_caller"` (Section 8.4), a parked flow and an
   exhausted one included.
 - `outputs` carries entry-specific structured data (for example `status` fields, the pull-request
@@ -660,7 +693,7 @@ branch without parsing:
 - `0` — `ok` (all `done`).
 - `10` — `needs_caller` (an escalation is present).
 - `20` — `error`.
-- `2` — `usage_or_config` (Section 6.10); the policy did not run.
+- `2` — `usage_or_config` (Sections 6.10, 8.6); the policy did not run.
 
 The JSON result is emitted regardless of exit code so a caller MAY always read structured detail.
 
@@ -688,17 +721,54 @@ distinguishable in the result envelope.
 
 ### 8.5 Versioning and the Version Grammar
 
-- The engine version is `MAJOR.MINOR`. The invocation envelope, the invocation status values, the proto
-  classes, the exit-code mapping, the `need` vocabulary, the class of every listed reason
-  (Section 4.3), and the configuration reasons (Section 6.10) are the **major-stable surface**: they do
-  not change within a `MAJOR`.
-- New reason tokens, new `need` tokens, new configuration reasons, new operations, and new plugin
-  backends MAY be introduced in a `MINOR` release; existing consumers absorb new operation reasons
-  through the `#class` fallback (Section 5.3), and a new configuration reason through the
-  `usage_or_config` status, which does not change.
+- The engine version is `MAJOR.MINOR`. The invocation envelope, the invocation status values, the
+  proto classes, the exit-code mapping, the `need` vocabulary, the class of every listed reason
+  (Section 4.3), the configuration reasons (Section 6.10), and the precondition reasons
+  (Section 8.6) are the **major-stable surface**: they do not change within a `MAJOR`.
+- New reason tokens, new `need` tokens, new configuration reasons, new precondition reasons, new
+  operations, and new plugin backends MAY be introduced in a `MINOR` release; existing consumers
+  absorb new operation reasons through the `#class` fallback (Section 5.3), and a new configuration
+  or precondition reason through the `usage_or_config` status, which does not change.
 - A consumer declares a `version_floor` (Section 6.2); an engine below the floor refuses to run
   (fail-closed) with a usage/config result rather than mis-executing a policy that assumes newer
   surface.
+
+### 8.6 Invocation Preconditions
+
+Between validating the policy (Section 6.10) and running it, the engine establishes the
+preconditions the invoked entry point depends on. It resolves the work branch (Section 6.3), which
+calls a VCS backend capability — `derive_work_branch`, or `current_branch` where no `branch_pattern`
+is configured (Section 9.1). For an entry that commits it accepts the caller-supplied commit
+identity (Section 10.1), whose shape only the backend can judge, because the engine holds identity
+opaque.
+
+A precondition the engine cannot establish is not an operation result. No operation ran, so the
+Section 4.3 registry does not apply, no proto class is assigned, and there is no `<op>:<reason>` for
+the policy machine to route — the entry points are the front-end sequences and the individual
+operations (Section 8.1), and this is before the first of them. The engine refuses to run the policy
+and returns the `usage_or_config` status (exit `2`, Section 8.3) with `op` and `class` null and
+`reason` carrying one of the tokens below, which is the envelope Section 8.2 already defines for a
+run in which the policy did not run.
+
+| Condition | Reason |
+|-----------|--------|
+| The work branch is the checkout's current branch (Section 6.3) and the checkout has none | `no_current_branch` |
+| The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
+| The caller-supplied commit identity is malformed as the VCS backend judges it (Section 10.1) | `identity_invalid` |
+
+Precondition reasons carry no proto class, for the same reason configuration reasons do not
+(Section 6.10), and they share the `usage_or_config` status, so a consumer already branching on that
+status absorbs a new one without a class edge. An engine MUST document any precondition reason it
+adds beyond this registry (Section 13.3). An engine MUST NOT report a precondition reason for a
+condition an operation could have reported: once an operation is dispatched, its failure is that
+operation's own reason (Section 4.3).
+
+What separates this registry from Section 6.10's is what each is judged from. A configuration error
+is a property of `repo.policy.toml` alone, detectable before any argument or checkout is in hand; a
+precondition failure needs the invocation's arguments and the checkout the engine was pointed at.
+Both refuse to run the policy and both report `usage_or_config`, which is why that status names
+usage and configuration together. Validation precedes precondition establishment, so where a
+configuration error and a precondition failure both hold, the configuration reason is reported.
 
 ## 9. Plugin API
 
@@ -710,14 +780,25 @@ advertises a static capability descriptor (data, not a runtime call).
 Realizes the version-control operations. Required capabilities:
 
 - `detect_mode()` → checkout mode (Section 3.3).
-- `current_branch()`, `is_dirty()`, `is_conflicted()`, `ahead_behind(base)`.
+- `current_branch()`, `is_dirty()`, `is_conflicted()`, `ahead_behind(base)`. `is_dirty()` is
+  `commit`'s own predicate: it reports the working tree dirty exactly when a `commit` would capture
+  something, so content the VCS has not yet recorded counts and ignored content does not
+  (Section 4.1).
 - `diff(base)` → `diff:*`, the branch delta against the resolved base (Section 6.4). Read-only.
 - `derive_work_branch(pattern, identity)` → the pinned work branch (Section 6.3).
 - `commit(message, identity)` → `commit:*`.
-- `integrate(base)` → `integrate:*`, preserving recorded conflict resolutions where supported.
-- `push(work_branch)` → `push:*`, with the refspec pinned to the work branch and never a force push.
-- `pull(work_branch)` → `pull:*`, merging the remote counterpart into the local branch and rewriting
-  none of its commits (Section 4.1).
+- `integrate(remote, base)` → `integrate:*`, bringing in the base as `remote` holds it (Section 4.1)
+  and preserving recorded conflict resolutions where supported.
+- `push(remote, work_branch)` → `push:*`, with the refspec pinned to the work branch and never a
+  force push.
+- `pull(remote, work_branch)` → `pull:*`, merging the remote counterpart into the local branch and
+  rewriting none of its commits (Section 4.1).
+
+`remote` is the resolved remote (Section 6.2), supplied by the engine; the three capabilities that
+take one are exactly the version-control operations Section 3.2 places host-side. Every other
+capability above is local to the checkout — it reads or writes the worktree and the history the
+checkout already holds, acquires nothing over the network, and needs no credential — so
+`ahead_behind(base)` and `diff(base)` compare against the checkout's copy of the base (Section 4.1).
 
 The list is the minimum every backend MUST provide, not a maximum: every operation Section 4.1
 requires of a VCS backend is realizable through it. An engine MAY define additional operations
@@ -874,6 +955,13 @@ function ship(identity, message):
 The routing above is the built-in default; a repository's `[policy]` edges override each step. `ship`
 never runs `merge`.
 
+`worktree_dirty()` is the `is_dirty()` capability (Section 9.1), so the guard and the operation
+share one predicate: a change made only of content the VCS has not yet recorded is dirty, and `ship`
+commits it rather than reporting the branch clean and pushing nothing. The retry converges because
+`integrate` acquires the base from the configured remote (Section 4.1) rather than re-reading the
+checkout's copy; against a stale copy the push would stay non-fast-forward until the flow bound
+ended the invocation.
+
 The loop is bounded by the flow bound (Section 5.6) rather than by a step count of its own: every
 `run_op` counts against it wherever it is dispatched, so a `push`/`integrate` pair that never converges —
 against a base branch that moves between every attempt, or through a repository's own edges routing back
@@ -943,7 +1031,10 @@ A conforming engine SHOULD include tests covering:
   proto class; `push:non_fast_forward` is `needs_caller` and routes to `integrate`; `push:pr_closed`
   refuses a push over a CLOSED/MERGED pull request; `create_pr:base_mismatch` is surfaced, not
   overwritten; a divergent `pull` merges rather than rewrites, and the `pull:conflict` it leaves is
-  finalized by `commit`.
+  finalized by `commit`; a working tree whose only change is content the VCS has not recorded is
+  dirty and is committed, not skipped or reported `commit:nothing_to_commit`; `integrate` brings in
+  the base as the remote holds it, so a `push:non_fast_forward` retry converges against a base that
+  moved, while `status` and `diff` report against the checkout's copy and acquire nothing.
 - Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
   `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6).
 - Front-ends: `ship` stops at the pull request; `land` merges an open, checks-passed pull request,
@@ -951,12 +1042,17 @@ A conforming engine SHOULD include tests covering:
   the same operation flow through `ship` and an embedded driver.
 - Invocation contract: exit codes mirror proto classes; `escalation` is present exactly for
   `needs_caller`; a parked flow is `needs_caller` with the `intervention` need and null
-  `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed.
+  `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed; a checkout
+  with no current branch where no `branch_pattern` is configured, an illegal derived work-branch
+  name, and a malformed commit identity each refuse to run the policy and yield `usage_or_config`
+  with the precondition reason and null `op`/`class` (Section 8.6).
 - Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it; the
   squash body is the `pr_to_squash` transform of the pull-request body.
 - Plugins: an undeclared capability yields `capability_unsupported` at validation where determinable
   and the operation's `unsupported` reason at first use otherwise, never a silent no-op; git and jj
-  checkout modes (including a jj secondary workspace) are handled.
+  checkout modes (including a jj secondary workspace) are handled; the remote-touching operations
+  act against the resolved remote, a configured `[engine] remote` overriding the backend's default
+  (Section 6.2).
 
 ### 13.2 Implementation Checklist
 
@@ -966,8 +1062,8 @@ A conforming engine SHOULD include tests covering:
 - The operation set and the reason-token registry with stable proto classes.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), base resolution, and the
   execution-context labeling.
-- The invocation contract: result envelope, exit codes, escalation payload, and versioning with a
-  `version_floor` floor.
+- The invocation contract: result envelope, exit codes, escalation payload, invocation
+  preconditions, and versioning with a `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in format.
 - Checkout-mode handling (git, jj, jj secondary workspace), a pinned, never-forced push refspec, and a
@@ -987,12 +1083,12 @@ The Statement MUST record:
   `version_floor` the build satisfies.
 - A resolution for every `Implementation-defined` behavior in this specification: checkout-mode
   detection (Section 3.3), the flow bound's value and any further bound the engine imposes
-  (Section 5.6), `repo.policy.toml` discovery precedence (Section 6.1), the form of a hook's
-  engine-invoked `run` unit (Section 6.6), which reason is reported when several configuration
-  conditions hold (Section 6.10), the entry-point argument encodings (Section 8.1), and the escalation
-  `detail` field (Section 8.4).
+  (Section 5.6), `repo.policy.toml` discovery precedence (Section 6.1), the backend's default remote
+  where `[engine] remote` is unset (Section 6.2), the form of a hook's engine-invoked `run` unit
+  (Section 6.6), which reason is reported when several configuration conditions hold (Section 6.10),
+  the entry-point argument encodings (Section 8.1), and the escalation `detail` field (Section 8.4).
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class
-  (Section 4.3), or a configuration reason (Section 6.10).
+  (Section 4.3), a configuration reason (Section 6.10), or a precondition reason (Section 8.6).
 - The `need` vocabulary the engine emits (Section 8.4).
 - The capability descriptors its VCS and forge plugins advertise (Section 9.3), and the capabilities
   any operation it defines beyond Section 4.1 requires of a backend (Section 9.1).

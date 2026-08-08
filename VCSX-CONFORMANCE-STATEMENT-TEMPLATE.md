@@ -69,6 +69,7 @@ concrete choice; do not leave a row blank.
 | Checkout-mode detection mechanism | 3.3 | `<how git / jj / jj secondary workspace are distinguished>` |
 | Flow bound: the `run_op` count (at least 64), and any further bound imposed | 5.6 | `<count, plus any wall-clock or other bound>` |
 | `repo.policy.toml` discovery precedence (explicit override, then repository default) | 6.1 | `<...>` |
+| The backend's default remote where `[engine] remote` is unset, per backend | 6.2 | `<name each backend uses>` |
 | Form of a hook's engine-invoked `run` unit | 6.6 | `<executable path / shell string / named task / …>` |
 | Which reason is reported when several configuration conditions hold | 6.10 | `<first found / a documented precedence / all of them>` |
 | Entry-point argument encodings (argument *names* for shared concepts are fixed) | 8.1 | `<CLI flags / JSON on stdin / in-process struct / …>` |
@@ -76,8 +77,8 @@ concrete choice; do not leave a row blank.
 
 ## 4. Reason Tokens Beyond the Registries
 
-Sections 4.3 and 6.10 permit an engine to add reason tokens and require it to document them;
-Section 8.5 permits new tokens in a `MINOR` release. Leave either table empty if the engine adds none.
+Sections 4.3, 6.10 and 8.6 permit an engine to add reason tokens and require it to document them;
+Section 8.5 permits new tokens in a `MINOR` release. Leave any table empty if the engine adds none.
 
 ### 4.1 Operation Reasons (Section 4.3)
 
@@ -91,6 +92,16 @@ A consumer absorbs these through the `#class` fallback, so the proto class is th
 
 These carry no proto class and are reported under the `usage_or_config` status, which absorbs new
 tokens without a class edge.
+
+| Reason | Condition |
+|--------|-----------|
+| `<reason>` | `<...>` |
+
+### 4.3 Precondition Reasons (Section 8.6)
+
+These likewise carry no proto class and are reported under `usage_or_config`. They differ from
+Section 4.2's by what they are judged from: a precondition failure needs the invocation's arguments
+and the checkout, so it is not statically determinable from `repo.policy.toml`.
 
 | Reason | Condition |
 |--------|-----------|
