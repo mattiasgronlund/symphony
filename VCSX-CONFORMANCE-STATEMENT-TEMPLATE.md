@@ -100,13 +100,18 @@ tokens without a class edge.
 Section 8.4 makes the `need` vocabulary part of the public contract, documented and stable within a
 major version. List every `need` this engine can emit, including the registry-named ones it uses.
 
-| `need` | Emitted by (`op` or position) | Meaning to the resolver |
-|--------|-------------------------------|-------------------------|
+| `need` | Emitted by (`op`, position, or action) | Meaning to the resolver |
+|--------|----------------------------------------|-------------------------|
 | `integrate_then_retry` | `<...>` | `<...>` |
 | `resolve_conflicts` | `<...>` | `<...>` |
 | `await_checks` | `<...>` | `<...>` |
 | `human_review` | `<...>` | `<...>` |
+| `intervention` | `park` (Section 5.2) | `<...>` |
 | `<other>` | `<...>` | `<...>` |
+
+Every conforming engine can emit `intervention`, since `park` is an action any `repo.policy.toml` may
+write, so it is listed rather than left to the `<other>` row. It is the one need no front-end resolves
+(Section 8.4); record how this engine surfaces the hold.
 
 ## 6. Plugin Capability Descriptors
 

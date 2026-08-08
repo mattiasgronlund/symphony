@@ -261,7 +261,8 @@ An action is one of:
 - `set_state(target)` — apply a workflow-state transition through the consumer (Section 6.7).
 - `notify(channel, payload)` — emit a notification through the consumer; a no-op when the consumer
   cannot deliver it.
-- `park` — stop the flow and hold for intervention without failing it.
+- `park` — stop the flow and hold for intervention without failing it. The invocation ends at
+  `needs_caller` carrying the `intervention` need (Sections 8.2, 8.4).
 - `fail(reason)` — end the flow as failed.
 
 `create_task`, `set_state`, and `notify` are effected by the consumer, because they touch systems
@@ -331,6 +332,13 @@ on.
 
 Because both front-ends run the same executor over the same policy, `escalate` is the single point at
 which their behavior legitimately differs.
+
+`park` (Section 5.2) reaches the same `needs_caller` result and carries a need of its own, so the
+envelope's escalation rule holds for it without exception (Section 8.2). It is not a second point of
+divergence, because it names no resolver to bind: `intervention` names a hold rather than a request
+(Section 8.4), so both front-ends surface it and neither resumes the flow. That is what separates the
+two actions: an `escalate` need is one a front-end is expected to meet and `intervention` is one it is
+not, and the difference is readable in the result rather than only in the policy that produced it.
 
 ## 6. `repo.policy.toml` Schema
 
@@ -579,11 +587,17 @@ Every invocation returns one structured result:
 
 - `status` is the invocation's outcome. For a run that executed the policy it is the overall proto
   class: `ok` (all steps `done`), `needs_caller`, or `error`. For a run in which the policy did not
-  run it is `usage_or_config` (Section 6.10).
-- `op` / `reason` / `class` describe the decisive operation result (null for a clean `ok` with no
-  decisive operation). Under `usage_or_config` there is no operation result: `op` and `class` are null
-  and `reason` carries the configuration reason (Section 6.10).
-- `escalation` is present exactly when `status == "needs_caller"` (Section 8.4).
+  run it is `usage_or_config` (Section 6.10). A flow the policy stopped with `park` (Section 5.2) is
+  `needs_caller`: it did not reach the entry's intended effect, so it is not `ok`, and `park` does not
+  fail the flow, so it is not `error`.
+- `op` / `reason` / `class` describe the decisive operation result. Where they are non-null, `class` is
+  the class `status` reports — `done` under `ok`, `needs_caller` under `needs_caller`, `error` under
+  `error` — because the status of a run that executed the policy is that result's proto class. All three
+  are null where the run has no decisive operation result: a clean `ok` with no operation, and a parked
+  flow, which the policy stopped rather than an operation, so no operation asked the caller for anything.
+  Under `usage_or_config` there is no operation result: `op` and `class` are null and `reason` carries
+  the configuration reason (Section 6.10).
+- `escalation` is present exactly when `status == "needs_caller"` (Section 8.4), a parked flow included.
 - `outputs` carries entry-specific structured data (for example `status` fields, the pull-request
   number/state). It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
   the engine emitted and no consumer performed, each naming its `action` and that action's arguments.
@@ -605,10 +619,18 @@ The JSON result is emitted regardless of exit code so a caller MAY always read s
 ### 8.4 Escalation Payload
 
 When `status == "needs_caller"`, `escalation` carries: the `need` (a stable token naming what is
-required, for example `integrate_then_retry`, `resolve_conflicts`, `await_checks`,
-`human_review`), the `op` that produced it, and an `Implementation-defined` `detail`. A front-end binds
-the resolver by the `need` token (Section 5.5); the `need` vocabulary is part of the public contract and
-MUST be documented and stable within a major version.
+required, for example `integrate_then_retry`, `resolve_conflicts`, `await_checks`, `human_review`,
+`intervention`), the `op` that produced it, and an `Implementation-defined` `detail`. The `op` is null
+where no operation produced the escalation — at a signal, and at a lifecycle position, where the gated
+operation has not run (Section 5.1). A front-end binds the resolver by the `need` token (Section 5.5);
+the `need` vocabulary is part of the public contract and MUST be documented and stable within a major
+version.
+
+`intervention` is the need a parked flow carries (Section 5.2), and the one need no front-end resolves:
+`park` names a hold rather than a request, so a front-end MUST NOT bind a resolver to `intervention` and
+MUST NOT resume the flow on it. The hold is released out of band, by a new invocation. Every other need
+names something a caller can supply, which is what makes `park` and `escalate` distinguishable in the
+result envelope.
 
 ### 8.5 Versioning and the Version Grammar
 
@@ -857,7 +879,8 @@ A conforming engine SHOULD include tests covering:
   applies `pr_to_squash` for a squash, and never authors a message; the same `repo.policy.toml` yields
   the same operation flow through `ship` and an embedded driver.
 - Invocation contract: exit codes mirror proto classes; `escalation` is present exactly for
-  `needs_caller`; a `version_floor` above the running version refuses fail-closed.
+  `needs_caller`; a parked flow is `needs_caller` with the `intervention` need and null
+  `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed.
 - Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it; the
   squash body is the `pr_to_squash` transform of the pull-request body.
 - Plugins: an undeclared capability yields `capability_unsupported` at validation where determinable

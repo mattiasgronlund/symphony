@@ -163,8 +163,14 @@
 
   "needs": {
     "spec_refs": ["VCSX-SPEC.md Section 8.4 \"Escalation Payload\""],
-    "note": "Part of the public contract: documented and stable within a MAJOR. The set below is the specification's named vocabulary; an engine documents any it adds.",
-    "entries": ["integrate_then_retry", "resolve_conflicts", "await_checks", "human_review"]
+    "note": "Part of the public contract: documented and stable within a MAJOR. The set below is the specification's named vocabulary; an engine documents any it adds. `raised_by` records the action that raises the need, and `resolvable` whether a front-end binds a resolver to it.",
+    "entries": [
+      { "token": "integrate_then_retry", "raised_by": "escalate", "resolvable": true },
+      { "token": "resolve_conflicts", "raised_by": "escalate", "resolvable": true },
+      { "token": "await_checks", "raised_by": "escalate", "resolvable": true },
+      { "token": "human_review", "raised_by": "escalate", "resolvable": true },
+      { "token": "intervention", "raised_by": "park", "resolvable": false, "note": "Names a hold rather than a request: a front-end MUST NOT bind a resolver to it and MUST NOT resume the flow on it." }
+    ]
   },
 
   "envelope_fields": {

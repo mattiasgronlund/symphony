@@ -1357,3 +1357,51 @@ along with every other operation. Reconsider if a checkout mode appeared whose d
 expressed against a single resolved base, which would revisit the signature rather than the
 requiredness. Relates to 0057 and 0040. Accepted and applied to `VCSX-SPEC.md` (Sections 9.1, 13.3) and
 `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0059 — A parked flow is `needs_caller` with the `intervention` need
+
+**State:** Accepted
+**Folder:** [decisions/0059-park-invocation-outcome/](decisions/0059-park-invocation-outcome/)
+
+Resolves issue #3. `VCSX-SPEC.md` Section 5.2 defines `park` as "stop the flow and hold for intervention
+without failing it" and Section 6.5 lets a repository write `do = "park"` on any edge, but Section 8.2
+offered four invocation statuses and mapped none of them to a parked flow. Elimination reached one — not
+`ok` ("all steps `done`"), not `error` (`park` does not fail the flow), not `usage_or_config` (reserved
+for a run in which the policy did not run) — but by argument rather than by anything stated, and Section
+8.3 turns status into an exit code, so two conforming engines could return different exit codes for the
+same run of the same correct policy. Implementing it surfaced the sharper half: Section 8.2 had no
+*shape* for the parked envelope either. `op`/`reason`/`class` were "the decisive operation result",
+nullable only "for a clean `ok` with no decisive operation", while a parked flow's last result is
+typically `done`-class — a `push:ok` on the way to a park edge — so reporting it would claim an operation
+asked the caller something when none did, and would put a `done`-class reason under a `needs_caller`
+status. And since `escalation` is present *exactly* when the status is `needs_caller`, a parked flow must
+carry a Section 8.4 `need`, of which three name a remedy a park does not have. Options: A `needs_caller`
+with a new `intervention` need and a null `op`/`reason`/`class` (chosen); B `human_review` covers it
+(rejected — it collapses a hold into the token Section 12.2 already emits for `push:pr_closed`, and
+Section 5.5 would then have a conforming driver bind a resolver and *resume* a parked flow, so rescuing
+it costs a carve-out in Section 5.5, trading a token for an exception); C `needs_caller` with no
+escalation, relaxing "exactly when" (rejected — the reading the filing implementation took, and it adds
+no token, but it makes a parked flow indistinguishable from an engine bug that dropped the escalation,
+against the "reported, never silently dropped" property Section 5.4 rests on); D a fifth invocation
+status (rejected — Section 8.5 freezes the status values and the exit-code mapping for a whole `MAJOR`,
+which is a steep price to avoid a `MINOR`-compatible token); E report the parked-at trigger when its
+class agrees with the status (rejected — a consumer must handle null regardless, since a park at a signal
+or a lifecycle position has nothing to report, so it adds a case without removing one and gives two parks
+different shapes). What makes the token load-bearing rather than cosmetic is that **`intervention` is the
+one need no front-end resolves**: `park` names a hold, not a request, so Section 8.4 forbids binding a
+resolver to it or resuming the flow on it, and that single restriction is what keeps Section 5.5's claim
+that `escalate` is the *single* point of front-end divergence true — both front-ends do the same thing
+with a park. The null envelope is then derived rather than asserted, because Section 8.2 gains the
+invariant it only implied: where `op`/`reason`/`class` are non-null, `class` is the class `status`
+reports. That invariant is worth more than the case that motivated it — it is what a reviewer checks the
+next time a terminal action is added. Two adjacent holes are closed on the same path: escalation's `op`
+is stated nullable, naming the two cases (at a signal, and at a lifecycle position where the gated
+operation has not run), a defect `blocked → escalate("human_review")` already had before `park`. Left
+open deliberately and recorded: `fail`'s mirror-image envelope — an explicit `do = "fail"` on a
+`done`-class trigger yields `error` with no `error`-class result — which cannot be settled before what
+`fail(reason)`'s argument *is* has an answer; and issue #4's bounded traversal, which lands on this
+invariant but asks its own questions. Reconsider if a front-end appears with a legitimate automated
+response to a park, at which point Option E's finer envelope would start to pay for itself. Relates to
+0044, 0056 (the last invocation status found missing), and 0057 (the same
+rule-outruns-its-enumeration shape, one section over). Accepted and applied to `VCSX-SPEC.md` (Sections
+5.2, 5.5, 8.2, 8.4, 13.1), the vocabulary registry, and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
