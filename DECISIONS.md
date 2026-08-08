@@ -1280,3 +1280,80 @@ Reconsider Option C if one-reason-at-a-time repair loops proved the dominant cos
 policy. Depends on 0053; relates to 0044 (whose `Engine Invocation Failures` class covers the refusal
 this makes legible) and 0051. Accepted and applied to `VCSX-SPEC.md` (Sections 6.10, 8.2, 8.3, 8.5,
 13.3), the vocabulary registry, the corpus, and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0057 — Universal operation reasons: `blocked`, `failed`, `unsupported`
+
+**State:** Accepted
+**Folder:** [decisions/0057-universal-operation-reasons/](decisions/0057-universal-operation-reasons/)
+
+Resolves parts 1a and 1b of issue #2, which are one defect seen twice: `VCSX-SPEC.md` Section 4.3's
+registry is enumerated per operation, while Sections 6.6 and 9.3 state rules quantified over
+operations. Section 6.6 surfaces a blocking `before:*` hook "as the operation's `blocked`/`failed`
+reason", but only `commit` had the pair — `create_pr` could express a gate block at neither class
+though Section 10.4 scans its title and body *during* the operation, and `push` had to borrow
+`push:rejected`, which says the remote refused. `merge:blocked` was worse than missing: the gate word
+at class `error` where `commit:blocked` carries it at `needs_caller`, so one `#needs_caller → escalate`
+edge escalated a blocked commit and failed a blocked merge, with nothing saying whether that was
+deliberate. Section 9.3 has the same shape: an undeclared capability "yields an `error`-class result",
+and neither Section 4.3 nor Section 6.10 named a token — unsatisfiable for `status`, `diff` and `pull`,
+which had **no `error`-class reason at all**. The general form is what makes it a defect: Section 4.1
+lets an engine define additional operations, so the operation set is open while the registry was
+closed, and any rule stated over all operations was going to outrun an enumeration. Options: A three
+reasons defined for **every** operation, stated once (chosen); B add the missing tokens one at a time,
+as the issue proposed (rejected — closes today's gap and leaves the registry closed against an open
+operation set, and does not reach `status`/`diff`/`pull`); C a separate `<op>:gate_blocked` namespace
+(rejected — contradicts Section 6.6's own wording and forces a rename of `commit:blocked`, trading one
+rename for another). For the `merge:blocked` collision: D the gate meaning wins and the forge refusal
+is renamed `merge:rejected`, keeping class `error` under a name parallel to `push:rejected` (chosen);
+E merge alone has no `needs_caller` gate reason (rejected — a `before:merge` gate returning
+`needs_caller` would surface at `error`, contradicting Section 6.6's class-preserving surfacing at
+precisely the position a repository is most likely to gate); F one token whose class varies with its
+origin (rejected — destroys the `#class` fallback for that reason, the one property Section 8.5 freezes
+for a whole `MAJOR`). So: `failed` (`error`) and `unsupported` (`error`) for every operation, `blocked`
+(`needs_caller`) for every gated one, and the registry gains a property now stated outright — **every
+operation has at least one `done` and at least one `error` reason**, so an `error`-class result is
+always expressible, including for the read-only ones, whose omission was an artifact of enumerating
+outcomes an engine had already thought of. The answer to the issue's question about `merge:blocked` is
+that it was an accident *of naming*: the class was right for the meaning the token carried, and the
+word was wrong. `capability_unsupported` joins Section 6.10's registry for the validation-time half of
+Section 9.3, keeping 0056's boundary intact. Section 12.2's `ship` loop needed a matching fix, the kind
+of defect that only shows once a class gains a member: it named the two `needs_caller` push reasons
+that existed and broke out otherwise, so a gate-blocked push would have fallen through to `create_pr`;
+it now returns any non-`done` result through `result_of`. Accepted costs: 45 normalized registry
+entries where there were 27, and a redefinition of a major-stable token, affordable only because
+decision 0049's engine is not written — the same reasoning 0056 used. Left open deliberately and
+recorded: Section 6.6 requires a blocking hook to return "a stable reason" and the envelope's `reason`
+carries the *operation's* token, so where the hook's own reason is exposed remains unspecified — a
+question about the envelope, not the registry. Relates to 0051, 0056, and 0049; sibling of 0058.
+Accepted and applied to `VCSX-SPEC.md` (Sections 4.3, 6.6, 6.10, 9.2, 9.3, 10.4, 12.2, 13.1), the
+vocabulary registry, and the corpus.
+
+## 0058 — `diff(base)` is a required VCS backend capability
+
+**State:** Accepted
+**Folder:** [decisions/0058-diff-required-vcs-capability/](decisions/0058-diff-required-vcs-capability/)
+
+Resolves part 1c of issue #2. `VCSX-SPEC.md` Section 4.1 makes `diff` a required operation and Section
+8.1 an entry point a driver may call directly, while Section 9.1's required VCS backend capabilities do
+not include it; `ahead_behind(base)` returns counts, not content, so nothing in the specified plugin API
+produces a branch delta and a conforming engine could not implement a required operation through the
+required interface. Every other operation traces to a capability, which is what marks this an oversight
+rather than a design. Options: A add `diff(base)` → `diff:*` to the required list (chosen); B read
+"Required capabilities" as a minimum and let each engine add its own (rejected — the specification is
+not literally wrong, but the capability's name, signature, and result token would then be chosen
+independently by every engine, which Section 14 calls a contract change and requires to be spelled
+identically); C widen `ahead_behind(base)` to return content (rejected — overloads a capability whose
+value is that it is cheap and countable, and forces a diff whenever `status` asks for counts); D demote
+`diff` to an OPTIONAL capability-gated operation (rejected — a backend that cannot produce a delta is
+not one the engine could drive, and demoting a required operation would fix the wrong end). The
+reasoning worth keeping is the invariant rather than the bullet: **every required operation MUST be
+realizable through the required capabilities**, which is what Section 9.1 was already trying to say and
+what a reviewer can check when the next operation is added. The issue's minimum-versus-maximum question
+is answered outright rather than left to inference — the list is the minimum every backend MUST provide,
+and an engine defining an additional operation MUST document the capabilities it requires in its
+Conformance Statement, so an engine-specific capability is visible as engine-specific rather than
+mistaken for shared surface. No reason-token consequence: 0057 gives `diff` its `error`-class reasons
+along with every other operation. Reconsider if a checkout mode appeared whose delta could not be
+expressed against a single resolved base, which would revisit the signature rather than the
+requiredness. Relates to 0057 and 0040. Accepted and applied to `VCSX-SPEC.md` (Sections 9.1, 13.3) and
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.

@@ -1,6 +1,7 @@
 {
   "function": "match_edge",
   "spec_refs": [
+    "VCSX-SPEC.md Section 4.3 \"Reason-Token Registry\"",
     "VCSX-SPEC.md Section 5.3 \"Matching Algorithm and the `#class` Fallback\"",
     "VCSX-SPEC.md Section 5.4 \"Unmatched Policy and Determinism\"",
     "VCSX-SPEC.md Section 12.1 \"Match a Trigger\"",
@@ -94,7 +95,32 @@
     {
       "id": "default_for_error_is_fail",
       "description": "Built-in default for the error class (Section 5.4).",
-      "given": { "edges": [], "trigger": "merge:blocked", "from_context": null },
+      "given": { "edges": [], "trigger": "merge:rejected", "from_context": null },
+      "expect": { "matched": null, "action": "fail" }
+    },
+    {
+      "id": "gate_block_is_needs_caller",
+      "description": "The universal `blocked` reason is class needs_caller at every gated operation, so a gate-blocked create_pr escalates by default (Sections 4.3, 5.4, 6.6).",
+      "given": { "edges": [], "trigger": "create_pr:blocked", "from_context": null },
+      "expect": { "matched": null, "action": "escalate" }
+    },
+    {
+      "id": "merge_gate_block_takes_the_needs_caller_edge",
+      "description": "`merge:blocked` is the `before:merge` gate block at needs_caller, so a merge:#needs_caller edge catches it (Sections 4.3, 6.6).",
+      "given": {
+        "edges": [
+          { "on": "merge:#needs_caller", "do": "escalate" },
+          { "on": "merge:#error", "do": "fail", "reason": "merge_failed" }
+        ],
+        "trigger": "merge:blocked",
+        "from_context": null
+      },
+      "expect": { "matched": "merge:#needs_caller", "action": "escalate" }
+    },
+    {
+      "id": "undeclared_capability_is_error_on_a_read_only_operation",
+      "description": "The universal `unsupported` reason is class error and is defined for every operation, including the read-only ones (Sections 4.3, 9.3).",
+      "given": { "edges": [], "trigger": "diff:unsupported", "from_context": null },
       "expect": { "matched": null, "action": "fail" }
     },
     {

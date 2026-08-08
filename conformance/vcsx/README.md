@@ -71,8 +71,10 @@ entry list.
 
 The registry is a faithful view, not a byte-for-byte transcription. Two places it normalizes:
 
-- **`reasons`** is keyed one entry per `(operation, reason)`. The Section 4.3 table's combined
-  `status` / `diff` row expands to `status:ok` and `diff:ok`, so 26 table rows yield 27 entries.
+- **`reasons`** is keyed one entry per `(operation, reason)`. Section 4.3's combined rows expand: the
+  `status` / `diff` row to `status:ok` and `diff:ok`, and the three universal rows to one entry per
+  operation they cover — `failed` and `unsupported` for every operation, `blocked` for every gated one,
+  each marked `universal: true`. So 27 table rows yield 45 entries.
 - **`operations`** carries `lifecycle_position: null` for the operations Section 4.1 gates at no fixed
   position (`integrate`, `pull`) and for the read-only ones (`status`, `diff`), rather than omitting
   the field.
@@ -145,9 +147,10 @@ Two interpretation notes apply:
 | `vectors/exit-codes.json` | `exit_code_for_status` | Sections 8.2, 8.3, 8.5 |
 | `vectors/policy-validation.json` | `validate_policy` | Sections 5.4, 6.4, 6.7, 6.10, 8.5 |
 
-53 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or filesystem.
+56 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or filesystem.
 (The slice was authored at 49 and grew by four as decisions 0054–0056 resolved its findings, each
-turning an unassertable behavior into an asserted one.)
+turning an unassertable behavior into an asserted one, and by three more as decision 0057 added the
+universal reasons and redefined `merge:blocked`.)
 
 `proto_class` has no vector file of its own. It is a lookup over the Section 4.3 registry, and
 `vocabulary.json` already **is** that registry — a vector file would duplicate it with no added
@@ -160,8 +163,10 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
 
 - **Front-end sequences** (`ship`, `land`; Sections 7.1–7.2, 12.2–12.3) — they run operations against
   a real repository and forge.
-- **Plugin behavior** — checkout-mode detection, the pinned never-forced push refspec, and the
-  undeclared-capability `error` result (Sections 3.3, 9.1–9.3).
+- **Plugin behavior** — checkout-mode detection, the pinned never-forced push refspec, and both halves
+  of the undeclared-capability case: `capability_unsupported` at validation and the operation's
+  `unsupported` reason at first use (Sections 3.3, 9.1–9.3). Both need a capability descriptor as
+  input, which no vector file supplies.
 - **Message formulation** — `scan-content`, pull-request composition, and the `pr_to_squash` transform
   (Section 10), whose formats are repository-owned by construction.
 - **Hook execution** and the execution-context split (Sections 3.2, 6.6) — process and trust-boundary

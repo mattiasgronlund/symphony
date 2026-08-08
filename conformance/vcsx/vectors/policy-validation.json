@@ -12,7 +12,8 @@
   "expect": "`{ valid: true }`, or `{ error: <config reason> }` naming the Section 6.10 reason the refusal carries",
   "notes": [
     "Each failing vector holds exactly one condition, so the reported reason is determined. Which reason is reported when several conditions hold is Implementation-defined (Section 6.10) and is deliberately not exercised here.",
-    "`consumer_capabilities` lists the consumer-effected actions (Section 5.2) this consumer can perform. An empty list models a human at an interactive prompt (Section 1.3)."
+    "`consumer_capabilities` lists the consumer-effected actions (Section 5.2) this consumer can perform. An empty list models a human at an interactive prompt (Section 1.3).",
+    "`capability_unsupported` (Sections 6.10, 9.3) is not exercised here: it is determined against a plugin capability descriptor, which this slice defers with the rest of plugin behavior. Its absence is a coverage gap, not a statement that the condition is unvalidated."
   ],
   "vectors": [
     {
