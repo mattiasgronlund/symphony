@@ -121,7 +121,7 @@
     "entries": [
       { "token": "no_current_branch", "meaning": "The work branch is the checkout's current branch (no `branch_pattern` configured) and the checkout has none." },
       { "token": "work_branch_invalid", "meaning": "The derived work branch name is not a legal branch name for the VCS backend." },
-      { "token": "identity_invalid", "meaning": "The caller-supplied commit identity is malformed as the VCS backend judges it." }
+      { "token": "identity_invalid", "meaning": "The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it." }
     ]
   },
 

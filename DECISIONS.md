@@ -1810,3 +1810,74 @@ hygiene rule making it a decision rather than a guessed-at vector), and 0054 and
 `match_edge` clarifications. Accepted and applied to `VCSX-SPEC.md` (Sections 5.4, 6.5, 12.1, 13.1,
 13.2) and the corpus (`match-edge.json` gains `unscoped_edge_matches_inside_a_from_context`,
 `scoped_edge_wins_over_unscoped_edge_in_its_context`, and `ladder_outranks_the_from_context`).
+
+## 0068 — Every commit the engine writes carries the caller-supplied commit identity
+
+**State:** Accepted
+**Folder:** [decisions/0068-merge-commit-identity/](decisions/0068-merge-commit-identity/)
+
+Resolves issue #14. `VCSX-SPEC.md` Section 10.1 splits a commit into content and identity and
+assigns the second to the consumer; Section 9.1 carried that through for `commit(message, identity)`
+and for neither of the two other capabilities that can write a commit — `integrate` writes a merge
+commit whenever the base does not fast-forward, and decision 0061 made `pull` merge the remote
+counterpart rather than replay over it. Section 10.1 answered this exact case for the *message*
+("uses the backend's default message") and said nothing about who it is attributed to, so a backend
+had to decide with nothing to decide from. Left to the environment, git auto-detects an identity
+from username and hostname: the merge commit names whoever ran the engine, so the same repository
+under the same policy produces different history on different machines, and where the hostname
+carries no domain — a container, a CI runner — git refuses the address and aborts the merge, so
+`integrate` returns `integrate:ok` on a laptop and `integrate:failed` on a runner with nothing in
+the policy differing. The filing implementation shipped that and CI caught it. Options: **A** the
+commit identity reaches `integrate` and `pull` through their Section 9.1 signatures (chosen); **B**
+the consumer's identity supplied once when the backend is opened (the issue's meanwhile; rejected —
+it routes an engine-resolved value through a channel that is not a capability signature, and the
+channel does not exist, since Section 9.1 specifies capabilities and not a backend lifecycle, so it
+must invent a plugin-instantiation step and make it the second place the engine hands a backend a
+resolved value; it puts two identities in play with a precedence rule no result exposes when a
+backend gets it wrong; and Section 8.6 already has the engine present the identity to the backend
+and refuse the run on `identity_invalid`, so backend-scoping would have the engine validate a value
+it does not supply); **C** an engine-defined identity published under Section 13.3 (the issue's
+second offer; rejected — it closes the host-dependence but not the divergence, two engines writing
+different authors into a repository's permanent history while both conform, and it inverts
+Section 10.1 for one commit out of two while every consumer already holds an identity, since
+`commit` requires one); **D** leave it to the environment as an `Implementation-defined` behavior
+(rejected — the term names a behavior an engine chooses and documents so a consumer can plan around
+it, and this one is not a property of the engine at all but of the host it happens to run on); **E**
+a repository-owned author key in `repo.policy.toml` beside `remote` (rejected — Section 6.2's line
+puts backend *selection* on the repository's side and the *credential* on the consumer's, and naming
+the author in the repository would source attribution from one side and authorization from the
+other); **F** reuse the identity `derive_work_branch` already takes (rejected — a branch derived
+from `symphony/<identifier>` is filled from a work item, so reusing it would attribute commits to a
+work item; what the option is good for is exposing that Section 8.1's common-argument list conflated
+two identities, fixed here). The reasoning worth keeping is the invariant in the shape decision 0062
+left it: **the capabilities that take the commit identity are exactly those that can write a
+commit.** Section 9.1 now carries one sentence of that form per engine-resolved value — the
+capabilities taking a `remote` are exactly the operations Section 3.2 places host-side, those taking
+an `identity` are exactly the ones that write commits — and each is what a reviewer checks when the
+next capability is added. The tension with 0062 had to be argued rather than assumed, because the
+meanwhile resolves it the other way: 0062, inheriting from 0058, requires every value an operation
+needs and the engine resolves to reach the backend through a capability signature, and a
+backend-scoped identity is that rule's plainest counter-example. Its justification — the identity is
+constant across an invocation — is true and beside the point, because **constancy is an argument
+about where a value is supplied from, not about how it reaches the backend**; the remote is equally
+constant and is passed anyway. Bending the rule for the first constant value would leave it stating
+something about frequency rather than about provenance. The credential is the one value that does
+travel outside a signature, and identity is not like it: Section 11 keeps credentials out of the
+engine deliberately, while Sections 8.1 and 8.6 have the engine hold the identity and validate it.
+Two consequences are stated rather than left to follow — a backend MUST NOT attribute a commit to an
+identity it derives from its execution environment, and a merge the forge performs, the commit a
+squash writes included, is attributed by the code host to the account the consumer's credential
+names — the second because without it the invariant reads as a claim about every merge commit in a
+repository's history and `land` looks like an omission rather than a boundary. Requiring the
+identity for an `integrate` that may fast-forward is a deliberate small cost: the engine cannot know
+in advance whether the update merges, and refusing up front at exit `2` beats discovering it after
+the merge was attempted. `identity_invalid` widens to cover an absent identity rather than gaining a
+fourth token, since 0065 bounded that registry deliberately and one failure of one argument should
+not need two branches. Reconsider if a backend appears that cannot be constructed without an
+identity — one signing through a key held in an agent socket — which would argue for a plugin
+lifecycle with an explicit open step that the identity travels with. Relates to 0062 (whose
+signatures this extends and whose invariant it applies a second time), 0058 (the source of that
+invariant), 0065 (whose precondition this widens), 0061 (which made `pull` a commit-writing
+capability), and 0032 (which authored the content/identity split). Accepted and applied to
+`VCSX-SPEC.md` (Sections 8.1, 8.6, 9.1, 10.1, 13.1, 13.2), the vocabulary registry,
+`VCSX-CONTRACT.md` (Section 9), and `SPEC.md` (Sections 9.8, 17.2).

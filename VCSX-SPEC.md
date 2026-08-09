@@ -677,9 +677,12 @@ The entry points are the front-end sequences and the individual operations:
 - `status`, `diff`, `commit`, `integrate`, `push`, `create_pr`, `merge`, `pull` — individual operations
   (Section 4.1), for a driver that composes its own sequence.
 
-Common arguments: the identity used to derive the work branch (Section 6.3), a message input for
-`commit`/`create_pr` (Section 10), and the execution context (Section 3.2). Exact argument encodings
-are `Implementation-defined` and MUST be documented; argument *names* for shared concepts MUST match
+Common arguments: the identity the work branch is derived from (Section 6.3), the commit identity
+the commits an entry writes are attributed to (Section 10.1), a message input for
+`commit`/`create_pr` (Section 10), and the execution context (Section 3.2). The two identities are
+separate arguments: the first fills the work-branch pattern and the second names an author, and a
+consumer supplies each where its capability takes one (Section 9.1). Exact argument encodings are
+`Implementation-defined` and MUST be documented; argument *names* for shared concepts MUST match
 this specification.
 
 ### 8.2 Result Envelope
@@ -777,9 +780,9 @@ distinguishable in the result envelope.
 Between validating the policy (Section 6.10) and running it, the engine establishes the
 preconditions the invoked entry point depends on. It resolves the work branch (Section 6.3), which
 calls a VCS backend capability — `derive_work_branch`, or `current_branch` where no `branch_pattern`
-is configured (Section 9.1). For an entry that commits it accepts the caller-supplied commit
-identity (Section 10.1), whose shape only the backend can judge, because the engine holds identity
-opaque.
+is configured (Section 9.1). For an entry that can write a commit — `commit`, `integrate`, `pull`,
+and a front-end sequence that dispatches one — it accepts the caller-supplied commit identity
+(Section 10.1), whose shape only the backend can judge, because the engine holds identity opaque.
 
 A precondition the engine cannot establish is not an operation result. No operation ran, so the
 Section 4.3 registry does not apply, no proto class is assigned, and there is no `<op>:<reason>` for
@@ -793,7 +796,7 @@ run in which the policy did not run.
 |-----------|--------|
 | The work branch is the checkout's current branch (Section 6.3) and the checkout has none | `no_current_branch` |
 | The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
-| The caller-supplied commit identity is malformed as the VCS backend judges it (Section 10.1) | `identity_invalid` |
+| The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it (Section 10.1) | `identity_invalid` |
 
 Precondition reasons carry no proto class, for the same reason configuration reasons do not
 (Section 6.10), and they share the `usage_or_config` status, so a consumer already branching on that
@@ -826,18 +829,25 @@ Realizes the version-control operations. Required capabilities:
 - `diff(base)` → `diff:*`, the branch delta against the resolved base (Section 6.4). Read-only.
 - `derive_work_branch(pattern, identity)` → the pinned work branch (Section 6.3).
 - `commit(message, identity)` → `commit:*`.
-- `integrate(remote, base)` → `integrate:*`, bringing in the base as `remote` holds it (Section 4.1)
-  and preserving recorded conflict resolutions where supported.
+- `integrate(remote, base, identity)` → `integrate:*`, bringing in the base as `remote` holds it
+  (Section 4.1) and preserving recorded conflict resolutions where supported.
 - `push(remote, work_branch)` → `push:*`, with the refspec pinned to the work branch and never a
   force push.
-- `pull(remote, work_branch)` → `pull:*`, merging the remote counterpart into the local branch and
-  rewriting none of its commits (Section 4.1).
+- `pull(remote, work_branch, identity)` → `pull:*`, merging the remote counterpart into the local
+  branch and rewriting none of its commits (Section 4.1).
 
 `remote` is the resolved remote (Section 6.2), supplied by the engine; the three capabilities that
 take one are exactly the version-control operations Section 3.2 places host-side. Every other
 capability above is local to the checkout — it reads or writes the worktree and the history the
 checkout already holds, acquires nothing over the network, and needs no credential — so
 `ahead_behind(base)` and `diff(base)` compare against the checkout's copy of the base (Section 4.1).
+
+`identity` on `commit`, `integrate` and `pull` is the commit identity (Sections 8.1, 10.1),
+supplied by the engine as `remote` is; the three capabilities that take one are exactly those that
+can write a commit, so a mechanical merge commit is attributed no differently from a commit `commit`
+writes (Section 10.1). `derive_work_branch(pattern, identity)` takes the identity the work branch is
+derived from (Section 6.3), which is a derivation input rather than an attribution, and writes no
+commit.
 
 The list is the minimum every backend MUST provide, not a maximum: every operation Section 4.1
 requires of a VCS backend is realizable through it. An engine MAY define additional operations
@@ -886,7 +896,18 @@ convention, hygiene rule, or trailer.
 The commit message is **authored** by the caller (in the consumer's context — for an agent-driven
 consumer, in-sandbox). It is validated at `before:commit` by the repository's `scan-content` hook
 (Section 6.6). The commit author/committer **identity** is supplied by the consumer, distinct from
-content. A mechanical merge commit produced by `integrate` uses the backend's default message.
+content. A mechanical merge commit — one `integrate` or `pull` writes where the update it performs
+is a merge (Section 4.1) — uses the backend's default message and carries that same identity, which
+the engine supplies to those capabilities as it does to `commit` (Section 9.1).
+
+A backend MUST NOT attribute a commit to an identity it derives from its execution environment.
+Attribution is therefore a property of the invocation rather than of the host the engine runs on:
+the same policy over the same checkout writes the same author on any machine, and an `integrate`
+does not depend for its outcome on what identity the host happens to offer.
+
+Note: a merge the forge performs (`merge`, Section 9.2), including the commit a squash strategy
+writes (Section 10.3), is attributed by the code host to the account the consumer's credential
+names. The engine writes no commit for it and supplies no identity.
 
 ### 10.2 Pull-Request Composition
 
@@ -1090,11 +1111,14 @@ A conforming engine SHOULD include tests covering:
   that is not a `MAJOR.MINOR` version is refused as `malformed_policy` rather than compared; a
   policy file that does not parse and an edge omitting the argument its action requires are refused
   with the same reason and null `op`/`class` (Section 6.10); a checkout with no current branch where
-  no `branch_pattern` is configured, an illegal derived work-branch name, and a malformed commit
-  identity each refuse to run the policy and yield `usage_or_config` with the precondition reason
-  and null `op`/`class` (Section 8.6).
+  no `branch_pattern` is configured, an illegal derived work-branch name, and a commit identity that
+  is absent where the entry requires one or malformed each refuse to run the policy and yield
+  `usage_or_config` with the precondition reason and null `op`/`class` (Section 8.6).
 - Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it; the
-  squash body is the `pr_to_squash` transform of the pull-request body.
+  squash body is the `pr_to_squash` transform of the pull-request body; every commit the engine
+  writes carries the supplied commit identity — the mechanical merge commit an `integrate` or a
+  `pull` writes included — on a host whose environment supplies no usable identity of its own
+  (Section 10.1).
 - Plugins: an undeclared capability yields `capability_unsupported` at validation where determinable
   and the operation's `unsupported` reason at first use otherwise, never a silent no-op; git and jj
   checkout modes (including a jj secondary workspace) are handled; the remote-touching operations
@@ -1113,7 +1137,8 @@ A conforming engine SHOULD include tests covering:
 - The invocation contract: result envelope, exit codes, escalation payload, invocation
   preconditions, and versioning with a `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors.
-- Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in format.
+- Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
+  format, and every commit the engine writes attributed to the supplied commit identity.
 - Checkout-mode handling (git, jj, jj secondary workspace), a pinned, never-forced push refspec, and a
   history-preserving work-branch update.
 

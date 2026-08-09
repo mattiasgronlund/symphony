@@ -252,7 +252,9 @@ three surfaces have distinct origins:
 
 - **Commit message — authored.** The agent authors it in-sandbox (conventions conveyed by the prompt),
   validated by `scan-content` at the `before:commit` position. Author/committer identity is repository
-  configuration, distinct from content. A mechanical merge commit uses the engine default.
+  configuration, distinct from content. A mechanical merge commit uses the engine default *message*
+  and carries that same configured identity; the engine attributes no commit to an identity it
+  derives from the host it runs on.
 - **Pull-request message — composed.** Title and body are composed from agent-supplied prose and/or
   durable inputs (the ticket, the closed task list from Section 8, commit subjects). The title is
   scanned strictly; the body is scanned with the tracker-key relaxation the code host's integration
