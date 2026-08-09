@@ -891,6 +891,8 @@ Operator policy config:
 - `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
 - `vcs.api_key`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; the credential for the repository's selected code host
 - a `repo.policy.toml` pointer per managed repository (Section 5.6)
+- `observability.*`: namespace for OPTIONAL observability settings, no core fields (Section 18.2)
+- `observability.ledger.*`: usage-ledger settings, no core fields (Section 13.6)
 
 Repository Way of Working (`repo.policy.toml`, Section 5.6):
 
@@ -1942,7 +1944,7 @@ include:
   opaque extras field
 - payload fields as needed
 
-Important emitted events include, for example:
+Important emitted events include:
 
 - `session_started`
 - `startup_failed`
@@ -1956,6 +1958,17 @@ Important emitted events include, for example:
 - `notification`
 - `other_message`
 - `malformed`
+
+Note:
+
+- The list is not exhaustive. An adapter MAY emit additional events for conditions this
+  specification does not name, and a consumer MUST tolerate an unrecognized event name rather than
+  failing the turn or the session.
+- The names are nonetheless fixed for the conditions they do name: an implementation that emits an
+  event for one of the conditions above MUST spell it as listed, which is what Section 10.7's
+  requirement that each adapter emit the neutral event vocabulary means in practice. The turn
+  processing (Section 10.3), the live session's `last_event` (Section 4.1.6), and the usage ledger's
+  `source_event` (Section 13.6) key on these spellings.
 
 ### 10.5 Approval, Tool Calls, and User Input Policy
 
@@ -2471,7 +2484,9 @@ Message formatting requirements:
 
 ### 13.2 Logging Outputs and Sinks
 
-The spec does not prescribe where logs are written (stderr, file, remote sink, etc.).
+Where logs are written (stderr, file, remote sink, etc.) is `Implementation-defined`: the sink or
+sinks an implementation writes to, and what it does when one of them fails, are part of its contract
+and are recorded in its Conformance Statement (Section 19).
 
 Requirements:
 
@@ -2603,7 +2618,8 @@ Scope and configuration:
   cost, or `model` field. Post-hoc cost attribution would require adding a `model` field, so its
   omission is a deliberate boundary.
 - The ledger owns its configuration (for example, a storage location and a retention policy) under
-  its own namespace, documented with the extension. Core conformance does not require these fields.
+  the `observability.ledger.*` namespace (Section 18.2), documented with the extension. Core
+  conformance does not require these fields.
 
 ### 13.7 Humanized Agent Event Summaries (OPTIONAL)
 
@@ -3423,6 +3439,13 @@ language-neutral vector corpus under `conformance/` (RECOMMENDED); an implementa
 its own binary and records the result in its Conformance Statement (Section 19). The corpus does not
 restate or replace the checks below.
 
+The token sets this specification names — the emitted runtime events (Section 10.4), the REQUIRED
+log context fields (Section 13.1), the usage-ledger entry fields (Section 13.6), the state recovery
+classes (Section 14.3), and the configuration namespaces (Sections 5.3, 18.2) — are published beside
+that corpus as a token registry, so an implementation can generate or check its own spellings
+instead of transcribing them. The registry is a derived view: this specification governs, it
+restates no requirement's substance, and a disagreement between them is a defect in the registry.
+
 Validation profiles:
 
 - `Core Conformance`: deterministic tests REQUIRED for all conforming implementations. It comprises
@@ -3872,8 +3895,15 @@ extend `Daemon Conformance`; the per-execution usage ledger extends `Broker Core
   (default on where the `structured-task-write` capability exists), and the task list classified
   `Reconstructable` / `Durable` (never `Ephemeral` by default). Owns `[tasks]` / `[driver]` in
   `repo.policy.toml`.
-- TODO: Make observability settings configurable in workflow front matter without prescribing UI
-  implementation details.
+- Observability settings (Section 13) own the `observability.*` config namespace: the log sink
+  (Section 13.2), a human-readable status surface (Section 13.4), humanized event summaries (Section
+  13.7), and the usage ledger's storage location and retention (`observability.ledger.*`, Section
+  13.6) are configured there where an implementation makes them configurable. The namespace belongs
+  to the operator policy config, not `WORKFLOW.md`: these are deployment concerns with host-side
+  effects, and a repository-owned, in-sandbox artifact MUST NOT carry them (Sections 5, 15.4). This
+  specification names the namespace, not the fields — sinks and surfaces are implementation-defined
+  (Sections 13.2, 13.4), so an implementation defines what it needs under `observability.*` and
+  documents it with the extension (Section 5.3) and in its Conformance Statement (Section 19).
 
 ### 18.3 Operational Validation Before Production (RECOMMENDED)
 
@@ -3901,8 +3931,10 @@ The Statement MUST record:
 - A resolution for every `Implementation-defined` behavior and every other "MUST document" obligation
   in this specification, including: the agent sandbox profile and effective egress policy
   (Section 9.6); the approval, sandbox, operator-confirmation, and user-input-required policy
-  (Section 10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the
-  park-vs-retry disposition of `Repository Provisioning Failures` and `Engine Invocation Failures`
+  (Section 10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the log
+  sink or sinks and what happens when one of them fails (Section 13.2); the human-readable status
+  surface, if any, and the presentation of rate-limit data (Sections 13.4, 13.5); the park-vs-retry
+  disposition of `Repository Provisioning Failures` and `Engine Invocation Failures`
   (Section 14.2); the durable-store degradation when no store is configured (Section 14.3); and the
   host-side object-store path (Section 16.5).
 - The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8) and to any

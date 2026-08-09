@@ -1,0 +1,140 @@
+{
+  "artifact": "symphony-token-vocabulary",
+  "schema_version": 1,
+  "governed_by": "SPEC.md",
+  "description": "The token sets SPEC.md names and expects an implementation to spell identically, published as data so a spelling can be generated or checked rather than transcribed. A derived view: the specification governs, this file restates no requirement's substance, and a disagreement is a bug here.",
+  "spec_refs": [
+    "SPEC.md Section 17 \"Test and Validation Matrix\""
+  ],
+
+  "events": {
+    "spec_refs": [
+      "SPEC.md Section 10.4 \"Emitted Runtime Events (Upstream to Orchestrator)\"",
+      "SPEC.md Section 10.7 \"Agent Runner Contract\""
+    ],
+    "note": "The neutral event vocabulary every adapter MUST emit (Section 10.7). Not a closed set: Section 10.4 states that an adapter MAY emit additional events and that a consumer MUST tolerate an unrecognized name, so a generated type MUST admit an unknown token rather than closing the enum. The names are fixed for the conditions they do name.",
+    "exhaustive": false,
+    "entries": [
+      "session_started",
+      "startup_failed",
+      "turn_completed",
+      "turn_failed",
+      "turn_cancelled",
+      "turn_ended_with_error",
+      "turn_input_required",
+      "approval_auto_approved",
+      "unsupported_tool_call",
+      "notification",
+      "other_message",
+      "malformed"
+    ]
+  },
+
+  "event_envelope_fields": {
+    "spec_refs": ["SPEC.md Section 10.4 \"Emitted Runtime Events (Upstream to Orchestrator)\""],
+    "note": "What each emitted event SHOULD include. Payload fields beyond these are event-specific.",
+    "entries": [
+      { "token": "event", "type": "enum/string" },
+      { "token": "timestamp", "type": "UTC timestamp" },
+      { "token": "pid", "optional": true, "note": "Included if available." },
+      { "token": "usage", "type": "map", "optional": true, "note": "The neutral token-usage record (`token_usage_fields`), with any adapter-specific counts in an opaque extras field." }
+    ]
+  },
+
+  "log_context_fields": {
+    "spec_refs": [
+      "SPEC.md Section 13.1 \"Logging Conventions\"",
+      "SPEC.md Section 18.1.1 \"Both Layer Profiles\""
+    ],
+    "note": "REQUIRED log context, by what the log is about. Section 18.1.1 makes structured logs carrying all three a conformance item for every implementation.",
+    "entries": [
+      { "token": "issue_id", "required_for": "issue-related logs" },
+      { "token": "issue_identifier", "required_for": "issue-related logs" },
+      { "token": "session_id", "required_for": "coding-agent session lifecycle logs" }
+    ]
+  },
+
+  "token_usage_fields": {
+    "spec_refs": [
+      "SPEC.md Section 4.1.6 \"Live Session (Agent Session Metadata)\"",
+      "SPEC.md Section 13.5 \"Session Metrics and Token Accounting\"",
+      "SPEC.md Section 10.7 \"Agent Runner Contract\""
+    ],
+    "note": "The neutral token-usage record each adapter normalizes its protocol's usage payloads into. Absolute cumulative totals, never deltas (Section 13.5); adapter-specific counts such as cache tokens go in an extras field rather than here.",
+    "entries": ["input_tokens", "output_tokens", "total_tokens"]
+  },
+
+  "ledger_entry_fields": {
+    "spec_refs": ["SPEC.md Section 13.6 \"Per-Execution Usage Ledger (OPTIONAL)\""],
+    "note": "One entry of the OPTIONAL per-execution usage ledger: a full absolute snapshot of one session's token usage at one observation. Entries are keyed by (`issue_identifier`, `session_id`); `required: true` marks a field whose absence makes the entry invalid and MUST be skipped on read.",
+    "key": ["issue_identifier", "session_id"],
+    "entries": [
+      { "token": "schema_version", "type": "integer" },
+      { "token": "observed_at", "type": "timestamp" },
+      { "token": "final", "type": "boolean" },
+      { "token": "issue_id", "type": "string or null" },
+      { "token": "issue_identifier", "type": "string", "required": true },
+      { "token": "session_id", "type": "string", "required": true },
+      { "token": "turn_count", "type": "integer" },
+      { "token": "input_tokens", "type": "integer" },
+      { "token": "output_tokens", "type": "integer" },
+      { "token": "total_tokens", "type": "integer" },
+      { "token": "source_event", "type": "string", "note": "An emitted event (Section 10.4) or `session_final`." }
+    ]
+  },
+
+  "recovery_classes": {
+    "spec_refs": ["SPEC.md Section 14.3 \"State Recovery Classes\""],
+    "note": "Every Orchestrator Runtime State field (Section 4.1.8), and any state an OPTIONAL extension introduces, MUST be assigned exactly one class, published in the Conformance Statement (Section 19).",
+    "entries": [
+      { "token": "Reconstructable", "short_code": "R" },
+      { "token": "Ephemeral", "short_code": "E" },
+      { "token": "Cached external signal", "short_code": "C" },
+      { "token": "Durable", "short_code": "D" }
+    ]
+  },
+
+  "runtime_state_fields": {
+    "spec_refs": [
+      "SPEC.md Section 4.1.8 \"Orchestrator Runtime State\"",
+      "SPEC.md Section 14.3 \"State Recovery Classes\""
+    ],
+    "note": "The single authoritative runtime state and the recovery class Section 4.1.8 states for each field. An implementation records its own assignment in its Conformance Statement (Section 19); this is the specification's, which is what that record is compared against.",
+    "entries": [
+      { "token": "poll_interval_ms", "recovery_class": "Reconstructable" },
+      { "token": "max_concurrent_agents", "recovery_class": "Reconstructable" },
+      { "token": "running", "recovery_class": "Reconstructable" },
+      { "token": "claimed", "recovery_class": "Reconstructable" },
+      { "token": "retry_attempts", "recovery_class": "Ephemeral" },
+      { "token": "completed", "recovery_class": "Ephemeral" },
+      { "token": "agent_totals", "recovery_class": "Ephemeral", "note": "Becomes `Durable` when a budgeting extension enforces on it, and is then Symphony-attributed rather than account-wide." },
+      { "token": "provider_rate_limits", "recovery_class": "Cached external signal", "note": "An absent value denotes `UNKNOWN`, distinct from any reading and in particular not `0`." }
+    ]
+  },
+
+  "config_namespaces": {
+    "spec_refs": [
+      "SPEC.md Section 5.3 \"Configuration Schema\"",
+      "SPEC.md Section 5.6 \"`repo.policy.toml` (Repository Way of Working)\"",
+      "SPEC.md Section 18.2 \"RECOMMENDED Extensions (Not REQUIRED for Conformance)\""
+    ],
+    "note": "Top-level configuration keys and the artifact each belongs to (Section 5). `core: true` marks a key the core schema defines; the rest are owned by the OPTIONAL extension named in `spec_ref`, and an implementation publishes the namespaces it ships in its Conformance Statement (Section 19). Not a closed set: Section 5.3 permits an extension to define additional top-level keys.",
+    "exhaustive": false,
+    "entries": [
+      { "token": "tracker", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.1", "note": "Its `transitions` field is repository-owned and lives in `repo.policy.toml` (Section 11.6)." },
+      { "token": "polling", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.2" },
+      { "token": "workspace", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.3" },
+      { "token": "hooks", "artifact": "repository_owned", "core": true, "spec_ref": "Section 5.3.4", "note": "In-sandbox hooks in `WORKFLOW.md`, host-side hooks in `repo.policy.toml` (Section 15.4)." },
+      { "token": "agent", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.5" },
+      { "token": "codex", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.6" },
+      { "token": "vcs", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 6.4" },
+      { "token": "budget", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 8.8" },
+      { "token": "quota", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 8.9" },
+      { "token": "[tasks]", "artifact": "repo_policy_toml", "core": false, "spec_ref": "Section 8.10" },
+      { "token": "[driver]", "artifact": "repo_policy_toml", "core": false, "spec_ref": "Section 8.10" },
+      { "token": "compute", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 9.11" },
+      { "token": "observability", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 18.2", "note": "Reserved for observability settings (Section 13); the specification names the namespace, not the fields. Ledger settings are `observability.ledger.*` (Section 13.6)." },
+      { "token": "server", "artifact": "workflow_md", "core": false, "spec_ref": "Section 13.8", "note": "Section 13.8 starts the HTTP server when a CLI `--port` argument is given or `server.port` is present in `WORKFLOW.md` front matter." }
+    ]
+  }
+}

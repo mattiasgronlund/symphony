@@ -53,10 +53,11 @@ is not part of the conformance claim and its rows in Section 4 below may be mark
 |-----------|---------|---------|------------------|
 | Token budget guards | 8.8 | [ ] | `budget.*` |
 | Provider quota backpressure | 8.9 | [ ] | `quota.*` |
-| Autonomous task management | 8.10 / 13.x | [ ] | `[tasks]` / `[driver]` |
-| Per-execution usage ledger | 13.x | [ ] | `<namespace>` |
+| Autonomous task management | 8.10 | [ ] | `[tasks]` / `[driver]` |
+| Human-readable status surface | 13.4 | [ ] | `observability.*` |
+| Per-execution usage ledger | 13.6 | [ ] | `observability.ledger.*` |
 | Node-scheduler remote adapter | 9.11 | [ ] | `compute.*` |
-| HTTP status/control server | 13.x | [ ] | `server.*` |
+| HTTP status/control server | 13.8 | [ ] | `server.*` |
 | Durable state store | 14.3 | [ ] | `<namespace>` |
 | `<other>` | `<section>` | [ ] | `<namespace>` |
 
@@ -72,7 +73,9 @@ is not part of the conformance claim and its rows in Section 4 below may be mark
 
 One row per obligation `SPEC.md` leaves to the implementation. Core rows MUST be resolved.
 Extension rows are `n/a` unless the extension is shipped (Section 2). Fill the resolution column with
-the concrete choice; do not leave a core row blank.
+the concrete choice; do not leave a core row blank. The rows are pre-enumerated from `SPEC.md` but
+are not exhaustive — Section 19 introduces its own list with "including" — so add a row for any
+obligation not listed here rather than omitting its resolution.
 
 ### 4.1 Core
 
@@ -88,6 +91,8 @@ the concrete choice; do not leave a core row blank.
 | Tracker adapter result hard-cap / pagination limitation | 11 | `<cap, or none>` |
 | Tracker adapter `metadata` contents | 11 | `<what the adapter places there>` |
 | Required-transition-input default-or-fail behavior | 11 | `<documented default, or fail>` |
+| Log sink or sinks, and behavior when one of them fails | 13.2 | `<stderr / file / remote sink; and the disposition on sink failure>` |
+| Human-readable presentation of rate-limit data | 13.5 | `<how it is presented, or none>` |
 | Repository Provisioning Failures — persistent park-vs-retry | 14.2 | `<park after N / retry indefinitely>` |
 | Engine Invocation Failures — persistent park-vs-retry | 14.2 | `<park after N / retry indefinitely>` |
 | Durable-store degradation when no store is configured | 14.3 | `<decline enforcement / fall back to Ephemeral / …>` |
@@ -102,6 +107,8 @@ the concrete choice; do not leave a core row blank.
 | Node-scheduler — node attribute vocabulary (nodes opaque to Symphony) | 9.11 | `<... / n/a>` |
 | Node provisioning failures — persistent park-vs-retry | 9.11 | `<... / n/a>` |
 | Compute provider — variant catalog, pool sizing, billing | 9.11 | `<... / n/a>` |
+| Human-readable status surface — what it is and what it draws from | 13.4 | `<... / n/a>` |
+| `<other>` | `<section>` | `<... / n/a>` |
 
 ## 5. State Recovery-Class Assignments
 
