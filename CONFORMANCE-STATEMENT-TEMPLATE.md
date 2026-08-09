@@ -96,6 +96,7 @@ obligation not listed here rather than omitting its resolution.
 | Repository Provisioning Failures — persistent park-vs-retry | 14.2 | `<park after N / retry indefinitely>` |
 | Engine Invocation Failures — persistent park-vs-retry | 14.2 | `<park after N / retry indefinitely>` |
 | Durable-store degradation when no store is configured | 14.3 | `<decline enforcement / fall back to Ephemeral / …>` |
+| Secret-redaction mechanism and substituted marker for captured subprocess text | 15.3 | `<known-value replacement + marker; any matching added above the floor>` |
 | Object store path location (host-side) | 16.5 | `<path policy, e.g. sibling of workspace root>` |
 
 ### 4.2 Extension-scoped (resolve only if shipped)
