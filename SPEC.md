@@ -1605,6 +1605,10 @@ Identity:
 - The commit author/committer and the push/pull-request actor are configurable per repository
   (`vcs.author`, `vcs.actor`). Where branch protection requires review, the actor SHOULD be distinct
   from the approver so a pull request cannot be self-approved.
+- `vcs.author` attributes every commit Symphony's automation writes, the mechanical merge commit of
+  a back-merge included; the engine attributes no commit to an identity derived from the host it
+  runs on (`VCSX-SPEC.md` Section 10.1). Attribution therefore does not vary with the machine a run
+  lands on.
 
 ### 9.9 Broker Git Verbs
 
@@ -3502,7 +3506,8 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - The work branch is Symphony-derived from `scope.branch_pattern` (`symphony/<identifier>`) and the
   push refspec is pinned to it (`VCS Engine`)
 - Back-merge is attempted at run start and postponed on conflict; conflict resolution is required
-  only on push-reject (`VCS Engine`)
+  only on push-reject; the merge commit a back-merge writes carries `vcs.author` rather than a
+  host-derived identity (`VCS Engine`)
 - One pull request per issue is created then updated; the base is the repository's base branch
   (`repo.policy.toml`), and the title/body are composed (Section 9.10) (`VCS Engine`)
 - The engine's forge plugin owns pull-request and review writes and advertises a capability
