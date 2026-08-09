@@ -335,6 +335,18 @@ on.
   trigger different edges at different lifecycle points where the engine models them (for example a
   transition graph keyed on a workflow-state `from`, Section 6.7); absent such a model the key is the
   trigger alone.
+- An edge that carries no `from` is **unscoped**: it is a candidate in every from-context, including
+  none. Scoping is opt-in per edge, so a repository that scopes some edges does not thereby scope
+  the rest, and adding its first transition edge changes what one trigger does in one context rather
+  than silencing every edge that carries no `from`. This is what keeps the same `repo.policy.toml`
+  yielding one operation flow under a front-end that supplies a from-context and one that does not
+  (Section 13.1).
+- Where one trigger key has both an edge scoped to the current from-context and an unscoped edge,
+  the scoped edge is selected. The two are not a duplicate `(from, on)` — they are distinct keys —
+  but a default and its override in one context. The from-context is a tiebreak within one key
+  rather than an outer loop: the ladder (Section 5.3) selects the key first, so an unscoped edge on
+  `push:non_fast_forward` is selected over an edge scoped to the current context on
+  `push:#needs_caller`. Naming a context does not make a broader trigger the more specific match.
 
 ### 5.5 Escalation Binding
 
@@ -469,7 +481,9 @@ base from untrusted content.
 
 The action-policy machine (Section 5) is expressed as a table of edges. Each edge binds a trigger to an
 action, with an OPTIONAL `context` (`host_side` or `in_sandbox`, Section 3.2; defaulted per the
-action) and OPTIONAL `from` (a workflow-state name, used only by transition edges, Section 6.7).
+action) and OPTIONAL `from` (a workflow-state name, used only by transition edges, Section 6.7). An
+edge omitting `from` is unscoped: it is a candidate in every from-context, and an edge scoped to the
+current context takes precedence over it for the same trigger (Section 5.4).
 
 ```toml
 [[policy.edge]]
@@ -934,7 +948,9 @@ the agent boundary and the secret isolation; those are the consumer's, not the e
 function match_edge(policy, from_context, trigger):
   candidates = ladder(trigger)          # most-specific first
   for key in candidates:
-    edge = policy.lookup(from_context, key)
+    edge = policy.lookup(from_context, key)   # an edge scoped to this from-context
+    if edge does not exist:
+      edge = policy.lookup(null, key)         # else the unscoped edge, if the policy has one
     if edge exists:
       return edge
   return builtin_default(trigger)
@@ -1043,7 +1059,10 @@ restate or replace the checks below.
 A conforming engine SHOULD include tests covering:
 
 - Matching: an `op:#class` edge catches an unnamed reason of that class; a `#class` edge catches an
-  otherwise-unmatched result; a lifecycle position matches exactly with no class fallback.
+  otherwise-unmatched result; a lifecycle position matches exactly with no class fallback; an edge
+  carrying no `from` matches inside a from-context, an edge scoped to that context is selected over
+  it for the same trigger key, and the ladder selects the key before the from-context selects among
+  the edges bound to it (Section 5.4).
 - Unmatched policy: an unmatched operation outcome is fail-safe (parked/failed, reason surfaced, never
   dropped); an unmatched signal is a no-op.
 - Determinism: a duplicate `(from, on)` edge or transition is a configuration error and the engine
@@ -1085,8 +1104,9 @@ A conforming engine SHOULD include tests covering:
 ### 13.2 Implementation Checklist
 
 - One policy-graph executor run by both front-ends; `ship`/`land` and the embedded-driver contract.
-- The action-policy machine: triggers, actions, the `#class` fallback, fail-safe-on-unmatched-outcome,
-  no-op-on-unmatched-signal, determinism, and a bounded flow.
+- The action-policy machine: triggers, actions, the `#class` fallback, from-context scoping with
+  unscoped edges, fail-safe-on-unmatched-outcome, no-op-on-unmatched-signal, determinism, and a
+  bounded flow.
 - The operation set and the reason-token registry with stable proto classes.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), including the refusal of a
   policy that is not well formed, base resolution, and the execution-context labeling.

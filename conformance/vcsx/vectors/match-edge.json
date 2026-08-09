@@ -281,6 +281,44 @@
         "from_context": "Done"
       },
       "expect": { "matched": null, "action": "no_op" }
+    },
+    {
+      "id": "unscoped_edge_matches_inside_a_from_context",
+      "description": "An edge carrying no `from` is unscoped and fires in any from-context (Section 5.4).",
+      "given": {
+        "edges": [
+          { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" }
+        ],
+        "trigger": "push:non_fast_forward",
+        "from_context": "In Progress"
+      },
+      "expect": { "matched": "push:non_fast_forward", "action": "run_op" }
+    },
+    {
+      "id": "scoped_edge_wins_over_unscoped_edge_in_its_context",
+      "description": "Where one trigger key has both a context-scoped edge and an unscoped one, the scoped edge is selected in its own context; the two are distinct keys, not a duplicate (Section 5.4).",
+      "given": {
+        "edges": [
+          { "on": "ready-for-review", "do": "run_op", "op": "create_pr" },
+          { "from": "Human Review", "on": "ready-for-review", "do": "set_state", "target": "Done" }
+        ],
+        "trigger": "ready-for-review",
+        "from_context": "Human Review"
+      },
+      "expect": { "matched": "ready-for-review", "action": "set_state", "target": "Done" }
+    },
+    {
+      "id": "ladder_outranks_the_from_context",
+      "description": "The ladder selects the trigger key before the from-context selects among the edges bound to it, so an unscoped exact edge is selected over a context-scoped class edge (Sections 5.3, 5.4).",
+      "given": {
+        "edges": [
+          { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" },
+          { "from": "In Progress", "on": "push:#needs_caller", "do": "set_state", "target": "Blocked" }
+        ],
+        "trigger": "push:non_fast_forward",
+        "from_context": "In Progress"
+      },
+      "expect": { "matched": "push:non_fast_forward", "action": "run_op" }
     }
   ]
 }
