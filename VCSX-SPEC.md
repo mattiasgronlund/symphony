@@ -405,11 +405,15 @@ fired, and the engine MUST document each bound it imposes (Section 13.3).
   `Implementation-defined` and MUST be documented.
 - An engine-native `vcsx.toml`, when present, is merged into the same surface; `repo.policy.toml` keys
   take precedence on conflict. A consumer MAY present the merged surface as one document.
+- A discovered file that does not parse yields no policy to validate. The engine reads no policy
+  from it and refuses to run, reporting a configuration error (Section 6.10).
 - Unknown keys SHOULD be ignored for forward compatibility.
 
 ### 6.2 `[engine]`
 
-- `version_floor` (string) — the minimum engine version the policy requires (Section 8.5).
+- `version_floor` (string) — the minimum engine version the policy requires, stated as a
+  `MAJOR.MINOR` version (Section 8.5). A value that is not one is a configuration error
+  (Section 6.10) rather than a floor the engine compares.
 - `vcs` (string) — the VCS backend selector (for example `git`, `jj`); MAY be `auto` for detection
   (Section 3.3).
 - `forge` (string) — the forge backend selector (for example `github`, `forgejo`).
@@ -487,7 +491,9 @@ do = "escalate"
 
 An edge's `on` MUST be a trigger the engine recognizes (a known lifecycle position, an `op:reason` /
 `op:#class` / `#class` form over a known operation, or a known signal). A duplicate `(from, on)` is a
-configuration error (Section 5.4).
+configuration error (Section 5.4). An edge MUST also carry the arguments the action its `do` names
+needs in order to be dispatched — `op` for `run_op`, `hook` for `run` — and an edge that omits one
+is a configuration error (Section 6.10).
 
 ### 6.6 `[hooks]`
 
@@ -570,6 +576,9 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 
 | Condition | Reason |
 |-----------|--------|
+| A discovered `repo.policy.toml`, or a `vcsx.toml` merged into it, that does not parse (Section 6.1) | `malformed_policy` |
+| A key whose value does not satisfy the constraints its section states — an `[engine] version_floor` that is not a `MAJOR.MINOR` version (Sections 6.2, 8.5), for example | `malformed_policy` |
+| An edge whose action cannot be dispatched from the arguments it carries — a `run_op` with no `op`, a `run` with no `hook` (Sections 5.2, 6.5) | `malformed_policy` |
 | An edge's `on` is not a trigger the engine recognizes (Section 6.5) | `unknown_trigger` |
 | An edge's `do` is not a known action (Section 5.2) | `unknown_action` |
 | A `run_op` names an operation the engine does not define (Section 4.1) | `unknown_operation` |
@@ -580,6 +589,22 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | A `set_state`/transition binding without a consumer that can apply it (Section 5.2) | `set_state_unbound` |
 | A policy requiring a capability no configured backend declares (Section 9.3) | `capability_unsupported` |
 | A `version_floor` above the running engine version (Section 8.5) | `version_floor_unmet` |
+
+The first three conditions are well-formedness failures and the rest are consistency failures, and
+the order is not incidental: validation takes a document, and a policy that does not parse yields
+none for the checks below it to run against. `malformed_policy` covers a well-formedness failure no
+other condition in the table names; where another names the state — a missing or malformed
+`prefixes` map is `base_unresolvable` (Section 6.4) — that condition's reason is reported.
+Section 6.1's rule that an unknown key SHOULD be ignored for forward compatibility covers a key the
+schema does not declare, not a declared key whose value the schema does not admit.
+
+Two boundaries against neighbouring reasons follow. `version_floor_unmet` names a floor the engine
+read and does not satisfy; a floor it cannot read is `malformed_policy`. The engine refuses either
+way, running only where the floor is demonstrably satisfied (Section 8.5), but the two reasons name
+different repairs — a newer engine, and a corrected file. `unknown_operation` and `unknown_hook`
+likewise name an argument the engine resolved and did not recognize, while an argument that is
+absent is `malformed_policy`; that condition is stated over the actions rather than per argument,
+because `set_state` with no target has the same shape and no reason of its own.
 
 Configuration reasons carry no proto class: a refused policy has no operation result to classify. They
 are reported under the `usage_or_config` status (Section 8.2) rather than through the `#class` fallback,
@@ -1042,10 +1067,13 @@ A conforming engine SHOULD include tests covering:
   the same operation flow through `ship` and an embedded driver.
 - Invocation contract: exit codes mirror proto classes; `escalation` is present exactly for
   `needs_caller`; a parked flow is `needs_caller` with the `intervention` need and null
-  `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed; a checkout
-  with no current branch where no `branch_pattern` is configured, an illegal derived work-branch
-  name, and a malformed commit identity each refuse to run the policy and yield `usage_or_config`
-  with the precondition reason and null `op`/`class` (Section 8.6).
+  `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed, while one
+  that is not a `MAJOR.MINOR` version is refused as `malformed_policy` rather than compared; a
+  policy file that does not parse and an edge omitting the argument its action requires are refused
+  with the same reason and null `op`/`class` (Section 6.10); a checkout with no current branch where
+  no `branch_pattern` is configured, an illegal derived work-branch name, and a malformed commit
+  identity each refuse to run the policy and yield `usage_or_config` with the precondition reason
+  and null `op`/`class` (Section 8.6).
 - Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it; the
   squash body is the `pr_to_squash` transform of the pull-request body.
 - Plugins: an undeclared capability yields `capability_unsupported` at validation where determinable
@@ -1060,8 +1088,8 @@ A conforming engine SHOULD include tests covering:
 - The action-policy machine: triggers, actions, the `#class` fallback, fail-safe-on-unmatched-outcome,
   no-op-on-unmatched-signal, determinism, and a bounded flow.
 - The operation set and the reason-token registry with stable proto classes.
-- `repo.policy.toml` loader and validation (with `vcsx.toml` merge), base resolution, and the
-  execution-context labeling.
+- `repo.policy.toml` loader and validation (with `vcsx.toml` merge), including the refusal of a
+  policy that is not well formed, base resolution, and the execution-context labeling.
 - The invocation contract: result envelope, exit codes, escalation payload, invocation
   preconditions, and versioning with a `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors.

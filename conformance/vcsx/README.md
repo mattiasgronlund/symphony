@@ -145,12 +145,15 @@ Two interpretation notes apply:
 | `vectors/match-edge.json` | `match_edge` | Sections 5.3, 5.4, 6.5, 12.1 |
 | `vectors/base-resolution.json` | `resolve_base` | Sections 6.4, 12.4 |
 | `vectors/exit-codes.json` | `exit_code_for_status` | Sections 8.2, 8.3, 8.5 |
-| `vectors/policy-validation.json` | `validate_policy` | Sections 5.4, 6.4, 6.7, 6.10, 8.5 |
+| `vectors/policy-validation.json` | `validate_policy` | Sections 5.4, 6.1, 6.4, 6.7, 6.10, 8.5 |
 
-56 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or filesystem.
-(The slice was authored at 49 and grew by four as decisions 0054–0056 resolved its findings, each
-turning an unassertable behavior into an asserted one, and by three more as decision 0057 added the
-universal reasons and redefined `merge:blocked`.)
+60 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
+filesystem. (The slice was authored at 49 and grew by four as decisions 0054–0056 resolved its
+findings, each turning an unassertable behavior into an asserted one, by three more as decision
+0057 added the universal reasons and redefined `merge:blocked`, and by four more as decision 0066
+gave the well-formedness conditions a reason — the parse failure among them is judged from file
+text rather than from a document and so has no vector, which `policy-validation.json`'s notes
+record.)
 
 `proto_class` has no vector file of its own. It is a lookup over the Section 4.3 registry, and
 `vocabulary.json` already **is** that registry — a vector file would duplicate it with no added

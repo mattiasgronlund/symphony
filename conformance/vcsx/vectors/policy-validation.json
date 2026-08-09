@@ -1,6 +1,7 @@
 {
   "function": "validate_policy",
   "spec_refs": [
+    "VCSX-SPEC.md Section 6.1 \"File Discovery and `vcsx.toml` Merge\"",
     "VCSX-SPEC.md Section 6.10 \"Validation\"",
     "VCSX-SPEC.md Section 5.4 \"Unmatched Policy and Determinism\"",
     "VCSX-SPEC.md Section 6.4 \"`[base]` and Base Resolution\"",
@@ -13,7 +14,8 @@
   "notes": [
     "Each failing vector holds exactly one condition, so the reported reason is determined. Which reason is reported when several conditions hold is Implementation-defined (Section 6.10) and is deliberately not exercised here.",
     "`consumer_capabilities` lists the consumer-effected actions (Section 5.2) this consumer can perform. An empty list models a human at an interactive prompt (Section 1.3).",
-    "`capability_unsupported` (Sections 6.10, 9.3) is not exercised here: it is determined against a plugin capability descriptor, which this slice defers with the rest of plugin behavior. Its absence is a coverage gap, not a statement that the condition is unvalidated."
+    "`capability_unsupported` (Sections 6.10, 9.3) is not exercised here: it is determined against a plugin capability descriptor, which this slice defers with the rest of plugin behavior. Its absence is a coverage gap, not a statement that the condition is unvalidated.",
+    "`malformed_policy` for a policy file that does not parse (Sections 6.1, 6.10) is not exercised here either: `given.policy` is a document, not file text, so the input this condition is judged from cannot be expressed in this file. The other two well-formedness conditions are judged from a parsed document and are exercised. Its absence is likewise a coverage gap, not a statement that the condition is unvalidated."
   ],
   "vectors": [
     {
@@ -134,6 +136,19 @@
       "expect": { "error": "unknown_operation" }
     },
     {
+      "id": "run_op_without_an_op_argument",
+      "description": "An absent argument is a well-formedness failure, not an unrecognized name: `unknown_operation` names an operation the engine resolved and does not define (Section 6.10).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "edges": [{ "on": "push:non_fast_forward", "do": "run_op" }]
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "error": "malformed_policy" }
+    },
+    {
       "id": "unknown_hook_name",
       "description": "A `run` action naming a hook the `[hooks]` table does not declare.",
       "given": {
@@ -146,6 +161,20 @@
         "consumer_capabilities": []
       },
       "expect": { "error": "unknown_hook" }
+    },
+    {
+      "id": "run_without_a_hook_argument",
+      "description": "The same condition at the other argument the edge schema names (Sections 5.2, 6.5).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "hooks": { "scan-content": { "context": "in_sandbox", "run": "./scan" } },
+          "edges": [{ "on": "before:commit", "do": "run" }]
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "error": "malformed_policy" }
     },
     {
       "id": "by_prefix_without_empty_prefix_default",
@@ -263,6 +292,26 @@
         "consumer_capabilities": []
       },
       "expect": { "valid": true }
+    },
+    {
+      "id": "version_floor_is_not_a_version",
+      "description": "A floor the engine cannot read is `malformed_policy`; `version_floor_unmet` names a floor it read and does not satisfy (Sections 6.2, 6.10, 8.5). The refusal is the same either way.",
+      "given": {
+        "policy": { "engine": { "version_floor": "latest" }, "base": { "branch": "main" }, "edges": [] },
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "error": "malformed_policy" }
+    },
+    {
+      "id": "version_floor_with_a_patch_component",
+      "description": "The version grammar is `MAJOR.MINOR` (Section 8.5), so a third component is not a floor the engine compares.",
+      "given": {
+        "policy": { "engine": { "version_floor": "1.2.3" }, "base": { "branch": "main" }, "edges": [] },
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "error": "malformed_policy" }
     }
   ]
 }
