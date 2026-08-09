@@ -1943,6 +1943,9 @@ include:
   `total_tokens`; Section 13.5), with any adapter-specific counts (for example cache tokens) in an
   opaque extras field
 - payload fields as needed
+- free-text payload fields (an agent message or notification text, carried into `last_message`,
+  Section 4.1.6) are agent-produced content and MUST be redacted of the run's resolved secret values
+  before the event is emitted (Section 15.3)
 
 Important emitted events include:
 
@@ -2481,6 +2484,8 @@ Message formatting requirements:
 - Include action outcome (`completed`, `failed`, `retrying`, etc.).
 - Include concise failure reason when present.
 - Avoid logging large raw payloads unless necessary.
+- Agent-produced free text reaches the log already redacted of the run's resolved secret values: the
+  requirement binds where the text is captured, not at each sink (Section 15.3).
 
 ### 13.2 Logging Outputs and Sinks
 
@@ -2806,6 +2811,10 @@ API design notes:
 - API errors SHOULD use a JSON envelope such as `{"error":{"code":"...","message":"..."}}`.
 - If the dashboard is a client-side app, it SHOULD consume this API rather than duplicating state
   logic.
+- `last_message` and `recent_events[].message` are agent-produced free text. They are served
+  already redacted of the run's resolved secret values, because that requirement is discharged
+  where the text enters the process (Section 15.3); this surface inherits both the guarantee and
+  its stated residual rather than restating either.
 
 ## 14. Failure Model and Recovery Strategy
 
@@ -3082,6 +3091,34 @@ RECOMMENDED additional hardening for ports:
   authenticated channel; the node-scheduler bootstraps the trust material but is never on the secret
   path. The invariant is unchanged wherever the executor runs: the secret reaches the executor's
   broker context only (Section 10.8), never the agent sandbox (Section 9.6).
+- Text Symphony captures from a subprocess it runs — the agent's messages and notifications
+  (Section 10.4) and a host-side hook's output (Section 15.4) — is untrusted content, not a
+  secret-typed value. The rules above bind values Symphony resolves; an agent that echoes a
+  credential into its own message produces ordinary text, and by the time it reaches the process
+  nothing distinguishes it from any other message.
+- Captured subprocess text MUST be redacted of the run's resolved secret values where it enters the
+  process, before it reaches orchestrator state (`last_message`, Section 4.1.6), a log sink, or a
+  durable agent-session transcript. The obligation is discharged at that ingest boundary rather than
+  at each surface that publishes the text, so every consumer inherits it: the log sinks
+  (Section 13.2), the runtime snapshot (Section 13.3), any human-readable status surface
+  (Section 13.4), any humanized summary (Section 13.7), and the OPTIONAL HTTP API (Section 13.8.2),
+  which is reachable over the network rather than only on the operator's host. These fields are
+  observability data and not orchestration inputs (Sections 13.4, 13.7, 13.8), so redacting them
+  cannot change behavior.
+- The redaction mechanism is `Implementation-defined` above a floor: an implementation MUST replace
+  at least every exact occurrence of the secret values this run resolved through the
+  secret-provider interface — outward credentials, and any repo-internal integrity value supplied
+  to a host-side hook — and MUST document the mechanism and the marker it substitutes (Section 19).
+  Pattern or heuristic matching over captured text MAY be added but MUST NOT replace the
+  known-value floor: a pattern has both false positives and false negatives, so an implementation
+  shipping only one cannot state what it guarantees.
+- Redaction is partial by construction and MUST NOT be presented as complete. It does not reach a
+  derived form — an encoding of a credential, or one the agent paraphrases — and it cannot reach a
+  secret Symphony never resolved, such as one the agent reads out of repository or tracker content,
+  because no value exists to match against. Those residuals are governed by the trust boundary and
+  harness hardening (Sections 15.1, 15.5). They are why the secret-isolation invariant remains the
+  primary control — the credential is never in the sandbox to begin with (Sections 9.6, 10.8) — and
+  redaction its backstop for the paths that invariant does not cover.
 
 ### 15.4 Configuration Trust Sourcing and Hook Safety
 
@@ -3673,6 +3710,8 @@ broker, and an `interactive-agent` deployment drives an agent session with no da
   `effort` values)
 - Emitted usage is normalized to the neutral token-usage record (`input_tokens`, `output_tokens`,
   `total_tokens`)
+- Free-text event payloads are redacted of the run's resolved secret values before the event is
+  emitted upstream
 - An adapter encapsulates one (agent, transport) pairing; no non-native agent impersonates another's
   protocol
 - Launch command uses workspace cwd and invokes `bash -lc <codex.command>`
@@ -3707,6 +3746,10 @@ These checks are `Core Conformance`: structured logging and its sinks serve both
 - Structured logging includes issue/session context fields
 - Logging sink failures do not crash orchestration
 - Token/rate-limit aggregation remains correct across repeated agent updates
+- A secret value echoed back in agent free text appears in no observability surface — log sinks,
+  snapshot or status surface, or the OPTIONAL HTTP API — having been redacted where it was captured
+- The documented redaction mechanism is not weaker than the known-value floor: pattern matching
+  supplements exact replacement of the run's resolved secret values rather than replacing it
 - If a human-readable status surface is implemented, it is driven from orchestrator state and does
   not affect correctness
 - If humanized event summaries are implemented, they cover key wrapper/agent event classes without
@@ -3801,6 +3844,10 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   before start, and the broker socket as the only privileged channel
 - The secret model splits outward credentials (broker-mediated, never in the sandbox) from
   repo-internal integrity values (repo-owned host-side hook environment; Section 15.3)
+- Text captured from a subprocess (agent messages, host-side hook output) is redacted of the run's
+  resolved secret values where it enters the process, so no orchestrator state, log sink,
+  transcript, or status/API surface holds the raw value; the mechanism is documented and its
+  known-value floor is supplemented, never replaced, by pattern matching (Section 15.3)
 - The Execution Layer is realized by one execution process (the executor) per run behind an
   always-present orchestrator↔executor seam; local execution is its in-process transport, and the
   executor instantiates the sandbox, per-run broker socket, and credential-less agent wherever it runs
@@ -3935,8 +3982,9 @@ The Statement MUST record:
   sink or sinks and what happens when one of them fails (Section 13.2); the human-readable status
   surface, if any, and the presentation of rate-limit data (Sections 13.4, 13.5); the park-vs-retry
   disposition of `Repository Provisioning Failures` and `Engine Invocation Failures`
-  (Section 14.2); the durable-store degradation when no store is configured (Section 14.3); and the
-  host-side object-store path (Section 16.5).
+  (Section 14.2); the durable-store degradation when no store is configured (Section 14.3); the
+  secret-redaction mechanism and substituted marker for captured subprocess text (Section 15.3); and
+  the host-side object-store path (Section 16.5).
 - The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8) and to any
   state an OPTIONAL extension introduces (Section 14.3).
 - The trust and safety posture (Sections 1, 9.6, 15).

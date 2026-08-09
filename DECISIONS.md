@@ -2004,3 +2004,71 @@ a Section 14-style alignment rule, which the registry should then serve rather t
 Depends on 0051 and 0046; relates to 0045, 0010, 0011, and 0069. Accepted and applied:
 `conformance/vocabulary.json` is created, `conformance/README.md` and `conformance/vcsx/README.md`
 document it, and `SPEC.md` Sections 10.4 and 17 carry the ruling and the precedence rule.
+
+## 0072 — Captured subprocess text is redacted where it enters the process
+
+**State:** Accepted
+**Folder:** [decisions/0072-redact-captured-subprocess-text/](decisions/0072-redact-captured-subprocess-text/)
+
+Resolves issue #16. Section 15.3 is unambiguous — "Do not log API tokens or secret values", "Validate
+presence of secrets without printing them" — and Section 13.8.2 describes a JSON API whose per-issue
+response carries `last_message` and `recent_events[].message`, agent-produced free text served over
+HTTP with no redaction requirement; Section 13.1's only nearby rule is about large raw payloads, which
+is a size rule and not a content one. So an implementation can ship Section 13.8 faithfully, honour
+Section 15.3 everywhere the specification names it, and still serve a token to anyone who can reach the
+port. The defence that would ordinarily close this — a secret type that cannot be printed or serialized
+— carries none of it: an agent that echoes a credential into its own message produces an ordinary
+string, and there is no type to attach a rule to because the value did not come from the secret
+provider, it came back out of a subprocess as prose. Options: **A** state the obligation in Section 15.3
+over captured subprocess text, discharged where the text enters the process, and point at it from
+Sections 10.4, 13.1 and 13.8.2 (chosen); **B** one sentence in Section 13.8.2 requiring redaction before
+serving, the issue's first ask (rejected — by the time the handler runs the value is already in
+orchestrator state, so the identical string stays in the log sink, the snapshot, the status surface, the
+humanized summary and the session transcript that response itself links; it also puts the only statement
+of a security requirement inside an OPTIONAL extension, leaving a non-HTTP deployment with nothing, and
+sets the precedent that each new surface restates the sentence — which is how one gets missed); **C**
+declare that Section 15.3 already governs the fields, the issue's second ask (rejected *as written* and
+adopted as a consequence of A — read against today's Section 15.3 it is false, since those bullets bind
+values Symphony resolved and printed rather than a string that arrived from a subprocess, and telling a
+reader the case is covered when no clause covers it is worse than silence; once A puts the rule in
+Section 15.3 the sentence becomes true, and it is what Section 13.8.2 now says); **D** require pattern
+or entropy matching over agent output (rejected as *the* requirement — false positives corrupt
+legitimate output and false negatives are unbounded, so an implementation cannot state what it
+guarantees, and prescribing a matcher is the implementation detail this document keeps out of normative
+text; retained as permitted, forbidden as a substitute); **E** leave the mechanism fully
+`Implementation-defined` with no floor (rejected — the term still needs a behavior to bind, and with no
+floor an implementation that logs a warning and serves the token conforms); **F** drop the two fields
+from the response shape (rejected — they are what makes a per-issue debug endpoint worth having, and the
+value stays in the log either way); **G** bind the rule to the orchestrator↔executor seam (rejected —
+one hop too late where it matters, since with a remote executor the seam is a network boundary and a raw
+value would already have crossed it and been written to whatever that node logs). The reasoning worth
+keeping is the placement rule rather than the mechanism: **a redaction obligation belongs at the
+boundary where untrusted text is first captured, not at each boundary where it is published, because
+the set of publishers is open and the set of capture points is closed.** Symphony captures agent text in
+one place and host-side hook output in one other; it publishes that text through logs, a snapshot, a
+status surface, humanized summaries, a transcript and an OPTIONAL API, and the next release adds a
+seventh. The floor is what makes this a MUST: the values are the finite set this run resolved and is
+holding, the failure mode is publishing a credential to whoever can reach the port, and the fields are
+observability-only (Sections 13.4, 13.7, 13.8) so nothing can break by complying — none of the usual
+reasons to soften a requirement apply. Above the floor the mechanism and its marker are
+`Implementation-defined` and published in the Conformance Statement, which is how a language-agnostic
+document declines to prescribe a matcher while still letting an auditor see the choice. The residual is
+stated in the specification rather than glossed, because a mitigation described as complete is worse
+than one described accurately: known-value replacement does not reach a derived form — an encoding, or
+a paraphrase — and cannot reach a secret Symphony never resolved, such as one the agent reads out of
+repository or tracker content, since no value exists to match against. Those belong to the trust
+boundary and harness hardening (Sections 15.1, 15.5), and their existence is why the secret-isolation
+invariant stays the primary control and redaction its backstop. Two boundaries are drawn deliberately:
+host-side hook output is inside the rule (captured the same way, a hook MAY hold a repo-internal
+integrity value, and Section 15.4's "truncated in logs" is a size rule with the same gap Section 13.1
+had), while commit messages and pull-request bodies are outside it (agent prose the repository publishes
+deliberately, already gated by its own `before:commit` gate / `scan-content`, which refuses rather than
+rewrites — the right shape where a title is used verbatim). No configuration key is added: an
+operator-weakenable security floor is a floor an operator can remove. Reconsider if agent free text
+becomes an orchestration input, which would make redaction order-sensitive and argue for a structured
+channel for the signal; or if a secret provider rotates a credential mid-run, which makes "the values
+this run resolved" time-varying and would need the floor to name the union. Relates to 0003 (the
+credential broker and the secret-isolation invariant this backstops), 0004, 0032 (agent prose crossing
+into commit and pull-request messages, left to the repository's gate), 0035 and 0036 (the executor and
+the seam Option G would have used), and 0011. Accepted and applied to `SPEC.md` (Sections 10.4, 13.1,
+13.8.2, 15.3, 17.5, 17.6, 18.1.2, 19) and `CONFORMANCE-STATEMENT-TEMPLATE.md`.
