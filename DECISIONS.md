@@ -1881,3 +1881,126 @@ invariant), 0065 (whose precondition this widens), 0061 (which made `pull` a com
 capability), and 0032 (which authored the content/identity split). Accepted and applied to
 `VCSX-SPEC.md` (Sections 8.1, 8.6, 9.1, 10.1, 13.1, 13.2), the vocabulary registry,
 `VCSX-CONTRACT.md` (Section 9), and `SPEC.md` (Sections 9.8, 17.2).
+
+## 0069 — `observability.*` is the configuration namespace for observability settings
+
+**State:** Accepted
+**Folder:** [decisions/0069-observability-config-namespace/](decisions/0069-observability-config-namespace/)
+
+Resolves part 2 of issue #15. Section 18.2 carried the specification's own TODO — "Make observability
+settings configurable in workflow front matter without prescribing UI implementation details" — and
+nothing in Section 5.3 or the Section 6.4 cheat sheet defined a namespace for one, while every other
+extension owns one (`budget.*`, `quota.*`, `compute.*`, `server.*`, `[tasks]` / `[driver]`) stated in
+the same sentence shape. Section 13.6 then required the ledger to own its configuration "under its own
+namespace, documented with the extension" **without saying what that namespace is** — an obligation to
+use a namespace with no namespace named. The cost is concrete: the first implementation to make a sink
+or a ledger path configurable invents a top-level key and the second invents a different one, for the
+same deployment. Options: **A** `observability.*` in the operator policy config with the ledger under
+`observability.ledger.*` (chosen); **B** `logging.*` (rejected — the ledger, a status surface and
+humanized summaries are not logging, and a namespace that must be widened later is worse than a wide
+one now, because widening it is the rename a namespace exists to prevent); **C** one namespace per
+Section 13 surface (rejected — it multiplies top-level keys for what an operator experiences as one
+concern; `observability.ledger.*` satisfies Section 13.6 without a third top-level key); **D** follow
+the TODO into `WORKFLOW.md` front matter (rejected — Section 5 makes `WORKFLOW.md` untrusted,
+in-sandbox, and forbids any setting Symphony executes with host access, which a sink path and a ledger
+location plainly are; the TODO predates the three-artifact split); **E** define the fields as well
+(rejected, and drawn as the scope line — Sections 13.2 and 13.4 make the sink and the surface
+implementation-defined, so there is no cross-implementation field to define, and naming one would
+prescribe the UI details the TODO itself rules out); **F** leave the TODO (rejected — it has already
+been read once by an implementation that then had to invent a key). **The specification owes the
+place, not the settings**: a namespace is a cross-implementation contract because two implementations
+reading the same configuration must agree where the keys live, while the settings are not, because the
+specification made them implementation-defined in the first place. So naming the namespace discharges
+the TODO rather than deferring it. Artifact placement follows trust rather than the TODO's wording, on
+Section 5's dividing rules and `compute.*`'s precedent ("in the operator policy config"). Recorded as
+noticed and not fixed: Section 13.8 places `server.*` in `WORKFLOW.md` front matter, in tension with
+Section 5 for the same reason Option D is rejected — a defect in Section 13.8 rather than a precedent,
+surfaced in `conformance/README.md`. Reconsider if a genuinely cross-implementation observability
+field appears, which the specification should then define under this namespace. Relates to 0005 and
+0029 (the trust split that decides the artifact), 0011 (the ledger whose namespace this names), 0045,
+and 0070. Accepted and applied to `SPEC.md` (Sections 6.4, 13.6, 18.2).
+
+## 0070 — The Conformance Statement records the Section 13 resolutions
+
+**State:** Accepted
+**Folder:** [decisions/0070-conformance-statement-section-13-resolutions/](decisions/0070-conformance-statement-section-13-resolutions/)
+
+Resolves part 1 of issue #15. Section 19 requires a resolution for every `Implementation-defined`
+behavior and introduces its enumeration with "including:", so the list is open — yet three Section 13
+behaviours appeared in neither it nor `CONFORMANCE-STATEMENT-TEMPLATE.md`: the log sink (13.2), the
+human-readable status surface (13.4), and the presentation of rate-limit data (13.5). The template's
+Section 4.2 also had no `<other>` escape row of the kind its Section 2 provides, so an implementation
+had nowhere to write three resolutions Section 19 implies it owes — and a Statement that omits a
+resolution because the form lacked a field is the failure Section 19 exists to prevent (0045). Its
+Section 2 additionally cited a placeholder `13.x` in three rows, dating from the template's creation:
+two resolve to 13.6 and 13.8, and the third (autonomous task management, `8.10 / 13.x`) resolves to
+nothing, since Section 13 has no task-management subsection. Options: **A** resolve the obligation in
+`SPEC.md` first, then add the rows (chosen); **B** add the rows to the template only (rejected — for
+Section 13.2 the row would carry an obligation the specification does not state, inverting the
+template from a view over `SPEC.md` into a second source of requirements, which its own preamble
+forbids); **C** file all three under the template's Core table (rejected — Section 4.1 says a core row
+MUST NOT be left blank, while Section 13.4's surface is explicitly OPTIONAL, so it would demand a
+resolution from an implementation that ships none and blur the Core/extension boundary inherited from
+Sections 17 and 18); **D** rely on `<other>` rows alone (rejected — 0045 chose a pre-enumerated
+template over a checklist precisely because a generic slot does not tell an implementer an obligation
+exists; an escape row catches what nobody anticipated, it does not substitute for what is known);
+**E** drop the placeholder rows' Section column (rejected — it trades a wrong pointer for no pointer).
+**The template may only point at what `SPEC.md` states**, which is why a defect reported as three
+missing table rows is partly a specification change: Section 13.2's "The spec does not prescribe where
+logs are written" is a disclaimer, while `Implementation-defined` is a contract term carrying a
+MUST-document obligation, and Section 17.6 already makes sink-failure behavior a `Core Conformance`
+check an auditor cannot verify without knowing what the sinks are. Core versus extension follows the
+specification's own marking rather than the convenience of the form: 13.2 and 13.5 are core rows (13.5
+resolvable as "none", which is a resolution and not a blank), 13.4 is extension-scoped and gains a
+Section 2 row carrying 0069's `observability.*`. Section 4 gains a lead-in sentence mirroring Section
+19's "including" and Section 4.2 gains the `<other>` row; Section 4.1 gets the sentence but no row,
+because a permanent placeholder would contradict its own MUST-not-be-blank instruction. Reconsider if
+Section 19 and the template drift a third time — the remedy is then to generate the template from
+`SPEC.md`'s tokens rather than to keep patching both. Depends on 0045 and 0069; relates to 0050 and
+0043. Accepted and applied to `SPEC.md` (Sections 13.2, 19) and `CONFORMANCE-STATEMENT-TEMPLATE.md`
+(Sections 2, 4, 4.1, 4.2).
+
+## 0071 — The Symphony token vocabulary as data
+
+**State:** Accepted
+**Folder:** [decisions/0071-symphony-vocabulary-as-data/](decisions/0071-symphony-vocabulary-as-data/)
+
+Resolves part 3 of issue #15, and does for `SPEC.md` what 0051 did for the engine. Four of Symphony's
+token sets were prose an implementation had no choice but to re-spell by hand — the emitted runtime
+events (10.4), the REQUIRED log context fields (13.1), the usage-ledger entry fields (13.6), and the
+state recovery classes (14.3) — so the drift `VCSX-SPEC.md` Section 14 closes for the engine was open
+for Symphony, and silent in the same way: an event renamed upstream changes nothing downstream until
+someone reads a re-pin diff. Symphony's exposure is the larger one, because `SPEC.md` is written for
+multiple implementations in multiple languages (0045) and every one of them spells these tokens
+independently. Section 10.4 carried a second defect on top: it introduced its list with "for example"
+while Section 10.7 states that each adapter MUST emit that vocabulary, so the two could not both be
+read literally, and a generator could not tell whether to close the enum. Options: **A** a registry in
+the engine's shape (chosen); **B** a pinned-spec hash check (rejected — it converts a silent failure
+into a diff someone has to read, which is the mechanism that already failed, and does nothing for the
+second implementation); **C** transcribe the tokens into each Conformance Statement (rejected — a
+human-readable declaration catches divergence at audit time, not at compile time). On the exhaustiveness
+question: **D** not exhaustive, but the listed names are fixed (chosen); **E** exhaustive (rejected —
+it makes any adapter-specific event non-conformant, contradicting the neutral-adapter model, and would
+be a substantive new restriction adopted to make codegen convenient); **F** leave it open (rejected —
+it leaves Section 10.7's MUST pointing at a list the document calls illustrative, so an adapter could
+rename `turn_failed` and claim conformance). **The ruling belongs in the specification, not in the
+registry**, since a derived view cannot decide whether its source's list is closed — so Section 10.4
+gains the `Note:` first and the registry records `exhaustive: false` after. **Openness is a property
+of the set, not of the names**: a generated type admits an unknown token while every known token is
+still checked, the same shape the engine registry already uses for its operations. The file is
+`conformance/vocabulary.json`, beside the Symphony corpus that occupies `conformance/` directly, since
+`conformance/symphony/` would move an existing tree and break the paths cited in 0046, 0048, 0051 and
+0053 to buy a symmetry no consumer needs. The slice carries the four sets plus three that make them
+usable rather than readable — the neutral token-usage record both the event `usage` map and the ledger
+entry are defined in terms of, the per-field recovery-class assignments a Conformance Statement is
+compared against, and the configuration namespaces its extensions table draws from. `SPEC.md` Section
+17 gains the precedence rule in its own text rather than only in a README, because Symphony has no
+Section 14 to lean on: **the prose governs; the artifact is derived**, and a disagreement is a defect
+in the registry. Authoring surfaced two findings recorded rather than fixed: Section 5.3's top-level
+key list omits `vcs`, which Section 6.4 documents; and Section 13.8 places `server.*` in `WORKFLOW.md`
+front matter against Section 5's host-access rule. Reconsider on 0051's trigger — a registry
+accumulating properties the prose does not fix has stopped being derived — or if `SPEC.md` ever gains
+a Section 14-style alignment rule, which the registry should then serve rather than stand beside.
+Depends on 0051 and 0046; relates to 0045, 0010, 0011, and 0069. Accepted and applied:
+`conformance/vocabulary.json` is created, `conformance/README.md` and `conformance/vcsx/README.md`
+document it, and `SPEC.md` Sections 10.4 and 17 carry the ruling and the precedence rule.

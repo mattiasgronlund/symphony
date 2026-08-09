@@ -31,10 +31,11 @@ nothing mechanical connecting it to the two documents. Drift in this vocabulary 
 carrying the wrong proto class routes to a different `#class` edge and changes which policy fires,
 with no build or test failure anywhere to catch it.
 
-This tree is separate from the Symphony conformance corpus in the parent directory. The two derive
+This tree is separate from the Symphony conformance data in the parent directory. The two derive
 from different specifications, have different schemas, and are consumed by different implementations;
-they share a parent directory and nothing else. That corpus is a set of behavior vectors, this is a
-vocabulary registry.
+they share a parent directory and nothing else. The parent directory now carries a registry of its
+own on the same terms (`../vocabulary.json`, decision 0071); the two are not merged, for the same
+reason the vector corpora are not.
 
 ## Precedence
 
