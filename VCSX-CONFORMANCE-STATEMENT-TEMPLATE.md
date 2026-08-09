@@ -37,6 +37,8 @@ every listed reason.
 - `vcsx_version` emitted in the result envelope (Section 8.2): `<value>`
 - Lowest `version_floor` this build satisfies (Sections 6.2, 8.5): `<floor>`
 - Below-floor behavior is fail-closed with a usage/config result (REQUIRED; not a choice): [ ] yes
+- A `version_floor` that is not a `MAJOR.MINOR` version is refused as `malformed_policy` rather than
+  compared (Sections 6.2, 6.10; REQUIRED, not a choice): [ ] yes
 
 ## 2. Required Surface Implemented
 
@@ -49,8 +51,8 @@ claim. Mark each complete.
       outcome, no-op on an unmatched signal, determinism (Section 5)
 - [ ] The required operation set and the four required lifecycle positions (Section 4.1)
 - [ ] The reason-token registry with its stable proto classes (Sections 4.2, 4.3)
-- [ ] `repo.policy.toml` loader and validation, with the `vcsx.toml` merge, base resolution, and
-      execution-context labeling (Sections 3.2, 6)
+- [ ] `repo.policy.toml` loader and validation, with the `vcsx.toml` merge, the refusal of a policy
+      that is not well formed, base resolution, and execution-context labeling (Sections 3.2, 6)
 - [ ] The invocation contract: result envelope, exit codes, escalation payload, versioning
       (Section 8)
 - [ ] The plugin API with VCS and forge backends and their capability descriptors (Section 9)

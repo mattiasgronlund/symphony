@@ -1688,3 +1688,70 @@ made operation failure total and left this the residue), 0059 (whose null-triple
 0056 (which created `usage_or_config` and filled its other half), and 0044. Accepted and applied to
 `VCSX-SPEC.md` (Sections 6.3, 8.2, 8.3, 8.5, 8.6, 13.1, 13.2, 13.3), the vocabulary registry,
 `conformance/vcsx/README.md`, and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0066 — A policy that is not well formed is `malformed_policy`
+
+**State:** Accepted
+**Folder:** [decisions/0066-malformed-policy-reason/](decisions/0066-malformed-policy-reason/)
+
+Resolves issue #12, which reports three configuration states `VCSX-SPEC.md` Section 6.10's reason
+table has no row for: an `[engine] version_floor` that is not a parsable `MAJOR.MINOR`, a required
+action argument (`run_op`'s `op`, `run`'s `hook`) that is *absent* rather than wrong, and a
+`repo.policy.toml` that is not valid TOML at all. The issue's own diagnosis is the right one and is
+what makes this one decision rather than three: **the table is complete for a policy that is
+inconsistent and silent about a policy that is unreadable.** All nine reasons decision 0056
+registered describe a document the engine read and found at odds with something, and each
+presupposes that a document exists and that its keys hold values of the shape Section 6 declares —
+so everything upstream of those checks fell out, including conditions the issue did not report
+(`[base] resolve` outside its two values, `[hooks] context` naming neither execution context). The
+third state is the one that changes what an implementation builds, and the document already settles
+everything about it except the token: Section 3.1 puts the `Policy Loader` inside the engine,
+Section 6.1 makes discovery an engine obligation it MUST document, and Section 8.2 fixes the
+envelope for a run in which the policy did not run — so an engine that cannot read the file has a
+status, an exit code and an empty `reason`. Options: **A** one token, `malformed_policy`, for the
+whole well-formedness class (chosen); **B** the filing implementation's meanwhiles —
+`version_floor_unmet` for an unreadable floor, the argument's kind for an absent argument, the parse
+failure left as the loader's own typed fault (rejected, each on its own terms below); **C** a token
+per state (rejected — three tokens on the major-stable surface and three Conformance Statement rows
+for three states with one owner, one repair and no caller that branches between them); **D** reading
+the file is the front-end's problem and out of scope for Section 6.10, the issue's own alternative
+(rejected on the document's text — Section 3.1 assigns the read to the engine, and `ship`/`land`
+have no envelope of their own to report it in); **E** leave it to Section 6.10's existing extension
+clause (rejected — that is the status quo, whose outcome is that the one state every engine reaches
+is the one no two engines report alike);
+**F** file them under Section 8.6's precondition registry (rejected by 0065's own dividing line —
+all three are judged from `repo.policy.toml` alone, with no argument and no checkout in hand, which
+is the definition of a configuration error). The reasoning worth keeping is the line the registry was
+missing:
+**well-formedness versus consistency**, with the ordering stated, since validation takes a document
+and a file that does not parse yields none — which also means no new `Implementation-defined` site,
+because where the policy does not parse no other condition is determinable. One token rather than
+three follows 0056's own splitting criterion read the other way: it split `unknown_*` into four
+because they are "found at different points and repaired differently", and these three are found by
+one pass and repaired by one act. The floor's meanwhile is overturned by separating behavior from
+report: fail-closedness is kept and decides the refusal, which is identical under either answer, but
+not the reason — `version_floor_unmet` asserts a comparison that did not happen, while
+`malformed_policy` is true of `latest`, `1` and `1.2.3` alike under a `MAJOR.MINOR` grammar, and the
+two name different repairs (a newer engine, a corrected file). The absent-argument meanwhile is
+overturned because it does not generalize: it works only where the argument's kind happens to have a
+token, leaving `set_state` with no target, `notify` with no channel and `create_task` with no spec
+unanswerable — the shape decision 0057 already settled by preferring a rule quantified over a set to
+an enumeration that will outrun it, so the row is keyed on whether the action can be dispatched from
+the arguments the edge carries, which also keeps Section 6.5's own bare `do = "escalate"` valid. The
+issue's objection to enlarging a major-stable vocabulary is sound and is why one token is added
+rather than three; it is answered by sequencing — part 3 cannot be answered by reuse, so the
+vocabulary grows by one whatever else is decided, and once it has, routing the other two through it
+costs nothing and removes two false statements. Two boundaries are stated because they are how this
+could rot: `malformed_policy` covers a well-formedness failure **no other row names**, so a
+malformed `prefixes` map stays `base_unresolvable`; and Section 6.1's ignore-unknown-keys rule is
+scoped to a key the schema does not declare, not a declared key whose value it does not admit. Left
+out of scope deliberately: a repository with no `repo.policy.toml` at all, and an I/O failure
+reading a discovered one — adjacent, but neither is needed for this registry entry to be coherent,
+and the first is a decision about whether a policy-less repository is a valid input. Reconsider if a
+future `MAJOR` extends the version grammar, which would make an older engine's `malformed_policy`
+misleading where the truth is that the policy needs a newer engine. Relates to 0056 (which created
+this registry and whose criterion decides the token count), 0065 (whose "what is it judged from"
+line files all three here), 0057, 0051, and 0044 (whose `Engine Invocation Failures` class already
+names "an invalid `repo.policy.toml`" and now has a token for it). Accepted and applied to
+`VCSX-SPEC.md` (Sections 6.1, 6.2, 6.5, 6.10, 13.1, 13.2), the vocabulary registry, the corpus, and
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
