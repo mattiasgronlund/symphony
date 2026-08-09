@@ -147,13 +147,14 @@ Two interpretation notes apply:
 | `vectors/exit-codes.json` | `exit_code_for_status` | Sections 8.2, 8.3, 8.5 |
 | `vectors/policy-validation.json` | `validate_policy` | Sections 5.4, 6.1, 6.4, 6.7, 6.10, 8.5 |
 
-60 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
+63 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
 filesystem. (The slice was authored at 49 and grew by four as decisions 0054–0056 resolved its
 findings, each turning an unassertable behavior into an asserted one, by three more as decision
-0057 added the universal reasons and redefined `merge:blocked`, and by four more as decision 0066
-gave the well-formedness conditions a reason — the parse failure among them is judged from file
-text rather than from a document and so has no vector, which `policy-validation.json`'s notes
-record.)
+0057 added the universal reasons and redefined `merge:blocked`, by four more as decision 0066 gave
+the well-formedness conditions a reason — the parse failure among them is judged from file text
+rather than from a document and so has no vector, which `policy-validation.json`'s notes record —
+and by three more as decision 0067 pinned what an edge carrying no `from` does inside a
+from-context.)
 
 `proto_class` has no vector file of its own. It is a lookup over the Section 4.3 registry, and
 `vocabulary.json` already **is** that registry — a vector file would duplicate it with no added
@@ -208,3 +209,19 @@ All three findings from the first slice are now resolved.
   defined `status` as three proto-class values with none corresponding to Section 8.3's exit `2`, so
   the two sections could not both be satisfied — `usage_or_config` is now a fourth invocation status.
   Every failing `validate_policy` vector names its reason.
+
+A fourth finding arrived from the other direction — an engine implementation reading the corpus
+rather than an author writing it — and is resolved the same way.
+
+- **An unscoped edge inside a from-context — resolved (decision 0067).** Every `match_edge` vector
+  but the two from-context ones passed `"from_context": null`, and both of those exercised edges
+  that *carry* `from`, so the combination an implementation meets first — an ordinary edge with no
+  `from`, fired while the consumer is in a context — was untested. Section 5.4's "absent such a
+  model the key is the trigger alone" settled the all-or-nothing configurations and not the mixed
+  one, which is the only configuration a repository running a transition graph is in. Section 5.4
+  now states that an edge carrying no `from` is unscoped and is a candidate in every from-context;
+  that a scoped edge is selected over an unscoped one for the same trigger key, the two being
+  distinct keys rather than a duplicate; and that the ladder selects the key before the from-context
+  selects among its edges. `unscoped_edge_matches_inside_a_from_context`,
+  `scoped_edge_wins_over_unscoped_edge_in_its_context`, and `ladder_outranks_the_from_context` cover
+  the three.

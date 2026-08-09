@@ -1755,3 +1755,58 @@ line files all three here), 0057, 0051, and 0044 (whose `Engine Invocation Failu
 names "an invalid `repo.policy.toml`" and now has a token for it). Accepted and applied to
 `VCSX-SPEC.md` (Sections 6.1, 6.2, 6.5, 6.10, 13.1, 13.2), the vocabulary registry, the corpus, and
 `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0067 — An edge with no `from` is unscoped
+
+**State:** Accepted
+**Folder:** [decisions/0067-unscoped-policy-edges/](decisions/0067-unscoped-policy-edges/)
+
+Resolves issue #13, raised by an engine implementation (`vcsx-policy`) built against `06a3bc19` that had
+to pick a reading to compile. `VCSX-SPEC.md` Section 5.4 keys the policy graph on
+`(from-context, trigger)` and closes with "absent such a model the key is the trigger alone", which
+settles the two all-or-nothing configurations and not the **mixed** one — which is the only
+configuration a repository running a transition graph is ever in, since Section 6.7's graph is keyed
+`(from, on)` by construction while the edges that make a policy work (`push:non_fast_forward →
+integrate`, the `#error` catch-all, the `before:commit` scan) carry no `from` at all. The two readings
+differ by a whole policy rather than by one edge: under "an absent `from` is its own null context",
+every ordinary edge stops firing the moment the consumer supplies a context, so adding the first
+transition edge silently disables the routing that made the policy work. The corpus made the silence
+visible rather than creating it — 22 of `match-edge.json`'s 24 vectors passed `"from_context": null`,
+and the two that did not both exercised edges that *carry* `from`. Options: **A** an edge with no `from`
+is unscoped, a scoped edge outranks an unscoped one for the same key, and the ladder selects the key
+first (chosen); **B** an absent `from` is the null context (rejected); **C** mixing a scoped and an
+unscoped edge over one trigger is a configuration error (rejected — it makes one added transition edge
+retroactively invalidate a working policy, needs a tenth configuration reason for a condition that is
+not a defect, and forbids the default-plus-override idiom); **D** unscoped, but resolve the from-context
+before the ladder, so one scoped `#error` edge overrides everything while the context holds (rejected —
+it lets a broader trigger beat a more specific one, which is the property Section 5.3's
+most-specific-wins exists to prevent, and it reproduces B's failure mode in miniature); **E** answer in
+the corpus alone and leave the prose (rejected — `conformance/vcsx/README.md` states the specification
+governs and every value is read from the sections cited, so the vector would be authoring the answer,
+which 0045's hygiene rule reserves for a decision, and a vector can pin which edge wins but not why).
+Option B is not merely the less attractive reading but **unavailable**: Section 13.1 requires that the
+same `repo.policy.toml` yield the same operation flow through `ship` and an embedded driver, and the
+interactive front-end has no tracker binding and so supplies no from-context while a driver running the
+consumer's workflow states supplies one — under B the unscoped `push:non_fast_forward → integrate` edge
+fires under `ship` and not under the driver, two flows from one policy. Deriving the answer from a rule
+the document already states is what makes it stable; the issue's argument from failure modes agrees but
+does not have to carry it. B also cannot express "in every context", the contexts being the consumer's
+tracker states rather than a closed set the policy can enumerate or the engine validate. The precedence
+half is where the two dimensions meet, and the from-context sits *inside* the ladder rather than around
+it: for one trigger key an edge naming the current context is the more specific statement and wins;
+across keys nothing changes, because naming a context does not make a broader trigger the more specific
+match. Accepted cost, stated rather than hidden: a per-context *mode* is not expressible in one edge — a
+repository wanting every error escalated in one workflow state scopes the edges it wants overridden, at
+the specificity they are written. Two things deliberately do not move: `duplicate_edge` (Section 6.10)
+is unchanged, since a scoped and an unscoped edge are distinct `(from, on)` keys and were never a
+duplicate, which Section 5.4 now says so a validator does not invent one; and Section 6.7's own
+determinism rule is untouched, its rows having no unscoped form. Reconsider if a from-context vocabulary
+were ever engine-owned and enumerable, which would make B's completeness checkable and C's validation
+meaningful, or if per-context modes proved common enough that scoping each overridden edge dominated the
+cost of authoring a policy — in which case the answer is an explicit mode construct rather than
+inverting the ladder, since inverting it breaks the specificity guarantee for every policy that wants no
+mode. Relates to 0030 (the machine this refines), 0053 (the corpus that made the gap visible), 0045 (the
+hygiene rule making it a decision rather than a guessed-at vector), and 0054 and 0055, the two sibling
+`match_edge` clarifications. Accepted and applied to `VCSX-SPEC.md` (Sections 5.4, 6.5, 12.1, 13.1,
+13.2) and the corpus (`match-edge.json` gains `unscoped_edge_matches_inside_a_from_context`,
+`scoped_edge_wins_over_unscoped_edge_in_its_context`, and `ladder_outranks_the_from_context`).
