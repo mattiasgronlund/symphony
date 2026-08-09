@@ -168,6 +168,10 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   `capability_unsupported` at validation and the operation's `unsupported` reason at first use
   (Sections 3.3, 9.1–9.3). The last two need a capability descriptor as input, which no vector file
   supplies.
+- **Invocation preconditions** (Section 8.6) — whether the work branch derives and whether a commit
+  identity is well formed are judged against a real checkout by a real backend, so no vector file
+  can supply the input. The reason tokens themselves are in `vocabulary.json` under
+  `precondition_reasons`.
 - **Message formulation** — `scan-content`, pull-request composition, and the `pr_to_squash` transform
   (Section 10), whose formats are repository-owned by construction.
 - **Hook execution** and the execution-context split (Sections 3.2, 6.6) — process and trust-boundary

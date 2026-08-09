@@ -114,9 +114,19 @@
     ]
   },
 
+  "precondition_reasons": {
+    "spec_refs": ["VCSX-SPEC.md Section 8.6 \"Invocation Preconditions\""],
+    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — no operation ran, so there is no result to classify. Distinct from `config_reasons` by what each is judged from: a configuration error is a property of `repo.policy.toml` alone, a precondition failure needs the invocation's arguments and the checkout. Validation precedes precondition establishment, so where both hold the configuration reason is reported. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds.",
+    "entries": [
+      { "token": "no_current_branch", "meaning": "The work branch is the checkout's current branch (no `branch_pattern` configured) and the checkout has none." },
+      { "token": "work_branch_invalid", "meaning": "The derived work branch name is not a legal branch name for the VCS backend." },
+      { "token": "identity_invalid", "meaning": "The caller-supplied commit identity is malformed as the VCS backend judges it." }
+    ]
+  },
+
   "invocation_statuses": {
     "spec_refs": ["VCSX-SPEC.md Sections 8.2 \"Result Envelope\", 8.3 \"Exit Codes\""],
-    "note": "Part of the major-stable surface (Section 8.5). The first three are the overall proto class of a run that executed the policy; `usage_or_config` covers a run in which it did not.",
+    "note": "Part of the major-stable surface (Section 8.5). The first three are the overall proto class of a run that executed the policy; `usage_or_config` covers a run in which it did not — a refused policy (Section 6.10) or an unestablished precondition (Section 8.6).",
     "entries": [
       { "token": "ok", "exit_code": 0 },
       { "token": "needs_caller", "exit_code": 10 },
@@ -192,7 +202,7 @@
       { "code": 0, "status": "ok" },
       { "code": 10, "status": "needs_caller" },
       { "code": 20, "status": "error" },
-      { "code": 2, "status": "usage_or_config", "note": "The policy did not run (Section 6.10)." }
+      { "code": 2, "status": "usage_or_config", "note": "The policy did not run (Sections 6.10, 8.6)." }
     ]
   },
 

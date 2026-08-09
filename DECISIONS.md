@@ -1517,3 +1517,174 @@ issue's argument routes through, and which this decision finds is not the failur
 last changed Section 9.1's capability list), and 0057 (whose argument for changing settled surface
 before an implementation exists this reuses). Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3,
 9.1, 11, 13.1, 13.2) and `conformance/vcsx/README.md`.
+
+## 0062 — The remote is named in `[engine]` and supplied to the capabilities that touch it
+
+**State:** Accepted
+**Folder:** [decisions/0062-engine-remote-selection/](decisions/0062-engine-remote-selection/)
+
+Resolves part 1 of issue #9. `VCSX-SPEC.md` Section 9.1 gave the VCS backend `push(work_branch)` and
+`pull(work_branch)`, neither carrying a remote, and Section 6.2's `[engine]` configured `version_floor`,
+`vcs` and `forge` and no remote name — so a backend that talks to a remote at all had to pick one and
+nothing said which. The consequence is a conformance hole with side effects: two engines running the
+same `repo.policy.toml` over the same checkout can push a repository's work branch to two different
+places while both conform, and both report `push:ok`. Options: **A** an OPTIONAL `remote` in `[engine]`,
+resolved once per invocation and passed to the capabilities that take one (chosen); **B** a sentence
+saying the remote is the backend's to determine, published under Section 13.3 (the issue's second offer;
+rejected — it costs nothing and leaves the remote *unconfigurable*, so a repository whose work branches
+go to a fork cannot say so, and Section 6.2's own rationale that "which code host a repository targets
+is repository-owned" applies with equal force to which remote at that host); **C** name `origin`
+normatively (rejected — a git convention in a document that names no VCS's conventions normatively, and
+Section 3.3 already admits a jj secondary workspace where it names nothing); **D** derive it from the
+work branch's upstream binding (rejected on the filing implementation's own reasoning — the work branch
+is engine-derived per Section 6.3 and MAY be absent at the first push, so the configuration read is
+exactly the one that does not exist); **E** a per-invocation `remote` argument (rejected — it relocates
+the divergence rather than closing it, and Section 6.2 puts backend *selection* on the repository's
+side). The reasoning worth keeping is not the key but the invariant it makes checkable: **the
+capabilities that take a `remote` are exactly the version-control operations Section 3.2 places
+host-side, and every other Section 9.1 capability is local to the checkout** — it acquires nothing over
+the network and needs no credential. That one sentence answers which operations need a remote, which
+need a credential, and which a consumer may run in-sandbox, and it is what a reviewer applies to the
+next operation added. It also forced a latent defect out: Section 3.2's host-side list omitted `pull`,
+which Section 4.1 defines as updating "from its remote counterpart" — the invariant would have been
+false the moment it was written, and nothing had depended on that list being complete until now.
+Passing the remote rather than letting the backend read the policy follows the document's existing habit
+with the other configuration-resolved value: the base is resolved by the engine and reaches the backend
+as a parameter, so a `remote` key with no way to reach the backend would repeat this issue's own
+complaint — the answer settled somewhere other than where the implementer is reading. That is decision
+0058's correction restated: every value an operation needs, and that the engine resolves, MUST reach the
+backend through a capability signature. A remote name the checkout does not carry is an operation
+`failed` (Section 4.3) rather than a configuration error, because Section 6.10 is judged from the policy
+file alone and a remote's existence is a property of the checkout. Left out of scope: separate read and
+write remotes for a fork-and-upstream arrangement, which is the shape to reach for if the need appears.
+Reconsider then. Relates to 0058 (the same correction one operation over), 0064 (which says what
+`integrate` does with the remote it now receives), and 0061. Accepted and applied to `VCSX-SPEC.md`
+(Sections 3.2, 6.2, 9.1, 13.1, 13.3) and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0063 — `commit` captures the working tree, and `is_dirty()` is its predicate
+
+**State:** Accepted
+**Folder:** [decisions/0063-commit-captures-working-tree/](decisions/0063-commit-captures-working-tree/)
+
+Resolves part 2 of issue #9. `VCSX-SPEC.md` Section 4.1 defined `commit` as "create a commit from the
+working tree" and offered no `stage` operation a driver could call first; Section 12.2 then guarded it
+with `if worktree_dirty()`. Two things went unstated: whether `commit` is itself responsible for putting
+working-tree content into the commit, and whether content the VCS has never recorded counts toward that
+guard — the same question asked of Section 9.1's `is_dirty()`. The phrasing already pointed one way, and
+the issue is right that pointing is not enough, because the failure is silent and asymmetric: an engine
+reading "from the working tree" as "from whatever was selected out of band" conforms to the letter, and
+an agent whose entire change is new files is then reported clean, skips the commit, and ships an empty
+branch with every step `done`-class and `create_pr:created` at the end. The reverse mistake is loud — a
+commit that captured too much fails review. Options: **A** `commit` captures the working tree in full
+and `is_dirty()` is true exactly when a `commit` would capture something (chosen); **B** a `stage`
+operation and a `before:stage` position (rejected — it models a two-step workflow the engine has no way
+to drive, since nothing in Sections 4.1 or 5.2 could decide what to select, so the argument would come
+from the caller, which Section 6.3 declines for branches on the same reasoning; and it inverts the
+failure so the default becomes an empty commit); **C** leave it, the phrasing points that way (rejected
+— Section 12.2 makes the predicate decide whether the commit runs *at all*, so a merely probable reading
+is not enough for a branch that silently ships nothing); **D** `Implementation-defined` (rejected — two
+engines would produce different commits from the same worktree and `commit:nothing_to_commit` would mean
+something different on each, which is the one thing a reason registry cannot afford). The reasoning
+worth keeping is the second half rather than the first. That `commit` commits the working tree is a
+policy choice, defensible either way in isolation; that **the guard and the operation share one
+predicate** is not — it is what makes `if worktree_dirty()` a correct guard rather than an independent
+opinion about the same worktree. Stated separately they drift into skipped work; stated as one predicate
+the skip is provably benign, because the only tree the guard declines to commit is one a commit would
+have found empty. That framing also settles the ignored-content question with no second rule: ignored
+content is not dirty because a commit would not capture it, so if a repository changes what its VCS
+ignores, both halves move together. `commit:nothing_to_commit` keeps its `done` class and is now the
+only way the flow reaches a commit with nothing to do. Reconsider if a consumer needs to commit a subset
+of a worktree, which would need a selection argument the engine trusts — a larger change than relaxing
+this predicate. Relates to 0057 and 0061 (whose `pull:conflict` is finalized by a `commit` that now
+demonstrably captures the resolved tree, including any file the resolution added). Accepted and applied
+to `VCSX-SPEC.md` (Sections 4.1, 9.1, 12.2, 13.1).
+
+## 0064 — `integrate` resolves the base against the remote; the read-only operations do not
+
+**State:** Accepted
+**Folder:** [decisions/0064-integrate-base-from-remote/](decisions/0064-integrate-base-from-remote/)
+
+Resolves part 3 of issue #9. `VCSX-SPEC.md` Section 4.1 defined `integrate` as bringing "the resolved
+base" into the work branch and Section 6.4 resolves the base to a *branch name*; whether that name meant
+the branch as the checkout holds it or as the remote holds it was not stated, and the same question
+applied to `ahead_behind(base)` and `diff(base)`. The document already decided it, in two places that do
+not mention each other: Section 12.2 routes `push:non_fast_forward` to `integrate` and retries, a loop
+that converges only against the remote's copy; and Section 4.1 marks `status` and `diff` "Read-only",
+which acquiring the base is not. Decision 0060 sharpened the stakes rather than creating them — before
+the flow bound a stale-base `integrate` produced an engine that spun, after it the same engine
+terminates and reports a plausible `flow_exhausted` ("the graph does not converge or the remote outruns
+the engine") when the truth is that it never fetched. The failure got quieter, not louder. Options:
+**A** remote for `integrate`, the checkout's copy for `ahead_behind` and `diff` (chosen); **B** the
+checkout's copy for everything (rejected — Section 12.2's built-in routing cannot converge, so the
+document's own default policy would be wrong for the case it exists to handle, and rescuing it means a
+fetch step every policy must remember to route); **C** the remote for everything (rejected — it makes a
+read-only operation credentialed, so a consumer running `status` in-sandbox could not run it at all, and
+makes the cheapest operation in the set the one that touches the network); **D** make it configurable
+(rejected — one answer makes the built-in routing converge and the other does not, so a key whose wrong
+value is never correct is a defect surface, not a policy surface); **E** state it for `integrate` only
+and leave the read side to "Read-only" (the issue's own position; rejected as insufficient — that word
+settled it before the issue was filed and the issue was filed anyway, by someone who derived the answer
+and still wanted it said). The reasoning worth keeping is that **the asymmetry is not a compromise
+between freshness and cost — it follows from Section 3.2's trust split, and the operations divide
+exactly along it**: an operation that acquires the base is host-side because it needs the network and a
+credential, and one that does not can run in-sandbox. That is also what makes Option C's cost visible —
+a fetching `status` does not merely add latency, it moves the operation across the boundary Section 3.2
+exists to let a consumer split a policy along. The staleness this leaves on the read side is stated
+rather than hidden (a caller needing current figures runs `integrate` first); it is the price Section
+4.1 already pays by marking the operation read-only, so nothing an engine *does* changes — only whether
+an implementer has to guess. `pull` needs no clause: Section 4.1 already says "from its remote
+counterpart" and 0061 fixed how it applies what it finds. Reconsider for a checkout mode where the
+local/remote distinction has no cost, or a consumer actively harmed by stale `ahead`/`behind`, which
+would argue for an OPTIONAL fetching variant rather than for changing this one. Relates to 0062 (which
+supplies the remote), 0060 (whose bound a stale-base `integrate` now trips), and 0061. Accepted and
+applied to `VCSX-SPEC.md` (Sections 4.1, 9.1, 12.2, 13.1).
+
+## 0065 — Invocation preconditions are `usage_or_config`, with a registry of their own
+
+**State:** Accepted
+**Folder:** [decisions/0065-invocation-preconditions/](decisions/0065-invocation-preconditions/)
+
+Resolves part 4 of issue #9. Decision 0057 made `failed`, `blocked` and `unsupported` universal, closing
+the case where a capability fails *during* an operation; it left the case where one fails *before any
+operation runs*. Section 6.3 has the engine derive the work branch from the pattern and the caller's
+identity, which means calling a Section 9.1 capability during setup, and three real states fail there: a
+checkout with no current branch, a derived name that is not legal for the VCS, and a malformed commit
+identity, which only the backend can judge because Section 10.1 keeps identity opaque to the engine.
+There is no operation to attach `<op>:failed` to — Section 8.1's entry points are the front-ends and the
+operations, and this is before the first of them. Answering it exposed two adjacent holes: the
+`usage_or_config` status promises usage *and* configuration and only configuration ever had a registry
+(a malformed caller identity is the plainest usage error the contract can have, and had no token); and
+Section 6.3's `branch_pattern` was listed with no `OPTIONAL` marker and no default, so the configuration
+state in which a detached HEAD is fatal is one the document did not admit exists. Options: **A**
+`usage_or_config` (exit `2`) with a precondition registry in a new Section 8.6 (chosen); **B** `error`
+(exit `20`) with a null `op` (rejected — it reports a failure with no operation that failed, which 0059
+refused for exactly this shape, and `20` invites a retry against a state no retry changes, while `2`
+says "the policy did not run; fix the invocation"); **C** fold the reasons into Section 6.10 (rejected —
+6.10 is judged from `repo.policy.toml` alone and a detached HEAD is not a property of that file, so
+filing it there reproduces this issue's own complaint and breaks 6.10's contract that its conditions are
+statically determinable); **D** a fifth invocation status (rejected on 0059's reasoning — Section 8.5
+freezes the statuses and the exit-code mapping for a whole `MAJOR`); **E** a `setup` pseudo-operation so
+the existing registry covers them (rejected — it adds a trigger surface no repository could usefully
+bind, since the failure happens before the policy is consulted); **F** leave it
+`Implementation-defined` (rejected — the exit code is the contract's coarsest branch point and is
+exactly what the issue asks about). The reasoning worth keeping is the dividing line rather than the
+tokens: **a configuration error is a property of `repo.policy.toml` alone, detectable before any
+argument or checkout is in hand; a precondition failure needs the invocation's arguments and the
+checkout.** Both refuse to run the policy and both report `usage_or_config`, which is why that status
+names usage and configuration together — it was always a two-part status with one part populated. The
+line is what a reviewer applies to the next such condition: ask what it is judged from, not which table
+has room. Nothing in the envelope needed inventing — 0059's invariant already nulls `op`/`reason`/`class`
+where nothing is decisive, which is the check Option B fails and this one passes. One boundary is stated
+because it is how this could rot: an engine MUST NOT report a precondition reason for a condition an
+operation could have reported, or the new registry becomes a home for any awkward failure and the
+`error` status empties out. Making `branch_pattern` OPTIONAL with a stated default goes beyond the
+question asked and is included because `no_current_branch` describes a situation that, read strictly,
+could not otherwise arise. Three tokens is the whole registry, deliberately: each corresponds to a
+capability the engine calls before the policy runs, which bounds growth better than "anything that goes
+wrong early". Left open: `fail`'s envelope, still, unchanged since 0059 and 0060. Reconsider if an entry
+point wants preconditions that are optional — a `status` that succeeds on a detached HEAD and reports
+the detachment — which would narrow the precondition to the entries that write. Relates to 0057 (which
+made operation failure total and left this the residue), 0059 (whose null-triple invariant this reuses),
+0056 (which created `usage_or_config` and filled its other half), and 0044. Accepted and applied to
+`VCSX-SPEC.md` (Sections 6.3, 8.2, 8.3, 8.5, 8.6, 13.1, 13.2, 13.3), the vocabulary registry,
+`conformance/vcsx/README.md`, and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
