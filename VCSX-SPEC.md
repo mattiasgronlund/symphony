@@ -217,11 +217,13 @@ and `blocked` for every operation gated at a lifecycle position (Section 4.1).
 | `(any)` | `unsupported` | `error` | The operation requires a plugin capability the backend does not declare (Section 9.3). |
 | `commit` | `ok` | `done` | A commit was created. |
 | `commit` | `nothing_to_commit` | `done` | No changes to commit; benign no-op. |
+| `commit` | `identity_missing` | `needs_caller` | No caller-supplied commit identity is available (Sections 8.6, 10.1). |
 | `integrate` | `ok` | `done` | The base was integrated. |
 | `integrate` | `up_to_date` | `done` | Already current; no-op. |
 | `integrate` | `merge_conflicts` | `needs_caller` | Integration stopped on conflicts to resolve. |
 | `integrate` | `base_unresolved` | `error` | The base could not be resolved (Section 6.4). |
 | `integrate` | `base_unavailable` | `error` | The base could not be acquired from the remote (Section 9.1 `fetch_base`). |
+| `integrate` | `identity_missing` | `needs_caller` | No caller-supplied commit identity is available for the merge commit (Sections 8.6, 10.1). |
 | `push` | `ok` | `done` | The work branch was pushed. |
 | `push` | `up_to_date` | `done` | Remote already current; no-op. |
 | `push` | `non_fast_forward` | `needs_caller` | Remote moved; integrate then retry. |
@@ -239,6 +241,7 @@ and `blocked` for every operation gated at a lifecycle position (Section 4.1).
 | `merge` | `rejected` | `error` | Branch protection or forge policy refused the merge. |
 | `pull` | `ok` | `done` | The local branch was updated. |
 | `pull` | `conflict` | `needs_caller` | The merge of the remote counterpart stopped on conflicts. |
+| `pull` | `identity_missing` | `needs_caller` | No caller-supplied commit identity is available for the merge commit (Sections 8.6, 10.1). |
 | `status` / `diff` | `ok` | `done` | The read completed. |
 | `diff` | `base_unavailable` | `error` | The checkout holds no copy of the resolved base, so no delta can be produced (Section 6.4). |
 
@@ -248,6 +251,15 @@ resolution has two steps (Section 6.4) and each reason reports the one it stoppe
 **Unavailable is not having its commit** — the branch it selected has no copy in the checkout, or
 acquiring it failed. `status` reports the same absence in its outputs rather than as a reason
 (Section 4.1), because a read that cannot see the base can still report everything else.
+
+`identity_missing` and Section 8.6's `identity_invalid` name one condition at two points, and the
+first dispatch is the boundary between them. An entry the identity precondition covers is refused
+before the policy runs and never reaches `identity_missing`; an entry it does not cover MAY reach an
+operation that writes a commit through a `run_op` edge (Section 5.2), and that operation reports
+`identity_missing` — a result the machine routes like any other, so a repository MAY bind it and the
+built-in `needs_caller` default escalates it (Sections 5.3, 5.4). Only absence reaches a dispatch: a
+supplied identity is judged for shape before the policy runs whatever the entry (Section 8.6), so a
+malformed one is `identity_invalid` in every invocation.
 
 Every operation therefore has at least one `done` reason and at least one `error` reason, so an
 `error`-class result is expressible for every operation including the read-only ones; every gated
@@ -773,12 +785,13 @@ The JSON result is emitted regardless of exit code so a caller MAY always read s
 ### 8.4 Escalation Payload
 
 When `status == "needs_caller"`, `escalation` carries: the `need` (a stable token naming what is
-required, for example `integrate_then_retry`, `resolve_conflicts`, `await_checks`, `human_review`,
-`intervention`, `flow_exhausted`), the `op` that produced it, and an `Implementation-defined` `detail`.
-The `op` is null where no operation produced the escalation — at a signal, at a lifecycle position where
-the gated operation has not run (Section 5.1), and at a bound the executor reached (Section 5.6). A
-front-end binds the resolver by the `need` token (Section 5.5); the `need` vocabulary is part of the
-public contract and MUST be documented and stable within a major version.
+required, for example `integrate_then_retry`, `resolve_conflicts`, `supply_identity`,
+`await_checks`, `human_review`, `intervention`, `flow_exhausted`), the `op` that produced it, and an
+`Implementation-defined` `detail`. The `op` is null where no operation produced the escalation — at a
+signal, at a lifecycle position where the gated operation has not run (Section 5.1), and at a bound
+the executor reached (Section 5.6). A front-end binds the resolver by the `need` token
+(Section 5.5); the `need` vocabulary is part of the public contract and MUST be documented and
+stable within a major version.
 
 Two needs name a **hold** rather than a request, and neither is resolvable: a front-end MUST NOT bind a
 resolver to either and MUST NOT resume the flow on either. Each hold is released out of band, by a new
@@ -812,12 +825,25 @@ Between validating the policy (Section 6.10) and running it, the engine establis
 preconditions the invoked entry point depends on, in order, reporting the first that fails. It
 resolves the work branch (Section 6.3), which calls a VCS backend capability — `derive_work_branch`,
 or `current_branch` where no `branch_pattern` is configured — and judges the name it resolved with
-`accepts_branch_name`. For an entry that can write a commit — `commit`, `integrate`, `pull`, and a
-front-end sequence that dispatches one — it accepts the caller-supplied commit identity
-(Section 10.1) with `accepts_identity`, whose shape only the backend can judge, because the engine
-holds identity opaque. Each is a capability the backend publishes (Section 9.1), so the order above
-is established through the plugin API rather than inside a backend's own construction, where a
-refusal would carry no reason for this registry to report.
+`accepts_branch_name`. Where the caller supplied a commit identity (Section 10.1) it accepts it with
+`accepts_identity`, whose shape only the backend can judge, because the engine holds identity
+opaque; the shape is judged whatever the entry, so no invocation carries a malformed identity into
+the policy. For an entry that can write a commit — `commit`, `integrate`, `pull`, and a front-end
+sequence that dispatches one — an identity is REQUIRED, and its absence is refused here. Each is a
+capability the backend publishes (Section 9.1), so the order above is established through the plugin
+API rather than inside a backend's own construction, where a refusal would carry no reason for this
+registry to report.
+
+The entry point alone fixes that scope: a front-end sequence that dispatches one means the
+sequence's own dispatches (Sections 12.2, 12.3), so `ship` requires an identity and `land` does not,
+and a policy's `run_op` edges do not widen the set. An entry outside the set MAY still reach an
+operation that writes a commit, because a policy is a graph rather than a flat list (Section 5.2): a
+`status` or a `push` run can route an outcome to `commit`, `integrate` or `pull`. That is not a
+precondition the engine refuses in advance, because it is not judged from the invocation's arguments
+and the checkout but from a path the policy might take. The dispatched operation reports
+`identity_missing` (Section 4.3) instead, which is the disposition Section 9.3 already gives an
+unsupported capability — refused before the policy runs where the invocation determines it, reported
+at first use where only the run does.
 
 A precondition the engine cannot establish is not an operation result. No operation ran, so the
 Section 4.3 registry does not apply, no proto class is assigned, and there is no `<op>:<reason>` for
@@ -831,14 +857,17 @@ run in which the policy did not run.
 |-----------|--------|
 | The work branch is the checkout's current branch (Section 6.3) and the checkout has none | `no_current_branch` |
 | The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
-| The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it (Section 10.1) | `identity_invalid` |
+| The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it whatever the entry (Section 10.1) | `identity_invalid` |
 
 Precondition reasons carry no proto class, for the same reason configuration reasons do not
 (Section 6.10), and they share the `usage_or_config` status, so a consumer already branching on that
 status absorbs a new one without a class edge. An engine MUST document any precondition reason it
 adds beyond this registry (Section 13.3). An engine MUST NOT report a precondition reason for a
-condition an operation could have reported: once an operation is dispatched, its failure is that
-operation's own reason (Section 4.3).
+condition an operation has a reason that names, and the first dispatch is the boundary: before it no
+operation has run, and once one is dispatched its failure is that operation's own reason
+(Section 4.3). The universal `failed` reason does not satisfy that test, because it names no
+condition — reading it as one would make every precondition reportable as `<op>:failed` and leave
+this registry nothing to name.
 
 What separates this registry from Section 6.10's is what each is judged from. A configuration error
 is a property of `repo.policy.toml` alone, detectable before any argument or checkout is in hand; a
@@ -1186,7 +1215,11 @@ A conforming engine SHOULD include tests covering:
   no `branch_pattern` is configured, an illegal derived work-branch name, and a commit identity that
   is absent where the entry requires one or malformed each refuse to run the policy and yield
   `usage_or_config` with the precondition reason and null `op`/`class`, the last two judged through
-  `accepts_branch_name` and `accepts_identity` (Sections 8.6, 9.1).
+  `accepts_branch_name` and `accepts_identity` (Sections 8.6, 9.1); an entry the identity
+  precondition does not cover — a `status` whose policy routes `status:ok` to `run_op` `commit` —
+  runs the policy and reports `commit:identity_missing`, class `needs_caller`, rather than a
+  precondition reason, while a malformed identity supplied to that same entry is refused before the
+  policy runs (Sections 4.3, 8.6).
 - Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it; the
   squash body is the `pr_to_squash` transform of the pull-request body; every commit the engine
   writes carries the supplied commit identity — the mechanical merge commit an `integrate` or a

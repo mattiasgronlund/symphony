@@ -1,0 +1,129 @@
+{
+  "function": "requires_commit_identity",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 8.6 \"Invocation Preconditions\"",
+    "VCSX-SPEC.md Section 8.1 \"Entry Points and Arguments\"",
+    "VCSX-SPEC.md Section 12.2 \"`ship` Sequence\"",
+    "VCSX-SPEC.md Section 12.3 \"`land` Sequence\""
+  ],
+  "description": "Whether the invocation-precondition step requires a caller-supplied commit identity, whose absence refuses the run with `identity_invalid` before the policy runs.",
+  "given": "an entry point and the policy the invocation would run",
+  "expect": "whether a commit identity is required as a precondition",
+  "notes": [
+    "The answer is a property of the entry point alone (Section 8.6): a front-end sequence that dispatches one means the sequence's own dispatches (Sections 12.2, 12.3), so a policy's `run_op` edges do not widen the set. `policy` is supplied in every vector so that independence is asserted rather than assumed.",
+    "A `false` answer does not mean the invocation writes no commit. An entry outside the set MAY reach `commit`, `integrate` or `pull` through a `run_op` edge, because a policy is a graph (Section 5.2); with no identity supplied that operation reports `identity_missing`, class `needs_caller`, at the dispatch (Section 4.3). That is behavior against a real backend and is not exercised here; the reason token is in `vocabulary.json` under `reasons`.",
+    "Whether a supplied identity is well formed is judged by the backend through `accepts_identity` (Sections 8.6, 9.1), whatever the entry, and is deferred with the rest of plugin behavior. This function answers only whether one is required."
+  ],
+  "vectors": [
+    {
+      "id": "commit_entry_requires_identity",
+      "description": "An entry that can write a commit (Section 8.6).",
+      "given": {
+        "entry": "commit",
+        "policy": { "edges": [] }
+      },
+      "expect": { "requires_commit_identity": true }
+    },
+    {
+      "id": "integrate_entry_requires_identity",
+      "description": "A merge commit `integrate` writes carries the same identity (Section 10.1).",
+      "given": {
+        "entry": "integrate",
+        "policy": { "edges": [] }
+      },
+      "expect": { "requires_commit_identity": true }
+    },
+    {
+      "id": "pull_entry_requires_identity",
+      "given": {
+        "entry": "pull",
+        "policy": { "edges": [] }
+      },
+      "expect": { "requires_commit_identity": true }
+    },
+    {
+      "id": "ship_requires_identity",
+      "description": "The sequence dispatches `commit` and `integrate` of its own (Section 12.2).",
+      "given": {
+        "entry": "ship",
+        "policy": { "edges": [] }
+      },
+      "expect": { "requires_commit_identity": true }
+    },
+    {
+      "id": "land_does_not_require_identity",
+      "description": "The sequence dispatches `merge` alone, which the forge performs and the engine supplies no identity for (Sections 12.3, 10.1).",
+      "given": {
+        "entry": "land",
+        "policy": { "edges": [] }
+      },
+      "expect": { "requires_commit_identity": false }
+    },
+    {
+      "id": "status_does_not_require_identity",
+      "given": {
+        "entry": "status",
+        "policy": { "edges": [] }
+      },
+      "expect": { "requires_commit_identity": false }
+    },
+    {
+      "id": "diff_does_not_require_identity",
+      "given": {
+        "entry": "diff",
+        "policy": { "edges": [] }
+      },
+      "expect": { "requires_commit_identity": false }
+    },
+    {
+      "id": "push_does_not_require_identity",
+      "given": {
+        "entry": "push",
+        "policy": { "edges": [] }
+      },
+      "expect": { "requires_commit_identity": false }
+    },
+    {
+      "id": "create_pr_does_not_require_identity",
+      "given": {
+        "entry": "create_pr",
+        "policy": { "edges": [] }
+      },
+      "expect": { "requires_commit_identity": false }
+    },
+    {
+      "id": "merge_does_not_require_identity",
+      "given": {
+        "entry": "merge",
+        "policy": { "edges": [] }
+      },
+      "expect": { "requires_commit_identity": false }
+    },
+    {
+      "id": "run_op_edge_to_commit_does_not_widen_the_scope",
+      "description": "A policy edge dispatching `commit` from a read-only entry's outcome leaves the precondition unchanged; the dispatch reports `commit:identity_missing` instead (Sections 4.3, 8.6).",
+      "given": {
+        "entry": "status",
+        "policy": {
+          "edges": [
+            { "on": "status:ok", "do": "run_op", "op": "commit" }
+          ]
+        }
+      },
+      "expect": { "requires_commit_identity": false }
+    },
+    {
+      "id": "run_op_edge_to_integrate_does_not_widen_the_scope",
+      "description": "The routing Section 6.5 illustrates and Section 12.2 builds in, invoked at the `push` entry point.",
+      "given": {
+        "entry": "push",
+        "policy": {
+          "edges": [
+            { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" }
+          ]
+        }
+      },
+      "expect": { "requires_commit_identity": false }
+    }
+  ]
+}
