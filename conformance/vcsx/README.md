@@ -184,9 +184,12 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
 - **Base-ref resolution and the acquire/use split** (Sections 6.4, 9.1) — which copy of the base a
   checkout holds, whether it holds one at all, and whether an acquisition failed are properties of a
   real checkout with a real remote. That covers the multi-remote read, `base_unavailable` from a failed
-  `fetch_base`, and `status`'s `base_absent` output. The reason token is in `vocabulary.json` under
-  `reasons`; the base-resolution vectors cover the branch half only, which is the half a policy
-  document determines.
+  `fetch_base`, and `status`'s `base_absent` output. It covers the counterpart half on the same
+  reasoning: whether the remote carries no counterpart or could not be reached at all is a property of
+  that remote, so the two `pull` results those conditions carry — `ok` for the benign absence and
+  `failed` for the acquisition that did not complete (decision 0075) — have no vector either. The
+  reason tokens are in `vocabulary.json` under `reasons`; the base-resolution vectors cover the branch
+  half only, which is the half a policy document determines.
 - **Message formulation** — `scan-content`, pull-request composition, and the `pr_to_squash` transform
   (Section 10), whose formats are repository-owned by construction.
 - **Hook execution** and the execution-context split (Sections 3.2, 6.6) — process and trust-boundary

@@ -2209,3 +2209,62 @@ ambiguous), 0073 (whose `accepts_identity` the "judged whatever the entry" rule 
 Accepted and applied to `VCSX-SPEC.md` (Sections 4.3, 8.4, 8.6, 13.1),
 `conformance/vcsx/vocabulary.json`, `conformance/vcsx/vectors/identity-precondition.json`, and
 `conformance/vcsx/README.md`.
+
+## 0075 — A failed counterpart acquisition is `pull:failed`
+
+**State:** Accepted
+**Folder:** [decisions/0075-counterpart-acquisition-failure/](decisions/0075-counterpart-acquisition-failure/)
+
+Resolves issue #26. Decision 0073 split `pull` into `fetch_counterpart` and `merge_counterpart` and
+concluded in as many words that the operation gains no reason token — "no built-in sequence retries it,
+so `pull:failed` remains sufficient, and an absent counterpart stays a benign `pull:ok`" — but Section
+9.1's realization did not carry that conclusion through: `fetch_counterpart` answers "the ref … or none
+where the remote carries none", two answers for three conditions. A fetch that failed is not "the remote
+carries none" and has no answer of its own, so an engine composing `pull` as Section 9.1 describes reads
+the absent answer as "nothing to merge" and **reports `pull:ok`, class `done`, exit `0`, for a run that
+pulled nothing.** What was missing was not a reason: `pull:failed` has been in the registry since 0057
+made `failed` universal, and was merely unreachable — the specification had the word and no path to it.
+Two things sharpen the report. Section 6.2 promises that a configured remote the checkout does not carry
+"surfaces at first use as the operation's `failed` reason", and for `pull` first use *is*
+`fetch_counterpart`, so two normative sections disagreed rather than one being silent. And Section 13.1
+asked for the failed-acquisition check on the `integrate` side of the same split and nothing on the
+`pull` side, which is why the filing implementation shipped the bug green through a full gate. The
+issue's own preferred shape — one combined counterpart token, leaving the two-valued answer as it is,
+"as `base_unavailable` covers both for `integrate`" — is unsound and was withdrawn by the reporter: a
+reason carries exactly one proto class (4.2), frozen within a `MAJOR` (8.5), and `base_unavailable`
+combines two conditions that are **both failures**, while the counterpart's two straddle the boundary,
+"the remote carries none" being the ordinary state before the first push whose correct result is
+success. A combined token at `error` fails every first push; at `done` it is the defect renamed. So the
+three-valued answer is the floor under every option and the only live question was how to name the third
+condition. Options: **A** the capability distinguishes and the failure is `pull:failed` (chosen); **B**
+A plus a registered `pull:counterpart_unavailable`, class `error` (rejected — the sound version of the
+ask, and the only one worth weighing); **C** the combined token (rejected as unsound, recorded because
+the issue proposes it); **D** an answer-domain invariant over all of Section 9.1 (not taken — the
+observation behind it is real, that Section 9.1 silently mixes capabilities answering `<op>:*` with
+capabilities answering a bare value, and that of the three network-touching ones `push` answers a result
+while both fetches answer a value, which is exactly where a transport failure has nowhere to go; but an
+invariant quantified over the capability list sits at a different altitude than the section's prose, and
+it is the repair to reach for if a second capability repeats this). B is rejected on 0073's own test
+rather than on size. That decision earned `base_unavailable` operationally: Section 12.2 routes
+`push:non_fast_forward` to `integrate` and retries the push, so a failed acquisition could not converge,
+burned the flow bound (0060) and surfaced as `flow_exhausted` — "the graph does not converge or the
+remote is moving", not "your remote is down". **The token exists because a built-in loop was
+misdiagnosing.** Neither Section 12.2 nor 12.3 dispatches `pull`, so there is no loop to misdiagnose,
+and the universal `failed` is doing precisely the job Section 4.3 defines it for — "defined for every
+operation" is the specified answer, not a fallback. Section 8.5 makes every token permanent shared
+surface and 0066 already ruled against reaching for a narrow token where a wider one fits, so minting
+`counterpart_unavailable` would be that ruling inverted. The symmetry argument that carried 0073's split
+does not carry a token either: the two operations differ because **a base is required to exist and a
+work branch's counterpart is not**, so the base's non-ref answers collapse to one class and the
+counterpart's do not — the asymmetry is in the subject rather than in the naming, which is why Section
+4.3 gains a sentence and not a row. The cost is recorded rather than argued away: `pull:failed` covers
+both halves of the split, so a policy cannot bind a failed acquisition apart from a failed merge, and a
+consumer handling one real-world condition across both operations writes two shapes. Reconsider for a
+consumer that must tell an unreachable remote from a failed merge *in order to act differently* — retry
+later versus escalate to a person; Section 8.5 admits the token in a `MINOR` release, landing on the
+`error` edge a consumer already has, so deferring costs a later minor bump and nothing else, while
+adding it now is permanent. Relates to 0073 (whose conclusion this carries into Section 9.1, and whose
+realization it repairs without disturbing the decision), 0057 (whose universal `failed` is the answer),
+0066 (whose "the wider token where it fits" ruling this follows), 0062 and 0064, 0060, and 0074.
+Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3, 9.1, 13.1) and `conformance/vcsx/README.md`;
+`conformance/vcsx/vocabulary.json` verified unchanged.

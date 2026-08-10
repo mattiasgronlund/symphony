@@ -170,7 +170,11 @@ returns a typed result (Section 4.2). Read-only operations carry no lifecycle po
 - `pull` — update the local work branch from its remote counterpart, preserving the commits already on
   the branch: the counterpart is merged in, and no commit on the branch is rewritten, dropped, or
   re-parented (Section 11). `pull:conflict` is therefore a merge conflict, which the caller resolves and
-  `commit` finalizes; the operation set has no step that resumes a sequential replay.
+  `commit` finalizes; the operation set has no step that resumes a sequential replay. Where the remote
+  carries no counterpart the operation is a benign no-op and reports `pull:ok`: the work branch is
+  engine-derived and need not exist on the remote before the first push (Sections 6.2, 6.3). An
+  acquisition the engine could not complete is not that no-op and reports `pull:failed`
+  (Sections 4.3, 9.1).
 
 An engine MAY define additional operations and their `before:<op>` positions; the operations above are
 the required set and the four positions `before:commit`, `before:push`, `before:create_pr`,
@@ -251,6 +255,15 @@ resolution has two steps (Section 6.4) and each reason reports the one it stoppe
 **Unavailable is not having its commit** — the branch it selected has no copy in the checkout, or
 acquiring it failed. `status` reports the same absence in its outputs rather than as a reason
 (Section 4.1), because a read that cannot see the base can still report everything else.
+
+`pull` carries no counterpart reason of its own, and that follows from the operation rather than being
+an omission. The conditions that leave `fetch_base` without a base ref are failures whatever their
+cause, so one reason covers them. The conditions that leave `fetch_counterpart` without a counterpart
+ref are a benign absence and a failure, and a reason carries one proto class (Sections 4.2, 8.5), so no
+single reason can carry both; the acquiring capability distinguishes them instead (Section 9.1) and
+each takes the reason it already has — an absent counterpart is `pull:ok`, a failed acquisition is the
+universal `failed`. **A base is required to exist and a work branch's counterpart is not**, so what is
+one condition for `integrate` is two for `pull`.
 
 `identity_missing` and Section 8.6's `identity_invalid` name one condition at two points, and the
 first dispatch is the boundary between them. An entry the identity precondition covers is refused
@@ -902,11 +915,17 @@ Realizes the version-control operations. Required capabilities:
 - `diff(base_ref)` → `diff:*`, the branch delta against the resolved base (Section 6.4). Read-only.
 - `derive_work_branch(pattern, identity)` → the pinned work branch (Section 6.3).
 - `commit(message, identity)` → `commit:*`.
-- `fetch_base(remote, branch)` → the base ref, acquiring the base as `remote` holds it (Section 4.1).
+- `fetch_base(remote, branch)` → the base ref, acquiring the base as `remote` holds it (Section 4.1). A
+  base it cannot acquire leaves no ref to answer with, and the engine reports
+  `integrate:base_unavailable` (Section 4.3).
 - `merge_base(base_ref, identity)` → `integrate:*`, bringing the acquired base into the work branch and
   preserving recorded conflict resolutions where supported.
-- `fetch_counterpart(remote, work_branch)` → the ref of the work branch's remote counterpart, or none
-  where the remote carries none (Section 6.2).
+- `fetch_counterpart(remote, work_branch)` → the ref of the work branch's remote counterpart, none where
+  the remote carries none (Section 6.2), or that the acquisition failed. The last two are distinct
+  answers and an acquisition the backend could not complete — the remote unreachable, the credential
+  refused, the configured remote name absent from the checkout — MUST NOT be answered as an absent
+  counterpart, because the two carry different results: an absent counterpart is a benign `pull:ok` and
+  a failed acquisition is `pull:failed` (Sections 4.1, 4.3).
 - `merge_counterpart(ref, identity)` → `pull:*`, merging the counterpart into the local branch and
   rewriting none of its commits (Section 4.1).
 - `push(remote, work_branch)` → `push:*`, with the refspec pinned to the work branch and never a
@@ -1199,8 +1218,10 @@ A conforming engine SHOULD include tests covering:
   moved, while `status` and `diff` report against the resolved base ref and acquire nothing; a read in
   a checkout carrying more than one remote reports against the copy belonging to the configured remote
   (Section 6.4); an `integrate` whose acquisition fails yields `base_unavailable` rather than retrying
-  to the flow bound; a `diff` in a checkout holding no copy of the base yields `base_unavailable`,
-  while `status` yields `ok` with null `ahead`/`behind` and a `base_absent` output.
+  to the flow bound; a `pull` whose acquisition fails yields `failed` while a `pull` against a remote
+  carrying no counterpart yields `ok`, so a fetch the engine could not complete is not reported as the
+  benign absence (Sections 4.1, 9.1); a `diff` in a checkout holding no copy of the base yields
+  `base_unavailable`, while `status` yields `ok` with null `ahead`/`behind` and a `base_absent` output.
 - Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
   `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6).
 - Front-ends: `ship` stops at the pull request; `land` merges an open, checks-passed pull request,
