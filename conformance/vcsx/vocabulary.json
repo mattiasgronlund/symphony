@@ -52,6 +52,7 @@
       { "token": "integrate:up_to_date", "operation": "integrate", "reason": "up_to_date", "class": "done" },
       { "token": "integrate:merge_conflicts", "operation": "integrate", "reason": "merge_conflicts", "class": "needs_caller" },
       { "token": "integrate:base_unresolved", "operation": "integrate", "reason": "base_unresolved", "class": "error" },
+      { "token": "integrate:base_unavailable", "operation": "integrate", "reason": "base_unavailable", "class": "error" },
       { "token": "integrate:failed", "operation": "integrate", "reason": "failed", "class": "error", "universal": true },
       { "token": "integrate:unsupported", "operation": "integrate", "reason": "unsupported", "class": "error", "universal": true },
 
@@ -92,6 +93,7 @@
       { "token": "status:unsupported", "operation": "status", "reason": "unsupported", "class": "error", "universal": true },
 
       { "token": "diff:ok", "operation": "diff", "reason": "ok", "class": "done" },
+      { "token": "diff:base_unavailable", "operation": "diff", "reason": "base_unavailable", "class": "error" },
       { "token": "diff:failed", "operation": "diff", "reason": "failed", "class": "error", "universal": true },
       { "token": "diff:unsupported", "operation": "diff", "reason": "unsupported", "class": "error", "universal": true }
     ]
