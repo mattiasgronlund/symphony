@@ -44,6 +44,7 @@
     "entries": [
       { "token": "commit:ok", "operation": "commit", "reason": "ok", "class": "done" },
       { "token": "commit:nothing_to_commit", "operation": "commit", "reason": "nothing_to_commit", "class": "done" },
+      { "token": "commit:identity_missing", "operation": "commit", "reason": "identity_missing", "class": "needs_caller" },
       { "token": "commit:blocked", "operation": "commit", "reason": "blocked", "class": "needs_caller", "universal": true },
       { "token": "commit:failed", "operation": "commit", "reason": "failed", "class": "error", "universal": true },
       { "token": "commit:unsupported", "operation": "commit", "reason": "unsupported", "class": "error", "universal": true },
@@ -53,6 +54,7 @@
       { "token": "integrate:merge_conflicts", "operation": "integrate", "reason": "merge_conflicts", "class": "needs_caller" },
       { "token": "integrate:base_unresolved", "operation": "integrate", "reason": "base_unresolved", "class": "error" },
       { "token": "integrate:base_unavailable", "operation": "integrate", "reason": "base_unavailable", "class": "error" },
+      { "token": "integrate:identity_missing", "operation": "integrate", "reason": "identity_missing", "class": "needs_caller" },
       { "token": "integrate:failed", "operation": "integrate", "reason": "failed", "class": "error", "universal": true },
       { "token": "integrate:unsupported", "operation": "integrate", "reason": "unsupported", "class": "error", "universal": true },
 
@@ -85,6 +87,7 @@
 
       { "token": "pull:ok", "operation": "pull", "reason": "ok", "class": "done" },
       { "token": "pull:conflict", "operation": "pull", "reason": "conflict", "class": "needs_caller" },
+      { "token": "pull:identity_missing", "operation": "pull", "reason": "identity_missing", "class": "needs_caller" },
       { "token": "pull:failed", "operation": "pull", "reason": "failed", "class": "error", "universal": true },
       { "token": "pull:unsupported", "operation": "pull", "reason": "unsupported", "class": "error", "universal": true },
 
@@ -123,7 +126,7 @@
     "entries": [
       { "token": "no_current_branch", "meaning": "The work branch is the checkout's current branch (no `branch_pattern` configured) and the checkout has none." },
       { "token": "work_branch_invalid", "meaning": "The derived work branch name is not a legal branch name for the VCS backend." },
-      { "token": "identity_invalid", "meaning": "The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it." }
+      { "token": "identity_invalid", "meaning": "The caller-supplied commit identity is absent where the entry requires one — `commit`, `integrate`, `pull`, and a front-end sequence that dispatches one — or is malformed as the VCS backend judges it, which is judged whatever the entry. An identity absent at an entry the requirement does not cover is the operation's `identity_missing` at the dispatch instead (Section 4.3)." }
     ]
   },
 
@@ -180,6 +183,7 @@
     "entries": [
       { "token": "integrate_then_retry", "raised_by": "escalate", "resolvable": true },
       { "token": "resolve_conflicts", "raised_by": "escalate", "resolvable": true },
+      { "token": "supply_identity", "raised_by": "escalate", "resolvable": true },
       { "token": "await_checks", "raised_by": "escalate", "resolvable": true },
       { "token": "human_review", "raised_by": "escalate", "resolvable": true },
       { "token": "intervention", "raised_by": "park", "resolvable": false, "note": "Names a hold rather than a request: a front-end MUST NOT bind a resolver to it and MUST NOT resume the flow on it." },

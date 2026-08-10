@@ -2146,3 +2146,66 @@ required operation MUST be realizable through the required capabilities" license
 as `status`'s six calls already show), 0065 (whose three precondition rows now each name a capability),
 0068, 0060 and 0061. Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3, 6.2, 6.4, 8.6, 9.1,
 11, 12.4, 13.1, 13.2), `conformance/vcsx/vocabulary.json`, and `conformance/vcsx/README.md`.
+
+## 0074 — The commit-identity precondition is scoped to the entry point
+
+**State:** Accepted
+**Folder:** [decisions/0074-commit-identity-scope/](decisions/0074-commit-identity-scope/)
+
+Resolves issue #23. Section 8.6 requires the commit identity "for an entry that can write a commit —
+`commit`, `integrate`, `pull`, and a front-end sequence that dispatches one", and Section 5.2 makes a
+policy a graph, so the last clause admits two readings: the sequence's own dispatches, or anything the
+invocation can dispatch. Under the first, a `status` entry whose policy routes `status:ok` to `run_op`
+`commit` reaches an identity-taking operation with no identity, and Section 4.3 has no reason naming the
+condition — the engine is left with a fault at exactly the point Section 8.6 exists to refuse before.
+Three things sharpen the report. The gap is the document's *own* example policy, not a contrived one:
+Section 6.5 prints `push:non_fast_forward → run_op integrate` as its illustration and Section 12.2 builds
+the same routing in, so the most ordinary policy in the document, invoked at the `push` entry point,
+reaches an operation that writes a merge commit. A channel does exist and is the wrong one — `failed` is
+universal (0057), so `commit:failed` is expressible; it reports exit `20`, an invitation to retry a run
+no retry changes, so the operation cannot answer *truthfully*, which is narrower than "cannot answer".
+And Section 8.6's closing rule is itself ambiguous in a load-bearing way: read counterfactually, "a
+condition an operation could have reported" yields the issue's conclusion, but applied consistently it
+also empties Section 8.6's own table, because `failed` makes every precondition one some operation could
+have reported. Options: **A** scope the precondition to the entry *and* the policy's `run_op` edges
+(rejected — the canonical `integrate` edge is in essentially every real policy, so it collapses to
+"every invocation of every entry requires an identity", and it adds the policy file to what a
+precondition is judged from, blurring 0065's dividing line); **B** keep the entry scope, say so, and add
+the missing operation reason (chosen); **C** state the invariant and permit a reachability narrowing
+(rejected — the argument set becomes engine-dependent, and the permissive direction means a consumer
+developed against one conforming engine breaks on another); **D** require the identity unconditionally
+(rejected — it charges a credential-free `status`/`diff` an attribution argument they never use);
+**E** a fourth Section 8.6 token for the dispatch case (rejected — that registry is for conditions judged
+before the policy runs); **F** `Implementation-defined` (rejected on 0065's reasoning). The reasoning
+worth keeping is that **the document had already answered this shape once**: Section 9.3 refuses an
+unsupported capability at validation "where determinable" and otherwise lets it surface "at first use as
+the operation's `unsupported` reason". Identity is the same shape — at entry the engine knows a
+commit-writing dispatch *may* occur, not that it will — so the entries that certainly write stay a
+precondition and the residual becomes `identity_missing` (`needs_caller`, for `commit`, `integrate` and
+`pull`). The test that generalizes is: ask whether the invocation determines the condition or only the
+run does. `needs_caller` is the honest class rather than `error`: Section 4.2 defines it as an operation
+that cannot proceed without a decision or action from the caller, a missing caller argument is that
+literally, the built-in default already escalates it (5.4), and it gives the condition a resolver seam
+(5.5) — `supply_identity` — where exit `20` would invite a retry that cannot succeed. Two boundaries are
+stated because they are how this rots: the closing rule becomes "a condition an operation **has a reason
+that names**" with the first dispatch as the line, plus an explicit note that the universal `failed` does
+not satisfy it; and a supplied identity is judged for shape *whatever* the entry, which costs nothing
+(`accepts_identity` has no side effect, 0073) and leaves only absence reachable at a dispatch — so
+`identity_missing` names one condition rather than two, and a malformed identity handed to a `status` run
+stops being unjudged. The cost is recorded rather than glossed: a `land` whose policy routes `merge:ok`
+to `pull` merges the pull request and then stops at `pull:identity_missing`, and re-invoking `land`
+answers `merge:not_open` — prior effects stand, as they already do at a flow bound (5.6), and the
+escalation names what to supply. Option A avoids that one case and pays for it on every invocation of
+every entry, which is the trade this declines. Twelve vectors pin the scope, since it is a pure function
+of the entry point even though the judgement is not, on the rule issue #13 established that "no vector
+pins whether X" is itself a defect. Reconsider for a driver that cannot tolerate discovering a missing
+argument mid-flow after a forge merge has landed (which argues for A), or a consumer with no identity to
+give that legitimately runs write-capable policies read-only (which argues the other way); if both
+appear, C is the repair, and the clause is phrased as a scope over entry points rather than as an
+analysis so that narrowing it later adds no token and changes no status. Relates to 0065 (whose
+precondition registry and closing rule this repairs), 0068 (which made `integrate` and `pull` carry the
+identity, and so made them reachable here), 0057 (whose universal `failed` is what makes the old rule
+ambiguous), 0073 (whose `accepts_identity` the "judged whatever the entry" rule needs), and 0053.
+Accepted and applied to `VCSX-SPEC.md` (Sections 4.3, 8.4, 8.6, 13.1),
+`conformance/vcsx/vocabulary.json`, `conformance/vcsx/vectors/identity-precondition.json`, and
+`conformance/vcsx/README.md`.

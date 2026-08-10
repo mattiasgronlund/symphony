@@ -75,7 +75,7 @@ The registry is a faithful view, not a byte-for-byte transcription. Two places i
 - **`reasons`** is keyed one entry per `(operation, reason)`. Section 4.3's combined rows expand: the
   `status` / `diff` row to `status:ok` and `diff:ok`, and the three universal rows to one entry per
   operation they cover — `failed` and `unsupported` for every operation, `blocked` for every gated one,
-  each marked `universal: true`. So 27 table rows yield 45 entries.
+  each marked `universal: true`. So 32 table rows yield 50 entries.
 - **`operations`** carries `lifecycle_position: null` for the operations Section 4.1 gates at no fixed
   position (`integrate`, `pull`) and for the read-only ones (`status`, `diff`), rather than omitting
   the field.
@@ -147,15 +147,16 @@ Two interpretation notes apply:
 | `vectors/base-resolution.json` | `resolve_base` | Sections 6.4, 12.4 |
 | `vectors/exit-codes.json` | `exit_code_for_status` | Sections 8.2, 8.3, 8.5 |
 | `vectors/policy-validation.json` | `validate_policy` | Sections 5.4, 6.1, 6.4, 6.7, 6.10, 8.5 |
+| `vectors/identity-precondition.json` | `requires_commit_identity` | Sections 8.1, 8.6, 12.2, 12.3 |
 
-63 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
+75 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
 filesystem. (The slice was authored at 49 and grew by four as decisions 0054–0056 resolved its
 findings, each turning an unassertable behavior into an asserted one, by three more as decision
 0057 added the universal reasons and redefined `merge:blocked`, by four more as decision 0066 gave
 the well-formedness conditions a reason — the parse failure among them is judged from file text
 rather than from a document and so has no vector, which `policy-validation.json`'s notes record —
-and by three more as decision 0067 pinned what an edge carrying no `from` does inside a
-from-context.)
+by three more as decision 0067 pinned what an edge carrying no `from` does inside a from-context,
+and by twelve more as decision 0074 scoped the commit-identity precondition to the entry point.)
 
 `proto_class` has no vector file of its own. It is a lookup over the Section 4.3 registry, and
 `vocabulary.json` already **is** that registry — a vector file would duplicate it with no added
@@ -176,7 +177,10 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
 - **Invocation preconditions** (Section 8.6) — whether the work branch derives and whether a commit
   identity is well formed are judged against a real checkout by a real backend, through
   `accepts_branch_name` and `accepts_identity` (Section 9.1), so no vector file can supply the input.
-  The reason tokens themselves are in `vocabulary.json` under `precondition_reasons`.
+  The reason tokens themselves are in `vocabulary.json` under `precondition_reasons`. The one half
+  that is determined by the invocation alone — which entry points require an identity at all — is
+  covered by `identity-precondition.json`; what a dispatch does where no identity was required
+  (`identity_missing`, Section 4.3) needs a backend and stays here.
 - **Base-ref resolution and the acquire/use split** (Sections 6.4, 9.1) — which copy of the base a
   checkout holds, whether it holds one at all, and whether an acquisition failed are properties of a
   real checkout with a real remote. That covers the multi-remote read, `base_unavailable` from a failed
