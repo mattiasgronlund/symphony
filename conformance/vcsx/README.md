@@ -174,9 +174,15 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   (Sections 3.3, 9.1–9.3). The last two need a capability descriptor as input, which no vector file
   supplies.
 - **Invocation preconditions** (Section 8.6) — whether the work branch derives and whether a commit
-  identity is well formed are judged against a real checkout by a real backend, so no vector file
-  can supply the input. The reason tokens themselves are in `vocabulary.json` under
-  `precondition_reasons`.
+  identity is well formed are judged against a real checkout by a real backend, through
+  `accepts_branch_name` and `accepts_identity` (Section 9.1), so no vector file can supply the input.
+  The reason tokens themselves are in `vocabulary.json` under `precondition_reasons`.
+- **Base-ref resolution and the acquire/use split** (Sections 6.4, 9.1) — which copy of the base a
+  checkout holds, whether it holds one at all, and whether an acquisition failed are properties of a
+  real checkout with a real remote. That covers the multi-remote read, `base_unavailable` from a failed
+  `fetch_base`, and `status`'s `base_absent` output. The reason token is in `vocabulary.json` under
+  `reasons`; the base-resolution vectors cover the branch half only, which is the half a policy
+  document determines.
 - **Message formulation** — `scan-content`, pull-request composition, and the `pr_to_squash` transform
   (Section 10), whose formats are repository-owned by construction.
 - **Hook execution** and the execution-context split (Sections 3.2, 6.6) — process and trust-boundary

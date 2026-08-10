@@ -149,7 +149,9 @@ returns a typed result (Section 4.2). Read-only operations carry no lifecycle po
 
 - `status` — inspect working state. Outputs: `mode` (Section 3.3), `branch`, `dirty`, `conflicted`,
   `ahead`/`behind` versus the resolved base (Section 6.4), and the pull-request state when a forge is
-  configured (number and open/closed/merged). Read-only.
+  configured (number and open/closed/merged). Where the checkout holds no copy of the resolved base,
+  `ahead`/`behind` are null and a `base_absent` output reports it; the operation still completes,
+  because an inspection that cannot see the base states that rather than failing. Read-only.
 - `diff` — the branch delta against the resolved base. Read-only.
 - `commit` — create a commit from the working tree, gated at `before:commit` (Section 10.1). The
   operation captures the working tree in full: every change the VCS does not ignore, including
@@ -176,9 +178,9 @@ the required set and the four positions `before:commit`, `before:push`, `before:
 
 Note: the operations that reach the remote are exactly those Section 3.2 places host-side — among
 the version-control operations, `integrate`, `push` and `pull`. `status` and `diff` are read-only
-and report against the base as the checkout already holds it, so their `ahead`/`behind` counts and
-their delta MAY be stale where the remote has moved. The asymmetry follows from the trust split
-rather than being an omission: acquiring the base is a host-side act, and marking a read-only
+and report against the base ref the checkout already holds (Section 6.4), so their `ahead`/`behind`
+counts and their delta MAY be stale where the remote has moved. The asymmetry follows from the trust
+split rather than being an omission: acquiring the base is a host-side act, and marking a read-only
 operation host-side would deny it to a consumer running the engine in-sandbox without credentials
 (Section 3.2). A caller that needs current figures runs `integrate` first.
 
@@ -219,6 +221,7 @@ and `blocked` for every operation gated at a lifecycle position (Section 4.1).
 | `integrate` | `up_to_date` | `done` | Already current; no-op. |
 | `integrate` | `merge_conflicts` | `needs_caller` | Integration stopped on conflicts to resolve. |
 | `integrate` | `base_unresolved` | `error` | The base could not be resolved (Section 6.4). |
+| `integrate` | `base_unavailable` | `error` | The base could not be acquired from the remote (Section 9.1 `fetch_base`). |
 | `push` | `ok` | `done` | The work branch was pushed. |
 | `push` | `up_to_date` | `done` | Remote already current; no-op. |
 | `push` | `non_fast_forward` | `needs_caller` | Remote moved; integrate then retry. |
@@ -237,6 +240,14 @@ and `blocked` for every operation gated at a lifecycle position (Section 4.1).
 | `pull` | `ok` | `done` | The local branch was updated. |
 | `pull` | `conflict` | `needs_caller` | The merge of the remote counterpart stopped on conflicts. |
 | `status` / `diff` | `ok` | `done` | The read completed. |
+| `diff` | `base_unavailable` | `error` | The checkout holds no copy of the resolved base, so no delta can be produced (Section 6.4). |
+
+`base_unresolved` and `base_unavailable` are one word apart and name different failures, because base
+resolution has two steps (Section 6.4) and each reason reports the one it stopped at.
+**Unresolved is not knowing which branch** — the configured strategy selected none.
+**Unavailable is not having its commit** — the branch it selected has no copy in the checkout, or
+acquiring it failed. `status` reports the same absence in its outputs rather than as a reason
+(Section 4.1), because a read that cannot see the base can still report everything else.
 
 Every operation therefore has at least one `done` reason and at least one `error` reason, so an
 `error`-class result is expressible for every operation including the read-only ones; every gated
@@ -430,7 +441,8 @@ fired, and the engine MUST document each bound it imposes (Section 13.3).
   (Section 3.3).
 - `forge` (string) — the forge backend selector (for example `github`, `forgejo`).
 - `remote` (string, OPTIONAL) — the name of the remote the operations that touch one act against
-  (`integrate`, `push`, `pull`; Sections 3.2, 9.1).
+  (`integrate`, `push`, `pull`; Sections 3.2, 9.1). It also names which of the checkout's copies of the
+  base a read resolves against, which acquires nothing (Section 6.4).
   - Default: unset — the backend's default remote for the checkout mode, which is
     `Implementation-defined` and MUST be documented (Section 13.3).
 
@@ -473,6 +485,25 @@ of the checkout — so it surfaces at first use as the operation's `failed` reas
 - `prefixes` (table, OPTIONAL) — the prefix→base map used when `resolve = by_prefix`. A missing or
   malformed map is a configuration error (Section 6.10); the engine surfaces `integrate:base_unresolved`
   / `create_pr:base_mismatch` rather than guessing.
+
+Resolving the base produces two values, because the two plugin layers need different things from it:
+
+- the base **branch** — a name, which the pull-request operations take (Section 9.2);
+- the base **ref** — a handle to the commit the checkout holds for that branch, which the
+  version-control capabilities take (Section 9.1 `resolve_base_ref`).
+
+The engine holds a base ref opaque, as it holds the commit identity opaque (Section 10.1): it resolves
+one, supplies it to the capabilities that take one, and does not interpret it. A ref's validity ends
+when an operation moves what it names, so the engine resolves again rather than reusing one across a
+`fetch_base` or a `merge_base` (Section 9.1). Resolving a ref reads the checkout and acquires nothing;
+where the checkout holds no copy of the selected branch, resolution answers that it holds none, which
+`diff` reports as `base_unavailable` and `status` as a `base_absent` output (Sections 4.1, 4.3).
+
+Naming the ref rather than the branch alone is what makes a read deterministic. A checkout MAY hold
+several copies of one base branch — its own local branch, and a remote-tracking copy for each remote it
+carries — which are the same commit only until one of them is updated. Resolution selects the copy
+belonging to the resolved remote (Section 6.2), so `ahead_behind` and `diff` report against the base
+`integrate` would bring in rather than against whichever copy a backend preferred.
 
 Base resolution is configuration, not a hook. An operation reads the resolved base; it never accepts a
 base from untrusted content.
@@ -778,11 +809,15 @@ distinguishable in the result envelope.
 ### 8.6 Invocation Preconditions
 
 Between validating the policy (Section 6.10) and running it, the engine establishes the
-preconditions the invoked entry point depends on. It resolves the work branch (Section 6.3), which
-calls a VCS backend capability — `derive_work_branch`, or `current_branch` where no `branch_pattern`
-is configured (Section 9.1). For an entry that can write a commit — `commit`, `integrate`, `pull`,
-and a front-end sequence that dispatches one — it accepts the caller-supplied commit identity
-(Section 10.1), whose shape only the backend can judge, because the engine holds identity opaque.
+preconditions the invoked entry point depends on, in order, reporting the first that fails. It
+resolves the work branch (Section 6.3), which calls a VCS backend capability — `derive_work_branch`,
+or `current_branch` where no `branch_pattern` is configured — and judges the name it resolved with
+`accepts_branch_name`. For an entry that can write a commit — `commit`, `integrate`, `pull`, and a
+front-end sequence that dispatches one — it accepts the caller-supplied commit identity
+(Section 10.1) with `accepts_identity`, whose shape only the backend can judge, because the engine
+holds identity opaque. Each is a capability the backend publishes (Section 9.1), so the order above
+is established through the plugin API rather than inside a backend's own construction, where a
+refusal would carry no reason for this registry to report.
 
 A precondition the engine cannot establish is not an operation result. No operation ran, so the
 Section 4.3 registry does not apply, no proto class is assigned, and there is no `<op>:<reason>` for
@@ -822,32 +857,60 @@ advertises a static capability descriptor (data, not a runtime call).
 Realizes the version-control operations. Required capabilities:
 
 - `detect_mode()` → checkout mode (Section 3.3).
-- `current_branch()`, `is_dirty()`, `is_conflicted()`, `ahead_behind(base)`. `is_dirty()` is
+- `current_branch()`, `is_dirty()`, `is_conflicted()`, `ahead_behind(base_ref)`. `current_branch()`
+  answers the checkout's current branch or none, so a checkout with no current branch is a state the
+  engine reports (Section 8.6 `no_current_branch`) rather than a backend failure. `is_dirty()` is
   `commit`'s own predicate: it reports the working tree dirty exactly when a `commit` would capture
   something, so content the VCS has not yet recorded counts and ignored content does not
   (Section 4.1).
-- `diff(base)` → `diff:*`, the branch delta against the resolved base (Section 6.4). Read-only.
+- `accepts_branch_name(name)` → whether the name is a legal branch name for this backend, and
+  `accepts_identity(identity)` → whether the commit identity is well formed as this backend judges it
+  (Section 10.1). Both are questions with no side effect, asked before any operation is dispatched
+  (Section 8.6).
+- `resolve_base_ref(remote, branch)` → the base ref for that branch as the checkout holds it for
+  `remote`, or none where the checkout holds no copy (Section 6.4). Reads the checkout; acquires
+  nothing.
+- `diff(base_ref)` → `diff:*`, the branch delta against the resolved base (Section 6.4). Read-only.
 - `derive_work_branch(pattern, identity)` → the pinned work branch (Section 6.3).
 - `commit(message, identity)` → `commit:*`.
-- `integrate(remote, base, identity)` → `integrate:*`, bringing in the base as `remote` holds it
-  (Section 4.1) and preserving recorded conflict resolutions where supported.
+- `fetch_base(remote, branch)` → the base ref, acquiring the base as `remote` holds it (Section 4.1).
+- `merge_base(base_ref, identity)` → `integrate:*`, bringing the acquired base into the work branch and
+  preserving recorded conflict resolutions where supported.
+- `fetch_counterpart(remote, work_branch)` → the ref of the work branch's remote counterpart, or none
+  where the remote carries none (Section 6.2).
+- `merge_counterpart(ref, identity)` → `pull:*`, merging the counterpart into the local branch and
+  rewriting none of its commits (Section 4.1).
 - `push(remote, work_branch)` → `push:*`, with the refspec pinned to the work branch and never a
   force push.
-- `pull(remote, work_branch, identity)` → `pull:*`, merging the remote counterpart into the local
-  branch and rewriting none of its commits (Section 4.1).
 
-`remote` is the resolved remote (Section 6.2), supplied by the engine; the three capabilities that
-take one are exactly the version-control operations Section 3.2 places host-side. Every other
-capability above is local to the checkout — it reads or writes the worktree and the history the
-checkout already holds, acquires nothing over the network, and needs no credential — so
-`ahead_behind(base)` and `diff(base)` compare against the checkout's copy of the base (Section 4.1).
+The network-touching capabilities are exactly `fetch_base`, `fetch_counterpart` and `push`: they reach
+the remote, need a credential, and realize the version-control operations Section 3.2 places host-side.
+Every other capability above is local to the checkout — it reads or writes the worktree and the history
+the checkout already holds, acquires nothing over the network, and needs no credential. That is an
+enumeration rather than a property of a signature, so a capability's context is read off this list and
+never inferred from its arguments: `resolve_base_ref` takes a `remote` and acquires nothing, because the
+remote names which of the checkout's copies it answers with (Section 6.4), and `merge_base`,
+`merge_counterpart` and `commit` write commits and are still local, because the distinction is
+credentials rather than mutation.
 
-`identity` on `commit`, `integrate` and `pull` is the commit identity (Sections 8.1, 10.1),
-supplied by the engine as `remote` is; the three capabilities that take one are exactly those that
-can write a commit, so a mechanical merge commit is attributed no differently from a commit `commit`
-writes (Section 10.1). `derive_work_branch(pattern, identity)` takes the identity the work branch is
-derived from (Section 6.3), which is a derivation input rather than an attribution, and writes no
-commit.
+An operation is realized through one capability or several. `integrate` is `fetch_base` then
+`merge_base`; `pull` is `fetch_counterpart` then `merge_counterpart`; `status` reads through
+`detect_mode`, `current_branch`, `is_dirty`, `is_conflicted` and `ahead_behind`, with the forge's
+`pr_state` where one is configured (Section 9.2). Separating the two that acquire from the two that
+merge is what makes the enumeration above exhaustive, and it places the half that stops on conflicts —
+the outcome the caller resolves and `commit` finalizes (Section 4.1) — on the local side of the
+boundary, where the caller that resolves it runs.
+
+`remote` is the resolved remote (Section 6.2) and `base_ref` is the resolved base ref (Section 6.4),
+both supplied by the engine; a backend reads neither from the policy nor infers one from the checkout's
+own bindings.
+
+`identity` on `commit`, `merge_base` and `merge_counterpart` is the commit identity (Sections 8.1,
+10.1), supplied by the engine as `remote` is; the three capabilities that take one are exactly those
+that can write a commit, so a mechanical merge commit is attributed no differently from a commit
+`commit` writes (Section 10.1). `derive_work_branch(pattern, identity)` takes the identity the work
+branch is derived from (Section 6.3), which is a derivation input rather than an attribution, and
+writes no commit.
 
 The list is the minimum every backend MUST provide, not a maximum: every operation Section 4.1
 requires of a VCS backend is realizable through it. An engine MAY define additional operations
@@ -855,8 +918,8 @@ requires of a VCS backend is realizable through it. An engine MAY define additio
 (Section 13.3), so a capability beyond this list is visible as the engine's own rather than as shared
 surface.
 
-Descriptor fields: supported modes, whether recorded-resolution reuse is available, and whether the
-backend can operate in a workspace with no colocated remote (Section 3.3).
+Descriptor fields: supported modes, whether `merge_base` can reuse recorded conflict resolutions, and
+whether the backend can operate in a workspace with no colocated remote (Section 3.3).
 
 ### 9.2 Forge Backend Plugin
 
@@ -949,7 +1012,9 @@ one:
   invocation or runs the engine where they are already held.
 - The engine labels every policy edge and hook with its execution context (Section 3.2) so a consumer
   can source host-side policy from a trusted revision and in-sandbox policy from the worktree, and can
-  mediate the credentialed operations. An in-sandbox edge or hook MUST NOT receive credentials.
+  mediate the credentialed operations. An in-sandbox edge or hook MUST NOT receive credentials. The
+  capabilities that touch the network are named and enumerable (Section 9.1), so what a consumer
+  mediates is a fixed list rather than something inferred from an operation's description.
 - The engine pins every push refspec to the derived work branch and never force-pushes, so a consumer's
   scope guard has a fixed target. No operation that updates the work branch rewrites, drops, or
   re-parents a commit already on it — an update that reconciles a divergence merges (Section 4.1) — so
@@ -1042,14 +1107,17 @@ function land():
 ### 12.4 Resolve Base
 
 ```text
-function resolve_base(work_branch, base_config):
+function resolve_base(work_branch, base_config, remote):
   if base_config.resolve == "fixed" or unset:
-    return base_config.branch
-  if base_config.resolve == "by_prefix":
+    branch = base_config.branch
+  else if base_config.resolve == "by_prefix":
     match = longest_prefix_match(work_branch, base_config.prefixes)
     if no match and no empty-prefix default:
       return error(base_unresolved)          # config error caught at validation
-    return match or empty_prefix_default
+    branch = match or empty_prefix_default
+  return { branch: branch,                   # the name the forge takes (Section 9.2)
+           ref:    resolve_base_ref(remote, branch) }   # the commit the VCS takes; none
+                                                        # where the checkout holds no copy
 ```
 
 ### 12.5 Compose the Pull-Request Body
@@ -1099,7 +1167,11 @@ A conforming engine SHOULD include tests covering:
   finalized by `commit`; a working tree whose only change is content the VCS has not recorded is
   dirty and is committed, not skipped or reported `commit:nothing_to_commit`; `integrate` brings in
   the base as the remote holds it, so a `push:non_fast_forward` retry converges against a base that
-  moved, while `status` and `diff` report against the checkout's copy and acquire nothing.
+  moved, while `status` and `diff` report against the resolved base ref and acquire nothing; a read in
+  a checkout carrying more than one remote reports against the copy belonging to the configured remote
+  (Section 6.4); an `integrate` whose acquisition fails yields `base_unavailable` rather than retrying
+  to the flow bound; a `diff` in a checkout holding no copy of the base yields `base_unavailable`,
+  while `status` yields `ok` with null `ahead`/`behind` and a `base_absent` output.
 - Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
   `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6).
 - Front-ends: `ship` stops at the pull request; `land` merges an open, checks-passed pull request,
@@ -1113,7 +1185,8 @@ A conforming engine SHOULD include tests covering:
   with the same reason and null `op`/`class` (Section 6.10); a checkout with no current branch where
   no `branch_pattern` is configured, an illegal derived work-branch name, and a commit identity that
   is absent where the entry requires one or malformed each refuse to run the policy and yield
-  `usage_or_config` with the precondition reason and null `op`/`class` (Section 8.6).
+  `usage_or_config` with the precondition reason and null `op`/`class`, the last two judged through
+  `accepts_branch_name` and `accepts_identity` (Sections 8.6, 9.1).
 - Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it; the
   squash body is the `pr_to_squash` transform of the pull-request body; every commit the engine
   writes carries the supplied commit identity — the mechanical merge commit an `integrate` or a
@@ -1123,7 +1196,8 @@ A conforming engine SHOULD include tests covering:
   and the operation's `unsupported` reason at first use otherwise, never a silent no-op; git and jj
   checkout modes (including a jj secondary workspace) are handled; the remote-touching operations
   act against the resolved remote, a configured `[engine] remote` overriding the backend's default
-  (Section 6.2).
+  (Section 6.2); the capabilities that reach the network are exactly `fetch_base`,
+  `fetch_counterpart` and `push`, and no other capability is invoked with a credential (Section 9.1).
 
 ### 13.2 Implementation Checklist
 
@@ -1133,10 +1207,12 @@ A conforming engine SHOULD include tests covering:
   bounded flow.
 - The operation set and the reason-token registry with stable proto classes.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), including the refusal of a
-  policy that is not well formed, base resolution, and the execution-context labeling.
+  policy that is not well formed, base resolution to a branch and a base ref, and the
+  execution-context labeling.
 - The invocation contract: result envelope, exit codes, escalation payload, invocation
   preconditions, and versioning with a `version_floor` floor.
-- The plugin API with VCS and forge backends and their capability descriptors.
+- The plugin API with VCS and forge backends and their capability descriptors, the VCS backend
+  separating the capabilities that acquire from the local ones that use what they acquired.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, and every commit the engine writes attributed to the supplied commit identity.
 - Checkout-mode handling (git, jj, jj secondary workspace), a pinned, never-forced push refspec, and a

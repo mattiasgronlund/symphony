@@ -2072,3 +2072,77 @@ credential broker and the secret-isolation invariant this backstops), 0004, 0032
 into commit and pull-request messages, left to the repository's gate), 0035 and 0036 (the executor and
 the seam Option G would have used), and 0011. Accepted and applied to `SPEC.md` (Sections 10.4, 13.1,
 13.8.2, 15.3, 17.5, 17.6, 18.1.2, 19) and `CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0073 — The network-touching capabilities are named, and base resolution yields a commit
+
+**State:** Accepted
+**Folder:** [decisions/0073-network-touching-capabilities-named/](decisions/0073-network-touching-capabilities-named/)
+
+Resolves issue #22, which reports three things `VCSX-SPEC.md` Section 8.6 and Section 6.2 require a VCS
+backend to answer and Section 9.1 — the document that says what a backend must be able to answer — does
+not list: a judgement of whether a derived work-branch name is legal, a judgement of whether a commit
+identity is well formed, and, once `[engine] remote` exists, which of a checkout's several copies of the
+base a non-fetching read consults. The report's own defence-and-refutation is sound: a backend that
+judges the identity when it is constructed judges it before the engine exists, and a `derive_work_branch`
+that merely refuses produces a refusal with no token, so in both cases Section 8.6 never reaches its own
+registry and a precondition step that cannot run is not a precondition step. Two things sharpen the third
+gap beyond the report's framing — it is not only a fork problem, since even a single-remote checkout
+offers `refs/heads/<base>` and `refs/remotes/<remote>/<base>`, and the report's fallback offer of "a
+sentence saying which copy" is not available, because the only non-arbitrary answer is the copy belonging
+to the resolved remote and Section 6.2 forbids a backend to read that remote from the policy. Options:
+**A** the two predicates plus the resolved remote on `ahead_behind` and `diff`, exactly as asked
+(rejected as insufficient — passing a `remote` to a capability that acquires nothing falsifies decision
+0062's invariant while leaving its consequence true, and it leaves the name-to-commit step unspecified,
+so two base-taking capabilities could still disagree inside one invocation); **B** a compound base
+carrying the *remote* plus one combined `check_preconditions` (rejected — the compound narrows the
+ambiguity without removing it, a local remote name is meaningless to the forge that also takes a base,
+and the combined check makes Section 8.6's registry a plugin capability's return domain); **C** narrow
+Section 8.6 instead — a typed `work_branch_invalid` refusal from `derive_work_branch` and a
+presence-only identity precondition (rejected — it reopens 0065 one day after acceptance and reinstates
+that decision's own rejected option, where a malformed identity arrives as `error`/exit `20` and invites
+a retry against a state no retry changes); **D** resolve the base to a commit (rejected only as a
+stopping point — it fixes the base and leaves `integrate` and `pull` acquiring without being named for
+it); **D-strong** option D, and acquisition separates from use (chosen). The reasoning worth keeping is
+the replacement of a proxy with the thing it stood for. 0062 wanted one sentence a reviewer applies to
+the next capability and chose an argument-shaped equivalence — takes a `remote` ⟺ host-side ⟺ needs a
+credential — and this issue is that proxy failing, because a read must know *which* remote's copy it
+compares against while acquiring nothing at all. **The network-touching capabilities are exactly
+`fetch_base`, `fetch_counterpart` and `push`; every other Section 9.1 capability is local to the
+checkout, whatever arguments it takes.** That is an enumeration rather than an inference, so no argument
+list can falsify it, and it makes Section 3.2's split checkable at the capability boundary instead of
+read out of an operation's prose. The base half is the root cause: Sections 6.4 and 12.4 resolved the
+base to a *name* and stopped, and the step from name to commit happened privately inside `ahead_behind`,
+`diff` and `integrate`, three times per invocation with nothing requiring agreement — so resolution now
+yields a record, `branch` for the forge which wants a name and `ref` for the VCS which wants a commit,
+and one capability, `resolve_base_ref`, performs that step once. Decomposing the two acquiring operations
+costs two capabilities beyond option D and buys three things: the enumeration becomes exhaustive; the
+halves land where they belong for a consumer that sandboxes its caller, since the merging half is the
+one that stops on conflicts and hands the worktree to whoever can resolve them; and a failure the engine
+can now distinguish becomes reportable. That earns the one new reason, `base_unavailable` (`error`, for
+`integrate` and for `diff`), operationally rather than as bookkeeping — Section 12.2 retries `push`
+through `integrate`, and an acquisition that failed cannot converge, so today the run burns the flow
+bound and reports `flow_exhausted`, which is 0064's own "the failure got quieter, not louder". It is one
+word from `base_unresolved` and means something else, so the difference is stated: **unresolved is not
+knowing which branch; unavailable is not having its commit.** Splitting `pull` buys only symmetry and is
+included anyway, because a naming rule that holds for `integrate` and not `pull` is the next report; it
+gains no token, since no built-in sequence retries `pull` and an absent counterpart is a normal state
+before the first push. Three consequences are stated rather than inferred: a `base_ref` is opaque to the
+engine as the commit identity is, its validity ends when an operation moves what it names, and
+resolution MAY answer *absent* — which `diff` reports as `base_unavailable` and `status` reports as
+`status:ok` with null `ahead`/`behind` and a `base_absent` output, because an inspection that cannot see
+the base states a fact rather than raising a failure. `merge_base`, `merge_counterpart` and `commit` are
+local although they write: Section 9.1's local set has always meant reads *or writes* the checkout, and
+local is about credentials rather than mutation. The cost is recorded honestly because most of it is not
+transitional: the change impact rounds to nothing while no `MAJOR` is published (Section 8.5) and is
+now-or-never cheap, but two required methods beyond option D, a foreclosed fused acquire-and-merge, and
+an enumeration that must be maintained all outlive it — while the handle and its lifetime, the likeliest
+source of the next report, belong to option D and would have been paid either way. Reconsider for a
+backend whose VCS makes acquire-and-merge genuinely atomic, which would argue for an OPTIONAL fused
+capability in the descriptor rather than recombining the required two; or for a consumer that needs the
+merge half in the sandbox in practice, which would argue for Section 3.2 labelling capabilities rather
+than operations. Relates to 0062 (whose invariant this replaces with the enumeration it approximated),
+0064 (whose asymmetry survives and whose quieter failure the new reason answers), 0058 (whose "every
+required operation MUST be realizable through the required capabilities" licenses a one-to-many split,
+as `status`'s six calls already show), 0065 (whose three precondition rows now each name a capability),
+0068, 0060 and 0061. Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3, 6.2, 6.4, 8.6, 9.1,
+11, 12.4, 13.1, 13.2), `conformance/vcsx/vocabulary.json`, and `conformance/vcsx/README.md`.
