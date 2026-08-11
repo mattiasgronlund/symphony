@@ -204,7 +204,11 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
 - **Hook execution** and the execution-context split (Sections 3.2, 6.6) — process and trust-boundary
   behavior. Whether a lifecycle position ran is observed the same way, so decision 0078's rule that a
   gated operation's position runs as part of every dispatch — including a `[policy]` `run_op` edge's —
-  has no vector: the check is that a hook bound at `before:commit` ran, which needs the hook.
+  has no vector: the check is that a hook bound at `before:commit` ran, which needs the hook. Decision
+  0079's rule that an operation acts on the state its position inspected needs the same fixtures for
+  the other direction — a live working tree that can change between the two — so `commit:worktree_moved`
+  has no vector either, as `merge:head_moved` has none. Both tokens are in `vocabulary.json` under
+  `reasons`.
 
 ## Surfaced findings
 

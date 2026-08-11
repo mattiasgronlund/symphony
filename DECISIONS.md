@@ -2439,3 +2439,56 @@ not a cycle detector". No token, no `need`, no configuration key: `conformance/v
 verified unchanged. Lands before 0079, which needs a position every dispatch runs for its invariant to
 attach to. Relates to 0077, 0076, 0067, 0060 and 0053. Accepted and applied to `VCSX-SPEC.md` (Sections
 4.1, 5.2, 5.6, 6.6, 8.6, 12.2, 12.3, 13.1, 13.2) and `conformance/vcsx/README.md`.
+
+## 0079 — An operation acts on the state its position inspected
+
+**State:** Accepted
+**Folder:** [decisions/0079-gate-inspects-what-proceeds/](decisions/0079-gate-inspects-what-proceeds/)
+
+Resolves issue #31, which decision 0077 filed alongside #29 and kept separate: #29 was a Section 4.3
+registry claim and this is a Section 6.6 correctness claim. Section 6.6 makes a `before:*` hook a
+**gate**, and a gate is only a gate if what it inspected is what proceeds — yet at every position the
+gate inspected a read and the operation performed its own afterwards. 0077 closed one row, for `merge`
+alone, and closed it by adding an argument rather than by stating a rule, which worked because a pull
+request has a head: a cheap, forge-native identity for the thing inspected. Two corrections to the
+report's table came out of the analysis: `before:create_pr` is **already closed by construction**,
+since the engine composes the title and body once and hands the scanned values to the capability, so
+it needs one sentence in Section 10.4 rather than a mechanism; and `before:push`'s window is the
+branch tip, not the pull-request state, decision 0076 having put that read inside the operation. What
+made merely documenting the window insufficient is an argument from the filing engine: **the gate is a
+hook the engine runs, so the engine cannot know what it inspected** — there is nothing to compare
+after the fact, and a worktree identity taken at the position is the only thing that can close the
+window from inside the engine, which is also why handing the burden to the consumer would not
+discharge it. Ruled out before the options: scanning the created commit and blocking by discarding it,
+which Section 11's no-drop rule forbids. Options: **A** state the invariant and close every closeable
+position, adding a second token and a `push` signature (rejected — the largest permanent surface any
+of these issues has asked for, buying a residue the argument below already bounds); **B** state the
+invariant, close `before:commit`, argue the residue (chosen); **C** state the limit and close nothing,
+which is Section 11's own stance and which the report explicitly allows (rejected — the failure stays
+invisible in the envelope, which is exactly what 0076 refused one layer down). **A claim was corrected
+in the drafting and is worth keeping**: the first draft said both checkout modes supply the identity
+naturally, true for `jj`, whose working copy is itself a commit, and false for `git`, where
+`write-tree` needs the index to match and excludes untracked files that Section 4.1 requires a
+`commit` to capture. `git` can still close it, because `commit` there is `add -A` then `commit` and
+`git commit` commits *the index* — so the index is the atomicity boundary — but the two sub-shapes
+available trade a side effect against closure: `add -A; write-tree` yields an immutable tree object at
+the cost of mutating the index on invocations the gate may then block, while a digest over status,
+diff and untracked hashes has no side effect and leaves a narrow window. **The specification does not
+choose**, stating the required distinction and leaving the mechanism to the backend as 0075 did with
+`git ls-remote --exit-code` and 0077 with `sha`, and Section 9.1 claims nothing about the value being
+naturally available, because an implementer who believed that would look for something that is not
+there. What it does fix is the boundary: a backend MAY write to its own staging or bookkeeping state
+to derive the identity, MUST NOT thereby change what a `commit` would capture, and MUST document the
+effect where it writes. The residue is argued rather than shrugged at: once `before:commit` is
+binding, a `push` whose tip advanced sends commits this engine gated, plus the mechanical merge
+commits `integrate` and `pull` write from the resolved base and the branch's own counterpart, so what
+the window admits is bounded by the position one operation earlier, and what is left is a writer
+outside the engine, which is the consumer's boundary. Section 12.2 loops on 0077's argument, keeping
+the count at one token: routed built in, `commit:worktree_moved` never terminates an invocation and
+needs no `need`, and a worktree written to between every attempt ends at the flow bound, which for a
+caller still writing is the correct report. Cost: one reason token, one capability, one signature —
+half of option A and the same shape 0077 paid. Reconsider if `before:push`'s residue is shown to admit
+content the commit gate did not see; option A is then the fallback. Relates to 0077 (whose
+`expected_head` this generalizes), 0078 (which lands first), 0076, 0075, 0063 and 0057. Accepted and
+applied to `VCSX-SPEC.md` (Sections 4.3, 5.6, 6.6, 7.1, 9.1, 10.4, 12.2, 13.1, 13.2),
+`conformance/vcsx/vocabulary.json` and `conformance/vcsx/README.md`.
