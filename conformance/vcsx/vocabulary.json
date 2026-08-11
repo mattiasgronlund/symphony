@@ -80,6 +80,7 @@
       { "token": "merge:checks_pending", "operation": "merge", "reason": "checks_pending", "class": "needs_caller" },
       { "token": "merge:checks_failed", "operation": "merge", "reason": "checks_failed", "class": "error" },
       { "token": "merge:conflict", "operation": "merge", "reason": "conflict", "class": "needs_caller" },
+      { "token": "merge:head_moved", "operation": "merge", "reason": "head_moved", "class": "needs_caller" },
       { "token": "merge:rejected", "operation": "merge", "reason": "rejected", "class": "error" },
       { "token": "merge:blocked", "operation": "merge", "reason": "blocked", "class": "needs_caller", "universal": true },
       { "token": "merge:failed", "operation": "merge", "reason": "failed", "class": "error", "universal": true },
@@ -126,7 +127,8 @@
     "entries": [
       { "token": "no_current_branch", "meaning": "The work branch is the checkout's current branch (no `branch_pattern` configured) and the checkout has none." },
       { "token": "work_branch_invalid", "meaning": "The derived work branch name is not a legal branch name for the VCS backend." },
-      { "token": "identity_invalid", "meaning": "The caller-supplied commit identity is absent where the entry requires one — `commit`, `integrate`, `pull`, and a front-end sequence that dispatches one — or is malformed as the VCS backend judges it, which is judged whatever the entry. An identity absent at an entry the requirement does not cover is the operation's `identity_missing` at the dispatch instead (Section 4.3)." }
+      { "token": "identity_invalid", "meaning": "The caller-supplied commit identity is absent where the entry requires one — `commit`, `integrate`, `pull`, and a front-end sequence that dispatches one — or is malformed as the VCS backend judges it, which is judged whatever the entry. An identity absent at an entry the requirement does not cover is the operation's `identity_missing` at the dispatch instead (Section 4.3)." },
+      { "token": "checkout_unreadable", "meaning": "A VCS backend capability the engine consults before the first dispatch could not answer — the checkout could not be read. Distinct from `no_current_branch` and `work_branch_invalid`, which are answers the backend gave; this is the absence of one (Sections 8.6, 9)." }
     ]
   },
 

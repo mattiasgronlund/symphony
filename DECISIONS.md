@@ -2268,3 +2268,127 @@ realization it repairs without disturbing the decision), 0057 (whose universal `
 0066 (whose "the wider token where it fits" ruling this follows), 0062 and 0064, 0060, and 0074.
 Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3, 9.1, 13.1) and `conformance/vcsx/README.md`;
 `conformance/vcsx/vocabulary.json` verified unchanged.
+
+## 0076 — A capability that cannot determine its answer says so
+
+**State:** Accepted
+**Folder:** [decisions/0076-capability-answer-domain/](decisions/0076-capability-answer-domain/)
+
+Resolves issue #28. Decision 0075 considered and deferred an answer-domain invariant over the plugin
+API, naming its own trigger: "**It is the repair to reach for if a second capability repeats this.**"
+`pr_state(work_branch)` is that second capability — it answered `open`/`closed`/`merged`, three answers
+for five states, since a work branch with no pull request was unstated and a forge that could not be
+asked had nothing left to answer with. The consequences are worse than #26's because two of its three
+readers *act* on the answer rather than report it: `push` proceeds over a **merged** pull request, the
+exact act `push:pr_closed` exists to refuse, and `create_or_update_pr` opens a **second** pull request
+for a work branch that already has one, the one thing Section 9.2 says a forge backend maintains
+against; `status` merely lies, reporting no pull request for a repository that has one where Section
+4.1 already carries the honest shape for the base (`base_absent`). The report also establishes that the
+lookup cannot be narrowed — `create_pr:base_mismatch` requires finding a pull request opened against a
+*different* base, so a forge with no head-keyed index enumerates, and **an enumeration that reached its
+bound is an incomplete search rather than a negative answer**, a way of being unable to answer that is
+not transport at all. What made this a decision about the class rather than about `pr_state` is the
+audit: of the value-answering capabilities, `is_conflicted()`, `current_branch()`,
+`resolve_base_ref()`, `accepts_*` and `is_dirty()` all have an absent answer that already means
+something, and **`is_dirty()` fails open**. Section 12.2 does not report on it, it *branches* on it, so
+a false reading produces no `commit:nothing_to_commit` but no commit result at all: `ship` goes
+straight to `push` and reports success with the work still uncommitted — a green run that did nothing
+it was asked to do, worse than the report that prompted the decision and never itself reported. An
+implementation avoids it only through a channel of its own outside the Section 8.2 envelope, which is
+the very objection #26 raised about its meanwhile, so every other engine must invent that channel and
+choose its own mapping. Options: **A** widen `pr_state` alone, no token (contained in the choice, but
+leaves the rule that would have caught `is_dirty()` unwritten); **B** A plus a registered `push` reason
+for the refusal (rejected on 0066's and 0075's shared ruling — same class as `failed`, so the wider
+token fits, and 8.5 admits it in any `MINOR` if a consumer must act differently); **C** A inside the
+invariant, with the Section 9.1 audit it implies (chosen); **D** a `Result`-shaped plugin return
+(rejected — a language-level mechanism in a document that names no language; the specification's
+business is which reason a caller reads). So Section 9 now states it over both plugin sections: a
+capability either answers its operation's typed result or answers a value; a value-answering capability
+MUST be able to answer that it could not determine one; **that answer MUST NOT be spelled as the
+value's absent or negative case**; and every such non-answer maps to a Section 4.3 reason where an
+operation has been dispatched or a Section 8.6 precondition reason where none has — **the first
+dispatch is the boundary**, which is 8.6's existing rule reused rather than a second one. The mappings
+land almost entirely on reasons that already exist: `push:failed` / `create_pr:failed` / a
+`pr_state_unavailable` output; a dispatched `commit` reporting `commit:failed` where `is_dirty()` cannot
+answer, because the guard exists to skip a commit that would report `nothing_to_commit`, not to decide
+whether a commit is owed; `diff:base_unavailable`, whose definition already covers "no copy in the
+checkout, **or** acquiring it failed"; and a stated fail-closed answer for `accepts_branch_name` /
+`accepts_identity`, a predicate that cannot judge answering no, since one failing closed refuses a legal
+name at worst while one failing open carries an unjudged identity into every operation that writes. One
+token is added, the precondition reason `checkout_unreadable`, for `detect_mode` and `current_branch` —
+a backend that cannot read the checkout establishes no precondition either way, and reporting it as
+`no_current_branch` would name a state the backend never established. The output name is
+`pr_state_unavailable` on Section 4.3's own distinction — the engine knows exactly which branch and
+cannot get the answer, so it is the unavailable half; `base_absent` is the model for the form and not
+for the word, absence being a fact about the checkout and this a failure to establish one, and `unknown`
+invites "to whom". Section 11 is repaired in the same change and not as tidying: it is the section
+telling a consumer what it may rely on, it said the network-touching capabilities are "named and
+enumerable (Section 9.1)", and **all three required Section 9.2 capabilities take a credential**, so a
+consumer mediating exactly Section 9.1's three does not mediate the forge — an absence in the security
+model. Cost recorded: the invariant is quantified over a list, the altitude objection 0075 raised, which
+this overrides rather than answers; and `push:failed` still covers an unreachable forge alongside every
+other push failure. Relates to 0075 (whose Option D this takes, on the trigger it named), 0073, 0066,
+0065 (whose dividing line places the new token), 0057 and 0051. Sibling of 0077. Accepted and applied to
+`VCSX-SPEC.md` (Sections 4.1, 8.6, 9, 9.1, 9.2, 11, 12.2, 13.1, 13.2, 13.3), `conformance/vcsx/vocabulary.json`
+and `conformance/vcsx/README.md`.
+
+## 0077 — A merge lands the head it read, or reports `merge:head_moved`
+
+**State:** Accepted
+**Folder:** [decisions/0077-merge-head-moved/](decisions/0077-merge-head-moved/)
+
+Resolves issue #29. Section 12.3 had `land` read the pull request and then merge it — two calls, so a
+window — and Section 4.3's six `merge` rows had no token for a head that advanced inside it, while the
+two nearest each routed the caller somewhere wrong: `merge:conflict` sends them to resolve a conflict
+that does not exist, the branches having merged cleanly a second ago, and `merge:rejected` blames a
+branch-protection rule nobody configured. GitHub names the condition separately (`409`, "Head branch was
+modified", with `405` for a pull request that is not mergeable); Forgejo conflates them, which is itself
+evidence the condition had no agreed name. The report asked the general question — what does an
+operation report when the state it was asked about moved underneath it — and noted that `push` answers
+`non_fast_forward` with a class, a gloss naming the recovery, a routing pinned by 13.1 and a bound from
+5.6, while `merge` answered nothing. **The argument that decided it is one the report does not make:
+the dangerous case is not the merge that gets refused but the merge that succeeds.** GitHub's endpoint
+merges whatever the head currently is; its `409` is opportunistic race detection rather than a
+guarantee, and the proof is the `sha` parameter's own existence — if the endpoint reliably refused on
+any head change, `sha` would be redundant. A decision that only mints a token therefore names a symptom
+the forge reports at its discretion and leaves untouched the path where `land` merges content no
+lifecycle position inspected — not hypothetical, since for a squash strategy `before:merge` is where the
+pull request is read *and* where `pr_to_squash` transforms it (10.3), and 6.6 lets a repository put a
+blocking scan there. Options: **A** no token, the condition under `merge:failed` with both misroutes
+forbidden (rejected — it passes 0073's built-in-loop test, but that test asks whether the wider token
+*fits*, and `failed` is class `error` where this is a state a caller acts on, which is 4.2's definition
+of `needs_caller`: a class argument, the bar 0075 said would carry); **B** mint the token and leave the
+window (rejected on the argument above); **C** B plus a merge conditioned on the head that was read
+(chosen); **D** C softened to best-effort-and-document for a forge without the parameter (rejected —
+it converts a correctness property into a documentation obligation, and 9.3 already has the honest
+disposition for a capability a backend cannot provide); **E** route the retry through policy rather than
+12.3 (rejected on token economy). Both parameters were verified rather than assumed: GitHub's `sha`,
+"SHA that pull request head must match to allow merge", and Forgejo/Gitea's `head_commit_id`, confirmed
+against Codeberg's live `swagger.v1.json`. So `request_merge` takes `expected_head` and MUST NOT merge a
+pull request whose head is no longer that, the mechanism staying the backend's exactly as 0075 stated a
+required distinction and left `git ls-remote --exit-code` to the backend; a backend whose forge cannot
+condition the merge does not declare the capability (9.3), reusing existing machinery rather than adding
+an escape hatch; and where `pr_state` could not determine the head there is no `expected_head` and the
+operation reports `merge:failed` rather than merging blind — the interlock with 0076, which lands first
+and is where `pr_state`'s value gains the head. **Section 12.3 loops, and that choice is what keeps the
+token count at one.** Routed built in, `merge:head_moved` never terminates an invocation, so no `need`
+is required and a repository that overrides the routing supplies its own `escalate` reason; left to
+policy, 5.4's `needs_caller` default escalates it, 8.2 requires an escalation exactly then, and none of
+8.4's needs fits — `integrate_then_retry` names `integrate` — so the engine would have minted two
+permanent tokens instead of one. The retry re-enters the *position* rather than the operation, because
+that is where the pull request is read and where `pr_to_squash` runs, so a retry that re-merged without
+re-gating would reintroduce the defect the conditional merge closes. Surfaced and deliberately not
+settled: whether a policy edge's `run_op("merge")` runs `before:merge` at all is ambiguous — 12.2's
+pseudocode reads as the sequence owning the gate, while 4.1, 13.1 and 8.6 read as the operation owning
+it — which is a Section 5.2 dispatch question over every gated operation rather than a `merge` question,
+filed as issue #30; the built-in loop is correct under either reading, and a policy-only routing would
+have been correct only under one. The conditional merge also closes the `before:merge` gate window as a
+consequence, but that window exists at every position and `before:commit` has no cheap identity for the
+state it inspected, which is a `§6.6` correctness claim rather than a registry one and is issue #31. Cost recorded: a capability signature changes, which no reason
+addition would have, affordable now and never cheaper — 0073 restructured 9.1 with five new capability
+names and an opaque ref handle and the realizing implementation absorbed it in one slice, and the
+document is Draft v1. Reconsider for a forge in real use whose merge cannot be conditioned on the head;
+Option D is then the fallback, and relaxing a MUST in a `MINOR` is cheaper than a correctness property
+nobody could rely on having been true. Relates to 0075, 0076 (which lands first), 0057, 0060 and 0051.
+Accepted and applied to `VCSX-SPEC.md` (Sections 4.3, 5.6, 7.2, 9.2, 12.3, 13.1, 13.2) and
+`conformance/vcsx/vocabulary.json`.
