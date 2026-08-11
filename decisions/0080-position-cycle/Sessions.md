@@ -1,4 +1,4 @@
-# Sessions — 0078 A dispatch runs the operation's `before:<op>` position
+# Sessions — 0080 A cycle of lifecycle positions is refused at validation
 
 <!--
 Every Claude Code session that worked on this decision. The session id is the transcript filename
@@ -7,5 +7,4 @@ Every Claude Code session that worked on this decision. The session id is the tr
 
 | Date | Session name | Session id |
 |------|--------------|------------|
-| 2026-08-11 | Resolve issues #30 and #31 | 88a88d5b-9520-4ee2-9bf1-24b229e9aac0 |
-| 2026-08-12 | Resolve issue #33 (revisit: static refusal) | e19fb865-0e5c-4177-8d0a-c1253e5c0aa6 |
+| 2026-08-12 | Resolve issue #33 | e19fb865-0e5c-4177-8d0a-c1253e5c0aa6 |

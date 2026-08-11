@@ -145,3 +145,28 @@ void on exactly the path this decision is about.
 
 Relates to 0077 (which filed the question and is correct under either reading), 0076, 0067, 0060 and
 0053.
+
+## Revisited by 0080 (2026-08-12) — the static refusal, reconsidered
+
+The paragraph above ("Self-dispatch is not a new hazard") is superseded on its conclusion, not on its
+premise. Decision 0080 refuses the shape at Section 6.10 as `position_cycle`; the chosen option of
+this decision is untouched, and Section 5.6's sentence naming the loop is replaced by the boundary.
+
+The decline here reasoned about **cycle detection over the policy graph**, which Section 5.6 rules
+out and rightly: `push:non_fast_forward → integrate → push` is the built-in routing and an executor
+refusing a graph containing a cycle would refuse it. What it did not weigh is that Section 5.6 names
+a measure in the same paragraph — "what separates a converging flow from a looping one is how many
+operations it takes" — and that on this shape the number is zero on every traversal. A cycle made
+only of lifecycle positions passes through no typed operation result, and a position is matched
+exactly, has no class fallback and binds at most one edge, so nothing outside the engine appears on
+the cycle and no traversal can differ from the last. Refusing it is therefore a check over a subgraph
+in which no cycle can be conditional, rather than the detector Section 5.6 refuses, and every routing
+that section defends survives it.
+
+Two facts arrived after this decision landed and are what made the revisit worth doing. Issue #33
+measured the shape against the filing engine — sixty-four dispatches, zero operations, reported as
+`flow_exhausted`, a need glossed as a convergence failure or a fast-moving remote, with `op`,
+`reason` and `class` null so the envelope names neither position nor edge. And the runtime guard that
+engine shipped instead was measured refusing a flow that terminates (`before:push` → `run_op
+integrate` with `integrate:ok` → `run_op push`), which is what ruled out answering this at the
+dispatch. See `decisions/0080-position-cycle/Background.md`.

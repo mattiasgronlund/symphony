@@ -2439,6 +2439,11 @@ not a cycle detector". No token, no `need`, no configuration key: `conformance/v
 verified unchanged. Lands before 0079, which needs a position every dispatch runs for its invariant to
 attach to. Relates to 0077, 0076, 0067, 0060 and 0053. Accepted and applied to `VCSX-SPEC.md` (Sections
 4.1, 5.2, 5.6, 6.6, 8.6, 12.2, 12.3, 13.1, 13.2) and `conformance/vcsx/README.md`.
+**Revisited by 0080**: that edge is now refused at validation as `position_cycle`, and Section 5.6's
+sentence naming the loop is replaced by the boundary. The static detection declined here was cycle
+detection over the policy graph, which Section 5.6 does rule out; 0080's check is over a subgraph in
+which no cycle can be conditional, so the argument this decision rested on does not reach it. The
+chosen option above is untouched.
 
 ## 0079 — An operation acts on the state its position inspected
 
@@ -2492,3 +2497,71 @@ content the commit gate did not see; option A is then the fallback. Relates to 0
 `expected_head` this generalizes), 0078 (which lands first), 0076, 0075, 0063 and 0057. Accepted and
 applied to `VCSX-SPEC.md` (Sections 4.3, 5.6, 6.6, 7.1, 9.1, 10.4, 12.2, 13.1, 13.2),
 `conformance/vcsx/vocabulary.json` and `conformance/vcsx/README.md`.
+
+## 0080 — A cycle of lifecycle positions is refused at validation
+
+**State:** Accepted
+**Folder:** [decisions/0080-position-cycle/](decisions/0080-position-cycle/)
+
+Resolves issue #33, filed against decision 0078's follow-through rather than against the
+specification as it stood: an edge reading `on = "before:commit"`, `do = "run_op"`, `op = "commit"`
+validates — every clause is a known token and the edge carries the argument its action needs — and
+only becomes reachable once 0078 puts the position inside the dispatch. Then the dispatch runs the
+position, the position dispatches the operation, and the filing engine measured **sixty-four
+dispatches and zero operations**, ending at `needs_caller` with the `flow_exhausted` need, whose
+gloss says the graph does not converge or the remote is moving faster than the engine can follow —
+neither, since no remote was consulted and nothing was retried — and with `op`, `reason` and `class`
+null (Section 8.2), so the envelope names neither the position nor the edge and the only field that
+could is `Implementation-defined`. It is also **the migration hazard from the reading 0078
+replaced**, where the same edge meant "commit now" and worked, so the population most likely to meet
+it is the one upgrading. 0078 declined static detection on Section 5.6's "the bound is a count, not a
+cycle detector"; that paragraph is right and is not weakened here, but **it also names a measure** —
+"what separates a converging flow from a looping one is how many operations it takes" — and on this
+shape the number is zero on every traversal, so the measure is not merely unsatisfied but undefined.
+The discriminator that falls out is mechanical: every cycle Section 5.6 defends turns on a **typed
+operation result**, a report about state outside the engine that may differ next traversal, while a
+lifecycle position is matched exactly, has no class fallback and binds at most one edge, so a cycle
+made only of positions turns on nothing and cannot converge on any checkout against any remote —
+refusing it is a check over a subgraph in which no cycle can be conditional, not the detector that
+section rules out. Two corrections to the report as filed, both from the same analysis: the
+discriminator is not "the operation's own position", and **the defect is a family** — `before:commit`
+→ `run_op push` with `before:push` → `run_op commit` has the same property while no edge names the
+operation its own position gates, so a rule shaped around the one-edge spelling misses it. Options:
+**A** validation refuses it, one Section 6.10 reason `position_cycle` (chosen); **B** the dispatch
+refuses a re-entrant position with the universal `failed` (rejected, and the rejection was
+*measured*: against `before:push` → `run_op integrate` with `integrate:ok` → `run_op push`, the
+filing engine's guard reported `error`/`push:failed` after `[integrate]` where the unguarded run
+completed `ok` at `create_pr:created` after `[integrate, integrate, push, push]` — the predicate
+"this operation's own position is on the stack" is not the claim "this flow cannot terminate", and
+Section 8.6 independently rules out routing a configuration defect through the result channel, since
+the universal `failed` "names no condition" and a repository binding `#error` to `escalate` would
+turn a typo into an escalation to a person); **C** absorb the edge as satisfied by the dispatch
+already in flight, the only option preserving the upgrading repository (rejected — it makes `run_op`
+name two things, which is the ground 0078 rejected its own option B on, it never tells an author the
+edge was defective, and it covers only the one-edge form); **D** keep the bound and sharpen the
+report (rejected as an answer — `detail` is `Implementation-defined`, and it still diagnoses
+convergence for a policy that never had a chance to converge; worth doing separately); **E** skip the
+position on re-entry (rejected by the reporter before filing — it is the in-sandbox bypass 0078
+exists to close, against Sections 6.6 and 10.1). The split the specification now states is that a
+flow which **cannot** converge because it reaches no operation is refused before anything runs, and
+one which **does not** converge while running operations is held by the bound, which is what a count
+is for; an engine carrying the runtime guard removes it rather than keeping both, since what remains
+for a stack-shaped predicate to catch is a terminating flow it would wrongly refuse. Cost: one
+configuration reason, permanent within a `MAJOR`, and cheaper than the report assumed — Section 8.5
+admits a new configuration reason in a `MINOR` and Section 6.10 states it is absorbed by the
+`usage_or_config` status without an existing class edge. **The migration cost is named rather than
+mitigated**: the refusal is unconditional, so a repository carrying the edge on a branch that never
+commits is refused on every invocation, including a `status` that would have completed — accepted
+because the edge means nothing under 0078, the operator is told before any operation has run, and the
+alternative that preserves those invocations preserves them by deciding what the author meant. The
+boundary lands as four `policy-validation` vectors rather than as prose alone — a one-position cycle
+and a two-position cycle refused, a position edge to an operation the cycle does not return from and
+a cycle through a typed result accepted — which is what stops the next engine deriving the predicate
+the filing engine derived. Reconsider if a position-only cycle is found that no invocation could
+enter, making its unconditional refusal cost a working run; the narrower rule would refuse only a
+cycle reachable from an entry point, at the cost of making validation depend on the entry, which
+Section 6.10 never does today. Revisits 0078's incidental refusal of static detection, recorded there
+append-only, leaving its chosen option untouched; relates to 0079, 0066, 0060 and 0056. Accepted and
+applied to `VCSX-SPEC.md` (Sections 4.1, 5.6, 6.10, 13.1, 13.2),
+`conformance/vcsx/vocabulary.json`, `conformance/vcsx/vectors/policy-validation.json` and
+`conformance/vcsx/README.md`.

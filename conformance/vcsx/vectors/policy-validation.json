@@ -3,7 +3,9 @@
   "spec_refs": [
     "VCSX-SPEC.md Section 6.1 \"File Discovery and `vcsx.toml` Merge\"",
     "VCSX-SPEC.md Section 6.10 \"Validation\"",
+    "VCSX-SPEC.md Section 4.1 \"Operation Set\"",
     "VCSX-SPEC.md Section 5.4 \"Unmatched Policy and Determinism\"",
+    "VCSX-SPEC.md Section 5.6 \"Flow Bound and Termination\"",
     "VCSX-SPEC.md Section 6.4 \"`[base]` and Base Resolution\"",
     "VCSX-SPEC.md Section 6.7 \"`tracker.transitions`\"",
     "VCSX-SPEC.md Section 8.5 \"Versioning and the Version Grammar\""
@@ -84,6 +86,68 @@
         "consumer_capabilities": ["set_state"]
       },
       "expect": { "error": "duplicate_transition" }
+    },
+    {
+      "id": "position_dispatching_its_own_operation_is_a_position_cycle",
+      "description": "The dispatch runs the position (Section 4.1) and the position's only edge dispatches the operation, so no `commit` is ever reached. Refused at validation rather than left to the flow bound (Sections 5.6, 6.10).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "edges": [
+            { "on": "before:commit", "do": "run_op", "op": "commit" }
+          ]
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "error": "position_cycle" }
+    },
+    {
+      "id": "position_cycle_across_two_positions",
+      "description": "No edge names the operation its own position gates, and neither operation can run: the condition is a cycle over the positions, not an edge naming itself (Sections 4.1, 6.10).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "edges": [
+            { "on": "before:commit", "do": "run_op", "op": "push" },
+            { "on": "before:push", "do": "run_op", "op": "commit" }
+          ]
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "error": "position_cycle" }
+    },
+    {
+      "id": "position_dispatching_another_operation_is_valid",
+      "description": "A position's `run_op` edge is refused only where the positions form a cycle; one that dispatches an operation the cycle does not return from is ordinary (Section 6.10).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "edges": [
+            { "on": "before:commit", "do": "run_op", "op": "push" }
+          ]
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "valid": true }
+    },
+    {
+      "id": "cycle_through_a_typed_result_is_valid",
+      "description": "`before:push` dispatches `integrate` and `integrate:ok` dispatches `push`, which re-enters the position: a cycle, but one that runs operations and whose next traversal may differ, so the flow bound holds it rather than validation refusing it (Sections 5.6, 6.10).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "edges": [
+            { "on": "before:push", "do": "run_op", "op": "integrate" },
+            { "on": "integrate:ok", "do": "run_op", "op": "push" }
+          ]
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "valid": true }
     },
     {
       "id": "unknown_operation_in_trigger_is_an_unknown_trigger",
