@@ -44,6 +44,7 @@
     "entries": [
       { "token": "commit:ok", "operation": "commit", "reason": "ok", "class": "done" },
       { "token": "commit:nothing_to_commit", "operation": "commit", "reason": "nothing_to_commit", "class": "done" },
+      { "token": "commit:worktree_moved", "operation": "commit", "reason": "worktree_moved", "class": "needs_caller" },
       { "token": "commit:identity_missing", "operation": "commit", "reason": "identity_missing", "class": "needs_caller" },
       { "token": "commit:blocked", "operation": "commit", "reason": "blocked", "class": "needs_caller", "universal": true },
       { "token": "commit:failed", "operation": "commit", "reason": "failed", "class": "error", "universal": true },
