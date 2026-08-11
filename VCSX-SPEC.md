@@ -196,7 +196,10 @@ gated. Gating is a property of the operation, as the entries above state it, rat
 caller takes around it: Section 6.6 surfaces a block as the gated operation's own reason and Section
 13.1 requires that surfacing at every gated operation, neither of which a caller could guarantee for a
 dispatch it does not make. An operation gated at no fixed position — `integrate` and `pull` — enters
-none wherever it is dispatched.
+none wherever it is dispatched. Because the dispatch runs the position and a position's `run_op` edge
+makes a dispatch of its own, a set of `[policy]` edges that returns a position to itself describes
+dispatches that reach no operation at all; Section 6.10 refuses a policy carrying one
+(`position_cycle`).
 
 Note: a position runs where its operation runs and nowhere else. A `ship` over a working tree the
 dirtiness guard reads as clean dispatches no `commit` (Section 12.2) and so enters no `before:commit`.
@@ -469,9 +472,11 @@ only action whose result re-enters the machine:
 
 Every non-terminating flow is therefore an unbounded sequence of `run_op` dispatches, and a bound on
 that count bounds every loop the schema can express — including one a lifecycle position introduces,
-where an edge on `before:push` dispatches `integrate` and the retried `push` re-gates the position. A
-`run_op` edge at `before:<op>` naming that same operation is such a loop, the dispatch running the
-position that dispatches it (Section 4.1), and the bound ends it as it ends any other.
+where an edge on `before:push` dispatches `integrate` and the retried `push` re-gates the position.
+One shape is refused before it runs rather than bounded: a cycle of lifecycle positions, each
+position's `run_op` edge dispatching the operation the next position gates, reaches no operation on
+any traversal and is a configuration error (`position_cycle`, Section 6.10). The bound holds every
+loop that runs operations, which is every loop whose cycle passes through a typed operation result.
 
 A conforming executor MUST bound one invocation's flow by a count of `run_op` dispatches. The bound's
 value is `Implementation-defined` and MUST be documented (Section 13.3); it MUST admit at least 64
@@ -487,7 +492,10 @@ merge` is another (Section 12.3), and a pull request pushed to twice produces th
 to twice during the gate produces that twice. An
 executor that refused a graph containing a cycle would refuse that routing, and one that stopped at
 a repeated edge would abort a correct flow that was about to converge. What separates a converging
-flow from a looping one is how many operations it takes, not whether it revisits an edge.
+flow from a looping one is how many operations it takes, not whether it revisits an edge. That
+measure is also what separates the three pairs above from the shape validation refuses: each pair
+takes one operation per turn and ends when the state that operation reports settles, while a cycle
+made only of positions takes none, so the count measures nothing that could converge.
 
 A flow that reaches the bound ends the invocation at `needs_caller` carrying the `flow_exhausted` need
 (Sections 8.2, 8.4). The pending `run_op` is not dispatched; the operations already run stand. Like a
@@ -739,6 +747,7 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | A `run` names a hook the `[hooks]` table does not declare (Section 6.6) | `unknown_hook` |
 | A duplicate `(from, on)` policy edge — non-determinism (Section 5.4) | `duplicate_edge` |
 | A duplicate `(from, on)` transition (Section 6.7) | `duplicate_transition` |
+| A cycle of lifecycle positions, each position's `run_op` edge dispatching the operation the next position gates, so no operation on the cycle can run (Sections 4.1, 5.6) | `position_cycle` |
 | A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map (Section 6.4) | `base_unresolvable` |
 | A `set_state`/transition binding without a consumer that can apply it (Section 5.2) | `set_state_unbound` |
 | A policy requiring a capability no configured backend declares (Section 9.3) | `capability_unsupported` |
@@ -759,6 +768,18 @@ different repairs — a newer engine, and a corrected file. `unknown_operation` 
 likewise name an argument the engine resolved and did not recognize, while an argument that is
 absent is `malformed_policy`; that condition is stated over the actions rather than per argument,
 because `set_state` with no target has the same shape and no reason of its own.
+
+`position_cycle` names a policy that cannot run rather than one that might not converge, which is the
+boundary against Section 5.6's bound. A lifecycle position is matched exactly, has no class fallback
+(Section 5.3), and binds at most one edge (Section 5.4), so a `run_op` edge bound to a position is
+taken whenever the position runs; a cycle of such edges therefore dispatches without
+reaching an operation on every traversal, whatever the checkout holds and however the remote has
+moved. A cycle that passes through a typed operation result is not this condition and is not refused,
+because a result reports state outside the engine and the next traversal may differ — that is the
+routing Section 5.6 defends, and refusing it is the cycle detection that section rules out. The
+condition is judged over the `before:<op>` positions the engine defines (Section 4.1) and the
+`run_op` edges bound to them, and a policy is refused where any from-context yields such a cycle, an
+edge scoped to a context being selected over an unscoped one for the same trigger (Section 5.4).
 
 Configuration reasons carry no proto class: a refused policy has no operation result to classify. They
 are reported under the `usage_or_config` status (Section 8.2) rather than through the `#class` fallback,
@@ -1438,7 +1459,11 @@ A conforming engine SHOULD include tests covering:
 - Termination: a policy whose `run_op` results route back to an earlier operation stops at the flow
   bound (Section 5.6), yielding `needs_caller` with the `flow_exhausted` need and null
   `op`/`reason`/`class`; a flow that converges within the bound is unaffected; a repeated
-  `(trigger, edge)` pair does not by itself stop a flow.
+  `(trigger, edge)` pair does not by itself stop a flow; a policy whose lifecycle positions dispatch
+  one another in a cycle is refused at validation with `position_cycle` rather than reaching the
+  bound, and reaching no operation is what distinguishes it — a policy whose cycle passes through a
+  typed operation result, an edge on `before:push` dispatching `integrate` and an `integrate:ok` edge
+  dispatching `push`, is accepted and bounded (Sections 5.6, 6.10).
 - Operations and reasons: each operation returns a registry reason (Section 4.3) with its documented
   proto class; `push:non_fast_forward` is `needs_caller` and routes to `integrate`; `push:pr_closed`
   refuses a push over a CLOSED/MERGED pull request; `create_pr:base_mismatch` is surfaced, not
@@ -1522,8 +1547,8 @@ A conforming engine SHOULD include tests covering:
 - The operation set and the reason-token registry with stable proto classes, each gated operation
   running its `before:<op>` position as part of every dispatch.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), including the refusal of a
-  policy that is not well formed, base resolution to a branch and a base ref, and the
-  execution-context labeling.
+  policy that is not well formed and of one whose lifecycle positions dispatch one another in a
+  cycle, base resolution to a branch and a base ref, and the execution-context labeling.
 - The invocation contract: result envelope, exit codes, escalation payload, invocation
   preconditions, and versioning with a `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors, the VCS backend

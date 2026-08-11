@@ -105,7 +105,7 @@
   },
 
   "config_reasons": {
-    "spec_refs": ["VCSX-SPEC.md Section 6.1 \"File Discovery and `vcsx.toml` Merge\"", "VCSX-SPEC.md Section 6.10 \"Validation\"", "VCSX-SPEC.md Section 9.3 \"Capability Descriptors\""],
+    "spec_refs": ["VCSX-SPEC.md Section 6.1 \"File Discovery and `vcsx.toml` Merge\"", "VCSX-SPEC.md Section 6.10 \"Validation\"", "VCSX-SPEC.md Section 5.6 \"Flow Bound and Termination\"", "VCSX-SPEC.md Section 9.3 \"Capability Descriptors\""],
     "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — a refused policy has no operation result to classify. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds. The first entry is a well-formedness failure and the rest are consistency failures: validation takes a document, so a policy that does not parse yields none for the other conditions to be judged against.",
     "entries": [
       { "token": "malformed_policy", "meaning": "The policy is not well formed: a discovered `repo.policy.toml` (or a `vcsx.toml` merged into it) does not parse, a key's value does not satisfy the constraints its section states, or an edge's action cannot be dispatched from the arguments it carries. Reported for a well-formedness failure no other condition names." },
@@ -115,6 +115,7 @@
       { "token": "unknown_hook", "meaning": "A `run` names a hook the `[hooks]` table does not declare." },
       { "token": "duplicate_edge", "meaning": "A duplicate `(from, on)` policy edge — non-determinism." },
       { "token": "duplicate_transition", "meaning": "A duplicate `(from, on)` transition." },
+      { "token": "position_cycle", "meaning": "A cycle of lifecycle positions, each position's `run_op` edge dispatching the operation the next position gates, so no operation on the cycle can run (Sections 4.1, 5.6). A position is matched exactly and binds at most one edge, so such a cycle reaches no operation on any traversal; a cycle through a typed operation result is not this condition and is bounded rather than refused." },
       { "token": "base_unresolvable", "meaning": "A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map." },
       { "token": "set_state_unbound", "meaning": "A `set_state`/transition binding without a consumer that can apply it." },
       { "token": "capability_unsupported", "meaning": "A policy requiring a capability no configured backend declares (Section 9.3)." },
