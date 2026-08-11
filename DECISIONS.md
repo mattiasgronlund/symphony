@@ -2392,3 +2392,50 @@ Option D is then the fallback, and relaxing a MUST in a `MINOR` is cheaper than 
 nobody could rely on having been true. Relates to 0075, 0076 (which lands first), 0057, 0060 and 0051.
 Accepted and applied to `VCSX-SPEC.md` (Sections 4.3, 5.6, 7.2, 9.2, 12.3, 13.1, 13.2) and
 `conformance/vcsx/vocabulary.json`.
+
+## 0078 — A dispatch runs the operation's `before:<op>` position
+
+**State:** Accepted
+**Folder:** [decisions/0078-dispatch-runs-the-position/](decisions/0078-dispatch-runs-the-position/)
+
+Resolves issue #30, which decision 0077 filed rather than folded in. Two passages described the
+relation between a lifecycle position and its operation and did not agree: Section 12.2 wrote
+`run_lifecycle("before:push")` and `run_op("push")` as two statements — redundant unless the sequence
+owns the position, and Section 12.3 sharpened it by retrying "the lifecycle position rather than the
+operation alone" — while Section 4.1 states gating as a property of the operation ("gated at
+`before:commit`"), Section 6.6 surfaces a block as "the gated operation's own reason", Section 13.1
+asks for that "at every gated operation", and Section 5.6 says "the retried `push` re-gates the
+position". The two readings are different engines wherever an operation is reached outside a front-end
+sequence, which Section 5.2 makes ordinary and **Section 8.6 already uses as its worked example** — a
+`status` entry routing `status:ok` to `run_op` `commit` — without saying whether the gate travels with
+it. Under the first reading that `commit` runs with no `scan-content`: not defeated, just never run,
+and `before:commit` is the one position Section 3.2 labels in-sandbox precisely because its job is to
+inspect content the consumer does not trust. **The filing engine is the argument for calling it an
+interoperability defect rather than a wording nit**: it implements the first reading and got there by
+where `gate()` happened to be called rather than by deciding, so an implementer who had read all four
+passages closely enough to cite them still inherited the reading from whichever sentence the sequence
+was built from. One correction to the report: `push`'s `pr_state` guard sits *inside* the operation
+(Section 4.1, decision 0076), not at `before:push`, so it travels under either reading and only a
+repository's own edges are skipped. Options: **A** the dispatch carries the position (chosen); **B**
+the `run_op` *action* carries it while the sequences keep theirs — same observable result, preserves
+`ship`'s unconditional `before:commit`, rejected because it makes `run_op` name two things and makes
+gating a property of each dispatch path rather than of the operation, which is the shape decision 0076
+rejected one layer down when it stated the answer-domain rule over the whole capability list rather
+than per capability; **C** state the first reading and report a policy binding both a `before:<op>`
+hook and a `run_op` edge to that operation (rejected — Section 6.6's surfacing then has to be realized
+for a position no operation ran, and a documented bypass is still a bypass); **D** A plus a per-edge
+`gated = false` (rejected — permanent schema for the exact condition being removed). **The consequence
+is recorded rather than left to be discovered**: Section 12.2 ran `before:commit` above its dirtiness
+guard, so under A a clean working tree enters no position at all. That is principled — a position
+gates an operation, and where none is dispatched there is nothing to gate — and empirically empty: the
+gate is a Section 6.6 hook that reads the working tree by running in it, so on a clean tree an
+inspecting hook can only pass, and the run that disappears is observable only to a hook doing something
+Sections 6.6 and 10.4 do not sanction. The filing engine pins the old behavior in
+`flow::ship_runs_the_commit_gate_even_when_there_is_nothing_to_commit` with a comment naming exactly
+this, and it pins the letter of Section 12.2 against three normative passages that say the opposite. A
+`run_op` edge at `before:<op>` naming that same operation now loops; Section 5.6's bound ends it and
+gains a sentence saying so, static detection being refused on Section 5.6's own "the bound is a count,
+not a cycle detector". No token, no `need`, no configuration key: `conformance/vcsx/vocabulary.json` is
+verified unchanged. Lands before 0079, which needs a position every dispatch runs for its invariant to
+attach to. Relates to 0077, 0076, 0067, 0060 and 0053. Accepted and applied to `VCSX-SPEC.md` (Sections
+4.1, 5.2, 5.6, 6.6, 8.6, 12.2, 12.3, 13.1, 13.2) and `conformance/vcsx/README.md`.

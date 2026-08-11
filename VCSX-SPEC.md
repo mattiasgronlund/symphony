@@ -189,6 +189,23 @@ An engine MAY define additional operations and their `before:<op>` positions; th
 the required set and the four positions `before:commit`, `before:push`, `before:create_pr`,
 `before:merge` are the required lifecycle positions.
 
+A gated operation's position runs as part of dispatching it. The engine runs `before:<op>` whenever
+`<op>` is dispatched — by a front-end sequence (Sections 12.2, 12.3), by a `[policy]` `run_op` edge
+(Section 5.2), or by a retry — so what reached the operation does not decide whether the operation is
+gated. Gating is a property of the operation, as the entries above state it, rather than a step a
+caller takes around it: Section 6.6 surfaces a block as the gated operation's own reason and Section
+13.1 requires that surfacing at every gated operation, neither of which a caller could guarantee for a
+dispatch it does not make. An operation gated at no fixed position — `integrate` and `pull` — enters
+none wherever it is dispatched.
+
+Note: a position runs where its operation runs and nowhere else. A `ship` over a working tree the
+dirtiness guard reads as clean dispatches no `commit` (Section 12.2) and so enters no `before:commit`.
+A position gates an operation, and where none is dispatched there is nothing to gate; a repository that
+wants a unit to run whether or not a commit follows binds it to a result trigger rather than to a gate
+(Section 5.1). What a unit could observe at the position is also nothing: a `before:commit` unit
+inspects the working tree it runs in (Sections 6.6, 10.4), and a clean tree carries nothing for it to
+find.
+
 Note: the operations that reach the remote are exactly those Section 3.2 places host-side — among
 the version-control operations, `integrate`, `push` and `pull`. `status` and `diff` are read-only
 and report against the base ref the checkout already holds (Section 6.4), so their `ahead`/`behind`
@@ -283,7 +300,8 @@ recovery in the gloss. Neither is a conflict: the branches merge cleanly, and a 
 an operator to read a rule nobody wrote. The two differ only in the recovery each gloss names,
 because a remote that moved requires an `integrate` before the write can succeed while a head that
 moved requires only that the pull request be read again — which is why one routes through another
-operation (Section 12.2) and the other re-enters its own lifecycle position (Section 12.3). The
+operation (Section 12.2) and the other re-dispatches its own, which re-runs its position
+(Sections 4.1, 12.3). The
 condition is not reported as the universal `failed` for the same reason `push:non_fast_forward` is
 not: `failed` is class `error` and this is a state a caller acts on, so no wider token carries it
 (Sections 4.2, 8.5).
@@ -327,6 +345,8 @@ An action is one of:
 
 - `run_op(op, args?)` — run an operation (Section 4). Its result is itself a trigger, so a policy is a
   graph, not a flat list; the number of dispatches in one invocation is bounded (Section 5.6).
+  Dispatching a gated operation runs its `before:<op>` position first (Sections 4.1, 6.6), so an
+  operation reached through an edge is gated exactly as one a front-end sequence dispatches.
 - `run(hook, context)` — run a repository hook (Section 6.6) in the declared execution context
   (Section 3.2).
 - `escalate(reason)` — raise a need whose resolver the front-end binds (Section 5.5).
@@ -440,7 +460,9 @@ only action whose result re-enters the machine:
 
 Every non-terminating flow is therefore an unbounded sequence of `run_op` dispatches, and a bound on
 that count bounds every loop the schema can express — including one a lifecycle position introduces,
-where an edge on `before:push` dispatches `integrate` and the retried `push` re-gates the position.
+where an edge on `before:push` dispatches `integrate` and the retried `push` re-gates the position. A
+`run_op` edge at `before:<op>` naming that same operation is such a loop, the dispatch running the
+position that dispatches it (Section 4.1), and the bound ends it as it ends any other.
 
 A conforming executor MUST bound one invocation's flow by a count of `run_op` dispatches. The bound's
 value is `Implementation-defined` and MUST be documented (Section 13.3); it MUST admit at least 64
@@ -607,7 +629,9 @@ run = "..."
   with a stable reason. The engine surfaces the block as the gated operation's own reason, preserving
   the class: a `needs_caller` result surfaces as `<op>:blocked` and an `error` result as
   `<op>:failed`. Both are defined for every gated operation, including a `before:<op>` position an
-  engine adds (Section 4.3), so the surfacing is defined at every position.
+  engine adds (Section 4.3), so the surfacing is defined at every position. The position runs wherever
+  its operation is dispatched from (Section 4.1), so a block surfaces identically for a front-end
+  sequence and for a `run_op` edge (Section 5.2).
 - An `after`/result-triggered hook is best-effort and does not block.
 - A host-side hook MAY receive repo-internal integrity values from the consumer's environment; an
   in-sandbox hook MUST NOT receive credentials or integrity values.
@@ -884,7 +908,9 @@ precondition the engine refuses in advance, because it is not judged from the in
 and the checkout but from a path the policy might take. The dispatched operation reports
 `identity_missing` (Section 4.3) instead, which is the disposition Section 9.3 already gives an
 unsupported capability — refused before the policy runs where the invocation determines it, reported
-at first use where only the run does.
+at first use where only the run does. That dispatch runs the operation's `before:<op>` position as any
+dispatch does (Section 4.1): the entry point fixes which invocations are refused in advance, not which
+are gated.
 
 A precondition the engine cannot establish is not an operation result. No operation ran, so the
 Section 4.3 registry does not apply, no proto class is assigned, and there is no `<op>:<reason>` for
@@ -1203,14 +1229,13 @@ function ladder(trigger):
 
 ```text
 function ship(identity, message):
-  run_lifecycle("before:commit")            # in-sandbox scan/gate edges
   if worktree_dirty() is not clean:         # dirty, or undetermined (Section 9.1)
-    dispatch(run_op("commit", message))     # commit:* re-enters the machine
+    dispatch(run_op("commit", message))     # runs before:commit, then commits;
+                                            # commit:* re-enters the machine
   loop:
     if flow_bound_reached():                # Section 5.6; counts every run_op, not this loop's turns
       return flow_exhausted()               # needs_caller, need = flow_exhausted
-    run_lifecycle("before:push")
-    r = run_op("push")
+    r = run_op("push")                      # runs before:push, then pushes
     if r is push:non_fast_forward:
       # policy typically routes this to integrate
       i = run_op("integrate")
@@ -1222,13 +1247,14 @@ function ship(identity, message):
     if r.class != done:
       return result_of(r)                    # e.g. push:blocked; class default (Section 5.4)
     break                                    # push:ok / up_to_date
-  run_lifecycle("before:create_pr")
-  p = run_op("create_pr")                    # composes title/body (Section 10.2)
+  p = run_op("create_pr")                    # runs before:create_pr, then composes (Section 10.2)
   return result_of(p)                        # stops at the pull request
 ```
 
 The routing above is the built-in default; a repository's `[policy]` edges override each step. `ship`
-never runs `merge`.
+never runs `merge`. The sequence runs no position of its own: each `run_op` above runs its operation's
+`before:<op>` position (Section 4.1), so a working tree the guard reads as clean enters no
+`before:commit`.
 
 `worktree_dirty()` is the `is_dirty()` capability (Section 9.1), so the guard and the operation
 share one predicate: a change made only of content the VCS has not yet recorded is dirty, and `ship`
@@ -1255,24 +1281,25 @@ function land():
   loop:
     if flow_bound_reached():                 # Section 5.6; counts every run_op
       return flow_exhausted()                # needs_caller, need = flow_exhausted
-    run_lifecycle("before:merge")            # reads the pull request; applies pr_to_squash
-                                             # for a squash strategy
-    m = run_op("merge", strategy = configured_strategy(),
-               expected_head = head_read_at_this_position())
+    m = run_op("merge", strategy = configured_strategy())
+                                             # runs before:merge — reads the pull request, applies
+                                             # pr_to_squash for a squash strategy — then merges the
+                                             # head that position read (Sections 9.2, 10.3)
     if m is merge:head_moved:
-      continue                               # re-read, re-gate, retry
+      continue                               # re-dispatch: re-read, re-gate, retry
     return result_of(m)                      # merge:not_open / checks_pending -> needs_caller
 ```
 
 The routing above is the built-in default, as Section 12.2's is; a repository's `[policy]` edges
 override it.
 
-The retry re-enters the lifecycle position rather than the operation alone, and that is what makes
-it sound. `before:merge` is where the pull request is read and where a squash strategy's
-`pr_to_squash` transform runs (Section 10.3), so a retry that re-merged without re-gating would
+The retry re-dispatches the operation, which re-runs the position (Section 4.1), and that is what
+makes it sound. `before:merge` is where the pull request is read and where a squash strategy's
+`pr_to_squash` transform runs (Section 10.3), so a retry that merged again without re-gating would
 merge a head no position inspected and write a squash message describing a revision that is not the
-one squashed. Re-entering the position also re-runs a repository's own gate edges there, which is
-the property Section 12.2's loop has at `before:push`.
+one squashed. The re-dispatch also re-runs a repository's own gate edges there, which is the
+property Section 12.2's loop has at `before:push`. `expected_head` is not an argument the sequence
+threads: the dispatch supplies the head its own position read (Section 9.2).
 
 The loop terminates on the flow bound (Section 5.6): every `run_op` counts against it wherever it is
 dispatched, so a pull request whose head moves between every attempt ends the invocation at
@@ -1362,13 +1389,19 @@ A conforming engine SHOULD include tests covering:
   `failed`, while a `pr_state` that could not determine the head yields `merge:failed` rather than
   an unconditioned merge (Sections 4.3, 9.2).
 - Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
-  `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6).
-- Front-ends: `ship` stops at the pull request; `land` merges an open, checks-passed pull request,
-  applies `pr_to_squash` for a squash, and never authors a message; `land` re-reads, re-runs
-  `before:merge` and retries a `merge:head_moved`, so the squash message is transformed from the
-  revision actually merged, and a head that moves between every attempt ends at the flow bound
-  rather than merging a head no position inspected (Sections 5.6, 12.3); the same `repo.policy.toml`
-  yields the same operation flow through `ship` and an embedded driver.
+  `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6);
+  a gated operation dispatched by a `[policy]` `run_op` edge rather than by a front-end sequence — a
+  `status` entry routing `status:ok` to `run_op` `commit` — runs `before:commit` and is blocked there
+  identically, the position travelling with the dispatch rather than with the caller
+  (Sections 4.1, 5.2).
+- Front-ends: `ship` stops at the pull request, and over a working tree its guard reads as clean
+  dispatches no `commit` and so enters no `before:commit` (Sections 4.1, 12.2); `land` merges an
+  open, checks-passed pull request, applies `pr_to_squash` for a squash, and never authors a message;
+  `land` retries a `merge:head_moved` by re-dispatching the operation, which re-reads and re-runs
+  `before:merge`, so the squash message is transformed from the revision actually merged, and a head
+  that moves between every attempt ends at the flow bound rather than merging a head no position
+  inspected (Sections 5.6, 12.3); the same `repo.policy.toml` yields the same operation flow through
+  `ship` and an embedded driver.
 - Invocation contract: exit codes mirror proto classes; `escalation` is present exactly for
   `needs_caller`; a parked flow is `needs_caller` with the `intervention` need and null
   `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed, while one
@@ -1405,7 +1438,8 @@ A conforming engine SHOULD include tests covering:
 - The action-policy machine: triggers, actions, the `#class` fallback, from-context scoping with
   unscoped edges, fail-safe-on-unmatched-outcome, no-op-on-unmatched-signal, determinism, and a
   bounded flow.
-- The operation set and the reason-token registry with stable proto classes.
+- The operation set and the reason-token registry with stable proto classes, each gated operation
+  running its `before:<op>` position as part of every dispatch.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), including the refusal of a
   policy that is not well formed, base resolution to a branch and a base ref, and the
   execution-context labeling.

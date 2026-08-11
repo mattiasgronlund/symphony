@@ -202,7 +202,9 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
 - **Message formulation** — `scan-content`, pull-request composition, and the `pr_to_squash` transform
   (Section 10), whose formats are repository-owned by construction.
 - **Hook execution** and the execution-context split (Sections 3.2, 6.6) — process and trust-boundary
-  behavior.
+  behavior. Whether a lifecycle position ran is observed the same way, so decision 0078's rule that a
+  gated operation's position runs as part of every dispatch — including a `[policy]` `run_op` edge's —
+  has no vector: the check is that a hook bound at `before:commit` ran, which needs the hook.
 
 ## Surfaced findings
 
