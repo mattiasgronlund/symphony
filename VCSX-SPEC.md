@@ -148,10 +148,16 @@ Operations are the unit `run_op` runs (Section 5.2). Each is realized through th
 returns a typed result (Section 4.2). Read-only operations carry no lifecycle position.
 
 - `status` — inspect working state. Outputs: `mode` (Section 3.3), `branch`, `dirty`, `conflicted`,
-  `ahead`/`behind` versus the resolved base (Section 6.4), and the pull-request state when a forge is
-  configured (number and open/closed/merged). Where the checkout holds no copy of the resolved base,
-  `ahead`/`behind` are null and a `base_absent` output reports it; the operation still completes,
-  because an inspection that cannot see the base states that rather than failing. Read-only.
+  `ahead`/`behind` versus the resolved base (Section 6.4), and the pull-request state when a forge
+  is configured (number and open/closed/merged). Where the checkout holds no copy of the resolved
+  base, `ahead`/`behind` are null and a `base_absent` output reports it; the operation still
+  completes, because an inspection that cannot see the base states that rather than failing. An
+  output the operation could not determine is reported the same way and means something else: the
+  field is null and a `<field>_unavailable` output reports it — `pr_state_unavailable` where a
+  configured forge could not be asked (Section 9.2). `base_absent` states what the checkout holds
+  and `<field>_unavailable` states that the read did not establish it, which is the distinction
+  Section 4.3 draws between a thing that is absent and a thing that is unavailable; a read reports
+  no determinate value it did not establish. Read-only.
 - `diff` — the branch delta against the resolved base. Read-only.
 - `commit` — create a commit from the working tree, gated at `before:commit` (Section 10.1). The
   operation captures the working tree in full: every change the VCS does not ignore, including
@@ -161,8 +167,11 @@ returns a typed result (Section 4.2). Read-only operations carry no lifecycle po
   recorded conflict resolutions where the backend supports them. The base is the branch as the
   configured remote holds it (Sections 6.2, 6.4), acquired rather than read from the checkout's
   copy. Gated at no fixed position; typically run in response to `push:non_fast_forward`.
-- `push` — push the work branch to the remote with the refspec pinned to the work branch. Gated at
-  `before:push`.
+- `push` — push the work branch to the remote with the refspec pinned to the work branch. Where a
+  forge is configured, the operation first reads the work branch's pull-request state (Section 9.2
+  `pr_state`) and refuses a push over a CLOSED/MERGED one (`push:pr_closed`). A state it could not
+  determine is not the absence of a pull request: the operation does not push and reports
+  `push:failed` (Sections 4.3, 9.2). Gated at `before:push`.
 - `create_pr` — create or update the one pull request for the work branch against the resolved base,
   composing its title and body (Section 10.2). Gated at `before:create_pr`.
 - `merge` — merge the pull request using the configured strategy (Section 6.8). Gated at
@@ -170,7 +179,11 @@ returns a typed result (Section 4.2). Read-only operations carry no lifecycle po
 - `pull` — update the local work branch from its remote counterpart, preserving the commits already on
   the branch: the counterpart is merged in, and no commit on the branch is rewritten, dropped, or
   re-parented (Section 11). `pull:conflict` is therefore a merge conflict, which the caller resolves and
-  `commit` finalizes; the operation set has no step that resumes a sequential replay.
+  `commit` finalizes; the operation set has no step that resumes a sequential replay. Where the remote
+  carries no counterpart the operation is a benign no-op and reports `pull:ok`: the work branch is
+  engine-derived and need not exist on the remote before the first push (Sections 6.2, 6.3). An
+  acquisition the engine could not complete is not that no-op and reports `pull:failed`
+  (Sections 4.3, 9.1).
 
 An engine MAY define additional operations and their `before:<op>` positions; the operations above are
 the required set and the four positions `before:commit`, `before:push`, `before:create_pr`,
@@ -238,6 +251,7 @@ and `blocked` for every operation gated at a lifecycle position (Section 4.1).
 | `merge` | `checks_pending` | `needs_caller` | Required checks have not completed. |
 | `merge` | `checks_failed` | `error` | Required checks failed. |
 | `merge` | `conflict` | `needs_caller` | The merge would conflict. |
+| `merge` | `head_moved` | `needs_caller` | The pull request's head advanced after it was read; re-read then retry. |
 | `merge` | `rejected` | `error` | Branch protection or forge policy refused the merge. |
 | `pull` | `ok` | `done` | The local branch was updated. |
 | `pull` | `conflict` | `needs_caller` | The merge of the remote counterpart stopped on conflicts. |
@@ -251,6 +265,28 @@ resolution has two steps (Section 6.4) and each reason reports the one it stoppe
 **Unavailable is not having its commit** — the branch it selected has no copy in the checkout, or
 acquiring it failed. `status` reports the same absence in its outputs rather than as a reason
 (Section 4.1), because a read that cannot see the base can still report everything else.
+
+`pull` carries no counterpart reason of its own, and that follows from the operation rather than being
+an omission. The conditions that leave `fetch_base` without a base ref are failures whatever their
+cause, so one reason covers them. The conditions that leave `fetch_counterpart` without a counterpart
+ref are a benign absence and a failure, and a reason carries one proto class (Sections 4.2, 8.5), so no
+single reason can carry both; the acquiring capability distinguishes them instead (Section 9.1) and
+each takes the reason it already has — an absent counterpart is `pull:ok`, a failed acquisition is the
+universal `failed`. **A base is required to exist and a work branch's counterpart is not**, so what is
+one condition for `integrate` is two for `pull`.
+
+`merge:head_moved` and `push:non_fast_forward` name one condition on two operations — what was to be
+written to moved between the decision to write and the write — and both are `needs_caller` with the
+recovery in the gloss. Neither is a conflict: the branches merge cleanly, and a caller routed to
+`merge:conflict` is sent to resolve something that does not exist. Neither is a refusal:
+`merge:rejected` names branch protection or forge policy, and reporting a moved head under it sends
+an operator to read a rule nobody wrote. The two differ only in the recovery each gloss names,
+because a remote that moved requires an `integrate` before the write can succeed while a head that
+moved requires only that the pull request be read again — which is why one routes through another
+operation (Section 12.2) and the other re-enters its own lifecycle position (Section 12.3). The
+condition is not reported as the universal `failed` for the same reason `push:non_fast_forward` is
+not: `failed` is class `error` and this is a state a caller acts on, so no wider token carries it
+(Sections 4.2, 8.5).
 
 `identity_missing` and Section 8.6's `identity_invalid` name one condition at two points, and the
 first dispatch is the boundary between them. An entry the identity precondition covers is refused
@@ -412,12 +448,13 @@ dispatches, and an engine that lets a deployment configure it MUST hold the conf
 floor. The floor's exact value is arbitrary; that it is fixed is not, because it is what keeps two
 engines with different bounds in agreement on every policy that terminates within it.
 
-The bound is a count, not a cycle detector. A repeated `(trigger, edge)` pair is ordinary rather than
-pathological: `push:non_fast_forward → integrate → push` is the built-in routing (Section 12.2), and a
-base branch that moved twice produces it twice. An executor that refused a graph containing a cycle
-would refuse that routing, and one that stopped at a repeated edge would abort a correct flow that was
-about to converge. What separates a converging flow from a looping one is how many operations it takes,
-not whether it revisits an edge.
+The bound is a count, not a cycle detector. A repeated `(trigger, edge)` pair is ordinary rather
+than pathological: `push:non_fast_forward → integrate → push` is the built-in routing (Section
+12.2), and a base branch that moved twice produces it twice; `merge:head_moved → before:merge →
+merge` is the other (Section 12.3), and a pull request pushed to twice produces that twice. An
+executor that refused a graph containing a cycle would refuse that routing, and one that stopped at
+a repeated edge would abort a correct flow that was about to converge. What separates a converging
+flow from a looping one is how many operations it takes, not whether it revisits an edge.
 
 A flow that reaches the bound ends the invocation at `needs_caller` carrying the `flow_exhausted` need
 (Sections 8.2, 8.4). The pending `run_op` is not dispatched; the operations already run stand. Like a
@@ -684,10 +721,12 @@ and its result re-enters the machine, so repository policy governs the sequence.
 
 ### 7.2 `land`
 
-`land` merges an already-open pull request. It runs `merge` at `before:merge`, applying the configured
-strategy and, for a squash, the `pr_to_squash` transform (Section 10.3). `land` **transforms** message
-content; it never authors a message. It refuses to merge a pull request that is not open or whose
-required checks have not passed, surfacing the corresponding `merge:*` reason.
+`land` merges an already-open pull request. It runs `merge` at `before:merge`, applying the
+configured strategy and, for a squash, the `pr_to_squash` transform (Section 10.3). `land`
+**transforms** message content; it never authors a message. It refuses to merge a pull request that
+is not open or whose required checks have not passed, surfacing the corresponding `merge:*` reason.
+It merges the head it read: where the pull request's head advances between the read and the merge,
+nothing is merged, and `land` re-reads and retries within the flow bound (Sections 5.6, 12.3).
 
 ### 7.3 The Embedded-Driver Contract
 
@@ -832,7 +871,9 @@ the policy. For an entry that can write a commit — `commit`, `integrate`, `pul
 sequence that dispatches one — an identity is REQUIRED, and its absence is refused here. Each is a
 capability the backend publishes (Section 9.1), so the order above is established through the plugin
 API rather than inside a backend's own construction, where a refusal would carry no reason for this
-registry to report.
+registry to report. A capability consulted here that answers neither yes nor no — a backend that
+could not read the checkout it was pointed at — establishes no precondition either way, and is
+`checkout_unreadable` rather than the refusal its negative answer would have produced (Section 9).
 
 The entry point alone fixes that scope: a front-end sequence that dispatches one means the
 sequence's own dispatches (Sections 12.2, 12.3), so `ship` requires an identity and `land` does not,
@@ -858,6 +899,7 @@ run in which the policy did not run.
 | The work branch is the checkout's current branch (Section 6.3) and the checkout has none | `no_current_branch` |
 | The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
 | The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it whatever the entry (Section 10.1) | `identity_invalid` |
+| A VCS backend capability consulted before the first dispatch could not answer — the checkout could not be read (Sections 3.3, 9.1) | `checkout_unreadable` |
 
 Precondition reasons carry no proto class, for the same reason configuration reasons do not
 (Section 6.10), and they share the `usage_or_config` status, so a consumer already branching on that
@@ -881,32 +923,78 @@ configuration error and a precondition failure both hold, the configuration reas
 The plugin layer isolates code-host and checkout-mode specifics behind neutral interfaces. Each plugin
 advertises a static capability descriptor (data, not a runtime call).
 
+Each capability answers in one of two shapes, fixed by its entry in Sections 9.1 and 9.2: it either
+**answers the operation's typed result** `<op>:<reason>` (Section 4.2), or it **answers a value**
+the engine composes an operation from. A capability that answers a typed result reports a condition
+it could not resolve through the result itself. A capability that answers a value MUST be able to
+answer that it could not determine one, and that answer MUST NOT be spelled as the value's absent or
+negative case. An absent counterpart, a base the checkout does not hold, a checkout with no current
+branch, a working tree that is not dirty, and a work branch with no pull request are each a
+determinate fact about the remote or the checkout; none of them is "the backend could not find out".
+Every such non-answer MUST map to a reason a caller can read — a Section 4.3 operation reason where
+an operation has been dispatched, a Section 8.6 precondition reason where none has, the first
+dispatch being the boundary between them (Section 8.6) — and the capability's own entry MUST state
+which.
+
+The rule is stated over the capability list rather than left to each capability because the failure
+it prevents is silent by construction. A value-answering capability that reports its failure as the
+absent answer raises nothing anywhere: the engine composes an operation from a determinate-looking
+value and reports the outcome that value implies. What follows is a benign result for a run that did
+nothing — a `pull:ok` for a fetch that failed, a `push` over a merged pull request, a `ship` that
+reports success with the work still uncommitted — rather than the `error`-class result Section 4.3
+defines for every operation. Where the two shapes are mixed without the rule, which capability can
+report a failure is a property of how its signature happened to be written.
+
 ### 9.1 VCS Backend Plugin
 
 Realizes the version-control operations. Required capabilities:
 
-- `detect_mode()` → checkout mode (Section 3.3).
-- `current_branch()`, `is_dirty()`, `is_conflicted()`, `ahead_behind(base_ref)`. `current_branch()`
-  answers the checkout's current branch or none, so a checkout with no current branch is a state the
-  engine reports (Section 8.6 `no_current_branch`) rather than a backend failure. `is_dirty()` is
-  `commit`'s own predicate: it reports the working tree dirty exactly when a `commit` would capture
-  something, so content the VCS has not yet recorded counts and ignored content does not
-  (Section 4.1).
+- `detect_mode()` → checkout mode (Section 3.3), or that the mode could not be determined. The
+  engine consults the VCS backend before the first dispatch, when it resolves the work branch
+  (Section 8.6), so a mode the backend could not determine is the precondition reason
+  `checkout_unreadable` and never an operation result.
+- `current_branch()`, `is_dirty()`, `is_conflicted()`, `ahead_behind(base_ref)`. Each answers its
+  value or that it could not determine one. `current_branch()` answers the checkout's current branch
+  or none, so a checkout with no current branch is a state the engine reports (Section 8.6
+  `no_current_branch`) rather than a backend failure; a current branch it could not read is neither
+  of those, and is `checkout_unreadable` (Section 8.6). `is_dirty()` is `commit`'s own predicate: it
+  reports the working tree dirty exactly when a `commit` would capture something, so content the VCS
+  has not yet recorded counts and ignored content does not (Section 4.1). A dirtiness it could not
+  determine is not cleanliness: a caller that guards a `commit` on the predicate dispatches the
+  operation rather than skipping it (Section 12.2), and the dispatched `commit` reports
+  `commit:failed`. `is_conflicted()` and `ahead_behind(base_ref)` realize `status` outputs alone,
+  and an output `status` could not determine is reported as undetermined rather than as a
+  determinate value (Section 4.1).
 - `accepts_branch_name(name)` → whether the name is a legal branch name for this backend, and
-  `accepts_identity(identity)` → whether the commit identity is well formed as this backend judges it
-  (Section 10.1). Both are questions with no side effect, asked before any operation is dispatched
-  (Section 8.6).
+  `accepts_identity(identity)` → whether the commit identity is well formed as this backend judges
+  it (Section 10.1). Both are questions with no side effect, asked before any operation is
+  dispatched (Section 8.6). Both answer yes or no and neither has a third answer: a backend that
+  cannot judge the name or the identity it was given answers no, and the engine refuses the
+  invocation (`work_branch_invalid`, `identity_invalid`) rather than admitting one nothing judged.
+  That is a choice rather than an omission — a predicate that fails closed refuses a legal name at
+  worst, while one that fails open carries an unjudged name or identity into every operation that
+  writes.
 - `resolve_base_ref(remote, branch)` → the base ref for that branch as the checkout holds it for
-  `remote`, or none where the checkout holds no copy (Section 6.4). Reads the checkout; acquires
-  nothing.
+  `remote`, none where the checkout holds no copy (Section 6.4), or that it could not be resolved.
+  Reads the checkout; acquires nothing. The last two are distinct answers, though `diff` reports
+  both as `base_unavailable`, whose meaning already covers a failure to have the base whatever its
+  cause (Section 4.3): the distinction is `status`'s, which reports a checkout demonstrably holding
+  no copy as `base_absent` and a resolution it could not complete as undetermined, rather than
+  stating a fact about the checkout it did not establish (Section 4.1).
 - `diff(base_ref)` → `diff:*`, the branch delta against the resolved base (Section 6.4). Read-only.
 - `derive_work_branch(pattern, identity)` → the pinned work branch (Section 6.3).
 - `commit(message, identity)` → `commit:*`.
-- `fetch_base(remote, branch)` → the base ref, acquiring the base as `remote` holds it (Section 4.1).
+- `fetch_base(remote, branch)` → the base ref, acquiring the base as `remote` holds it (Section 4.1). A
+  base it cannot acquire leaves no ref to answer with, and the engine reports
+  `integrate:base_unavailable` (Section 4.3).
 - `merge_base(base_ref, identity)` → `integrate:*`, bringing the acquired base into the work branch and
   preserving recorded conflict resolutions where supported.
-- `fetch_counterpart(remote, work_branch)` → the ref of the work branch's remote counterpart, or none
-  where the remote carries none (Section 6.2).
+- `fetch_counterpart(remote, work_branch)` → the ref of the work branch's remote counterpart, none where
+  the remote carries none (Section 6.2), or that the acquisition failed. The last two are distinct
+  answers and an acquisition the backend could not complete — the remote unreachable, the credential
+  refused, the configured remote name absent from the checkout — MUST NOT be answered as an absent
+  counterpart, because the two carry different results: an absent counterpart is a benign `pull:ok` and
+  a failed acquisition is `pull:failed` (Sections 4.1, 4.3).
 - `merge_counterpart(ref, identity)` → `pull:*`, merging the counterpart into the local branch and
   rewriting none of its commits (Section 4.1).
 - `push(remote, work_branch)` → `push:*`, with the refspec pinned to the work branch and never a
@@ -925,10 +1013,14 @@ credentials rather than mutation.
 An operation is realized through one capability or several. `integrate` is `fetch_base` then
 `merge_base`; `pull` is `fetch_counterpart` then `merge_counterpart`; `status` reads through
 `detect_mode`, `current_branch`, `is_dirty`, `is_conflicted` and `ahead_behind`, with the forge's
-`pr_state` where one is configured (Section 9.2). Separating the two that acquire from the two that
-merge is what makes the enumeration above exhaustive, and it places the half that stops on conflicts —
-the outcome the caller resolves and `commit` finalizes (Section 4.1) — on the local side of the
-boundary, where the caller that resolves it runs.
+`pr_state` where one is configured (Section 9.2). `pr_state` has three readers rather than one, and
+two of them act on the answer instead of reporting it: `push` refuses over a CLOSED/MERGED pull
+request (Section 4.1) and `merge` takes the head it conditions on from the same read (Section 9.2),
+which is why the state it could not determine is refused at each rather than read as an absence.
+Separating the two that acquire from the two that merge is what makes the enumeration above
+exhaustive, and it places the half that stops on conflicts — the outcome the caller resolves and
+`commit` finalizes (Section 4.1) — on the local side of the boundary, where the caller that resolves
+it runs.
 
 `remote` is the resolved remote (Section 6.2) and `base_ref` is the resolved base ref (Section 6.4),
 both supplied by the engine; a backend reads neither from the policy nor infers one from the checkout's
@@ -954,12 +1046,38 @@ whether the backend can operate in a workspace with no colocated remote (Section
 
 Realizes the pull-request and review operations. Required:
 
-- `create_or_update_pr(head, base, title, body)` → `create_pr:*`, maintaining one pull request per work
-  branch and refusing a base mismatch (`create_pr:base_mismatch`).
-- `pr_state(work_branch)` → open/closed/merged, so `push` can refuse a push over a CLOSED/MERGED pull
-  request (`push:pr_closed`).
-- `request_merge(pr, strategy)` → `merge:*`, honoring required checks and branch protection (a forge
-  refusal surfaces as `merge:rejected`).
+- `create_or_update_pr(head, base, title, body)` → `create_pr:*`, maintaining one pull request per
+  work branch and refusing a base mismatch (`create_pr:base_mismatch`). Maintaining one requires
+  finding the one that exists, so a backend that could not determine whether the work branch already
+  has a pull request MUST NOT create one; it reports `create_pr:failed`.
+- `pr_state(work_branch)` → the work branch's pull request — its number, its state
+  (open/closed/merged) and the head it currently carries — none where the forge carries no pull
+  request for the work branch, or that the state could not be determined. The last two are distinct
+  answers and a state the backend could not determine MUST NOT be answered as an absent pull
+  request, because the two carry different results: an absent pull request lets `push` proceed and
+  `create_or_update_pr` create, while an undetermined one refuses both (`push:failed`,
+  `create_pr:failed`) and is a `pr_state_unavailable` output for `status` (Sections 4.1, 4.3). The
+  lookup is keyed on the work branch as head **whatever base the pull request targets**, because
+  `create_pr:base_mismatch` exists to find one opened against a different base (Section 13.1) and a
+  caller's own base therefore MUST NOT be substituted for the key. A search the backend could not
+  complete is a state it could not determine and not an absent pull request — including an
+  enumeration that reached a bound the backend imposes, which it MUST document (Section 13.3),
+  because an incomplete search answers nothing.
+- `request_merge(pr, strategy, expected_head)` → `merge:*`, honoring required checks and branch
+  protection (a forge refusal surfaces as `merge:rejected`). `expected_head` is the head `pr_state`
+  answered when the pull request was read at `before:merge` (Sections 10.3, 12.3). The capability
+  MUST NOT merge a pull request whose head is no longer `expected_head`; it reports
+  `merge:head_moved` (Section 4.3). The mechanism is the backend's — a forge whose merge request
+  takes the expected head as a parameter supplies it there — and a backend whose forge offers no
+  means of conditioning the merge does not declare the capability (Section 9.3), because a merge
+  that cannot be conditioned merges content no lifecycle position inspected. Where `pr_state` could
+  not determine the pull request's head there is no `expected_head` to supply, and the operation
+  reports `merge:failed` rather than merging blind.
+
+Every capability above reaches the code host, needs a credential, and realizes an operation Section
+3.2 places host-side; the forge plugin has no local half for an enumeration like Section 9.1's to
+separate. What a consumer mediates is therefore Section 9.1's three network-touching capabilities
+together with every capability of this section (Section 11).
 
 OPTIONAL:
 
@@ -1039,11 +1157,12 @@ one:
 
 - The engine holds no long-lived credentials. A consumer supplies credentials to the plugins for an
   invocation or runs the engine where they are already held.
-- The engine labels every policy edge and hook with its execution context (Section 3.2) so a consumer
-  can source host-side policy from a trusted revision and in-sandbox policy from the worktree, and can
-  mediate the credentialed operations. An in-sandbox edge or hook MUST NOT receive credentials. The
-  capabilities that touch the network are named and enumerable (Section 9.1), so what a consumer
-  mediates is a fixed list rather than something inferred from an operation's description.
+- The engine labels every policy edge and hook with its execution context (Section 3.2) so a
+  consumer can source host-side policy from a trusted revision and in-sandbox policy from the
+  worktree, and can mediate the credentialed operations. An in-sandbox edge or hook MUST NOT receive
+  credentials. The capabilities that touch the network are named and enumerable — three of the VCS
+  backend's and every required capability of the forge backend (Sections 9.1, 9.2) — so what a
+  consumer mediates is a fixed list rather than something inferred from an operation's description.
 - The engine pins every push refspec to the derived work branch and never force-pushes, so a consumer's
   scope guard has a fixed target. No operation that updates the work branch rewrites, drops, or
   re-parents a commit already on it — an update that reconciles a divergence merges (Section 4.1) — so
@@ -1085,7 +1204,7 @@ function ladder(trigger):
 ```text
 function ship(identity, message):
   run_lifecycle("before:commit")            # in-sandbox scan/gate edges
-  if worktree_dirty():
+  if worktree_dirty() is not clean:         # dirty, or undetermined (Section 9.1)
     dispatch(run_op("commit", message))     # commit:* re-enters the machine
   loop:
     if flow_bound_reached():                # Section 5.6; counts every run_op, not this loop's turns
@@ -1113,10 +1232,15 @@ never runs `merge`.
 
 `worktree_dirty()` is the `is_dirty()` capability (Section 9.1), so the guard and the operation
 share one predicate: a change made only of content the VCS has not yet recorded is dirty, and `ship`
-commits it rather than reporting the branch clean and pushing nothing. The retry converges because
-`integrate` acquires the base from the configured remote (Section 4.1) rather than re-reading the
-checkout's copy; against a stale copy the push would stay non-fast-forward until the flow bound
-ended the invocation.
+commits it rather than reporting the branch clean and pushing nothing. Where the capability cannot
+determine whether the working tree is dirty, the guard does not read as clean: `ship` dispatches
+`commit`, which reports `commit:failed` (Sections 4.3, 9.1). The guard exists to skip a `commit`
+that would report `nothing_to_commit`, not to decide whether a commit is owed, so an undetermined
+predicate dispatches rather than skips — a guard that read it as clean would produce a `ship`
+reporting success with the work still uncommitted, which is a branch on a capability's absent answer
+rather than a report of it (Section 9). The retry converges because `integrate` acquires the base
+from the configured remote (Section 4.1) rather than re-reading the checkout's copy; against a stale
+copy the push would stay non-fast-forward until the flow bound ended the invocation.
 
 The loop is bounded by the flow bound (Section 5.6) rather than by a step count of its own: every
 `run_op` counts against it wherever it is dispatched, so a `push`/`integrate` pair that never converges —
@@ -1128,10 +1252,34 @@ running indefinitely.
 
 ```text
 function land():
-  run_lifecycle("before:merge")              # applies pr_to_squash for a squash strategy
-  m = run_op("merge", strategy = configured_strategy())
-  return result_of(m)                        # merge:not_open / checks_pending -> needs_caller
+  loop:
+    if flow_bound_reached():                 # Section 5.6; counts every run_op
+      return flow_exhausted()                # needs_caller, need = flow_exhausted
+    run_lifecycle("before:merge")            # reads the pull request; applies pr_to_squash
+                                             # for a squash strategy
+    m = run_op("merge", strategy = configured_strategy(),
+               expected_head = head_read_at_this_position())
+    if m is merge:head_moved:
+      continue                               # re-read, re-gate, retry
+    return result_of(m)                      # merge:not_open / checks_pending -> needs_caller
 ```
+
+The routing above is the built-in default, as Section 12.2's is; a repository's `[policy]` edges
+override it.
+
+The retry re-enters the lifecycle position rather than the operation alone, and that is what makes
+it sound. `before:merge` is where the pull request is read and where a squash strategy's
+`pr_to_squash` transform runs (Section 10.3), so a retry that re-merged without re-gating would
+merge a head no position inspected and write a squash message describing a revision that is not the
+one squashed. Re-entering the position also re-runs a repository's own gate edges there, which is
+the property Section 12.2's loop has at `before:push`.
+
+The loop terminates on the flow bound (Section 5.6): every `run_op` counts against it wherever it is
+dispatched, so a pull request whose head moves between every attempt ends the invocation at
+`needs_caller` with the `flow_exhausted` need rather than retrying indefinitely — the same
+convergence argument Section 12.2 makes, with the re-read in place of the `integrate`. Because the
+routing is built in, `merge:head_moved` reaches a caller only where a repository binds it to an edge
+that ends the flow, so the condition adds a reason token and no `need` token (Sections 4.3, 8.4).
 
 ### 12.4 Resolve Base
 
@@ -1196,16 +1344,31 @@ A conforming engine SHOULD include tests covering:
   finalized by `commit`; a working tree whose only change is content the VCS has not recorded is
   dirty and is committed, not skipped or reported `commit:nothing_to_commit`; `integrate` brings in
   the base as the remote holds it, so a `push:non_fast_forward` retry converges against a base that
-  moved, while `status` and `diff` report against the resolved base ref and acquire nothing; a read in
-  a checkout carrying more than one remote reports against the copy belonging to the configured remote
-  (Section 6.4); an `integrate` whose acquisition fails yields `base_unavailable` rather than retrying
-  to the flow bound; a `diff` in a checkout holding no copy of the base yields `base_unavailable`,
-  while `status` yields `ok` with null `ahead`/`behind` and a `base_absent` output.
+  moved, while `status` and `diff` report against the resolved base ref and acquire nothing; a read
+  in a checkout carrying more than one remote reports against the copy belonging to the configured
+  remote (Section 6.4); an `integrate` whose acquisition fails yields `base_unavailable` rather than
+  retrying to the flow bound; a `pull` whose acquisition fails yields `failed` while a `pull`
+  against a remote carrying no counterpart yields `ok`, so a fetch the engine could not complete is
+  not reported as the benign absence (Sections 4.1, 9.1); a `diff` in a checkout holding no copy of
+  the base yields `base_unavailable`, while `status` yields `ok` with null `ahead`/`behind` and a
+  `base_absent` output; a `push` whose pull-request state could not be determined does not push and
+  yields `failed` rather than proceeding as it would over a branch that has no pull request, a
+  `create_pr` in that condition creates nothing and yields `failed` rather than a second pull
+  request, and `status` in it yields `ok` with a null pull-request output and a
+  `pr_state_unavailable` output rather than reporting no pull request (Sections 4.1, 9.2); a `ship`
+  whose `is_dirty()` cannot answer dispatches `commit` and yields `commit:failed` rather than
+  pushing an uncommitted worktree (Sections 9.1, 12.2); a `merge` whose pull request's head advanced
+  after it was read merges nothing and yields `head_moved` rather than `conflict`, `rejected` or
+  `failed`, while a `pr_state` that could not determine the head yields `merge:failed` rather than
+  an unconditioned merge (Sections 4.3, 9.2).
 - Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
   `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6).
 - Front-ends: `ship` stops at the pull request; `land` merges an open, checks-passed pull request,
-  applies `pr_to_squash` for a squash, and never authors a message; the same `repo.policy.toml` yields
-  the same operation flow through `ship` and an embedded driver.
+  applies `pr_to_squash` for a squash, and never authors a message; `land` re-reads, re-runs
+  `before:merge` and retries a `merge:head_moved`, so the squash message is transformed from the
+  revision actually merged, and a head that moves between every attempt ends at the flow bound
+  rather than merging a head no position inspected (Sections 5.6, 12.3); the same `repo.policy.toml`
+  yields the same operation flow through `ship` and an embedded driver.
 - Invocation contract: exit codes mirror proto classes; `escalation` is present exactly for
   `needs_caller`; a parked flow is `needs_caller` with the `intervention` need and null
   `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed, while one
@@ -1215,11 +1378,12 @@ A conforming engine SHOULD include tests covering:
   no `branch_pattern` is configured, an illegal derived work-branch name, and a commit identity that
   is absent where the entry requires one or malformed each refuse to run the policy and yield
   `usage_or_config` with the precondition reason and null `op`/`class`, the last two judged through
-  `accepts_branch_name` and `accepts_identity` (Sections 8.6, 9.1); an entry the identity
-  precondition does not cover — a `status` whose policy routes `status:ok` to `run_op` `commit` —
-  runs the policy and reports `commit:identity_missing`, class `needs_caller`, rather than a
-  precondition reason, while a malformed identity supplied to that same entry is refused before the
-  policy runs (Sections 4.3, 8.6).
+  `accepts_branch_name` and `accepts_identity`, while a backend that cannot read the checkout at all
+  yields `checkout_unreadable` rather than `no_current_branch` (Sections 8.6, 9.1); an entry the
+  identity precondition does not cover — a `status` whose policy routes `status:ok` to `run_op`
+  `commit` — runs the policy and reports `commit:identity_missing`, class `needs_caller`, rather
+  than a precondition reason, while a malformed identity supplied to that same entry is refused
+  before the policy runs (Sections 4.3, 8.6).
 - Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it; the
   squash body is the `pr_to_squash` transform of the pull-request body; every commit the engine
   writes carries the supplied commit identity — the mechanical merge commit an `integrate` or a
@@ -1230,7 +1394,10 @@ A conforming engine SHOULD include tests covering:
   checkout modes (including a jj secondary workspace) are handled; the remote-touching operations
   act against the resolved remote, a configured `[engine] remote` overriding the backend's default
   (Section 6.2); the capabilities that reach the network are exactly `fetch_base`,
-  `fetch_counterpart` and `push`, and no other capability is invoked with a credential (Section 9.1).
+  `fetch_counterpart` and `push` among the VCS backend's and every required capability of the forge
+  backend, and no other VCS capability is invoked with a credential (Sections 9.1, 9.2); every
+  value-answering capability can report that it could not determine its answer, and no such report
+  is spelled as the value's absent case (Section 9).
 
 ### 13.2 Implementation Checklist
 
@@ -1245,11 +1412,13 @@ A conforming engine SHOULD include tests covering:
 - The invocation contract: result envelope, exit codes, escalation payload, invocation
   preconditions, and versioning with a `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors, the VCS backend
-  separating the capabilities that acquire from the local ones that use what they acquired.
+  separating the capabilities that acquire from the local ones that use what they acquired, and
+  every value-answering capability able to report that it could not determine its answer.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, and every commit the engine writes attributed to the supplied commit identity.
-- Checkout-mode handling (git, jj, jj secondary workspace), a pinned, never-forced push refspec, and a
-  history-preserving work-branch update.
+- Checkout-mode handling (git, jj, jj secondary workspace), a pinned, never-forced push refspec, a
+  history-preserving work-branch update, and a merge conditioned on the head the `before:merge`
+  position inspected.
 
 ### 13.3 Conformance Statement
 
@@ -1272,8 +1441,9 @@ The Statement MUST record:
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class
   (Section 4.3), a configuration reason (Section 6.10), or a precondition reason (Section 8.6).
 - The `need` vocabulary the engine emits (Section 8.4).
-- The capability descriptors its VCS and forge plugins advertise (Section 9.3), and the capabilities
-  any operation it defines beyond Section 4.1 requires of a backend (Section 9.1).
+- The capability descriptors its VCS and forge plugins advertise (Section 9.3), the capabilities any
+  operation it defines beyond Section 4.1 requires of a backend (Section 9.1), and any bound a forge
+  backend imposes on its search for a work branch's pull request (Section 9.2).
 
 The Statement is a published declaration, not a precondition for running the engine: Section 13.1 and
 Section 13.2 keep their roles as the test matrix and the definition of done. Its format is

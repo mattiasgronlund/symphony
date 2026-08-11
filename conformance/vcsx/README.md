@@ -75,7 +75,7 @@ The registry is a faithful view, not a byte-for-byte transcription. Two places i
 - **`reasons`** is keyed one entry per `(operation, reason)`. Section 4.3's combined rows expand: the
   `status` / `diff` row to `status:ok` and `diff:ok`, and the three universal rows to one entry per
   operation they cover — `failed` and `unsupported` for every operation, `blocked` for every gated one,
-  each marked `universal: true`. So 32 table rows yield 50 entries.
+  each marked `universal: true`. So 33 table rows yield 51 entries.
 - **`operations`** carries `lifecycle_position: null` for the operations Section 4.1 gates at no fixed
   position (`integrate`, `pull`) and for the read-only ones (`status`, `diff`), rather than omitting
   the field.
@@ -184,9 +184,21 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
 - **Base-ref resolution and the acquire/use split** (Sections 6.4, 9.1) — which copy of the base a
   checkout holds, whether it holds one at all, and whether an acquisition failed are properties of a
   real checkout with a real remote. That covers the multi-remote read, `base_unavailable` from a failed
-  `fetch_base`, and `status`'s `base_absent` output. The reason token is in `vocabulary.json` under
-  `reasons`; the base-resolution vectors cover the branch half only, which is the half a policy
-  document determines.
+  `fetch_base`, and `status`'s `base_absent` output. It covers the counterpart half on the same
+  reasoning: whether the remote carries no counterpart or could not be reached at all is a property of
+  that remote, so the two `pull` results those conditions carry — `ok` for the benign absence and
+  `failed` for the acquisition that did not complete (decision 0075) — have no vector either. The
+  reason tokens are in `vocabulary.json` under `reasons`; the base-resolution vectors cover the branch
+  half only, which is the half a policy document determines.
+- **A capability that could not determine its answer** (Section 9, decisions 0076, 0077) — whether a
+  backend could read the checkout, whether a forge could be asked for a work branch's pull request, and
+  whether a pull request's head advanced between the read and the merge are all properties of a live
+  checkout, remote or forge, so none of the results those conditions carry has a vector:
+  `checkout_unreadable`, the `push:failed` and `create_pr:failed` a `pr_state` that could not answer
+  produces, `status`'s `pr_state_unavailable` output, the `commit:failed` an undetermined `is_dirty()`
+  produces through `ship`'s guard, and `merge:head_moved`. The tokens are in `vocabulary.json` under
+  `reasons` and `precondition_reasons`; what the corpus can check is that no engine spells any of them
+  as the value's absent case, which needs the backend the vectors do not have.
 - **Message formulation** — `scan-content`, pull-request composition, and the `pr_to_squash` transform
   (Section 10), whose formats are repository-owned by construction.
 - **Hook execution** and the execution-context split (Sections 3.2, 6.6) — process and trust-boundary
