@@ -40,13 +40,14 @@
 
   "reasons": {
     "spec_refs": ["VCSX-SPEC.md Section 4.3 \"Reason-Token Registry\""],
-    "note": "The Section 4.3 table normalized to one entry per (operation, reason). Its combined rows expand: the `status` / `diff` row to two entries, and the three universal rows to one entry per operation they cover — `failed` and `unsupported` for every operation, `blocked` for every gated one — each marked `universal: true`. An engine MUST document any reason it adds beyond this set, with its class.",
+    "note": "The Section 4.3 table normalized to one entry per (operation, reason). Its combined rows expand: the `status` / `diff` row to two entries, and the four universal rows to one entry per operation they cover — `failed` and `unsupported` for every operation, `blocked` and `hook_unanswered` for every gated one — each marked `universal: true`. `blocked`, `failed` and `hook_unanswered` divide a gate's outcomes by what the hook did: refused with a `needs_caller` result, refused with an `error` result, and gave no usable answer at all. An engine MUST document any reason it adds beyond this set, with its class.",
     "entries": [
       { "token": "commit:ok", "operation": "commit", "reason": "ok", "class": "done" },
       { "token": "commit:nothing_to_commit", "operation": "commit", "reason": "nothing_to_commit", "class": "done" },
       { "token": "commit:worktree_moved", "operation": "commit", "reason": "worktree_moved", "class": "needs_caller" },
       { "token": "commit:identity_missing", "operation": "commit", "reason": "identity_missing", "class": "needs_caller" },
       { "token": "commit:blocked", "operation": "commit", "reason": "blocked", "class": "needs_caller", "universal": true },
+      { "token": "commit:hook_unanswered", "operation": "commit", "reason": "hook_unanswered", "class": "error", "universal": true },
       { "token": "commit:failed", "operation": "commit", "reason": "failed", "class": "error", "universal": true },
       { "token": "commit:unsupported", "operation": "commit", "reason": "unsupported", "class": "error", "universal": true },
 
@@ -65,6 +66,7 @@
       { "token": "push:pr_closed", "operation": "push", "reason": "pr_closed", "class": "needs_caller" },
       { "token": "push:rejected", "operation": "push", "reason": "rejected", "class": "error" },
       { "token": "push:blocked", "operation": "push", "reason": "blocked", "class": "needs_caller", "universal": true },
+      { "token": "push:hook_unanswered", "operation": "push", "reason": "hook_unanswered", "class": "error", "universal": true },
       { "token": "push:failed", "operation": "push", "reason": "failed", "class": "error", "universal": true },
       { "token": "push:unsupported", "operation": "push", "reason": "unsupported", "class": "error", "universal": true },
 
@@ -73,6 +75,7 @@
       { "token": "create_pr:base_mismatch", "operation": "create_pr", "reason": "base_mismatch", "class": "error" },
       { "token": "create_pr:conflict", "operation": "create_pr", "reason": "conflict", "class": "needs_caller" },
       { "token": "create_pr:blocked", "operation": "create_pr", "reason": "blocked", "class": "needs_caller", "universal": true },
+      { "token": "create_pr:hook_unanswered", "operation": "create_pr", "reason": "hook_unanswered", "class": "error", "universal": true },
       { "token": "create_pr:failed", "operation": "create_pr", "reason": "failed", "class": "error", "universal": true },
       { "token": "create_pr:unsupported", "operation": "create_pr", "reason": "unsupported", "class": "error", "universal": true },
 
@@ -84,6 +87,7 @@
       { "token": "merge:head_moved", "operation": "merge", "reason": "head_moved", "class": "needs_caller" },
       { "token": "merge:rejected", "operation": "merge", "reason": "rejected", "class": "error" },
       { "token": "merge:blocked", "operation": "merge", "reason": "blocked", "class": "needs_caller", "universal": true },
+      { "token": "merge:hook_unanswered", "operation": "merge", "reason": "hook_unanswered", "class": "error", "universal": true },
       { "token": "merge:failed", "operation": "merge", "reason": "failed", "class": "error", "universal": true },
       { "token": "merge:unsupported", "operation": "merge", "reason": "unsupported", "class": "error", "universal": true },
 
@@ -106,9 +110,9 @@
 
   "config_reasons": {
     "spec_refs": ["VCSX-SPEC.md Section 6.1 \"File Discovery and `vcsx.toml` Merge\"", "VCSX-SPEC.md Section 6.10 \"Validation\"", "VCSX-SPEC.md Section 5.6 \"Flow Bound and Termination\"", "VCSX-SPEC.md Section 9.3 \"Capability Descriptors\""],
-    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — a refused policy has no operation result to classify. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds. The first entry is a well-formedness failure and the rest are consistency failures: validation takes a document, so a policy that does not parse yields none for the other conditions to be judged against.",
+    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — a refused policy has no operation result to classify. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds. The first entry is a well-formedness failure and the rest are consistency failures: validation takes a document, so a policy that does not parse yields none for the other conditions to be judged against. Validation is judged from four inputs (Section 6.10): the policy document, what the engine holds independently of the invocation (its configured backends' descriptors and its own defaults), the actions the consumer can effect, and the repository units it bound.",
     "entries": [
-      { "token": "malformed_policy", "meaning": "The policy is not well formed: a discovered `repo.policy.toml` (or a `vcsx.toml` merged into it) does not parse, a key's value does not satisfy the constraints its section states, or an edge's action cannot be dispatched from the arguments it carries. Reported for a well-formedness failure no other condition names." },
+      { "token": "malformed_policy", "meaning": "The policy is not well formed: a discovered `repo.policy.toml` (or a `vcsx.toml` merged into it) does not parse, a key's value does not satisfy the constraints its section states, an edge's action cannot be dispatched from the arguments it carries, or a declared hook names no unit to run. Reported for a well-formedness failure no other condition names." },
       { "token": "unknown_trigger", "meaning": "An edge's `on` is not a trigger the engine recognizes." },
       { "token": "unknown_action", "meaning": "An edge's `do` is not a known action." },
       { "token": "unknown_operation", "meaning": "A `run_op` names an operation the engine does not define." },
@@ -118,15 +122,18 @@
       { "token": "position_cycle", "meaning": "A cycle of lifecycle positions, each position's `run_op` edge dispatching the operation the next position gates, so no operation on the cycle can run (Sections 4.1, 5.6). A position is matched exactly and binds at most one edge, so such a cycle reaches no operation on any traversal; a cycle through a typed operation result is not this condition and is bounded rather than refused." },
       { "token": "base_unresolvable", "meaning": "A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map." },
       { "token": "set_state_unbound", "meaning": "A `set_state`/transition binding without a consumer that can apply it." },
-      { "token": "capability_unsupported", "meaning": "A policy requiring a capability no configured backend declares (Section 9.3)." },
+      { "token": "template_unbound", "meaning": "A `[messages.pr]` `body_source = \"template\"` with no template unit bound (Sections 5.2, 10.2). Judged from the repository units the consumer bound, which is why Section 6.10 names them among validation's inputs; a template is a repository unit rather than a Section 5.2 action, so `set_state_unbound`'s input does not reach it." },
+      { "token": "capability_unsupported", "meaning": "A policy requiring a capability no configured backend declares (Section 9.3). Determinable because a statically declared capability follows from the backend selection alone; a descriptor field only the checkout answers is not, and keeps Section 9.3's first-use disposition." },
       { "token": "version_floor_unmet", "meaning": "A `version_floor` above the running engine version." }
     ]
   },
 
   "precondition_reasons": {
     "spec_refs": ["VCSX-SPEC.md Section 8.6 \"Invocation Preconditions\""],
-    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — no operation ran, so there is no result to classify. Distinct from `config_reasons` by what each is judged from: a configuration error is a property of `repo.policy.toml` alone, a precondition failure needs the invocation's arguments and the checkout. Validation precedes precondition establishment, so where both hold the configuration reason is reported. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds.",
+    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — no operation ran, so there is no result to classify. Distinct from `config_reasons` by what each is judged from: a configuration error is judged from the policy document together with what the engine holds independently of the invocation, a precondition failure needs the invocation's arguments and the checkout. Validation precedes precondition establishment, so where both hold the configuration reason is reported — `arguments_unreadable` excepted, which is established first of everything because an engine that cannot decode its arguments cannot locate the policy it would validate. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds.",
     "entries": [
+      { "token": "arguments_unreadable", "meaning": "The invocation's arguments could not be decoded in the encoding the engine published (Section 8.1). Established before validation rather than after it." },
+      { "token": "forge_coordinate_missing", "meaning": "A forge is configured (Section 6.2) and no forge repository coordinate was supplied (Section 8.1). A coordinate the backend cannot use is that backend's own `failed` at first use instead, because the engine holds the coordinate opaque and judges no shape." },
       { "token": "no_current_branch", "meaning": "The work branch is the checkout's current branch (no `branch_pattern` configured) and the checkout has none." },
       { "token": "work_branch_invalid", "meaning": "The derived work branch name is not a legal branch name for the VCS backend." },
       { "token": "identity_invalid", "meaning": "The caller-supplied commit identity is absent where the entry requires one — `commit`, `integrate`, `pull`, and a front-end sequence that dispatches one — or is malformed as the VCS backend judges it, which is judged whatever the entry. An identity absent at an entry the requirement does not cover is the operation's `identity_missing` at the dispatch instead (Section 4.3)." },
@@ -208,12 +215,13 @@
 
   "exit_codes": {
     "spec_refs": ["VCSX-SPEC.md Section 8.3 \"Exit Codes\""],
-    "note": "Subprocess encoding. Part of the major-stable surface. The JSON envelope is emitted regardless of exit code.",
+    "note": "Subprocess encoding. Part of the major-stable surface. The JSON envelope is emitted for each of the four status-bearing codes, and on every path that produces a result stdout carries exactly one JSON object and nothing else. Any code other than the four status-bearing ones means the invocation produced no result, as `1` does.",
     "entries": [
       { "code": 0, "status": "ok" },
       { "code": 10, "status": "needs_caller" },
       { "code": 20, "status": "error" },
-      { "code": 2, "status": "usage_or_config", "note": "The policy did not run (Sections 6.10, 8.6)." }
+      { "code": 2, "status": "usage_or_config", "note": "The policy did not run (Sections 6.10, 8.6)." },
+      { "code": 1, "status": null, "note": "The invocation produced no Section 8.2 result: stdout carries nothing and the diagnostic goes to stderr. Not an invocation status." }
     ]
   },
 
@@ -268,7 +276,8 @@
       { "token": "pr_to_squash", "kind": "transform", "position": "before:merge", "spec_ref": "Section 10.3" },
       { "token": "title_scan", "kind": "scan_profile_binding", "spec_ref": "Section 10.2" },
       { "token": "body_scan", "kind": "scan_profile_binding", "spec_ref": "Section 10.2" },
-      { "token": "body_source", "kind": "config_key", "values": ["auto", "agent", "template"], "spec_ref": "Section 10.2" }
+      { "token": "body_source", "kind": "config_key", "values": ["auto", "agent", "template"], "spec_ref": "Section 10.2" },
+      { "token": "strategy", "kind": "config_key", "values": ["squash", "merge", "rebase"], "default": "merge", "spec_ref": "Section 6.8" }
     ]
   },
 

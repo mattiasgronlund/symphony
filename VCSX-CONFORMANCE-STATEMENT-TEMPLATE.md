@@ -73,9 +73,12 @@ concrete choice; do not leave a row blank.
 | `repo.policy.toml` discovery precedence (explicit override, then repository default) | 6.1 | `<...>` |
 | The backend's default remote where `[engine] remote` is unset, per backend | 6.2 | `<name each backend uses>` |
 | Form of a hook's engine-invoked `run` unit | 6.6 | `<executable path / shell string / named task / …>` |
+| Hook bound: how long the engine waits for a hook to answer (at least 600 s admitted) | 6.6 | `<duration, and whether a deployment may configure it>` |
 | Which reason is reported when several configuration conditions hold | 6.10 | `<first found / a documented precedence / all of them>` |
 | Entry-point argument encodings (argument *names* for shared concepts are fixed) | 8.1 | `<CLI flags / JSON on stdin / in-process struct / …>` |
+| How a front-end derives the forge repository coordinate where it defaults one | 8.1 | `<from the resolved remote's URL / not defaulted, always supplied>` |
 | Escalation `detail` field contents | 8.4 | `<what the engine places there>` |
+| Where a backend writes its own bookkeeping state to answer a capability | 9.1 | `<which capabilities, and what they write>` |
 
 ## 4. Reason Tokens Beyond the Registries
 
@@ -153,6 +156,16 @@ Section 9.1's required capabilities are a minimum. If this engine defines operat
 | Backend | PR create/update | Merge strategies | Review-thread writes | Native issue linking |
 |---------|------------------|------------------|----------------------|----------------------|
 | `<github / forgejo / …>` | [ ] (REQUIRED) | `<merge / squash / rebase>` | [ ] | [ ] |
+
+A policy that states no `[messages.squash] strategy` is refused against a backend that does not
+declare `merge`, because the Section 6.8 default is `merge` and the engine holds it — which is one
+half of Section 9.3's split. The other half, an unsupported capability reported at first use, has no
+producer among the required operation set and policy keys (Section 13.1), so an engine claiming it
+names what the claim was demonstrated against:
+
+| First-use `unsupported` demonstrated against | Operation | Capability |
+|----------------------------------------------|-----------|------------|
+| `<engine-added operation / OPTIONAL capability, or "not claimed">` | `<...>` | `<...>` |
 
 ## 7. Consumer-Effected Actions
 

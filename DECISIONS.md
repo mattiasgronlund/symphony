@@ -2565,3 +2565,332 @@ append-only, leaving its chosen option untouched; relates to 0079, 0066, 0060 an
 applied to `VCSX-SPEC.md` (Sections 4.1, 5.6, 6.10, 13.1, 13.2),
 `conformance/vcsx/vocabulary.json`, `conformance/vcsx/vectors/policy-validation.json` and
 `conformance/vcsx/README.md`.
+
+## 0081 — A hook bound is a bound on a unit, not on the flow
+
+**State:** Accepted
+**Folder:** [decisions/0081-hook-bound/](decisions/0081-hook-bound/)
+
+Resolves issue #35, and resolves the **corrected** report rather than the filed one: the reporter
+withdrew the opening claim that the concept of a bound is absent, since Section 5.6 already admits
+"further bounds on a running flow, a wall-clock deadline for example" and requires each published.
+Two things survive the correction and are what this decision answers. **It is a `MAY`**, so an engine
+that never bounds a hook conforms while a repository hook that never returns wedges it — issue 4's
+argument one layer down, which Section 5.6 has already accepted for the flow. And **`flow_exhausted`
+is the wrong diagnosis, which Section 5.6's "same result" sentence forces**: Section 8.4 defines that
+need as the hold the executor imposed on a graph that does not converge, while a hook that never
+returns is one named unit at one named position that stopped answering, and Section 8.2 nulls `op`,
+`reason` and `class` for a flow the executor stopped, so the envelope names neither. The distinction
+drawn is that Section 5.6's further bounds are bounds on **a running flow** — they stop the executor
+and end the invocation — while a hook bound bounds **one unit at one position** inside a dispatch:
+the flow is not stopped, and the gated operation's result re-enters the machine, which is what the
+machine is for. So the answer is an operation reason rather than a `need`, and Section 5.6's sentence
+is scoped rather than contradicted. Bounding becomes REQUIRED, the value `Implementation-defined` and
+published (Section 13.3), with a floor of 600 seconds on Section 5.6's own gloss — the number is
+arbitrary, that it is fixed is not, because it is what keeps two engines agreeing on every hook that
+answers within it, and a repository's `before:commit` gate can be its whole test suite. Section 4.3
+gains **one** universal reason for gated operations, `hook_unanswered`, class `error`, covering the
+bound elapsing, a unit that could not be started, and an answer the engine could not read — one token
+across this issue and #38 rather than one each, because **a block is something the hook did** and a
+hook that never started decided nothing, so spelling it as a block puts a gate that ran and refused
+and a gate that is broken on `<op>:failed` together and leaves a repository routing `commit:failed →
+park` unable to tell them apart. Which of the three occurred is diagnosis and belongs in `outputs`.
+`blocked` keeps a gate that answered `needs_caller`, `failed` a gate that answered with an `error`
+result. Options: **A** a unit bound with a reason of its own (chosen); **B** reuse `<op>:failed`
+(rejected on the conflation, though Symphony's own Section 9.4 folds failure and timeout
+deliberately, which makes it defensible rather than merely cheap — Symphony's hooks are not routed
+through a machine that can branch on the difference); **C** keep Section 5.6's uniformity and mint a
+`need` (rejected: a hold routes nothing, Section 8.4 nulls `op` at a position whose operation has not
+run, and it treats a bound on one unit as a bound on the flow); **D** a repository budget clamped to
+an operator ceiling (not rejected on merit — it is right if one consumer-owned number proves wrong
+for the spread between a web request and a test suite — but deferred, because Section 6.1's
+forward-compatibility rule makes it addable in a `MINOR` without breaking a policy written today);
+**E** leave it a `MAY` (rejected). The bound is the consumer's and `[hooks]` gains no key: the
+in-sandbox half is worktree-sourced by design, so a bound written there is a bound the bounded thing
+sets, and Section 3.2 denies the engine the one fact — which revision a value came from — that would
+let it admit the key host-side and refuse it in-sandbox; a `timeout_ms` a repository writes is
+ignored under Section 6.1. An `after` hook that exceeds the bound is killed, the flow continues
+unchanged, and the fact is reported in `outputs` on Section 5.4's no-silent-drops principle. **The
+limit is stated rather than glossed**: killing the unit does not end what the unit started, so a hook
+that leaves a grandchild holding the pipes is read from until the bound elapses — the invocation is
+bounded, the machine is not. A `[hooks.<name>]` declaring no `run` is judgeable from the document and
+is `malformed_policy` at validation, minting no token, while whether the named unit exists is a
+property of the worktree and stays `hook_unanswered`. Cost: one reason, permanent within a `MAJOR`,
+absorbed by the `#class` fallback so no consumer changes; and a repository gains what B cannot give
+it — "if the gate does not answer, park" is an edge somebody can write. Reconsider if one number
+proves wrong for the real spread, or if the `outputs` report of a killed `after` hook proves to have
+no consumer. Review on PR #40 found the `after` half covering **one** condition where the gate half
+covered three — a result-triggered hook the engine could not start was neither `hook_unanswered`
+(that reason is `(any gated)`) nor reportable under `unfinished_hooks` (scoped to hooks stopped at
+the bound), so it was silently dropped, which is what Section 5.4 forbids and what that bullet cites
+as its own reason for reporting the bound case; both are widened to "gave the engine no usable
+answer", keeping the division by whether anything waits rather than by which condition occurred.
+Relates to 0084 (which takes this token rather than minting its own), 0060, 0057, 0056
+and 0066. Accepted and applied to `VCSX-SPEC.md` (Sections 4.3, 5.6, 6.6, 6.10, 8.2, 13.1, 13.2,
+13.3), `conformance/vcsx/vocabulary.json`, `conformance/vcsx/vectors/policy-validation.json`,
+`conformance/vcsx/README.md` and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0082 — `[messages.squash] strategy` defaults to `merge`
+
+**State:** Accepted
+**Folder:** [decisions/0082-squash-strategy-default/](decisions/0082-squash-strategy-default/)
+
+Resolves issue #36, which is two reports whose answers meet. Section 9.3 splits an undeclared
+capability at "determinable before the policy runs", and enumerating the descriptor fields against
+the policy keys yields **exactly one row** — `[messages.squash] strategy` against a forge's declared
+merge strategies, Section 9.3's own worked example. Section 8.6 then says a configuration error is "a
+property of `repo.policy.toml` alone, detectable before any argument or checkout is in hand", which
+cannot be exactly true, because determining that row needs the selected backend's descriptor; two
+operative sentences of the same two sections say "the invocation" and "before the policy runs"
+instead, so one section says the thing twice and differently, and an engine taking the literal
+reading determines nothing, satisfies "where determinable" vacuously and fails the only example given
+— observably, since the same policy is exit `2` before anything runs on one engine and
+`merge:unsupported` at exit `20` on the day someone lands on the other. Meanwhile Section 6.8 gives
+`strategy` three tokens, an example value and no statement of what an absent key means, while
+Section 13.3 enumerates the backend's default remote and carries nothing for Section 6.8 — the
+evidence this is an omission rather than a delegation. **A correction the decision records against
+its own first draft**: Section 11's "A `rebase` or `squash` merge strategy is not an exception: it
+writes to the base branch" does *not* rank the strategies — it scopes the work-branch guarantee,
+saying a merge strategy touches a different branch and so is not a counter-example to the promise —
+so citing it for the default would leave the first implementer to read Section 11 finding it says the
+reverse. The real asymmetry is one step further in: of the three, `merge` is the only one under which
+the commits the engine wrote, each gated at `before:commit` and attributed to the caller-supplied
+identity, survive into durable history as written, where `rebase` re-parents them and `squash`
+collapses them into a commit the code host authors; defaulting to the strategy that preserves what
+the engine gated is the posture the document states wherever it states one. That is an argument from
+the document's temperament rather than from a sentence in it, and is written as such. Options: **A**
+fix the default at `merge` and repair Section 8.6's sentence (chosen); **B** publish the default as
+`Implementation-defined` with a Section 13.3 row, as 0062 did for `[engine] remote`, and move
+`capability_unsupported` into Section 8.6's registry where it becomes entry-scoped as 0074 scoped the
+identity precondition — genuinely attractive, since refusing a `ship` over a strategy only `land`
+uses is real over-refusal, but rejected because 0074's scoping was right for a **per-invocation input
+the caller supplies** while a merge strategy is a property of the repository's way of working, so B
+moves a document error into the invocation registry and blurs the distinction 0056 leaned on, and
+because its cost is the one least worth shipping: two conforming engines writing different durable
+base-branch history from the same file, which publishing makes discoverable rather than
+interoperable; **C** an absent key means the code host's default (rejected twice — it makes durable
+history depend on forge settings outside the repository's file, inverting Section 6.8's premise, and
+gives `request_merge` an "unspecified" strategy, a capability argument that cannot say what it means,
+which is the shape 0076's answer-domain rule forbids one layer down). Section 8.6's boundary is
+repaired rather than reversed: a configuration error is judged from the policy document together with
+what the engine holds independently of the invocation — its configured backends' descriptors, its own
+defaults, the actions a consumer can effect and the units it bound — while a precondition failure
+needs the invocation's arguments and the checkout; and a descriptor field a backend can answer only
+once it has opened the checkout is explicitly *not* such a fact, so a policy requiring it keeps
+Section 9.3's first-use disposition. **The cost is conceded and fenced**: an absent `strategy`
+becomes determinable, so among the required policy keys Section 9.3's first-use half loses its only
+producer, undoing an asymmetry at least one implementation deliberately preserved so
+`merge:unsupported` kept a real test — the asymmetry was always uncomfortable, since it is odd that
+spelling out the default changes whether you are refused, and it goes. What follows is a
+documentation obligation rather than a shrug: Section 13.1 states that a Conformance Statement
+claiming that half **names the engine-added operation or optional capability it demonstrated it
+against**, so the result is not the overclaim shape — a mechanism described by one true sentence and
+read as a general guarantee. Cost: fixing a default is a behaviour change for an engine that chose
+otherwise, inside a `MAJOR`, and `merge` is itself not guaranteed by a descriptor, so a forge that
+cannot perform a plain merge fails on a default nobody wrote — which the repaired check catches at
+validation rather than on the day someone lands. Reconsider if a required key is added whose
+contradiction with a descriptor is genuinely undeterminable before the policy runs, or if the
+wholesale refusal costs operators working invocations, which is B's argument arriving as evidence.
+Relates to 0062, 0074, 0076, 0056 and 0070. Accepted and applied to `VCSX-SPEC.md` (Sections 6.8,
+8.6, 9.3, 13.1), `conformance/vcsx/vocabulary.json`, `conformance/vcsx/README.md` and
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0083 — The push guarantee is quantified over the effect
+
+**State:** Accepted
+**Folder:** [decisions/0083-push-effect-and-read-only/](decisions/0083-push-effect-and-read-only/)
+
+Resolves issue #37. Section 3.3 requires `jj` as a checkout mode and Section 9.1 is the surface a
+backend adapts through, so until a second backend exists nothing tests whether that surface is
+VCS-neutral or is git's mechanics written down; writing one against jj 0.44.0 produced two absolutes
+jj cannot satisfy literally. `jj git push` always leases —
+`--force-with-lease=refs/heads/<branch>:<last fetched>` on the create and update paths alike,
+observed on the argv — so the obvious mediation for Section 9.1's "never a force push" refuses
+**every** push a jj backend makes, and the reading decides whether a conforming engine can drive a jj
+repository at all, in the section (Section 11) a mediating consumer implements against. **The
+report's own "satisfied in effect" verdict, and this decision's first draft, were wrong, and the
+correction is the substance of the decision**: a plain push refuses when the update is not a
+fast-forward — exactly when commits would be dropped — while a lease refuses when the remote ref is
+not at the expected value — when the remote moved. They diverge in the case the guarantee exists for:
+the engine observes the remote work branch at `X`, the local bookmark sits at `W`, an ancestor of
+`X`, because something outside the engine rewound it (Section 11 guarantees the engine never does
+this, not that nobody does), the remote is still at `X` so the lease matches, and the push
+force-updates `X → W`, dropping every commit between. A plain push refuses that; the lease permits
+it. So a specification blessing the lease would have blessed the destruction of remote history on the
+work branch, and the filing implementation's own jj plugin has no ancestry guard. Options: **A**
+quantify over the effect and say nothing about mechanism (chosen) — the engine MUST NOT cause a push
+that drops, rewrites or re-parents a commit already on the remote work branch, and the phrase "force
+push" leaves Sections 9.1 and 11 alike, so no backend can argue from flags; **A′** the same
+requirement plus a sentence blessing leases (rejected on the counterexample, and it was the drafted
+recommendation); **B** quantify over observation — a push MUST NOT succeed where the remote work
+branch carries a commit the engine did not observe (rejected: it permits the same case, because the
+engine *did* observe `X`; it is quantified over observation where the hazard is destruction, so it is
+narrower than what consumers rely on rather than stronger); **C** keep the absolute and declare the
+transport in the descriptor (rejected — an absolute in prose and a conditional in data, which is
+issue #36's pattern one section over, and it relocates the burden onto every consumer, where the ones
+that do not read the field are exactly the ones the guarantee existed for). **Who pays is stated**:
+an unconditional lease becomes a genuine non-conformance rather than a concession, and the repair is
+cheap and backend-side — before invoking `jj git push`, check the local bookmark is a descendant of
+the observed remote bookmark and report `push:non_fast_forward` without spawning where it is not,
+which routes to `integrate` and retries within the flow bound, so no machinery is added. The cost —
+the guarantee is no longer readable off the argv — is real and small: Section 11 already directs the
+guard at the pinned refspec, and a guarantee readable off the argv was never the guarantee but a
+proxy that held while git was the only backend. The second ask is **one repair rather than a
+choice**, because no alternative was offered and the wording exists already scoped one capability too
+narrow: `worktree_revision()`'s allowance to derive an answer by writing to the backend's own staging
+or bookkeeping state, without changing the content a `commit` would capture and with the effect
+documented, is stated over the whole capability list, and Section 4.1's "Read-only" is defined as
+quantifying over the history, the remote and the content a `commit` would capture — the shape issues
+26 and 28 both had, where a rule holding for one capability and not its neighbour is the next report.
+Reconsider if a backend appears whose transport can satisfy the effect requirement only by a
+mechanism the document would have to name, or if the read-only definition proves too permissive for a
+consumer mediating by filesystem observation. Review on PR #40 found the read allowance introducing a
+**new undefined absolute in the place this decision had just removed one**: it said a backend writing
+bookkeeping state MUST NOT write to "the history", a term nowhere defined here, and `jj status`
+snapshots the working copy into the working-copy commit — writing a commit object and moving a ref —
+so the literal reading defeats the very backend the allowance was written for. Both ends now quantify
+over three named things: the content a `commit` would capture, the commits reachable from the work
+branch or the resolved base, and what the remote holds; a commit no branch the engine named reaches
+is not one of them, because what the reads report against and what a `push` publishes are branches. A
+second round found that repair **conditional on an arrangement the document did not name**: measured
+on jj 0.44.0, a work bookmark kept on the working-copy commit is carried along when a read re-records
+it, so the commits reachable from the work branch change and the revision a `push` would publish
+moves — the read-only test failing on a read, by the mechanism the allowance blesses — while a
+bookmark one behind holds. Section 9.1 now requires a backend that records the working tree as a
+commit to keep that commit outside what the work branch reaches, which is checkable and is a property
+of the backend rather than of the VCS. Relates to 0073, 0079, 0076 and 0063. Accepted and
+applied to `VCSX-SPEC.md` (Sections 4.1, 9.1, 11, 13.1, 13.2, 13.3), `conformance/vcsx/README.md` and
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0084 — Every condition gets a home, and one exit code names "no result"
+
+**State:** Accepted
+**Folder:** [decisions/0084-no-result-channel/](decisions/0084-no-result-channel/)
+
+Resolves issue #38. Section 8.2 opens "Every invocation returns one structured result" and
+Section 8.3 fixes four exit codes mirroring the four statuses, adding that the JSON result is emitted
+regardless of exit code — which presumes a result. Several paths reach no envelope: a repository unit
+that will not run or answers outside the shape the engine fixed (Section 6.6 makes that form
+`Implementation-defined`, so a violation is outside every registry upstream owns by construction);
+`body_source = "template"` with no template unit bound, which Section 4.3's `unsupported` does not
+cover because a template is neither a plugin nor a capability; a command line the front-end cannot
+read, since neither Section 6.10 nor Section 8.6 names a condition of the argument *encoding*; and a
+hook that exceeded a bound. Section 8.3's stated purpose is a caller branching **without parsing**,
+and it fails for exactly these, differently on each engine; decision 0065 already declined "these
+belong to the invocation contract" and built Section 8.6 instead, reasoning about the code itself,
+and that argument applies unchanged where nothing ran at all. **The strongest argument for absorbing
+is not registry hygiene but where the refusal happens**: Section 12.2's `ship` runs `commit`, `push`,
+then `create_pr`, so a `template` body source with nothing bound is not discovered until a body is
+composed — today that misconfiguration **publishes a work branch and then dies with empty stdout** —
+while `set_state_unbound` refuses before anything runs, and this is the same shape one seam over.
+Options: **A** give the conditions homes and reserve one code for the residue (chosen); **B** the
+channel rule alone — a code outside the four means no result, stdout empty (elegant and total for a
+consumer, and the winner if the question were only the channel, but rejected on its own stated cost,
+that each engine still decides which conditions are faults, which leaves a Conformance Statement
+unable to say anything useful, and it keeps the published-then-abandoned branch); **C** reserve a
+code and stop (B plus a number, rejected on the same ground plus an exit code spent on a distinction
+whose repair is identical either way: read stderr). A lands in four parts. `template_unbound` joins
+Section 6.10, **with Section 6.10's judgement input widened and stated** — `set_state_unbound` is
+judged from the consumer-supplied Section 5.2 actions, while a template unit is a Section 10.2
+repository unit, so validation is stated to be judged from the document, what the engine holds
+independently of the invocation, the actions a consumer can effect **and the repository units it
+bound**, without which implementations diverge on whether the condition is determinable at all, which
+is issue #36's ambiguity one section over. The hook conditions take decision 0081's `hook_unanswered`
+and this decision mints nothing for them, because reading a hook that never started as a *block*
+reintroduces the conflation 0081 exists to undo — a block is something the hook did. An unreadable
+command line produces a **real envelope**: `usage_or_config`, exit `2`, `op` and `class` null,
+`reason` carrying `arguments_unreadable`, a Section 8.6 precondition reason under that section's
+repaired boundary (0082) since it is judged from the invocation's arguments and nothing else, and the
+one precondition established **before** validation rather than after it, because an engine that
+cannot decode its arguments cannot locate the policy it would validate — a carve-out stated rather
+than left to contradict the ordering rule silently. And Section 8.3 reserves exit `1` for an
+invocation that produced no Section 8.2 result, stdout empty and the diagnostic on stderr, with **any
+other code meaning the same** — the load-bearing half, since it covers a panic, a signal and an
+out-of-memory kill without the specification predicting every way a process can die — plus the
+property that makes the rest safe: on every path that produces a result, stdout carries exactly one
+JSON object and nothing else, which was the filing engine's own rule and which nothing in
+Sections 8.2 or 8.3 required. Deliberately not enumerated: the membership of the set of ways a
+repository unit can violate the engine's contract stays the engine's, because Section 6.6 makes that
+contract `Implementation-defined` — the ask was about the channel. Cost: one configuration reason,
+one precondition reason and one exit code, all permanent within a `MAJOR`, and Section 8.5 admits the
+two reasons in a `MINOR` with the `usage_or_config` status absorbing them. Reconsider if a runtime
+makes exit `1` unreadable as a reserved meaning (the any-other-code clause still holds), or if
+`template_unbound` proves to need a checkout to judge, which would mean the judgement input was
+widened in the wrong direction. Review on PR #40 found four defects in the follow-through, none
+changing the chosen option and all recorded append-only in `Background.md`: the judgement input was
+stated as a **closed** list that excluded `version_floor_unmet`'s own input, the running engine
+version — this decision's contribution reproducing, one section over, the failure 0082 diagnoses;
+`policy-validation.json`'s `given` named a *different* four from Section 6.10's, so two authoritative
+lists disagreed; Section 8.5 nowhere said a reserved exit code was permitted, though it fixes the
+exit-code mapping as major-stable and enumerates what a `MINOR` may add; and Section 8.6's opening
+sentence was false for `arguments_unreadable`, the one row it does not cover, with the carve-out
+stated three paragraphs later. Relates to 0081, 0082, 0065, 0056 and 0075/0076. Accepted and applied
+to `VCSX-SPEC.md` (Sections 6.10, 8.1, 8.3, 8.5, 8.6, 13.1, 13.2), `conformance/vcsx/vocabulary.json`,
+`conformance/vcsx/vectors/policy-validation.json`, `conformance/vcsx/vectors/exit-codes.json` and
+`conformance/vcsx/README.md`.
+
+## 0085 — The forge repository coordinate is the consumer's
+
+**State:** Accepted
+**Folder:** [decisions/0085-forge-repository-coordinate/](decisions/0085-forge-repository-coordinate/)
+
+Resolves issue #39. Section 6.2 assigns the forge **selection** to the repository and the
+**credential** to the consumer, and nothing between them says how the selected backend learns which
+repository on the host it is talking about: Section 9.2's capabilities take a head, a base, a title,
+a body, a pull request, a strategy and a head, and none takes a repository; Section 8.1's common
+arguments name four things and a coordinate is not among them; deriving it from the checkout is
+foreclosed twice (Section 1.3's no-provisioning and Section 6.2's refusal to infer from the upstream
+binding); and Section 3.3's "remote slug" is the one place the document names the concept, a
+requirement with no capability behind it. The **subprocess encoding** is where it stops being
+theoretical: Section 8 says the contract is the same either way and only the encoding differs, an
+embedded driver can be handed a coordinate through a constructor, and a subprocess front-end has
+nothing to encode — so a repository setting `forge = "github"` cannot be run by a conforming
+subprocess front-end at all, including `push` and `status`, because Section 4.1 has both read the
+pull-request state where a forge is configured: six of ten entry points. The service root was settled
+first and on a security argument — it is not derivable from a host name, and Section 3.2 leaves the
+sourcing rule to the consumer, so a root read from a file a consumer sourced from the worktree is a
+credential presented to a host the worktree named — and **that argument does not stop at the root**.
+A coordinate derived from the resolved remote's URL reads the checkout's configuration rather than
+tracked content, which is better protected than a tracked file, but in the sandboxed-agent topology
+the boundary is the worktree, not the checkout: a consumer that exposes `.git` to the agent has
+handed it `git remote set-url`, and the engine will then push and open a pull request against
+whatever that names, with the consumer's credential attached. Pinning the root to the credential
+bounds this to one host, and same-host redirection is still presenting a credential to a repository
+its holder did not choose. The credential and its target are one decision; what makes the hazard
+possible is letting the two be made by different parties. Options: **A** backend-derived from the
+resolved remote with a consumer override (rejected on that argument, but two things in it are kept —
+its Section 3.3 argument is textual and is settled here whichever option lands, since nothing says
+whether a "slug" is a remote name, a URL or a forge coordinate; and were a capability ever to answer
+this it answers the remote's **URL, opaquely**, leaving the forge backend to interpret it, because
+parsing an owner and a name out of a URL is service-specific — SSH against HTTPS, ports, nested
+namespaces — and a VCS backend has no business knowing a forge's URL grammar, which is the mixing
+Sections 9.1 and 9.2 are separate to prevent); **B** consumer-supplied and named in Section 8.1
+(chosen); **C** repository-owned as `[engine] remote` became in 0062 (rejected before the sourcing
+hazard is even reached, on the fork objection — a remote *name* is checkout-local and identical in
+every clone while an owner/name coordinate is not, so every fork and mirror carries a diff in the
+file whose purpose is to be inherited unchanged, which is why the analogy to 0062 does not carry).
+**B's stated cost is real and does not belong in the specification**: "a human at a prompt supplies
+it every invocation" assumes the front-end cannot default it, and it can — from the resolved remote,
+exactly as A would — which keeps the derivation on the credential-holding side of the boundary, since
+Section 8.1 already makes encodings the front-end's business and an interactive front-end *is* a
+consumer under Section 1.1. So this is B's contract with A's ergonomics, and the difference is only
+who derives: under A the engine derives from a value the checkout carries and the consumer never
+sees, under B the consumer derives and the engine is told — the whole of the security argument.
+Section 3.3's sentence is settled as part of the answer: "remote slug" is replaced by the resolved
+remote (Section 6.2) and the work branch, and the section states the coordinate is not derived from
+the checkout in any mode. Absence where a forge is configured is refused before the policy runs with
+`forge_coordinate_missing`, on Section 8.6's own boundary and on 0084's refuse-before-publishing
+argument; the engine holds the coordinate **opaque** as it holds the commit identity and the base ref
+opaque, so a coordinate a backend cannot use is that backend's first-use `failed` rather than a shape
+the engine judged. The credential and the service root stay out of the argument list for the reason
+the report gave for excluding the credential — Section 11 has the engine run where they are already
+held. **Disclosure, recorded so it can be discounted**: B is also the cheapest outcome for the filing
+implementation, whose forge plugin already receives the coordinate at construction, so the
+recommendation and the convenience point the same way; the argument stands on the sandbox boundary
+rather than on the cost, and the reporter raised the alignment rather than leaving it to be noticed.
+Reconsider if front-ends diverge on how they default the argument from the remote — the divergence B
+pushes into the front-end is the one thing A would have standardized, and the repair is then a
+RECOMMENDED defaulting rule in Section 8.1, not moving the coordinate back across the boundary.
+Relates to 0062, 0065, 0073 and 0084. Accepted and applied to `VCSX-SPEC.md` (Sections 3.3, 6.2, 7.3,
+8.1, 8.6, 9.2, 11, 13.1, 13.2), `conformance/vcsx/vocabulary.json`, `conformance/vcsx/README.md` and
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
