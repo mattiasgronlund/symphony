@@ -1,4 +1,4 @@
-# Sessions — 0081 A hook bound is a bound on a unit, and an unanswered hook is the operation's reason
+# Sessions — 0081 A hook bound is a bound on a unit, not on the flow
 
 <!--
 Every Claude Code session that worked on this decision. The session id is the transcript filename

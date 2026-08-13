@@ -152,12 +152,14 @@ and nothing about the forge.
 Operations are the unit `run_op` runs (Section 5.2). Each is realized through the plugin layer and
 returns a typed result (Section 4.2). Read-only operations carry no lifecycle position.
 
-An operation marked **Read-only** below writes nothing to the history, nothing to the remote, and
-nothing that changes the content a `commit` would capture. The term quantifies over those three and
-not over the bytes on disk: a backend MAY answer a read by writing to its own staging or bookkeeping
-state, subject to the allowance and the documentation obligation Section 9.1 states over its
-capability list. A checkout mode that records the working tree as a precondition of inspecting it
-(Section 3.3) is therefore drivable, and what the operation guarantees is what a caller relies on.
+An operation marked **Read-only** below changes none of three things: the content a `commit` would
+capture, the commits reachable from the work branch or the resolved base (Sections 6.3, 6.4), and
+what the remote holds. The term quantifies over those three and not over the bytes on disk or the
+object store: a backend MAY answer a read by writing to its own staging or bookkeeping state, subject
+to the allowance and the documentation obligation Section 9.1 states over its capability list. A
+checkout mode that records the working tree as a commit of its own before it can inspect it
+(Section 3.3) is therefore drivable, because a commit no branch the engine named reaches is not one
+of the three.
 
 - `status` — inspect working state. Outputs: `mode` (Section 3.3), `branch`, `dirty`, `conflicted`,
   `ahead`/`behind` versus the resolved base (Section 6.4), and the pull-request state when a forge
@@ -715,11 +717,12 @@ anything waits on the answer:
   built-in `error` default fails the flow where none does (Sections 5.3, 5.4). A hook the engine could
   not start, and one whose answer the engine could not read in the form it fixed, reach the same
   reason — the engine got no usable answer, whichever way it failed to get one.
-- An `after`/result-triggered hook that has not answered when the bound elapses is stopped and the
-  flow continues unchanged, which is "best-effort and does not block" read literally. Stopping it
-  costs the flow nothing, where waiting holds an invocation open indefinitely. The engine reports each
-  such hook in `outputs` (Section 8.2) rather than dropping it, on the principle that forbids silently
-  dropping an intent no consumer performed (Section 5.4).
+- An `after`/result-triggered hook that gives the engine no usable answer — the same three conditions,
+  since a hook that could not be started answers nothing whichever half of the division it is on — is
+  stopped where it is still running, and the flow continues unchanged, which is "best-effort and does
+  not block" read literally. Stopping it costs the flow nothing, where waiting holds an invocation open
+  indefinitely. The engine reports each such hook in `outputs` (Section 8.2) rather than dropping it, on
+  the principle that forbids silently dropping an intent no consumer performed (Section 5.4).
 
 The bound is the consumer's, and `[hooks]` carries no key for it. A `timeout_ms` a repository writes
 here is an unknown key and is ignored (Section 6.1). The reason is Section 3.2: the in-sandbox half of
@@ -871,9 +874,10 @@ Validation is judged from four inputs and no others, and naming them is what mak
 before the policy runs" a question with an answer (Sections 8.6, 9.3):
 
 - the policy document, with `vcsx.toml` merged in (Section 6.1);
-- what the engine holds independently of the invocation — the descriptors its configured backends
-  advertise (Section 9.3) and its own defaults (Section 6.8), which is what `capability_unsupported`
-  turns on;
+- what the engine holds independently of the invocation — its own version (Section 8.5), which is
+  what `version_floor_unmet` turns on, together with the descriptors its configured backends
+  advertise (Section 9.3) and its own defaults (Section 6.8), which are what
+  `capability_unsupported` turns on;
 - the actions the consumer can effect (Section 5.2), which is what `set_state_unbound` turns on;
 - the repository units the consumer bound, which is what `template_unbound` turns on.
 
@@ -1036,12 +1040,13 @@ Every invocation returns one structured result:
   number/state). It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
   the engine emitted and no consumer performed, each naming its `action` and that action's arguments.
   The key is absent or empty when every emitted intent was performed. It likewise carries
-  `unfinished_hooks`: the result-triggered hooks the engine stopped at its hook bound (Section 6.6),
-  each naming the hook and the trigger that ran it, absent or empty where none was stopped. A
-  `before:*` hook is not reported there, because the gated operation reports it as `hook_unanswered`
-  (Section 4.3); what `outputs` carries for that reason is which of its conditions occurred — the
-  bound elapsed, the unit could not be started, or its answer could not be read — since the reason
-  routes and the condition diagnoses.
+  `unfinished_hooks`: the result-triggered hooks that gave the engine no usable answer (Section 6.6),
+  each naming the hook, the trigger that ran it, and which condition occurred — the bound elapsed, the
+  unit could not be started, or its answer could not be read — absent or empty where every such hook
+  answered. It is the non-gating half's mirror of `hook_unanswered`, which is why the two cover the
+  same three conditions: a `before:*` hook is not reported there, because the gated operation reports
+  it as that reason (Section 4.3), and `outputs` carries which condition occurred for it too, since
+  the reason routes and the condition diagnoses.
 - A consumer MAY add fields but SHOULD NOT break the fields above within a major version.
 
 ### 8.3 Exit Codes
@@ -1103,6 +1108,12 @@ distinguishable in the result envelope.
   operations, and new plugin backends MAY be introduced in a `MINOR` release; existing consumers
   absorb new operation reasons through the `#class` fallback (Section 5.3), and a new configuration
   or precondition reason through the `usage_or_config` status, which does not change.
+- Reserving an exit code for a condition that is **not** an invocation status (Section 8.3) MAY
+  likewise be done in a `MINOR`, and is not a change to the exit-code mapping the bullet above fixes:
+  the four status-bearing codes and the statuses they map from are untouched. What grows is the set of
+  codes a caller may observe, which Section 8.3 already makes total by reading every code outside the
+  four the same way — so a consumer written against an earlier `MINOR` absorbs the reservation without
+  changing.
 - A consumer declares a `version_floor` (Section 6.2); an engine below the floor refuses to run
   (fail-closed) with a usage/config result rather than mis-executing a policy that assumes newer
   surface.
@@ -1110,7 +1121,9 @@ distinguishable in the result envelope.
 ### 8.6 Invocation Preconditions
 
 Between validating the policy (Section 6.10) and running it, the engine establishes the
-preconditions the invoked entry point depends on, in order, reporting the first that fails. Where a
+preconditions the invoked entry point depends on, in order, reporting the first that fails — with one
+exception, `arguments_unreadable`, which this section establishes before validation for the reason
+stated below. Where a
 forge is configured (Section 6.2) it requires the forge repository coordinate (Section 8.1), whose
 absence it judges itself, because the argument is either present or is not. It
 resolves the work branch (Section 6.3), which calls a VCS backend capability — `derive_work_branch`,
@@ -1316,16 +1329,22 @@ exhaustive, and it places the half that stops on conflicts — the outcome the c
 `commit` finalizes (Section 4.1) — on the local side of the boundary, where the caller that resolves
 it runs.
 
-A backend MAY derive any capability's answer by writing to its own staging or bookkeeping state. It
-MUST NOT thereby change the content a `commit` would capture, MUST NOT write to the history or the
-remote, and MUST document where it writes (Section 13.3). The allowance is stated over the list rather
-than on the capabilities that happen to need it, because which capabilities those are is a property of
-the checkout mode rather than of this specification: a mode that records the working tree as a
-precondition of inspecting it cannot answer `is_dirty()`, `is_conflicted()` or `worktree_revision()`
-without writing, and answering from a stale record instead would report a determinate value the
-backend did not establish, which Section 9 forbids. This is also what Section 4.1's "Read-only" leaves
-room for: a read that writes bookkeeping is still read-only over the history, the remote, and the
-content a `commit` would capture, which are the three things a caller relies on.
+A backend MAY derive any capability's answer by writing to its own staging or bookkeeping state,
+including by recording the working tree as a commit where its checkout mode requires one to inspect
+it. It MUST NOT thereby change the content a `commit` would capture, the commits reachable from the
+work branch or the resolved base (Sections 6.3, 6.4), or what the remote holds, and it MUST document
+where it writes (Section 13.3). Those three are what Section 4.1's "Read-only" quantifies over, read
+from the other end, so a capability and the operation it realizes are held to one test.
+
+The allowance is stated over the list rather than on the capabilities that happen to need it, because
+which capabilities those are is a property of the checkout mode rather than of this specification: a
+mode that records the working tree before it can inspect it cannot answer `is_dirty()`,
+`is_conflicted()` or `worktree_revision()` without writing, and answering from a stale record instead
+would report a determinate value the backend did not establish, which Section 9 forbids. The
+prohibition is stated over the commits a branch reaches rather than over the object store, because a
+commit no branch the engine named reaches is not something a caller can observe through this
+specification's operations: what `status` and `diff` report against, and what a `push` publishes, are
+branches (Sections 4.1, 9.1).
 
 `remote` is the resolved remote (Section 6.2) and `base_ref` is the resolved base ref (Section 6.4),
 both supplied by the engine; a backend reads neither from the policy nor infers one from the checkout's
@@ -1796,8 +1815,10 @@ A conforming engine SHOULD include tests covering:
   would drop, rewrite or re-parent a commit already on the remote work branch sends nothing and
   yields `push:non_fast_forward` whatever the transport, including where the local work branch has
   been moved to an ancestor of the remote's tip by a writer outside the engine (Sections 9.1, 11); a
-  backend that answers a read by writing its own bookkeeping state leaves the history, the remote and
-  the content a `commit` would capture unchanged (Sections 4.1, 9.1); every
+  backend that answers a read by writing its own bookkeeping state — recording the working tree as a
+  commit of its own where the checkout mode requires one — leaves the content a `commit` would
+  capture, the commits reachable from the work branch and the resolved base, and what the remote
+  holds all unchanged (Sections 4.1, 9.1); every
   value-answering capability can report that it could not determine its answer, and no such report
   is spelled as the value's absent case (Section 9).
 

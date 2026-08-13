@@ -127,6 +127,47 @@ violate the engine's own contract stays the engine's, because Section 6.6 makes 
 `Implementation-defined`. Only the disposition is fixed. The ask was about the channel, and the
 answer does not take a surface upstream should not own.
 
+## Review findings applied (PR #40)
+
+Four findings against the follow-through. The chosen option is unchanged in all four.
+
+**The judgement input was stated as a closed list that excluded one of its own table's rows.** "Four
+inputs and no others" named the policy document, what the engine holds independently of the
+invocation, the actions a consumer can effect and the units it bound — and `version_floor_unmet` is
+judged against the **running engine version**, which none of them named. That is precisely the shape
+decision 0082 diagnoses in the sentence it repairs: Section 8.6's "a property of `repo.policy.toml`
+alone" defined `capability_unsupported` out of existence, and a closed enumeration omitting
+`version_floor_unmet`'s input reproduced the failure one section over. The engine's own version now
+sits in the second bullet beside the descriptors and the defaults. Widening the input list was this
+decision's contribution; closing it too tightly was this decision's error.
+
+**Two artifacts carried two incompatible closed lists.** `policy-validation.json`'s `given` named the
+running engine version and not the descriptors, while Section 6.10 named the descriptors and not the
+version — both authoritative, both introduced here. The vector file now states the same four and says
+which of them it models, leaving the descriptor input to the coverage note already there.
+
+**Section 8.5 did not say the reserved exit code was permitted.** It makes "the exit-code mapping"
+major-stable and enumerates what a `MINOR` may introduce without naming exit codes, so a reader
+checking whether exit `1` was allowed found nothing that said so, and this decision priced it only as
+"permanent within a `MAJOR`". Section 8.5 now states that reserving a code for a condition that is
+not an invocation status is a `MINOR` addition and is not a change to the mapping: the four
+status-bearing codes and the statuses they map from are untouched, and Section 8.3's
+any-other-code rule already made a consumer's mapping total.
+
+**Section 8.6's opening sentence was false for one row of its own table.** It claims the engine
+establishes preconditions between validating the policy and running it, which `arguments_unreadable`
+is not. The carve-out was stated three paragraphs down; the exception is now named where the claim is
+made. Leaving it was the same defect 0082 reports against Section 8.6 — one section saying the thing
+twice and differently — and inviting that report back.
+
+**Downstream cost recorded rather than absorbed.** The `no_result_is_one` vector supplies
+`{"status": null}`, which a signature of the shape `exit_code_for_status(status) -> code` cannot
+express without an optional or a separate path, and a help table built by mapping over the statuses
+cannot list `1` at all. That is the correct friction rather than a modelling error: exit `1` is not a
+status, this specification says so, and a total mapping from what an invocation produced to what
+leaves the process is what the reservation buys. The vector's `given` already states the domain as
+the status or none.
+
 ## Reconsideration trigger
 
 Reconsider if an engine is found for which exit `1` collides with a runtime it cannot control — a

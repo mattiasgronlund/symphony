@@ -1,4 +1,4 @@
-# Plan — 0083 The push guarantee is quantified over the effect, and a read may write its own bookkeeping
+# Plan — 0083 The push guarantee is quantified over the effect
 
 ## Scope
 

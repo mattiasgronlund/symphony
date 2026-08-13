@@ -157,9 +157,9 @@ Section 9.1's required capabilities are a minimum. If this engine defines operat
 |---------|------------------|------------------|----------------------|----------------------|
 | `<github / forgejo / …>` | [ ] (REQUIRED) | `<merge / squash / rebase>` | [ ] | [ ] |
 
-A backend that does not declare `merge` refuses a policy that states no `[messages.squash] strategy`,
-because the Section 6.8 default is `merge` and the engine holds it — which is one half of Section
-9.3's split. The other half, an unsupported capability reported at first use, has no producer among
+A policy that states no `[messages.squash] strategy` is refused against a backend that does not
+declare `merge`, because the Section 6.8 default is `merge` and the engine holds it — which is one
+half of Section 9.3's split. The other half, an unsupported capability reported at first use, has no producer among
 the required operation set and policy keys (Section 13.1), so an engine claiming it names what the
 claim was demonstrated against:
 

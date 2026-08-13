@@ -1,4 +1,4 @@
-# Plan — 0082 `[messages.squash] strategy` defaults to `merge`, and a configuration error is judged from more than the document
+# Plan — 0082 `[messages.squash] strategy` defaults to `merge`
 
 ## Scope
 

@@ -1,4 +1,4 @@
-# Sessions — 0082 `[messages.squash] strategy` defaults to `merge`, and a configuration error is judged from more than the document
+# Sessions — 0082 `[messages.squash] strategy` defaults to `merge`
 
 <!--
 Every Claude Code session that worked on this decision. The session id is the transcript filename

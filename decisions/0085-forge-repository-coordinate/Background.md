@@ -1,4 +1,4 @@
-# Background — 0085 The forge repository coordinate is the consumer's, named in Section 8.1
+# Background — 0085 The forge repository coordinate is the consumer's
 
 ## Context
 

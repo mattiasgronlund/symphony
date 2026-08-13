@@ -1,4 +1,4 @@
-# Background — 0083 The push guarantee is quantified over the effect, and a read may write its own bookkeeping
+# Background — 0083 The push guarantee is quantified over the effect
 
 ## Context
 
@@ -120,6 +120,32 @@ define what Section 4.1's "Read-only" quantifies over: the history, the remote, 
 generalization, so a backend that snapshots to answer a read says so under Section 13.3. This is
 recorded as part of this decision rather than as an option, because no alternative was offered: the
 wording exists in the document already and is scoped one capability too narrow.
+
+## Review finding applied (PR #40)
+
+**The read allowance introduced a new undefined absolute in the place this decision had just removed
+one.** As first written, the generalized allowance said a backend writing bookkeeping state "MUST NOT
+write to the history or the remote", and Section 4.1's definition said a read "writes nothing to the
+history". `history` is nowhere defined in this document — nine uses, all informal — and the
+motivating case defeats the literal reading: `jj status` snapshots the working copy into the
+working-copy commit, which writes a commit object and moves a ref. This decision's own Background
+argues that is jj's staging equivalent, and the argument holds, but the specification did not say so.
+A jj backend author arriving at the repaired clause would have met exactly the question this decision
+exists to end — an absolute that cannot be satisfied literally, with no statement of which reading is
+required.
+
+Both ends are now quantified over the same three things, named rather than gestured at: the content a
+`commit` would capture, the commits reachable from the work branch or the resolved base, and what the
+remote holds. Section 9.1 states the carve-out positively — a backend MAY record the working tree as
+a commit where its checkout mode requires one — and gives the reason the object store is not the
+measure: a commit no branch the engine named reaches is not observable through this specification's
+operations, because what `status` and `diff` report against, and what a `push` publishes, are
+branches.
+
+The finding is the same shape as the report this decision answers, one iteration in: a guarantee
+stated in one VCS's vocabulary, met by an implementer who then has to choose between conforming and
+working. It is recorded rather than quietly fixed because the recurrence is the point — the first
+draft of a repair for that failure reproduced it.
 
 ## Reconsideration trigger
 

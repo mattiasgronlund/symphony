@@ -11,7 +11,7 @@
     "VCSX-SPEC.md Section 8.5 \"Versioning and the Version Grammar\""
   ],
   "description": "Validate a repository policy before use. On a configuration error the engine refuses to run and does not run a partial policy.",
-  "given": "a policy, the running engine version, the capabilities the consumer can effect, and the repository units it bound",
+  "given": "the four inputs Section 6.10 names: the policy, what the engine holds independently of the invocation (here its running version; backend descriptors are not modelled, see notes), the actions the consumer can effect, and the repository units it bound",
   "expect": "`{ valid: true }`, or `{ error: <config reason> }` naming the Section 6.10 reason the refusal carries",
   "notes": [
     "Each failing vector holds exactly one condition, so the reported reason is determined. Which reason is reported when several conditions hold is Implementation-defined (Section 6.10) and is deliberately not exercised here.",

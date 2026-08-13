@@ -1,4 +1,4 @@
-# Sessions — 0085 The forge repository coordinate is the consumer's, named in Section 8.1
+# Sessions — 0085 The forge repository coordinate is the consumer's
 
 <!--
 Every Claude Code session that worked on this decision. The session id is the transcript filename

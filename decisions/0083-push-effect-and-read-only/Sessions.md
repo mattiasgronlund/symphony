@@ -1,4 +1,4 @@
-# Sessions — 0083 The push guarantee is quantified over the effect, and a read may write its own bookkeeping
+# Sessions — 0083 The push guarantee is quantified over the effect
 
 <!--
 Every Claude Code session that worked on this decision. The session id is the transcript filename

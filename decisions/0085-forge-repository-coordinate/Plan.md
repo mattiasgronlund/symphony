@@ -1,4 +1,4 @@
-# Plan — 0085 The forge repository coordinate is the consumer's, named in Section 8.1
+# Plan — 0085 The forge repository coordinate is the consumer's
 
 ## Scope
 

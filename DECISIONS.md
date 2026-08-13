@@ -2619,7 +2619,13 @@ property of the worktree and stays `hook_unanswered`. Cost: one reason, permanen
 absorbed by the `#class` fallback so no consumer changes; and a repository gains what B cannot give
 it — "if the gate does not answer, park" is an edge somebody can write. Reconsider if one number
 proves wrong for the real spread, or if the `outputs` report of a killed `after` hook proves to have
-no consumer. Relates to 0084 (which takes this token rather than minting its own), 0060, 0057, 0056
+no consumer. Review on PR #40 found the `after` half covering **one** condition where the gate half
+covered three — a result-triggered hook the engine could not start was neither `hook_unanswered`
+(that reason is `(any gated)`) nor reportable under `unfinished_hooks` (scoped to hooks stopped at
+the bound), so it was silently dropped, which is what Section 5.4 forbids and what that bullet cites
+as its own reason for reporting the bound case; both are widened to "gave the engine no usable
+answer", keeping the division by whether anything waits rather than by which condition occurred.
+Relates to 0084 (which takes this token rather than minting its own), 0060, 0057, 0056
 and 0066. Accepted and applied to `VCSX-SPEC.md` (Sections 4.3, 5.6, 6.6, 6.10, 8.2, 13.1, 13.2,
 13.3), `conformance/vcsx/vocabulary.json`, `conformance/vcsx/vectors/policy-validation.json`,
 `conformance/vcsx/README.md` and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
@@ -2738,7 +2744,15 @@ quantifying over the history, the remote and the content a `commit` would captur
 26 and 28 both had, where a rule holding for one capability and not its neighbour is the next report.
 Reconsider if a backend appears whose transport can satisfy the effect requirement only by a
 mechanism the document would have to name, or if the read-only definition proves too permissive for a
-consumer mediating by filesystem observation. Relates to 0073, 0079, 0076 and 0063. Accepted and
+consumer mediating by filesystem observation. Review on PR #40 found the read allowance introducing a
+**new undefined absolute in the place this decision had just removed one**: it said a backend writing
+bookkeeping state MUST NOT write to "the history", a term nowhere defined here, and `jj status`
+snapshots the working copy into the working-copy commit — writing a commit object and moving a ref —
+so the literal reading defeats the very backend the allowance was written for. Both ends now quantify
+over three named things: the content a `commit` would capture, the commits reachable from the work
+branch or the resolved base, and what the remote holds; a commit no branch the engine named reaches
+is not one of them, because what the reads report against and what a `push` publishes are branches.
+Relates to 0073, 0079, 0076 and 0063. Accepted and
 applied to `VCSX-SPEC.md` (Sections 4.1, 9.1, 11, 13.1, 13.2, 13.3), `conformance/vcsx/README.md` and
 `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
 
@@ -2796,8 +2810,16 @@ one precondition reason and one exit code, all permanent within a `MAJOR`, and S
 two reasons in a `MINOR` with the `usage_or_config` status absorbing them. Reconsider if a runtime
 makes exit `1` unreadable as a reserved meaning (the any-other-code clause still holds), or if
 `template_unbound` proves to need a checkout to judge, which would mean the judgement input was
-widened in the wrong direction. Relates to 0081, 0082, 0065, 0056 and 0075/0076. Accepted and applied
-to `VCSX-SPEC.md` (Sections 6.10, 8.1, 8.3, 8.6, 13.1, 13.2), `conformance/vcsx/vocabulary.json`,
+widened in the wrong direction. Review on PR #40 found four defects in the follow-through, none
+changing the chosen option and all recorded append-only in `Background.md`: the judgement input was
+stated as a **closed** list that excluded `version_floor_unmet`'s own input, the running engine
+version — this decision's contribution reproducing, one section over, the failure 0082 diagnoses;
+`policy-validation.json`'s `given` named a *different* four from Section 6.10's, so two authoritative
+lists disagreed; Section 8.5 nowhere said a reserved exit code was permitted, though it fixes the
+exit-code mapping as major-stable and enumerates what a `MINOR` may add; and Section 8.6's opening
+sentence was false for `arguments_unreadable`, the one row it does not cover, with the carve-out
+stated three paragraphs later. Relates to 0081, 0082, 0065, 0056 and 0075/0076. Accepted and applied
+to `VCSX-SPEC.md` (Sections 6.10, 8.1, 8.3, 8.5, 8.6, 13.1, 13.2), `conformance/vcsx/vocabulary.json`,
 `conformance/vcsx/vectors/policy-validation.json`, `conformance/vcsx/vectors/exit-codes.json` and
 `conformance/vcsx/README.md`.
 

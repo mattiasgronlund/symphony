@@ -1,4 +1,4 @@
-# Background — 0082 `[messages.squash] strategy` defaults to `merge`, and a configuration error is judged from more than the document
+# Background — 0082 `[messages.squash] strategy` defaults to `merge`
 
 ## Context
 
@@ -123,6 +123,21 @@ a `MAJOR`. `merge` is itself not guaranteed by a descriptor — Section 9.2 decl
 strategies supported" — so a forge that cannot perform a plain merge now fails on a default nobody
 wrote; the repaired check catches exactly that at validation rather than on the day someone lands,
 which is the disposition Section 9.3 asks for.
+
+## Review findings applied (PR #40)
+
+One wording correction, no change of rule. `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` said a backend
+that does not declare `merge` "refuses a policy" — the backend declares its strategies and the
+**engine** refuses the policy at validation, which is the whole point of putting the check on the
+configuration side rather than at first use. Restated so the actor is the engine.
+
+Recorded here rather than fixed silently because the slip inverts this decision's own division of
+labour, and the Statement is where a reader checks it.
+
+Related, and logged in decision 0084 where the sentence lives: Section 6.10's enumeration of what
+validation is judged from — the repair this decision's Section 8.6 rewrite leans on — was itself
+stated as a closed list that omitted `version_floor_unmet`'s input. That is this decision's own
+diagnosis recurring one section over, and it is corrected there.
 
 ## Reconsideration trigger
 

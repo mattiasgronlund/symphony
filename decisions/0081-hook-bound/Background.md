@@ -1,4 +1,4 @@
-# Background — 0081 A hook bound is a bound on a unit, and an unanswered hook is the operation's reason
+# Background — 0081 A hook bound is a bound on a unit, not on the flow
 
 ## Context
 
@@ -152,6 +152,33 @@ reason in a `MINOR` and the `#class` fallback absorbs it, so no consumer changes
 new REQUIRED behaviour for every engine, which is the point rather than the cost. And a repository
 gains what B cannot give it: `commit:hook_unanswered` is a trigger, so "if the gate does not answer,
 park" is an edge somebody can write.
+
+## Review findings applied (PR #40)
+
+Two findings against the follow-through, both the same defect and both this decision's own stated
+failure mode recurring one clause over. The chosen option is unchanged; what changed is that the
+disposition now covers the conditions the reason already did.
+
+**The `after` half covered one condition where the gate half covered three.** As first written,
+Section 6.6's `before:*` bullet folded three conditions into `hook_unanswered` — the bound elapsed,
+the unit could not be started, its answer could not be read — while the `after` bullet spoke only of
+the bound elapsing, and Section 8.2 scoped `unfinished_hooks` to the hooks "stopped at its hook
+bound". So a result-triggered hook the engine could not start was neither: `hook_unanswered` is
+`(any gated)`, and nothing had stopped it at a bound. It was silently dropped — which is what
+Section 5.4 forbids and what that bullet cites as its own reason for reporting the bound case.
+
+Both are widened to "gave the engine no usable answer", so the division stays where this decision put
+it — by whether anything waits on the answer — rather than drifting to which condition occurred.
+`unfinished_hooks` is now the non-gating half's mirror of `hook_unanswered`, and both carry which of
+the three conditions occurred in `outputs`, since the reason routes and the condition diagnoses.
+
+That the gap survived the drafting is itself worth recording: the decision reasoned carefully about
+the gate half, where the token is, and treated the `after` half as the easy case. The easy case is
+where the no-silent-drops principle had nothing enforcing it.
+
+**A pre-existing count corrected in passing.** `conformance/vcsx/README.md` claimed Section 4.3's
+table yields its entries from 33 rows; the base was already wrong at 34, and this decision's
+recount fixed the entry total while carrying the row error forward. It is 35 rows, 56 entries.
 
 ## Reconsideration trigger
 

@@ -1,4 +1,4 @@
-# Plan — 0081 A hook bound is a bound on a unit, and an unanswered hook is the operation's reason
+# Plan — 0081 A hook bound is a bound on a unit, not on the flow
 
 ## Scope
 

@@ -75,7 +75,7 @@ The registry is a faithful view, not a byte-for-byte transcription. Two places i
 - **`reasons`** is keyed one entry per `(operation, reason)`. Section 4.3's combined rows expand: the
   `status` / `diff` row to `status:ok` and `diff:ok`, and the four universal rows to one entry per
   operation they cover — `failed` and `unsupported` for every operation, `blocked` and
-  `hook_unanswered` for every gated one, each marked `universal: true`. So 34 table rows yield 56
+  `hook_unanswered` for every gated one, each marked `universal: true`. So 35 table rows yield 56
   entries.
 - **`operations`** carries `lifecycle_position: null` for the operations Section 4.1 gates at no fixed
   position (`integrate`, `pull`) and for the read-only ones (`status`, `diff`), rather than omitting
