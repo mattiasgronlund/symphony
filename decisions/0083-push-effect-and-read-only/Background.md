@@ -147,6 +147,28 @@ stated in one VCS's vocabulary, met by an implementer who then has to choose bet
 working. It is recorded rather than quietly fixed because the recurrence is the point — the first
 draft of a repair for that failure reproduced it.
 
+**Second round: the repair moved the ambiguity rather than removing it.** Scoping the prohibition to
+the commits a branch reaches is only equivalent to "a read changes nothing" under an arrangement the
+document did not name. Measured on jj 0.44.0, the version this decision cites:
+
+```
+bookmark at @    work -> 0b66e568…   [modify worktree]   jj status   ->  14bd5a43…   CHANGED
+bookmark at @-   work -> 2c8e9dd2…   [modify worktree]   jj status   ->  2c8e9dd2…   unchanged
+```
+
+With the work bookmark on the working-copy commit, a pure read rewrites that commit and carries the
+bookmark with it: the commits reachable from the work branch change, and the revision a subsequent
+`push` would publish is not the one that existed before the read. That is the read-only test failing
+on a read, by the exact mechanism the allowance blesses. With the bookmark one behind, it holds —
+which is the arrangement the scoping was reasoned against without saying so.
+
+Section 9.1 now requires it: a backend that records the working tree as a commit MUST keep that
+commit outside what the work branch reaches. That is checkable, it is a property of the backend
+rather than of the VCS, and it leaves the mechanism to the backend as everything else here does. The
+lesson is the same one twice in one decision — a guarantee is only as good as the arrangement it
+silently assumes, and this decision exists because silence about which reading is required is what
+produces the report.
+
 ## Reconsideration trigger
 
 Reconsider if a VCS backend appears whose transport can satisfy the effect requirement only by a

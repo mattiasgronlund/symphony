@@ -2751,8 +2751,14 @@ snapshots the working copy into the working-copy commit — writing a commit obj
 so the literal reading defeats the very backend the allowance was written for. Both ends now quantify
 over three named things: the content a `commit` would capture, the commits reachable from the work
 branch or the resolved base, and what the remote holds; a commit no branch the engine named reaches
-is not one of them, because what the reads report against and what a `push` publishes are branches.
-Relates to 0073, 0079, 0076 and 0063. Accepted and
+is not one of them, because what the reads report against and what a `push` publishes are branches. A
+second round found that repair **conditional on an arrangement the document did not name**: measured
+on jj 0.44.0, a work bookmark kept on the working-copy commit is carried along when a read re-records
+it, so the commits reachable from the work branch change and the revision a `push` would publish
+moves — the read-only test failing on a read, by the mechanism the allowance blesses — while a
+bookmark one behind holds. Section 9.1 now requires a backend that records the working tree as a
+commit to keep that commit outside what the work branch reaches, which is checkable and is a property
+of the backend rather than of the VCS. Relates to 0073, 0079, 0076 and 0063. Accepted and
 applied to `VCSX-SPEC.md` (Sections 4.1, 9.1, 11, 13.1, 13.2, 13.3), `conformance/vcsx/README.md` and
 `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
 

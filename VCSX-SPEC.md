@@ -159,7 +159,8 @@ object store: a backend MAY answer a read by writing to its own staging or bookk
 to the allowance and the documentation obligation Section 9.1 states over its capability list. A
 checkout mode that records the working tree as a commit of its own before it can inspect it
 (Section 3.3) is therefore drivable, because a commit no branch the engine named reaches is not one
-of the three.
+of the three — which is why Section 9.1 requires such a backend to keep that commit outside what the
+work branch reaches, rather than leaving the arrangement to each backend.
 
 - `status` — inspect working state. Outputs: `mode` (Section 3.3), `branch`, `dirty`, `conflicted`,
   `ahead`/`behind` versus the resolved base (Section 6.4), and the pull-request state when a forge
@@ -1112,8 +1113,8 @@ distinguishable in the result envelope.
   likewise be done in a `MINOR`, and is not a change to the exit-code mapping the bullet above fixes:
   the four status-bearing codes and the statuses they map from are untouched. What grows is the set of
   codes a caller may observe, which Section 8.3 already makes total by reading every code outside the
-  four the same way — so a consumer written against an earlier `MINOR` absorbs the reservation without
-  changing.
+  four the same way — so a consumer written against any `MINOR` from the one that states that rule
+  onward absorbs a later reservation without changing.
 - A consumer declares a `version_floor` (Section 6.2); an engine below the floor refuses to run
   (fail-closed) with a usage/config result rather than mis-executing a policy that assumes newer
   surface.
@@ -1335,6 +1336,15 @@ it. It MUST NOT thereby change the content a `commit` would capture, the commits
 work branch or the resolved base (Sections 6.3, 6.4), or what the remote holds, and it MUST document
 where it writes (Section 13.3). Those three are what Section 4.1's "Read-only" quantifies over, read
 from the other end, so a capability and the operation it realizes are held to one test.
+
+A backend that records the working tree as a commit MUST keep that commit outside what the work
+branch reaches. The allowance and the prohibition above are consistent only under that arrangement:
+where the work branch names the recorded commit instead, re-recording it to answer a read moves the
+branch, so the commits reachable from the work branch change and the revision a subsequent `push`
+would publish is not the one that existed before the read — a read failing the second of the three
+by the mechanism the allowance permits. Which arrangement a mode uses is the backend's, and this
+specification requires only that the recorded commit not be reachable from the branch, which a caller
+can check.
 
 The allowance is stated over the list rather than on the capabilities that happen to need it, because
 which capabilities those are is a property of the checkout mode rather than of this specification: a
@@ -1818,7 +1828,9 @@ A conforming engine SHOULD include tests covering:
   backend that answers a read by writing its own bookkeeping state — recording the working tree as a
   commit of its own where the checkout mode requires one — leaves the content a `commit` would
   capture, the commits reachable from the work branch and the resolved base, and what the remote
-  holds all unchanged (Sections 4.1, 9.1); every
+  holds all unchanged, the recorded commit being one the work branch does not reach, so a repeated
+  read against a modified working tree does not move the revision a `push` would publish
+  (Sections 4.1, 9.1); every
   value-answering capability can report that it could not determine its answer, and no such report
   is spelled as the value's absent case (Section 9).
 

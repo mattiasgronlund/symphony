@@ -160,6 +160,14 @@ is not. The carve-out was stated three paragraphs down; the exception is now nam
 made. Leaving it was the same defect 0082 reports against Section 8.6 — one section saying the thing
 twice and differently — and inviting that report back.
 
+**Second round: the Section 8.5 sentence was circular for its own first application.** As written it
+argued that a consumer written against an earlier `MINOR` absorbs a reservation without changing,
+which leans on Section 8.3's any-other-code rule — introduced in the same revision. For every future
+reservation the argument is exact; for exit `1` there is no earlier `MINOR` in which a consumer was
+total. Nothing breaks, since such a consumer had to treat an unrecognized code as unknown anyway, but
+the sentence claimed more than it could. It now reads "any `MINOR` from the one that states that rule
+onward", which is true as written.
+
 **Downstream cost recorded rather than absorbed.** The `no_result_is_one` vector supplies
 `{"status": null}`, which a signature of the shape `exit_code_for_status(status) -> code` cannot
 express without an optional or a separate path, and a help table built by mapping over the statuses
