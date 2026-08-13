@@ -48,6 +48,9 @@ Match these conventions exactly. When in doubt, copy the shape of the nearest ex
 - `Implementation-defined` is a defined term: the behavior is part of the contract but the spec does
   not pick one policy; implementations MUST document their choice. Use it deliberately.
 - Be prescriptive and neutral. State requirements; avoid hedging, marketing, or tutorial tone.
+- A guarantee MUST be stated over something a consumer can check without knowing which backend is
+  underneath. Use the `spec-guarantee` skill when drafting or repairing any MUST/MUST NOT clause
+  that promises an engine or a backend will or will not do something.
 
 ### Structure
 - Decimal section numbering: `## N. Title`, `### N.M Subtitle`, `#### N.M.K Subsubtitle`. Headings
@@ -99,17 +102,10 @@ re-evaluated later without re-deriving its context.
   - `Plan.md` — a detailed plan for how it is implemented in `SPEC.md`.
   - `Sessions.md` — the Claude session name(s) and id(s) that worked on the decision.
 
-Workflow when making or changing a decision:
-
-- Copy `decisions/_template/` to `decisions/NNNN-short-slug/` using the next zero-padded number, and
-  fill in the three files.
-- Add or update the matching chapter in `DECISIONS.md`, including its **State**.
-- Append the current session to that decision's `Sessions.md`. The session id is the transcript
-  filename (without `.jsonl`) under `~/.claude/projects/<project>/`; give it a short human name.
-- Re-evaluating an existing decision is itself logged: update the **State**, extend `Background.md`
-  with the new reasoning rather than erasing the old, and record the session.
-- Prefer making a substantive spec change *after* its decision is captured, so the reasoning is never
-  lost.
+Prefer making a substantive spec change *after* its decision is captured, so the reasoning is never
+lost. Use the `decision-record` skill for the procedure — the folder mechanics, the bar a
+`Background.md` has to clear, and how a re-evaluation or a review finding is logged. Invoke it as
+`/decision-record` in Claude Code and `$decision-record` in Codex.
 
 ### Addressing SPEC.md from a Plan.md (decision 0002)
 
@@ -140,6 +136,10 @@ Skills live under `.agents/skills/` (the canonical copies) and are mirrored to `
 symlinks. In Claude Code invoke them as `/spec-roadmap`, `/phase-workflow`, `/phase-planner`,
 `/phase-behavior-contract`, `/phase-verification`, `/phase-implementer`, and `/phase-closeout`; Codex
 invokes the same skills as `$spec-roadmap`, and so on. `USAGE.md` documents the commands.
+
+`decision-record` and `spec-guarantee` live in the same tree but are **not** part of this dormant
+bundle: they govern the work happening now and are neither described by `USAGE.md` nor checked by
+`scripts/validate_workflow_bundle.py`.
 
 ### Source of truth (once planning begins)
 
