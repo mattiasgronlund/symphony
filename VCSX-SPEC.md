@@ -134,11 +134,16 @@ The `VCS backend` detects and adapts to the checkout mode; policy is written mod
 
 - `git` — a plain git checkout.
 - `jj` — a jj checkout, including a jj checkout colocated on git storage and a jj secondary workspace
-  that has no colocated git storage. In a secondary workspace the backend derives the remote slug and
-  branch from jj rather than from a colocated git remote.
+  that has no colocated git storage. In a secondary workspace the backend resolves the remote
+  (Section 6.2) and the work branch from jj rather than from a colocated git remote.
 
 The mode is reported by the `status` operation (Section 4.1) and is `Implementation-defined` in its
 detection mechanism; the backend MUST document how it detects the mode.
+
+No checkout mode carries the forge repository coordinate. Which repository on the code host the forge
+operations act against is supplied by the consumer (Sections 8.1, 11) and is not derived from the
+checkout in any mode, so a backend that resolves a remote from jj resolves the version-control remote
+and nothing about the forge.
 
 ## 4. Operations and the Operation Model
 
@@ -146,6 +151,13 @@ detection mechanism; the backend MUST document how it detects the mode.
 
 Operations are the unit `run_op` runs (Section 5.2). Each is realized through the plugin layer and
 returns a typed result (Section 4.2). Read-only operations carry no lifecycle position.
+
+An operation marked **Read-only** below writes nothing to the history, nothing to the remote, and
+nothing that changes the content a `commit` would capture. The term quantifies over those three and
+not over the bytes on disk: a backend MAY answer a read by writing to its own staging or bookkeeping
+state, subject to the allowance and the documentation obligation Section 9.1 states over its
+capability list. A checkout mode that records the working tree as a precondition of inspecting it
+(Section 3.3) is therefore drivable, and what the operation guarantees is what a caller relies on.
 
 - `status` — inspect working state. Outputs: `mode` (Section 3.3), `branch`, `dirty`, `conflicted`,
   `ahead`/`behind` versus the resolved base (Section 6.4), and the pull-request state when a forge
@@ -239,14 +251,15 @@ release (Section 8.5) and existing consumers absorb them through the `#class` fa
 document any reason it adds beyond this registry and MUST NOT change a listed reason's class within a
 major version.
 
-Three reasons are **universal**, carried in the table with `(any)` in place of an operation and listed
+Four reasons are **universal**, carried in the table with `(any)` in place of an operation and listed
 once rather than repeated per operation: `failed` and `unsupported` are defined for every operation,
-and `blocked` for every operation gated at a lifecycle position (Section 4.1).
+and `blocked` and `hook_unanswered` for every operation gated at a lifecycle position (Section 4.1).
 
 | Operation | Reason | Class | Meaning |
 |-----------|--------|-------|---------|
 | `(any)` | `failed` | `error` | The operation failed, including when a `before:<op>` hook blocked it with an `error` result (Section 6.6). |
 | `(any gated)` | `blocked` | `needs_caller` | A `before:<op>` gate or scan blocked the operation (Section 6.6). |
+| `(any gated)` | `hook_unanswered` | `error` | A `before:<op>` hook gave the engine no usable answer: its bound elapsed, the unit could not be started, or its answer could not be read (Section 6.6). |
 | `(any)` | `unsupported` | `error` | The operation requires a plugin capability the backend does not declare (Section 9.3). |
 | `commit` | `ok` | `done` | A commit was created. |
 | `commit` | `nothing_to_commit` | `done` | No changes to commit; benign no-op. |
@@ -327,12 +340,22 @@ built-in `needs_caller` default escalates it (Sections 5.3, 5.4). Only absence r
 supplied identity is judged for shape before the policy runs whatever the entry (Section 8.6), so a
 malformed one is `identity_invalid` in every invocation.
 
+`blocked`, `failed` and `hook_unanswered` divide a `before:<op>` position's outcomes by what the hook
+did. A gate that answered and refused with a `needs_caller` result is `blocked`; one that answered
+with an `error` result is `failed` (Section 6.6). A gate that gave the engine no usable answer at all
+is `hook_unanswered`, because a block is something the hook did and a hook that never answered decided
+nothing — the engine did. Collapsing the two would put a gate that ran and refused and a gate that is
+broken on one token carrying different repairs, and a repository binding `<op>:failed` to an action
+could not tell them apart. Which of the three conditions produced `hook_unanswered` is diagnosis
+rather than routing, and is reported in `outputs` (Section 8.2) rather than in a token, because the
+repair is the same shape in each case.
+
 Every operation therefore has at least one `done` reason and at least one `error` reason, so an
 `error`-class result is expressible for every operation including the read-only ones; every gated
 operation additionally has a `needs_caller` reason. `integrate` and `pull` are gated at no fixed
 position and `status` and `diff` carry no lifecycle position (Section 4.1), so none of the four
-carries `blocked`. An engine that defines an additional operation, and a `before:<op>` position for
-it, defines the same universal reasons for that operation.
+carries `blocked` or `hook_unanswered`. An engine that defines an additional operation, and a
+`before:<op>` position for it, defines the same universal reasons for that operation.
 
 ## 5. The Action-Policy Machine
 
@@ -509,6 +532,14 @@ An engine MAY impose further bounds on a running flow, a wall-clock deadline for
 by any bound the engine imposes reaches the same result, so the envelope does not reveal which one
 fired, and the engine MUST document each bound it imposes (Section 13.3).
 
+The bound Section 6.6 requires on a hook is not one of those, and the difference is what each bound
+stops. A bound on a running flow stops the **executor**: the pending `run_op` is not dispatched and
+the invocation ends. A hook bound stops **one unit at one position** inside a dispatch that is already
+under way; the flow is not stopped, the gated operation reports `hook_unanswered` (Section 4.3), and
+that result re-enters the machine as any operation result does. Routing it to `flow_exhausted` would
+say the graph does not converge for a flow whose graph was never in question, and would discard the
+two facts a caller acts on — which position, and which unit.
+
 ## 6. `repo.policy.toml` Schema
 
 ### 6.1 File Discovery and `vcsx.toml` Merge
@@ -537,8 +568,11 @@ fired, and the engine MUST document each bound it imposes (Section 13.3).
     `Implementation-defined` and MUST be documented (Section 13.3).
 
 The backend selection is read here in both standalone and embedded use. An embedding consumer supplies
-the *credential* the selected backend uses (Section 9), not the selection — so which code host a
-repository targets is repository-owned, while the credential for it is the consumer's.
+the *credential* the selected backend uses (Section 9) and the *forge repository coordinate* it acts
+against (Section 8.1), not the selection — so which code host a repository targets is
+repository-owned, while the credential for it and the repository on it are the consumer's. The split
+is not arbitrary: the host a repository publishes to is a property of its Way of Working, while which
+repository a credential is presented to is a decision that belongs with the credential (Section 11).
 
 The remote is repository-owned on the same reasoning: a repository that publishes its work branch to
 a fork, or that carries more than one remote, states which one here rather than leaving two
@@ -644,6 +678,15 @@ context = "host_side"          # runs with host access; MAY receive repo-interna
 run = "..."
 ```
 
+The table's keys:
+
+- `run` (string) — the engine-invoked unit. REQUIRED for a declared hook; its form is
+  `Implementation-defined` and MUST be documented (Section 13.3). A `[hooks.<name>]` table declaring
+  no `run` is a configuration error (Section 6.10).
+- `context` (string) — `host_side` or `in_sandbox` (Section 3.2).
+
+How the engine treats a hook:
+
 - A `before:*` (host-side or in-sandbox) hook MAY block by returning a `needs_caller` or `error` result
   with a stable reason. The engine surfaces the block as the gated operation's own reason, preserving
   the class: a `needs_caller` result surfaces as `<op>:blocked` and an `error` result as
@@ -654,6 +697,43 @@ run = "..."
 - An `after`/result-triggered hook is best-effort and does not block.
 - A host-side hook MAY receive repo-internal integrity values from the consumer's environment; an
   in-sandbox hook MUST NOT receive credentials or integrity values.
+
+A hook is the one place the engine hands control to a program this specification does not describe, so
+an engine MUST bound the time it waits for a hook to answer. The bound's value is
+`Implementation-defined` and MUST be documented (Section 13.3); it MUST admit a configured value of at
+least 600 seconds, and an engine that lets a deployment configure it MUST hold the configured value to
+the same floor. The floor's exact value is arbitrary in the way Section 5.6's is; that it is fixed is
+not, because a repository whose `before:commit` gate is its own test suite otherwise runs on one
+engine and not on another.
+
+What exceeding the bound produces divides with the division the bullets above already draw, by whether
+anything waits on the answer:
+
+- A `before:*` hook that has not answered when the bound elapses is stopped, and the gated operation
+  reports `hook_unanswered` (Section 4.3). The operation does not act: a gate that did not answer
+  never yields a pass, and the result re-enters the machine, so a repository MAY bind it and the
+  built-in `error` default fails the flow where none does (Sections 5.3, 5.4). A hook the engine could
+  not start, and one whose answer the engine could not read in the form it fixed, reach the same
+  reason — the engine got no usable answer, whichever way it failed to get one.
+- An `after`/result-triggered hook that has not answered when the bound elapses is stopped and the
+  flow continues unchanged, which is "best-effort and does not block" read literally. Stopping it
+  costs the flow nothing, where waiting holds an invocation open indefinitely. The engine reports each
+  such hook in `outputs` (Section 8.2) rather than dropping it, on the principle that forbids silently
+  dropping an intent no consumer performed (Section 5.4).
+
+The bound is the consumer's, and `[hooks]` carries no key for it. A `timeout_ms` a repository writes
+here is an unknown key and is ignored (Section 6.1). The reason is Section 3.2: the in-sandbox half of
+this table is worktree-sourced by design, so a bound declared here would be a bound the bounded thing
+sets — a hook that hangs and a hook that raised its own ceiling to a day are the same hook — and the
+engine labels contexts without enforcing the sourcing rule, so it never learns which revision a value
+came from and cannot admit the key host-side while refusing it in-sandbox. The bound arrives the way
+Section 11 has the credential arrive: the repository owns which unit runs, and the consumer owns how
+long the machine will wait for it.
+
+Note: the bound is on the engine's wait, not on the machine. Stopping a unit does not end what that
+unit started, so a hook that answers and leaves a descendant process holding the channel the engine
+reads is read from until the bound elapses. The invocation is bounded; the host is not, and a consumer
+that needs the stronger property provides it around the engine.
 
 A position gates the operation on the state it inspected. Where that state has an identity the backend
 can name, the engine takes the identity when the position completes, and the operation acts on that
@@ -715,6 +795,30 @@ strategy   = "squash"          # merge strategy: "squash" | "merge" | "rebase"
 transform  = "pr_to_squash"    # a repo-owned transform applied at before:merge (Section 10.3)
 ```
 
+- `strategy` (string, OPTIONAL) — the merge strategy the `merge` operation requests of the forge
+  (Sections 9.2, 10.3). One of `squash`, `merge` or `rebase`. A value the schema does not admit is a
+  configuration error (Section 6.10) rather than a silently defaulted one, because Section 6.1's
+  forward-compatibility rule covers a key the schema does not declare and not a declared key whose
+  value it does not admit.
+  - Default: `merge`.
+
+The default is stated here rather than left to the engine because it decides what a `land` writes to a
+repository's base branch where the policy says nothing, and two conforming engines choosing
+differently write different durable history there — a difference visible only to someone reading the
+log afterwards. `merge` is the default because it is the one strategy of the three under which the
+commits the engine wrote survive into that history as written: each was gated at `before:commit`
+(Section 4.1) and attributed to the caller-supplied commit identity (Section 10.1), where `rebase`
+re-parents them and `squash` collapses them into a commit the code host authors. Preferring the
+strategy that preserves what the engine gated is the posture this specification states wherever it
+states one — no operation that updates the work branch rewrites, drops or re-parents a commit already
+on it, and an update that reconciles a divergence merges (Sections 4.1, 11). A repository whose Way of
+Working is to rewrite states that here.
+
+Note: Section 11's statement that a `rebase` or `squash` strategy "is not an exception" scopes the
+work-branch guarantee — such a strategy writes to the base branch, which is a different branch — and
+does not rank the three against one another. The default above rests on what each strategy does to the
+commits, not on that sentence.
+
 ### 6.9 `[tasks]` and `[driver]`
 
 When the consumer runs the OPTIONAL task model (Section 7.3), these tables configure it:
@@ -741,6 +845,7 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | A discovered `repo.policy.toml`, or a `vcsx.toml` merged into it, that does not parse (Section 6.1) | `malformed_policy` |
 | A key whose value does not satisfy the constraints its section states — an `[engine] version_floor` that is not a `MAJOR.MINOR` version (Sections 6.2, 8.5), for example | `malformed_policy` |
 | An edge whose action cannot be dispatched from the arguments it carries — a `run_op` with no `op`, a `run` with no `hook` (Sections 5.2, 6.5) | `malformed_policy` |
+| A declared hook that names no unit to run — a `[hooks.<name>]` table with no `run` (Section 6.6) | `malformed_policy` |
 | An edge's `on` is not a trigger the engine recognizes (Section 6.5) | `unknown_trigger` |
 | An edge's `do` is not a known action (Section 5.2) | `unknown_action` |
 | A `run_op` names an operation the engine does not define (Section 4.1) | `unknown_operation` |
@@ -750,16 +855,38 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | A cycle of lifecycle positions, each position's `run_op` edge dispatching the operation the next position gates, so no operation on the cycle can run (Sections 4.1, 5.6) | `position_cycle` |
 | A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map (Section 6.4) | `base_unresolvable` |
 | A `set_state`/transition binding without a consumer that can apply it (Section 5.2) | `set_state_unbound` |
+| A `[messages.pr]` `body_source = "template"` with no template unit bound (Sections 5.2, 10.2) | `template_unbound` |
 | A policy requiring a capability no configured backend declares (Section 9.3) | `capability_unsupported` |
 | A `version_floor` above the running engine version (Section 8.5) | `version_floor_unmet` |
 
-The first three conditions are well-formedness failures and the rest are consistency failures, and
+The first four conditions are well-formedness failures and the rest are consistency failures, and
 the order is not incidental: validation takes a document, and a policy that does not parse yields
 none for the checks below it to run against. `malformed_policy` covers a well-formedness failure no
 other condition in the table names; where another names the state — a missing or malformed
 `prefixes` map is `base_unresolvable` (Section 6.4) — that condition's reason is reported.
 Section 6.1's rule that an unknown key SHOULD be ignored for forward compatibility covers a key the
 schema does not declare, not a declared key whose value the schema does not admit.
+
+Validation is judged from four inputs and no others, and naming them is what makes "determinable
+before the policy runs" a question with an answer (Sections 8.6, 9.3):
+
+- the policy document, with `vcsx.toml` merged in (Section 6.1);
+- what the engine holds independently of the invocation — the descriptors its configured backends
+  advertise (Section 9.3) and its own defaults (Section 6.8), which is what `capability_unsupported`
+  turns on;
+- the actions the consumer can effect (Section 5.2), which is what `set_state_unbound` turns on;
+- the repository units the consumer bound, which is what `template_unbound` turns on.
+
+The last is stated rather than left to inference because a template is a Section 10.2 repository unit
+and not a Section 5.2 action, so an engine judging only the document and the action set would find the
+condition undeterminable and defer it to first use — and first use of a `template` body source is a
+`create_pr`, which a `ship` reaches only after it has pushed (Section 12.2). A policy that cannot
+compose a body would then publish a work branch before saying so.
+
+What is *not* judged here is what only a checkout or a run can answer. Whether the unit a `run` names
+exists and can be started is a property of the worktree rather than of the document, so a hook the
+engine could not start is `hook_unanswered` at first use (Sections 4.3, 6.6) and not a configuration
+error; a `[hooks.<name>]` that names no unit at all is the document's own defect and is refused here.
 
 Two boundaries against neighbouring reasons follow. `version_floor_unmet` names a floor the engine
 read and does not satisfy; a floor it cannot read is `malformed_policy`. The engine refuses either
@@ -815,8 +942,8 @@ nothing is merged, and `land` re-reads and retries within the flow bound (Sectio
 
 An embedded driver invokes the same executor programmatically. It:
 
-- supplies the execution context (host-side vs in-sandbox sourcing, Section 3.2) and the credentials the
-  plugins use;
+- supplies the execution context (host-side vs in-sandbox sourcing, Section 3.2), the credentials the
+  plugins use, and the forge repository coordinate where a forge is configured (Section 8.1);
 - binds `escalate` to its own resolver (Section 5.5) — for example an automation service that turns an
   escalation into an agent-assigned task;
 - MAY run a **task model**: tasks with an `id`, a `description`, a `status` (`open`/`closed`/`blocked`),
@@ -844,11 +971,30 @@ The entry points are the front-end sequences and the individual operations:
 
 Common arguments: the identity the work branch is derived from (Section 6.3), the commit identity
 the commits an entry writes are attributed to (Section 10.1), a message input for
-`commit`/`create_pr` (Section 10), and the execution context (Section 3.2). The two identities are
+`commit`/`create_pr` (Section 10), the forge repository coordinate where a forge is configured
+(Section 6.2), and the execution context (Section 3.2). The two identities are
 separate arguments: the first fills the work-branch pattern and the second names an author, and a
 consumer supplies each where its capability takes one (Section 9.1). Exact argument encodings are
 `Implementation-defined` and MUST be documented; argument *names* for shared concepts MUST match
 this specification.
+
+The **forge repository coordinate** names which repository on the code host the forge operations act
+against (Section 9.2). It is REQUIRED where `[engine] forge` is configured and carries no meaning
+where none is, and its absence where one is configured is refused before the policy runs
+(Section 8.6). The engine holds it opaque, as it holds the commit identity (Section 10.1) and the base
+ref (Section 6.4) opaque: it takes one, supplies it to the forge backend, and does not interpret it.
+Its shape is therefore the backend's, and a coordinate a backend cannot use is that backend's own
+`failed` at first use rather than a shape the engine judged.
+
+A front-end MAY derive the coordinate from the resolved remote and supply it, rather than requiring a
+caller to state it on every invocation; a front-end that does MUST document how. Encodings are the
+front-end's, as above, and deriving it there keeps the derivation on the same side of the trust
+boundary as the credential the coordinate will be used with (Section 11) — which is the whole of why
+the coordinate is the consumer's rather than the checkout's.
+
+An invocation whose arguments the engine cannot decode in the encoding it published is refused with
+the `usage_or_config` status and the `arguments_unreadable` reason (Section 8.6), so the surface this
+section hands the engine carries a defined failure rather than one each engine invents.
 
 ### 8.2 Result Envelope
 
@@ -889,7 +1035,13 @@ Every invocation returns one structured result:
 - `outputs` carries entry-specific structured data (for example `status` fields, the pull-request
   number/state). It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
   the engine emitted and no consumer performed, each naming its `action` and that action's arguments.
-  The key is absent or empty when every emitted intent was performed.
+  The key is absent or empty when every emitted intent was performed. It likewise carries
+  `unfinished_hooks`: the result-triggered hooks the engine stopped at its hook bound (Section 6.6),
+  each naming the hook and the trigger that ran it, absent or empty where none was stopped. A
+  `before:*` hook is not reported there, because the gated operation reports it as `hook_unanswered`
+  (Section 4.3); what `outputs` carries for that reason is which of its conditions occurred — the
+  bound elapsed, the unit could not be started, or its answer could not be read — since the reason
+  routes and the condition diagnoses.
 - A consumer MAY add fields but SHOULD NOT break the fields above within a major version.
 
 ### 8.3 Exit Codes
@@ -901,8 +1053,22 @@ branch without parsing:
 - `10` — `needs_caller` (an escalation is present).
 - `20` — `error`.
 - `2` — `usage_or_config` (Sections 6.10, 8.6); the policy did not run.
+- `1` — the invocation produced no result at all (below); this is not an invocation status.
 
-The JSON result is emitted regardless of exit code so a caller MAY always read structured detail.
+The JSON result is emitted for each of the four status-bearing codes regardless of which, so a caller
+MAY always read structured detail from an invocation that produced one.
+
+An invocation can also end without reaching a Section 8.2 result — the engine's own fault, an abort
+its runtime raised, a signal, an exhausted host. `1` is reserved for that condition: stdout carries
+nothing and the diagnostic goes to stderr. **Any exit code other than the four status-bearing ones
+means the same thing**, which is what makes a caller's mapping total without this specification
+enumerating the ways a process can end. An engine MUST NOT report an invocation status through a code
+outside the four, and MUST NOT exit `1` for an invocation that composed a result.
+
+On every path that produces a result, stdout carries exactly one JSON object and nothing else. That is
+what lets a caller separate "no result" from "result" without parsing, and what keeps a pipeline over
+stdout from breaking on a fault: a consumer reads stdout where the code is one of the four and stderr
+otherwise.
 
 ### 8.4 Escalation Payload
 
@@ -944,19 +1110,28 @@ distinguishable in the result envelope.
 ### 8.6 Invocation Preconditions
 
 Between validating the policy (Section 6.10) and running it, the engine establishes the
-preconditions the invoked entry point depends on, in order, reporting the first that fails. It
+preconditions the invoked entry point depends on, in order, reporting the first that fails. Where a
+forge is configured (Section 6.2) it requires the forge repository coordinate (Section 8.1), whose
+absence it judges itself, because the argument is either present or is not. It
 resolves the work branch (Section 6.3), which calls a VCS backend capability — `derive_work_branch`,
 or `current_branch` where no `branch_pattern` is configured — and judges the name it resolved with
 `accepts_branch_name`. Where the caller supplied a commit identity (Section 10.1) it accepts it with
 `accepts_identity`, whose shape only the backend can judge, because the engine holds identity
 opaque; the shape is judged whatever the entry, so no invocation carries a malformed identity into
-the policy. For an entry that can write a commit — `commit`, `integrate`, `pull`, and a front-end
+the policy.
+
+For an entry that can write a commit — `commit`, `integrate`, `pull`, and a front-end
 sequence that dispatches one — an identity is REQUIRED, and its absence is refused here. Each is a
 capability the backend publishes (Section 9.1), so the order above is established through the plugin
 API rather than inside a backend's own construction, where a refusal would carry no reason for this
 registry to report. A capability consulted here that answers neither yes nor no — a backend that
 could not read the checkout it was pointed at — establishes no precondition either way, and is
 `checkout_unreadable` rather than the refusal its negative answer would have produced (Section 9).
+
+One precondition is established **before** validation rather than after it. An engine that cannot
+decode the invocation's arguments cannot locate the policy it would validate, so
+`arguments_unreadable` is judged first of everything, and the ordering rule this section states
+below holds for every other reason in this registry.
 
 The entry point alone fixes that scope: a front-end sequence that dispatches one means the
 sequence's own dispatches (Sections 12.2, 12.3), so `ship` requires an identity and `land` does not,
@@ -981,6 +1156,8 @@ run in which the policy did not run.
 
 | Condition | Reason |
 |-----------|--------|
+| The invocation's arguments could not be decoded in the encoding the engine published (Section 8.1) | `arguments_unreadable` |
+| A forge is configured (Section 6.2) and no forge repository coordinate was supplied (Section 8.1) | `forge_coordinate_missing` |
 | The work branch is the checkout's current branch (Section 6.3) and the checkout has none | `no_current_branch` |
 | The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
 | The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it whatever the entry (Section 10.1) | `identity_invalid` |
@@ -996,12 +1173,22 @@ operation has run, and once one is dispatched its failure is that operation's ow
 condition — reading it as one would make every precondition reportable as `<op>:failed` and leave
 this registry nothing to name.
 
-What separates this registry from Section 6.10's is what each is judged from. A configuration error
-is a property of `repo.policy.toml` alone, detectable before any argument or checkout is in hand; a
-precondition failure needs the invocation's arguments and the checkout the engine was pointed at.
-Both refuse to run the policy and both report `usage_or_config`, which is why that status names
-usage and configuration together. Validation precedes precondition establishment, so where a
-configuration error and a precondition failure both hold, the configuration reason is reported.
+What separates this registry from Section 6.10's is what each is judged from. A configuration error is
+judged from the policy document together with what the engine holds independently of the invocation —
+the descriptors its configured backends advertise (Section 9.3), its own defaults (Section 6.8), the
+actions a consumer can effect and the repository units it bound (Section 6.10) — while a precondition
+failure needs the invocation's arguments and the checkout the engine was pointed at. Both refuse to
+run the policy and both report `usage_or_config`, which is why that status names usage and
+configuration together. Validation precedes precondition establishment, so where a configuration error
+and a precondition failure both hold, the configuration reason is reported —
+`arguments_unreadable` excepted, for the reason above.
+
+Two boundaries follow from stating it that way. A descriptor field a backend can answer only once it
+has opened the checkout is **not** something the engine holds independently of the invocation, so a
+policy requiring it is not a configuration error and keeps Section 9.3's first-use disposition. And a
+capability a backend declares statically is one the engine holds from the selection alone
+(Section 6.2), so `capability_unsupported` is inside this definition rather than a counterexample to
+it — which is what Section 9.3's "where determinable" refers to.
 
 ## 9. Plugin API
 
@@ -1074,10 +1261,10 @@ Realizes the version-control operations. Required capabilities:
   including content the VCS has not yet recorded (Section 4.1). Its form, and how a backend derives it,
   are `Implementation-defined` and MUST be documented (Section 13.3) — this specification states the
   distinction the value MUST make and leaves the mechanism to the backend, as it does for an
-  acquisition that failed (`fetch_counterpart`) and for a merge conditioned on a head (Section 9.2). A
-  backend MAY derive the identity by writing to its own staging or bookkeeping state, MUST NOT thereby
-  change the content a `commit` would capture, and MUST document the effect where it writes, because
-  the capability is consulted at a position on invocations the gate then blocks.
+  acquisition that failed (`fetch_counterpart`) and for a merge conditioned on a head (Section 9.2).
+  The allowance to derive an answer by writing to the backend's own bookkeeping state is stated below
+  over the whole list; it bites hardest here, because this capability is consulted at a position on
+  invocations the gate then blocks.
 - `commit(message, identity, expected_worktree)` → `commit:*`. `expected_worktree` is the identity
   `worktree_revision()` answered when the working tree was read at `before:commit` (Sections 6.6,
   12.2). The capability MUST NOT create a commit from a working tree whose identity is no longer
@@ -1097,8 +1284,13 @@ Realizes the version-control operations. Required capabilities:
   a failed acquisition is `pull:failed` (Sections 4.1, 4.3).
 - `merge_counterpart(ref, identity)` → `pull:*`, merging the counterpart into the local branch and
   rewriting none of its commits (Section 4.1).
-- `push(remote, work_branch)` → `push:*`, with the refspec pinned to the work branch and never a
-  force push.
+- `push(remote, work_branch)` → `push:*`, with the refspec pinned to the work branch. The capability
+  MUST NOT cause a push that drops, rewrites or re-parents a commit already on the remote work branch;
+  where the push it would make would do so, it sends nothing and reports `push:non_fast_forward`
+  (Section 4.3). The requirement is stated over the effect and names no mechanism, so a backend
+  satisfies it through whatever its transport provides — and a transport whose refusal is conditioned
+  on something else, on the remote not having moved for example, does not satisfy it merely by
+  refusing in the common case (Section 11).
 
 The network-touching capabilities are exactly `fetch_base`, `fetch_counterpart` and `push`: they reach
 the remote, need a credential, and realize the version-control operations Section 3.2 places host-side.
@@ -1123,6 +1315,17 @@ Separating the two that acquire from the two that merge is what makes the enumer
 exhaustive, and it places the half that stops on conflicts — the outcome the caller resolves and
 `commit` finalizes (Section 4.1) — on the local side of the boundary, where the caller that resolves
 it runs.
+
+A backend MAY derive any capability's answer by writing to its own staging or bookkeeping state. It
+MUST NOT thereby change the content a `commit` would capture, MUST NOT write to the history or the
+remote, and MUST document where it writes (Section 13.3). The allowance is stated over the list rather
+than on the capabilities that happen to need it, because which capabilities those are is a property of
+the checkout mode rather than of this specification: a mode that records the working tree as a
+precondition of inspecting it cannot answer `is_dirty()`, `is_conflicted()` or `worktree_revision()`
+without writing, and answering from a stale record instead would report a determinate value the
+backend did not establish, which Section 9 forbids. This is also what Section 4.1's "Read-only" leaves
+room for: a read that writes bookkeeping is still read-only over the history, the remote, and the
+content a `commit` would capture, which are the three things a caller relies on.
 
 `remote` is the resolved remote (Section 6.2) and `base_ref` is the resolved base ref (Section 6.4),
 both supplied by the engine; a backend reads neither from the policy nor infers one from the checkout's
@@ -1176,6 +1379,12 @@ Realizes the pull-request and review operations. Required:
   not determine the pull request's head there is no `expected_head` to supply, and the operation
   reports `merge:failed` rather than merging blind.
 
+Every capability above acts against the forge repository coordinate the consumer supplied
+(Section 8.1), which the engine supplies to the backend as it supplies the resolved remote to the
+version-control capabilities (Section 9.1). No signature above takes a repository and a backend infers
+none: which repository on the code host is acted on is neither read from the policy nor derived from
+the checkout (Sections 3.3, 11).
+
 Every capability above reaches the code host, needs a credential, and realizes an operation Section
 3.2 places host-side; the forge plugin has no local half for an enumeration like Section 9.1's to
 separate. What a consumer mediates is therefore Section 9.1's three network-touching capabilities
@@ -1197,6 +1406,16 @@ requires an unsupported capability (for example a squash strategy a forge cannot
 configuration error surfaced at validation where determinable, carrying `capability_unsupported`
 (Section 6.10); where it is not determinable before the policy runs, it surfaces at first use as the
 operation's `unsupported` reason (Section 4.3).
+
+What is determinable follows from what validation is judged from (Sections 6.10, 8.6). A capability a
+backend declares statically follows from the backend selection alone, so a `[messages.squash]
+strategy` no configured forge declares is refused at validation — whether the policy states the
+strategy or takes the Section 6.8 default, since the engine holds its own default. What remains on the
+first-use side is a capability required by an operation an engine defines beyond Section 4.1, an
+OPTIONAL capability such an operation reaches, and a descriptor field a backend can answer only once
+it has opened the checkout. None of those is reachable through the required operation set and the
+policy keys this specification defines, so a Conformance Statement claiming the first-use half names
+the operation or optional capability it demonstrated the claim against (Section 13.1).
 
 ## 10. Message Formulation
 
@@ -1269,11 +1488,23 @@ one:
   credentials. The capabilities that touch the network are named and enumerable — three of the VCS
   backend's and every required capability of the forge backend (Sections 9.1, 9.2) — so what a
   consumer mediates is a fixed list rather than something inferred from an operation's description.
-- The engine pins every push refspec to the derived work branch and never force-pushes, so a consumer's
-  scope guard has a fixed target. No operation that updates the work branch rewrites, drops, or
+- The engine pins every push refspec to the derived work branch, so a consumer's scope guard has a
+  fixed target, and no push the engine causes drops, rewrites or re-parents a commit already on the
+  remote work branch (Section 9.1). The second is a property of the effect and not of the transport: a
+  guard written against the presence or absence of a flag tests the mechanism a backend happens to use
+  rather than the guarantee, and a transport that refuses on a different condition — that the remote
+  has not moved, for example — meets the guarantee only where it also refuses a push that would drop a
+  commit the remote already carries. No operation that updates the work branch rewrites, drops, or
   re-parents a commit already on it — an update that reconciles a divergence merges (Section 4.1) — so
-  the branch remains publishable without a force push. A `rebase` or `squash` merge strategy
+  the branch remains publishable without rewriting it. A `rebase` or `squash` merge strategy
   (Section 6.8) is not an exception: it writes to the base branch.
+- The consumer supplies the forge repository coordinate (Section 8.1) with the credential it is used
+  under, and the engine derives neither from the checkout. Which repository a credential is presented
+  to is therefore one decision made by one party. A coordinate read from the checkout or from the
+  policy would let a writer with access to either redirect a credentialed operation to a repository
+  the credential's holder did not choose, and Section 3.2 leaves the sourcing boundary to the consumer
+  rather than enforcing one that would prevent it. The service the credential is presented to travels
+  with the credential on the same reasoning: the engine runs where both are already held.
 - The engine performs no repository provisioning and reads no base or branch from untrusted content;
   base resolution is configuration (Section 6.4).
 
@@ -1497,6 +1728,16 @@ A conforming engine SHOULD include tests covering:
   `status` entry routing `status:ok` to `run_op` `commit` — runs `before:commit` and is blocked there
   identically, the position travelling with the dispatch rather than with the caller
   (Sections 4.1, 5.2).
+- Hook bounding: a `before:<op>` hook that has not answered when the engine's bound elapses yields
+  `<op>:hook_unanswered` and no operation effect, rather than `<op>:blocked`, `<op>:failed` or a
+  `flow_exhausted` hold, and the result re-enters the machine so a repository edge on it is taken; a
+  hook the engine could not start and one whose answer it could not read yield the same reason, with
+  `outputs` distinguishing the three conditions; a gate that answered with an `error` result still
+  yields `<op>:failed`, so a broken gate and a refusing gate are distinguishable; a result-triggered
+  hook that has not answered when the bound elapses is stopped, leaves the flow unchanged, and is
+  reported in `outputs`; a `[hooks.<name>]` declaring no `run` is refused at validation with
+  `malformed_policy` while a `run` naming a unit that does not exist is `hook_unanswered` at first use
+  (Sections 4.3, 6.6, 6.10).
 - Front-ends: `ship` stops at the pull request, and over a working tree its guard reads as clean
   dispatches no `commit` and so enters no `before:commit` (Sections 4.1, 12.2); `ship` retries a
   `commit:worktree_moved` by re-dispatching the operation, which re-runs `before:commit` and reads the
@@ -1522,19 +1763,41 @@ A conforming engine SHOULD include tests covering:
   identity precondition does not cover — a `status` whose policy routes `status:ok` to `run_op`
   `commit` — runs the policy and reports `commit:identity_missing`, class `needs_caller`, rather
   than a precondition reason, while a malformed identity supplied to that same entry is refused
-  before the policy runs (Sections 4.3, 8.6).
+  before the policy runs (Sections 4.3, 8.6); a policy binding `body_source = "template"` with no
+  template unit bound is refused at validation with `template_unbound` and publishes nothing, rather
+  than reaching `create_pr` after a `push` has already run (Sections 6.10, 12.2); an invocation whose
+  arguments cannot be decoded yields `usage_or_config` with `arguments_unreadable`, exit `2`, and an
+  envelope on stdout; an invocation against a repository configuring a forge with no forge repository
+  coordinate supplied yields `usage_or_config` with `forge_coordinate_missing` and runs no operation,
+  while the same invocation with one supplied runs (Sections 8.1, 8.6); an invocation that produces no
+  result at all exits `1` with stdout empty, a code outside the four status-bearing ones is read the
+  same way, and every result-bearing path emits exactly one JSON object on stdout and nothing else
+  (Section 8.3).
 - Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it; the
   squash body is the `pr_to_squash` transform of the pull-request body; every commit the engine
   writes carries the supplied commit identity — the mechanical merge commit an `integrate` or a
   `pull` writes included — on a host whose environment supplies no usable identity of its own
   (Section 10.1).
 - Plugins: an undeclared capability yields `capability_unsupported` at validation where determinable
-  and the operation's `unsupported` reason at first use otherwise, never a silent no-op; git and jj
+  and the operation's `unsupported` reason at first use otherwise, never a silent no-op; a
+  `[messages.squash] strategy` no configured forge declares is refused at validation whether the
+  policy states it or takes the Section 6.8 default, and a Conformance Statement claiming
+  Section 9.3's first-use half names the engine-added operation or optional capability it
+  demonstrated the claim against, because that half has no producer among the required operation set
+  and policy keys (Sections 6.8, 9.3); git and jj
   checkout modes (including a jj secondary workspace) are handled; the remote-touching operations
   act against the resolved remote, a configured `[engine] remote` overriding the backend's default
-  (Section 6.2); the capabilities that reach the network are exactly `fetch_base`,
+  (Section 6.2); no forge capability infers a repository from the checkout or the policy, and a
+  front-end that defaults the forge repository coordinate from the resolved remote and one given it
+  explicitly reach the same repository (Sections 8.1, 9.2); the capabilities that reach the network
+  are exactly `fetch_base`,
   `fetch_counterpart` and `push` among the VCS backend's and every required capability of the forge
-  backend, and no other VCS capability is invoked with a credential (Sections 9.1, 9.2); every
+  backend, and no other VCS capability is invoked with a credential (Sections 9.1, 9.2); a push that
+  would drop, rewrite or re-parent a commit already on the remote work branch sends nothing and
+  yields `push:non_fast_forward` whatever the transport, including where the local work branch has
+  been moved to an ancestor of the remote's tip by a writer outside the engine (Sections 9.1, 11); a
+  backend that answers a read by writing its own bookkeeping state leaves the history, the remote and
+  the content a `commit` would capture unchanged (Sections 4.1, 9.1); every
   value-answering capability can report that it could not determine its answer, and no such report
   is spelled as the value's absent case (Section 9).
 
@@ -1545,21 +1808,27 @@ A conforming engine SHOULD include tests covering:
   unscoped edges, fail-safe-on-unmatched-outcome, no-op-on-unmatched-signal, determinism, and a
   bounded flow.
 - The operation set and the reason-token registry with stable proto classes, each gated operation
-  running its `before:<op>` position as part of every dispatch.
+  running its `before:<op>` position as part of every dispatch, and a bounded wait on every hook the
+  engine invokes.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), including the refusal of a
-  policy that is not well formed and of one whose lifecycle positions dispatch one another in a
-  cycle, base resolution to a branch and a base ref, and the execution-context labeling.
-- The invocation contract: result envelope, exit codes, escalation payload, invocation
-  preconditions, and versioning with a `version_floor` floor.
+  policy that is not well formed, of one declaring a hook with no unit to run, of one binding a
+  template body source with no template unit bound, and of one whose lifecycle positions dispatch one
+  another in a cycle, base resolution to a branch and a base ref, and the execution-context labeling.
+- The invocation contract: result envelope, exit codes including the reserved code for an invocation
+  that produced no result and one JSON object on stdout for every one that did, escalation payload,
+  invocation preconditions, the forge repository coordinate, and versioning with a `version_floor`
+  floor.
 - The plugin API with VCS and forge backends and their capability descriptors, the VCS backend
-  separating the capabilities that acquire from the local ones that use what they acquired, and
-  every value-answering capability able to report that it could not determine its answer.
+  separating the capabilities that acquire from the local ones that use what they acquired, the
+  engine supplying the forge backend its repository coordinate as it supplies the VCS backend its
+  resolved remote, and every value-answering capability able to report that it could not determine
+  its answer.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, and every commit the engine writes attributed to the supplied commit identity.
-- Checkout-mode handling (git, jj, jj secondary workspace), a pinned, never-forced push refspec, a
-  history-preserving work-branch update, and the two operations conditioned on the state their
-  position inspected — the merge on the pull request's head and the commit on the working tree's
-  identity.
+- Checkout-mode handling (git, jj, jj secondary workspace), a pinned push refspec whose push never
+  drops, rewrites or re-parents a commit already on the remote work branch, a history-preserving
+  work-branch update, and the two operations conditioned on the state their position inspected — the
+  merge on the pull request's head and the commit on the working tree's identity.
 
 ### 13.3 Conformance Statement
 
@@ -1576,15 +1845,18 @@ The Statement MUST record:
 - A resolution for every `Implementation-defined` behavior in this specification: checkout-mode
   detection (Section 3.3), the flow bound's value and any further bound the engine imposes
   (Section 5.6), `repo.policy.toml` discovery precedence (Section 6.1), the backend's default remote
-  where `[engine] remote` is unset (Section 6.2), the form of a hook's engine-invoked `run` unit
-  (Section 6.6), which reason is reported when several configuration conditions hold (Section 6.10),
-  the entry-point argument encodings (Section 8.1), and the escalation `detail` field (Section 8.4).
+  where `[engine] remote` is unset (Section 6.2), the form of a hook's engine-invoked `run` unit and
+  the bound the engine waits for one under (Section 6.6), which reason is reported when several
+  configuration conditions hold (Section 6.10), the entry-point argument encodings and how a
+  front-end derives the forge repository coordinate where it does (Section 8.1), and the escalation
+  `detail` field (Section 8.4).
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class
   (Section 4.3), a configuration reason (Section 6.10), or a precondition reason (Section 8.6).
 - The `need` vocabulary the engine emits (Section 8.4).
 - The capability descriptors its VCS and forge plugins advertise (Section 9.3), the capabilities any
-  operation it defines beyond Section 4.1 requires of a backend (Section 9.1), and any bound a forge
-  backend imposes on its search for a work branch's pull request (Section 9.2).
+  operation it defines beyond Section 4.1 requires of a backend (Section 9.1), any bound a forge
+  backend imposes on its search for a work branch's pull request (Section 9.2), and where a backend
+  writes its own bookkeeping state to answer a capability (Section 9.1).
 
 The Statement is a published declaration, not a precondition for running the engine: Section 13.1 and
 Section 13.2 keep their roles as the test matrix and the definition of done. Its format is

@@ -11,11 +11,12 @@
     "VCSX-SPEC.md Section 8.5 \"Versioning and the Version Grammar\""
   ],
   "description": "Validate a repository policy before use. On a configuration error the engine refuses to run and does not run a partial policy.",
-  "given": "a policy, the running engine version, and the capabilities the consumer can effect",
+  "given": "a policy, the running engine version, the capabilities the consumer can effect, and the repository units it bound",
   "expect": "`{ valid: true }`, or `{ error: <config reason> }` naming the Section 6.10 reason the refusal carries",
   "notes": [
     "Each failing vector holds exactly one condition, so the reported reason is determined. Which reason is reported when several conditions hold is Implementation-defined (Section 6.10) and is deliberately not exercised here.",
     "`consumer_capabilities` lists the consumer-effected actions (Section 5.2) this consumer can perform. An empty list models a human at an interactive prompt (Section 1.3).",
+    "`bound_units` lists the repository units the consumer bound (Section 6.10), which is the input `template_unbound` is judged from — a template is a Section 10.2 repository unit rather than a Section 5.2 action, so `consumer_capabilities` does not reach it. A vector omitting the key is read as an empty list.",
     "`capability_unsupported` (Sections 6.10, 9.3) is not exercised here: it is determined against a plugin capability descriptor, which this slice defers with the rest of plugin behavior. Its absence is a coverage gap, not a statement that the condition is unvalidated.",
     "`malformed_policy` for a policy file that does not parse (Sections 6.1, 6.10) is not exercised here either: `given.policy` is a document, not file text, so the input this condition is judged from cannot be expressed in this file. The other two well-formedness conditions are judged from a parsed document and are exercised. Its absence is likewise a coverage gap, not a statement that the condition is unvalidated."
   ],
@@ -262,6 +263,80 @@
         },
         "engine_version": "1.3",
         "consumer_capabilities": []
+      },
+      "expect": { "valid": true }
+    },
+    {
+      "id": "hook_declaring_no_run_unit",
+      "description": "A `[hooks.<name>]` table that declares a hook and gives it nothing to run is the document's own defect, judged from the document alone (Sections 6.6, 6.10).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "hooks": { "scan-content": { "context": "in_sandbox" } },
+          "edges": [{ "on": "before:commit", "do": "run", "hook": "scan-content" }]
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": [],
+        "bound_units": []
+      },
+      "expect": { "error": "malformed_policy" }
+    },
+    {
+      "id": "hook_naming_a_unit_is_valid",
+      "description": "Whether the named unit exists and can be started is a property of the worktree, not of the document, so it is not judged here; a unit the engine could not start is `hook_unanswered` at first use (Sections 4.3, 6.6).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "hooks": { "scan-content": { "context": "in_sandbox", "run": "./not-present-on-this-host" } },
+          "edges": [{ "on": "before:commit", "do": "run", "hook": "scan-content" }]
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": [],
+        "bound_units": []
+      },
+      "expect": { "valid": true }
+    },
+    {
+      "id": "template_body_source_without_a_bound_unit",
+      "description": "A `template` body source names a repository unit the consumer must have bound; with none bound the policy cannot compose a body, and refusing here is what stops a `ship` publishing a work branch before it finds out (Sections 6.10, 10.2, 12.2).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "messages": { "pr": { "body_source": "template" } },
+          "edges": []
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": [],
+        "bound_units": []
+      },
+      "expect": { "error": "template_unbound" }
+    },
+    {
+      "id": "template_body_source_with_a_bound_unit",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "messages": { "pr": { "body_source": "template" } },
+          "edges": []
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": [],
+        "bound_units": ["template"]
+      },
+      "expect": { "valid": true }
+    },
+    {
+      "id": "auto_body_source_without_a_bound_unit_is_valid",
+      "description": "Only `template` requires the unit; `auto` composes from durable inputs the consumer supplies (Section 10.2).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "messages": { "pr": { "body_source": "auto" } },
+          "edges": []
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": [],
+        "bound_units": []
       },
       "expect": { "valid": true }
     },

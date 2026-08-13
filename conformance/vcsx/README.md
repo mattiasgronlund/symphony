@@ -73,9 +73,10 @@ entry list.
 The registry is a faithful view, not a byte-for-byte transcription. Two places it normalizes:
 
 - **`reasons`** is keyed one entry per `(operation, reason)`. Section 4.3's combined rows expand: the
-  `status` / `diff` row to `status:ok` and `diff:ok`, and the three universal rows to one entry per
-  operation they cover — `failed` and `unsupported` for every operation, `blocked` for every gated one,
-  each marked `universal: true`. So 33 table rows yield 51 entries.
+  `status` / `diff` row to `status:ok` and `diff:ok`, and the four universal rows to one entry per
+  operation they cover — `failed` and `unsupported` for every operation, `blocked` and
+  `hook_unanswered` for every gated one, each marked `universal: true`. So 34 table rows yield 56
+  entries.
 - **`operations`** carries `lifecycle_position: null` for the operations Section 4.1 gates at no fixed
   position (`integrate`, `pull`) and for the read-only ones (`status`, `diff`), rather than omitting
   the field.
@@ -146,19 +147,22 @@ Two interpretation notes apply:
 | `vectors/match-edge.json` | `match_edge` | Sections 5.3, 5.4, 6.5, 12.1 |
 | `vectors/base-resolution.json` | `resolve_base` | Sections 6.4, 12.4 |
 | `vectors/exit-codes.json` | `exit_code_for_status` | Sections 8.2, 8.3, 8.5 |
-| `vectors/policy-validation.json` | `validate_policy` | Sections 4.1, 5.4, 5.6, 6.1, 6.4, 6.7, 6.10, 8.5 |
+| `vectors/policy-validation.json` | `validate_policy` | Sections 4.1, 5.4, 5.6, 6.1, 6.4, 6.6, 6.7, 6.10, 8.5, 10.2 |
 | `vectors/identity-precondition.json` | `requires_commit_identity` | Sections 8.1, 8.6, 12.2, 12.3 |
 
-79 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
+85 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
 filesystem. (The slice was authored at 49 and grew by four as decisions 0054–0056 resolved its
 findings, each turning an unassertable behavior into an asserted one, by three more as decision
 0057 added the universal reasons and redefined `merge:blocked`, by four more as decision 0066 gave
 the well-formedness conditions a reason — the parse failure among them is judged from file text
 rather than from a document and so has no vector, which `policy-validation.json`'s notes record —
 by three more as decision 0067 pinned what an edge carrying no `from` does inside a from-context,
-by twelve more as decision 0074 scoped the commit-identity precondition to the entry point, and by
+by twelve more as decision 0074 scoped the commit-identity precondition to the entry point, by
 four more as decision 0080 drew the boundary between the cycle of lifecycle positions validation
-refuses and the cycle through a typed operation result the flow bound holds.)
+refuses and the cycle through a typed operation result the flow bound holds, by two more as
+decision 0081 made a hook declaring no unit to run a document defect while leaving whether the named
+unit exists to the worktree, and by four more as decision 0084 gave a template body source with no
+unit bound a reason and reserved an exit code for an invocation that produced no result.)
 
 `proto_class` has no vector file of its own. It is a lookup over the Section 4.3 registry, and
 `vocabulary.json` already **is** that registry — a vector file would duplicate it with no added
@@ -171,11 +175,15 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
 
 - **Front-end sequences** (`ship`, `land`; Sections 7.1–7.2, 12.2–12.3) — they run operations against
   a real repository and forge.
-- **Plugin behavior** — checkout-mode detection, the pinned never-forced push refspec and the
+- **Plugin behavior** — checkout-mode detection, the pinned push refspec whose push never drops,
+  rewrites or re-parents a commit already on the remote work branch (decision 0083), the
   history-preserving work-branch update, and both halves of the undeclared-capability case:
   `capability_unsupported` at validation and the operation's `unsupported` reason at first use
   (Sections 3.3, 9.1–9.3). The last two need a capability descriptor as input, which no vector file
-  supplies.
+  supplies — so a `[messages.squash] strategy` refused against a forge's declared strategies has no
+  vector either, whether the policy states the strategy or takes the Section 6.8 default. The forge
+  repository coordinate is on the same side: whether one was supplied is determined by the
+  invocation (`forge_coordinate_missing`, Section 8.6), which no vector file models.
 - **Invocation preconditions** (Section 8.6) — whether the work branch derives and whether a commit
   identity is well formed are judged against a real checkout by a real backend, through
   `accepts_branch_name` and `accepts_identity` (Section 9.1), so no vector file can supply the input.
@@ -210,7 +218,10 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   0079's rule that an operation acts on the state its position inspected needs the same fixtures for
   the other direction — a live working tree that can change between the two — so `commit:worktree_moved`
   has no vector either, as `merge:head_moved` has none. Both tokens are in `vocabulary.json` under
-  `reasons`.
+  `reasons`. Decision 0081's bound on the engine's wait for a hook is deferred on the same
+  reasoning: what a bound produces — `hook_unanswered` for a gate, an `outputs` entry for a
+  result-triggered hook — is observed by running a unit that does not answer, so only the document
+  half has vectors (a hook declaring no unit to run, refused at validation).
 
 ## Surfaced findings
 

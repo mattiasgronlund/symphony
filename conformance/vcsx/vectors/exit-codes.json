@@ -6,12 +6,13 @@
     "VCSX-SPEC.md Section 8.5 \"Versioning and the Version Grammar\""
   ],
   "description": "Map an invocation status to the process exit code of the subprocess encoding.",
-  "given": "the invocation status (Section 8.2)",
+  "given": "the invocation status (Section 8.2), or null where the invocation produced no result",
   "expect": "the process exit code",
   "notes": [
     "Part of the major-stable surface (Section 8.5): the mapping does not change within a MAJOR.",
     "Small but load-bearing. Exit codes in the same domain are not interchangeable across projects, and `2` here means the policy did not run, not `needs_caller`.",
-    "The JSON envelope is emitted regardless of exit code (Section 8.3), which is a behavior of the process rather than of this function."
+    "The JSON envelope is emitted for each of the four status-bearing codes (Section 8.3), which is a behavior of the process rather than of this function.",
+    "A null status models an invocation that reached no Section 8.2 result. Section 8.3 reserves `1` for it and reads any code outside the four status-bearing ones the same way, so the inverse direction — code to meaning — is total. Only the reserved code is asserted here: what an engine's runtime produces on an abort is not a value this function returns."
   ],
   "vectors": [
     {
@@ -36,6 +37,12 @@
       "description": "A usage or configuration error (Section 6.10); the policy did not run.",
       "given": { "status": "usage_or_config" },
       "expect": { "exit_code": 2 }
+    },
+    {
+      "id": "no_result_is_one",
+      "description": "An invocation that reached no Section 8.2 result is not a status: `1` names that condition, stdout carries nothing, and any code outside the four status-bearing ones means the same (Section 8.3).",
+      "given": { "status": null },
+      "expect": { "exit_code": 1 }
     }
   ]
 }
