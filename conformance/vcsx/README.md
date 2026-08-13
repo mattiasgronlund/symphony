@@ -70,16 +70,21 @@ entry list.
 
 ## Normalizations
 
-The registry is a faithful view, not a byte-for-byte transcription. Two places it normalizes:
+The registry is a faithful view, not a byte-for-byte transcription. Three places it normalizes:
 
 - **`reasons`** is keyed one entry per `(operation, reason)`. Section 4.3's combined rows expand: the
   `status` / `diff` row to `status:ok` and `diff:ok`, and the four universal rows to one entry per
   operation they cover — `failed` and `unsupported` for every operation, `blocked` and
   `hook_unanswered` for every gated one, each marked `universal: true`. So 35 table rows yield 56
-  entries.
+  entries. Section 4.3's `Default need` column expands with them: `blocked`'s one row becomes four
+  entries carrying the same need, so 14 rows with a need yield 17 entries with one.
 - **`operations`** carries `lifecycle_position: null` for the operations Section 4.1 gates at no fixed
   position (`integrate`, `pull`) and for the read-only ones (`status`, `diff`), rather than omitting
   the field.
+- **`reasons`** likewise carries `default_need: null` for every `done` and `error` entry, where
+  Section 4.3's column reads `—`, rather than omitting the field — the same choice, for the same
+  reason: a generated record has the property either way, and its absence would be indistinguishable
+  from a transcription that missed it.
 
 ## Using it
 
@@ -149,8 +154,9 @@ Two interpretation notes apply:
 | `vectors/exit-codes.json` | `exit_code_for_status` | Sections 8.2, 8.3, 8.5 |
 | `vectors/policy-validation.json` | `validate_policy` | Sections 4.1, 5.4, 5.6, 6.1, 6.4, 6.6, 6.7, 6.10, 8.5, 10.2 |
 | `vectors/identity-precondition.json` | `requires_commit_identity` | Sections 8.1, 8.6, 12.2, 12.3 |
+| `vectors/compose-envelope.json` | `compose_envelope` | Sections 4.3, 5.2, 5.4, 8.2, 8.4 |
 
-85 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
+99 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
 filesystem. (The slice was authored at 49 and grew by four as decisions 0054–0056 resolved its
 findings, each turning an unassertable behavior into an asserted one, by three more as decision
 0057 added the universal reasons and redefined `merge:blocked`, by four more as decision 0066 gave
@@ -162,7 +168,11 @@ four more as decision 0080 drew the boundary between the cycle of lifecycle posi
 refuses and the cycle through a typed operation result the flow bound holds, by two more as
 decision 0081 made a hook declaring no unit to run a document defect while leaving whether the named
 unit exists to the worktree, and by four more as decision 0084 gave a template body source with no
-unit bound a reason and reserved an exit code for an invocation that produced no result.)
+unit bound a reason and reserved an exit code for an invocation that produced no result, and by
+fourteen more as decisions 0088–0090 gave the envelope an answer for a flow the policy failed, for a
+result no action disposed of, and for an invocation whose arguments named no entry point — the
+enumeration that found them ran every Section 5.2 disposition against every Section 4.2 class and
+broke on three, so the file exists to keep those three asserted.)
 
 `proto_class` has no vector file of its own. It is a lookup over the Section 4.3 registry, and
 `vocabulary.json` already **is** that registry — a vector file would duplicate it with no added

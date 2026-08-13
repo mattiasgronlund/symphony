@@ -258,43 +258,61 @@ Four reasons are **universal**, carried in the table with `(any)` in place of an
 once rather than repeated per operation: `failed` and `unsupported` are defined for every operation,
 and `blocked` and `hook_unanswered` for every operation gated at a lifecycle position (Section 4.1).
 
-| Operation | Reason | Class | Meaning |
-|-----------|--------|-------|---------|
-| `(any)` | `failed` | `error` | The operation failed, including when a `before:<op>` hook blocked it with an `error` result (Section 6.6). |
-| `(any gated)` | `blocked` | `needs_caller` | A `before:<op>` gate or scan blocked the operation (Section 6.6). |
-| `(any gated)` | `hook_unanswered` | `error` | A `before:<op>` hook gave the engine no usable answer: its bound elapsed, the unit could not be started, or its answer could not be read (Section 6.6). |
-| `(any)` | `unsupported` | `error` | The operation requires a plugin capability the backend does not declare (Section 9.3). |
-| `commit` | `ok` | `done` | A commit was created. |
-| `commit` | `nothing_to_commit` | `done` | No changes to commit; benign no-op. |
-| `commit` | `worktree_moved` | `needs_caller` | The working tree is no longer the one read at `before:commit`; re-read then retry. |
-| `commit` | `identity_missing` | `needs_caller` | No caller-supplied commit identity is available (Sections 8.6, 10.1). |
-| `integrate` | `ok` | `done` | The base was integrated. |
-| `integrate` | `up_to_date` | `done` | Already current; no-op. |
-| `integrate` | `merge_conflicts` | `needs_caller` | Integration stopped on conflicts to resolve. |
-| `integrate` | `base_unresolved` | `error` | The base could not be resolved (Section 6.4). |
-| `integrate` | `base_unavailable` | `error` | The base could not be acquired from the remote (Section 9.1 `fetch_base`). |
-| `integrate` | `identity_missing` | `needs_caller` | No caller-supplied commit identity is available for the merge commit (Sections 8.6, 10.1). |
-| `push` | `ok` | `done` | The work branch was pushed. |
-| `push` | `up_to_date` | `done` | Remote already current; no-op. |
-| `push` | `non_fast_forward` | `needs_caller` | Remote moved; integrate then retry. |
-| `push` | `pr_closed` | `needs_caller` | The pull request is CLOSED/MERGED; refuse to push over it. |
-| `push` | `rejected` | `error` | The remote rejected the push. |
-| `create_pr` | `created` | `done` | A pull request was created. |
-| `create_pr` | `updated` | `done` | The existing pull request was updated. |
-| `create_pr` | `base_mismatch` | `error` | An existing pull request targets a different base. |
-| `create_pr` | `conflict` | `needs_caller` | The pull request could not be created/updated cleanly. |
-| `merge` | `ok` | `done` | The pull request was merged. |
-| `merge` | `not_open` | `needs_caller` | The pull request is not open. |
-| `merge` | `checks_pending` | `needs_caller` | Required checks have not completed. |
-| `merge` | `checks_failed` | `error` | Required checks failed. |
-| `merge` | `conflict` | `needs_caller` | The merge would conflict. |
-| `merge` | `head_moved` | `needs_caller` | The pull request's head advanced after it was read; re-read then retry. |
-| `merge` | `rejected` | `error` | Branch protection or forge policy refused the merge. |
-| `pull` | `ok` | `done` | The local branch was updated. |
-| `pull` | `conflict` | `needs_caller` | The merge of the remote counterpart stopped on conflicts. |
-| `pull` | `identity_missing` | `needs_caller` | No caller-supplied commit identity is available for the merge commit (Sections 8.6, 10.1). |
-| `status` / `diff` | `ok` | `done` | The read completed. |
-| `diff` | `base_unavailable` | `error` | The checkout holds no copy of the resolved base, so no delta can be produced (Section 6.4). |
+| Operation | Reason | Class | Default need | Meaning |
+|-----------|--------|-------|--------------|---------|
+| `(any)` | `failed` | `error` | — | The operation failed, including when a `before:<op>` hook blocked it with an `error` result (Section 6.6). |
+| `(any gated)` | `blocked` | `needs_caller` | `human_review` | A `before:<op>` gate or scan blocked the operation (Section 6.6). |
+| `(any gated)` | `hook_unanswered` | `error` | — | A `before:<op>` hook gave the engine no usable answer: `bound_elapsed`, `not_started` or `answer_unreadable` (Section 6.6). |
+| `(any)` | `unsupported` | `error` | — | The operation requires a plugin capability the backend does not declare (Section 9.3). |
+| `commit` | `ok` | `done` | — | A commit was created. |
+| `commit` | `nothing_to_commit` | `done` | — | No changes to commit; benign no-op. |
+| `commit` | `worktree_moved` | `needs_caller` | `reread_then_retry` | The working tree is no longer the one read at `before:commit`; re-read then retry. |
+| `commit` | `identity_missing` | `needs_caller` | `supply_identity` | No caller-supplied commit identity is available (Sections 8.6, 10.1). |
+| `integrate` | `ok` | `done` | — | The base was integrated. |
+| `integrate` | `up_to_date` | `done` | — | Already current; no-op. |
+| `integrate` | `merge_conflicts` | `needs_caller` | `resolve_conflicts` | Integration stopped on conflicts to resolve. |
+| `integrate` | `base_unresolved` | `error` | — | The base could not be resolved (Section 6.4). |
+| `integrate` | `base_unavailable` | `error` | — | The base could not be acquired from the remote (Section 9.1 `fetch_base`). |
+| `integrate` | `identity_missing` | `needs_caller` | `supply_identity` | No caller-supplied commit identity is available for the merge commit (Sections 8.6, 10.1). |
+| `push` | `ok` | `done` | — | The work branch was pushed. |
+| `push` | `up_to_date` | `done` | — | Remote already current; no-op. |
+| `push` | `non_fast_forward` | `needs_caller` | `integrate_then_retry` | Remote moved; integrate then retry. |
+| `push` | `pr_closed` | `needs_caller` | `human_review` | The pull request is CLOSED/MERGED; refuse to push over it. |
+| `push` | `rejected` | `error` | — | The remote rejected the push. |
+| `create_pr` | `created` | `done` | — | A pull request was created. |
+| `create_pr` | `updated` | `done` | — | The existing pull request was updated. |
+| `create_pr` | `base_mismatch` | `error` | — | An existing pull request targets a different base. |
+| `create_pr` | `conflict` | `needs_caller` | `human_review` | The pull request could not be created/updated cleanly. |
+| `merge` | `ok` | `done` | — | The pull request was merged. |
+| `merge` | `not_open` | `needs_caller` | `human_review` | The pull request is not open. |
+| `merge` | `checks_pending` | `needs_caller` | `await_checks` | Required checks have not completed. |
+| `merge` | `checks_failed` | `error` | — | Required checks failed. |
+| `merge` | `conflict` | `needs_caller` | `resolve_conflicts` | The merge would conflict. |
+| `merge` | `head_moved` | `needs_caller` | `reread_then_retry` | The pull request's head advanced after it was read; re-read then retry. |
+| `merge` | `rejected` | `error` | — | Branch protection or forge policy refused the merge. |
+| `pull` | `ok` | `done` | — | The local branch was updated. |
+| `pull` | `conflict` | `needs_caller` | `resolve_conflicts` | The merge of the remote counterpart stopped on conflicts. |
+| `pull` | `identity_missing` | `needs_caller` | `supply_identity` | No caller-supplied commit identity is available for the merge commit (Sections 8.6, 10.1). |
+| `status` / `diff` | `ok` | `done` | — | The read completed. |
+| `diff` | `base_unavailable` | `error` | — | The checkout holds no copy of the resolved base, so no delta can be produced (Section 6.4). |
+
+The `Default need` column names the need an escalation on that result carries where nothing in the
+policy named one. It is REQUIRED for every `needs_caller` reason and is `—` for the rest, whose class
+defaults continue or fail rather than escalate (Section 5.4). The column is stated here rather than in
+Section 8.4 because it is keyed by the pair this registry is keyed by: the built-in default has no
+`escalate(reason)` to take a need from, a front-end binds its resolvers by the `need` token
+(Sections 5.5, 8.4), and a need each engine derived independently would offer one driver a different
+resolver key on every engine. A policy edge naming its own `escalate(reason)` supplies the need
+instead, so the column is a default rather than a bound on what a repository may raise; Section 8.4
+remains the `need` vocabulary and the definition of which needs are holds.
+
+`commit:worktree_moved` and `merge:head_moved` take `reread_then_retry` rather than `human_review`,
+and the difference is who can act. The state moved between the read and the write, so the repair is to
+read it again and retry — which is exactly the re-entry a resume performs (Section 5.5) — and routing
+it to a person sends one to look at a condition that has already changed. Neither reaches the default
+under a front-end sequence, which routes both internally (Sections 12.2, 12.3); both reach it through a
+bare `commit` or `merge` entry point (Section 8.1), which is the case a driver composing its own
+sequence runs.
 
 `base_unresolved` and `base_unavailable` are one word apart and name different failures, because base
 resolution has two steps (Section 6.4) and each reason reports the one it stopped at.
@@ -350,8 +368,10 @@ is `hook_unanswered`, because a block is something the hook did and a hook that 
 nothing — the engine did. Collapsing the two would put a gate that ran and refused and a gate that is
 broken on one token carrying different repairs, and a repository binding `<op>:failed` to an action
 could not tell them apart. Which of the three conditions produced `hook_unanswered` is diagnosis
-rather than routing, and is reported in `outputs` (Section 8.2) rather than in a token, because the
-repair is the same shape in each case.
+rather than routing, and is reported in `outputs` under `unanswered_gates` (Section 8.2) rather than
+in a reason of its own, because the repair is the same shape in each case. The condition is a token
+rather than prose (Section 6.6), so what routes and what diagnoses are both spellings a consumer can
+branch on.
 
 Every operation therefore has at least one `done` reason and at least one `error` reason, so an
 `error`-class result is expressible for every operation including the read-only ones; every gated
@@ -387,7 +407,10 @@ An action is one of:
   operation reached through an edge is gated exactly as one a front-end sequence dispatches.
 - `run(hook, context)` — run a repository hook (Section 6.6) in the declared execution context
   (Section 3.2).
-- `escalate(reason)` — raise a need whose resolver the front-end binds (Section 5.5).
+- `escalate(reason)` — raise a need whose resolver the front-end binds (Section 5.5). An edge naming
+  no `reason` raises the trigger's default need where the trigger is a `needs_caller` result
+  (Section 4.3), and `human_review` otherwise: an `error` or `done` result a policy chose to escalate
+  names no remedy of its own, and a lifecycle position has no outcome to take one from (Section 5.1).
 - `create_task(spec)` — create a task through the consumer's task model (Section 7.3); a no-op when the
   consumer runs no task model.
 - `set_state(target)` — apply a workflow-state transition through the consumer (Section 6.7).
@@ -395,7 +418,9 @@ An action is one of:
   cannot deliver it.
 - `park` — stop the flow and hold for intervention without failing it. The invocation ends at
   `needs_caller` carrying the `intervention` need (Sections 8.2, 8.4).
-- `fail(reason)` — end the flow as failed.
+- `fail(reason)` — end the flow as failed. The invocation ends at `error` (Section 8.2). The `reason`
+  is a repository-authored token rather than one of this specification's, and is reported in `message`
+  and in `outputs` (Section 8.2) rather than in the envelope's `reason` field.
 
 `create_task`, `set_state`, and `notify` are effected by the consumer, because they touch systems
 (a task model, an issue tracker, a notification channel) outside the VCS/forge domain; the engine
@@ -408,8 +433,8 @@ disposition is fixed:
 
 - `create_task` and `notify` are benign no-ops. The engine MUST surface each such intent in the result
   envelope (Section 8.2) rather than drop it, on the same principle that forbids silently dropping an
-  unmatched operation outcome (Section 5.4): an intent the engine emitted and no consumer performed is
-  reported, so a policy that degrades against a lesser consumer degrades visibly.
+  operation outcome no action disposed of (Section 5.4): an intent the engine emitted and no consumer
+  performed is reported, so a policy that degrades against a lesser consumer degrades visibly.
 - `set_state` is a configuration error, caught before the policy runs (Section 6.10), because a
   workflow state that never advances strands the flow rather than merely losing information.
 
@@ -443,10 +468,20 @@ on.
   leaving one unbound is the ordinary case rather than an omission. This is also why a position has no
   class fallback (Section 5.3): there is no outcome to classify.
 - An unmatched **signal** (including a task-state event) is a benign no-op.
-- An unmatched **operation outcome** MUST be fail-safe: the executor parks or fails the flow with the
-  operation's proto reason surfaced. It MUST NOT be silently dropped, because a dropped operation
-  outcome would strand a flow. The built-in default for the `error` class is `fail`; for
-  `needs_caller`, `escalate`; for `done` with no edge, continue.
+- An **operation outcome no action disposed of** MUST be fail-safe: the executor parks or fails the
+  flow with the operation's proto reason surfaced. It MUST NOT be silently dropped, because a dropped
+  operation outcome would strand a flow. The built-in default for the `error` class is `fail`; for
+  `needs_caller`, `escalate` carrying the reason's default need (Section 4.3); for `done` with no
+  edge, continue.
+- An outcome is **disposed of** by an action that ends the flow — `escalate`, `park`, `fail`
+  (Section 5.6) — or by a `run_op`, whose own result takes its place in the machine. The remaining
+  actions emit a consumer-effected intent or run a hook and return (Section 5.2), leaving the
+  traversal exactly where an unmatched outcome leaves it, so an outcome that matched one of them
+  reaches the same built-in default an unmatched outcome reaches. A `push:non_fast_forward → notify`
+  edge under a single-operation entry point therefore reports the push result and escalates
+  `integrate_then_retry`, rather than ending a run that neither escalated, parked nor failed. The rule
+  is stated over disposition rather than over matching because what strands a flow is a result nothing
+  acted on, and whether an edge happened to match is not that.
 - The policy graph MUST be deterministic: at most one edge per `(from-context, trigger)` key, where a
   duplicate is a configuration error (Section 6.10). "from-context" allows a repository to give the same
   trigger different edges at different lifecycle points where the engine models them (for example a
@@ -477,6 +512,28 @@ on.
 Because both front-ends run the same executor over the same policy, `escalate` is the single point at
 which their behavior legitimately differs.
 
+A resume re-enters **the point that raised the need**. Where an operation result raised it, the resume
+re-dispatches that operation, which runs its `before:<op>` position first as any dispatch does
+(Section 5.2); where an edge at a lifecycle position raised it — the case whose escalation carries a
+null `op` (Section 8.4) — the resume re-enters that position. A gate is therefore re-run rather than
+bypassed, and the answer is the same for `<op>:blocked` and `<op>:hook_unanswered`: a gate that
+refused may now pass and a gate that gave no usable answer may now answer, and neither yields a pass
+the hook did not give (Section 6.6). A resume that landed past the position would run an operation no
+gate had inspected, which is what the position exists to prevent.
+
+Nothing a position established carries across a resume. The state a position inspected is read again,
+so an operation conditioned on an inspected identity — `expected_worktree`, `expected_head`
+(Section 6.6) — is conditioned on what the re-entered position saw. An engine that carried the earlier
+expectation forward would hand an operation state no position had inspected since, which is the
+condition Sections 4.3 and 6.6 exist to report rather than to produce.
+
+Any **re-entry** a resume causes counts against the flow bound (Section 5.6). The count is stated over
+re-entry rather than over the dispatch it usually is, because a resume into a lifecycle position
+re-enters a position inside a dispatch whose count is already spent: a resolver that always resolves
+would otherwise loop there with nothing to stop it. Both shapes therefore reach `flow_exhausted`
+rather than running indefinitely, which is the property Section 5.6 holds for every other loop the
+schema can express.
+
 `park` (Section 5.2) reaches the same `needs_caller` result and carries a need of its own, so the
 envelope's escalation rule holds for it without exception (Section 8.2). It is not a second point of
 divergence, because it names no resolver to bind: `intervention` names a hold rather than a request
@@ -494,21 +551,26 @@ only action whose result re-enters the machine:
   reason — `<op>:blocked` or `<op>:failed` (Section 6.6) — so it reaches the machine through that
   operation, and an `after`/result-triggered hook does not block.
 - `create_task`, `set_state` and `notify` are consumer-effected intents, emitted once (Section 5.2).
-- `escalate`, `park` and `fail` end the flow.
+- `escalate`, `park` and `fail` end the flow. A front-end that resumes an `escalate` (Section 5.5)
+  re-enters the flow at the point that raised the need, so an `escalate` a front-end resolves is the
+  one ending an invocation can carry on from — and every such re-entry counts against the bound below,
+  which is why it does not reopen the question this section answers.
 
-Every non-terminating flow is therefore an unbounded sequence of `run_op` dispatches, and a bound on
-that count bounds every loop the schema can express — including one a lifecycle position introduces,
-where an edge on `before:push` dispatches `integrate` and the retried `push` re-gates the position.
+Every non-terminating flow is therefore an unbounded sequence of `run_op` dispatches and resume
+re-entries, and a bound on that count bounds every loop the schema can express — including one a
+lifecycle position introduces, where an edge on `before:push` dispatches `integrate` and the retried
+`push` re-gates the position.
 One shape is refused before it runs rather than bounded: a cycle of lifecycle positions, each
 position's `run_op` edge dispatching the operation the next position gates, reaches no operation on
 any traversal and is a configuration error (`position_cycle`, Section 6.10). The bound holds every
 loop that runs operations, which is every loop whose cycle passes through a typed operation result.
 
-A conforming executor MUST bound one invocation's flow by a count of `run_op` dispatches. The bound's
-value is `Implementation-defined` and MUST be documented (Section 13.3); it MUST admit at least 64
-dispatches, and an engine that lets a deployment configure it MUST hold the configured value to the same
-floor. The floor's exact value is arbitrary; that it is fixed is not, because it is what keeps two
-engines with different bounds in agreement on every policy that terminates within it.
+A conforming executor MUST bound one invocation's flow by a count of `run_op` dispatches and resume
+re-entries (Section 5.5). The bound's value is `Implementation-defined` and MUST be documented
+(Section 13.3); it MUST admit at least 64 dispatches, and an engine that lets a deployment configure it
+MUST hold the configured value to the same floor. The floor's exact value is arbitrary; that it is
+fixed is not, because it is what keeps two engines with different bounds in agreement on every policy
+that terminates within it.
 
 The bound is a count, not a cycle detector. A repeated `(trigger, edge)` pair is ordinary rather
 than pathological: `push:non_fast_forward → integrate → push` is the built-in routing (Section
@@ -667,6 +729,10 @@ configuration error (Section 5.4). An edge MUST also carry the arguments the act
 needs in order to be dispatched — `op` for `run_op`, `hook` for `run` — and an edge that omits one
 is a configuration error (Section 6.10).
 
+`reason` is OPTIONAL on an `escalate` or a `fail` edge, and an edge omitting it is well formed:
+neither action needs it to be dispatched. An `escalate` without one raises the trigger's default need
+(Sections 4.3, 5.2), and a `fail` without one is reported by its trigger alone (Section 8.2).
+
 ### 6.6 `[hooks]`
 
 A hook is a named unit `run` invokes. Each hook declares its execution context (Section 3.2):
@@ -724,6 +790,20 @@ anything waits on the answer:
   not block" read literally. Stopping it costs the flow nothing, where waiting holds an invocation open
   indefinitely. The engine reports each such hook in `outputs` (Section 8.2) rather than dropping it, on
   the principle that forbids silently dropping an intent no consumer performed (Section 5.4).
+
+The three conditions are named tokens, so the diagnosis a consumer reads is spelled the same on every
+engine:
+
+- `bound_elapsed` — the unit was still running when the bound elapsed, and was stopped.
+- `not_started` — the engine could not start the unit.
+- `answer_unreadable` — the unit answered, and the engine could not read the answer in the form it
+  fixed.
+
+The engine reports the condition for every hook that gave it no usable answer, on either side of the
+division above (Section 8.2). The token diagnoses rather than routes: the repair is the same shape in
+each case, which is why Section 4.3 spends one reason on all three, and which of the three occurred is
+what separates a gate that hung from a unit that is not there. Both are repairs to the hook and
+neither is a repair a consumer can guess from the reason alone.
 
 The bound is the consumer's, and `[hooks]` carries no key for it. A `timeout_ms` a repository writes
 here is an unknown key and is ignored (Section 6.1). The reason is Section 3.2: the in-sandbox half of
@@ -1019,6 +1099,16 @@ Every invocation returns one structured result:
 }
 ```
 
+- `vcsx_version` is the `MAJOR.MINOR` version of the engine that ran the invocation (Section 8.5).
+- `entry` is the entry point the invocation ran (Section 8.1). It is null **exactly where no
+  Section 8.1 entry point was read** — the `usage_or_config` status carrying the
+  `arguments_unreadable` reason (Section 8.6), and nowhere else. An invocation the engine decoded far
+  enough to name an entry point reports that entry point whatever failed after it, so a `ship` whose
+  remaining arguments were unreadable carries `ship` and a first word that is no entry point carries
+  null. The rule is stated as an "exactly where" for the reason the escalation rule below is stated as
+  an "exactly when": a field a caller branches on before deciding anything else is enforceable only
+  where both halves are fixed, and a nullable field with no stated case is one an engine may null
+  wherever it finds it convenient.
 - `status` is the invocation's outcome. For a run that executed the policy it is the overall proto
   class: `ok` (all steps `done`), `needs_caller`, or `error`. For a run in which the policy did not
   run it is `usage_or_config` (Sections 6.10, 8.6). A flow the policy stopped with `park`
@@ -1030,11 +1120,21 @@ Every invocation returns one structured result:
   is the class `status` reports — `done` under `ok`, `needs_caller` under `needs_caller`, `error`
   under `error` — because the status of a run that executed the policy is that result's proto class.
   All three are null where the run has no decisive operation result: a clean `ok` with no operation;
-  a parked flow, which the policy stopped rather than an operation; and a flow stopped at its bound,
-  which the executor stopped. In neither of the last two did an operation ask the caller for
+  a parked flow, which the policy stopped rather than an operation; a flow stopped at its bound,
+  which the executor stopped; and a flow the policy failed with `fail` (Section 5.2) on anything
+  other than an `error`-class result. In neither of the middle two did an operation ask the caller for
   anything, so there is nothing decisive to report. Under `usage_or_config` there is no operation
   result: `op` and `class` are null and `reason` carries the configuration reason (Section 6.10) or
   the precondition reason (Section 8.6).
+- A `fail` is scoped by the class the rule above already turns on. Where the run has a decisive
+  result whose class is `error`, a `fail` reports it: the class agrees with the status, so the
+  invariant holds unchanged, and an explicit `#error → fail` edge reports what the built-in `error`
+  default reports for the same flow — which is itself a `fail` (Section 5.4). A `fail` reached on any
+  other trigger — a `needs_caller` or `done` result, or a lifecycle position, which has no outcome at
+  all (Section 5.1) — has no result whose class agrees, and nulls all three rather than putting a
+  reason of one class under a status of another. That is the same disposition `park` takes and for the
+  same reason: the policy stopped the flow, and the envelope reports what stopped it in `status`
+  rather than borrowing an operation's result to say it.
 - `escalation` is present exactly when `status == "needs_caller"` (Section 8.4), a parked flow and an
   exhausted one included.
 - `outputs` carries entry-specific structured data (for example `status` fields, the pull-request
@@ -1042,12 +1142,30 @@ Every invocation returns one structured result:
   the engine emitted and no consumer performed, each naming its `action` and that action's arguments.
   The key is absent or empty when every emitted intent was performed. It likewise carries
   `unfinished_hooks`: the result-triggered hooks that gave the engine no usable answer (Section 6.6),
-  each naming the hook, the trigger that ran it, and which condition occurred — the bound elapsed, the
-  unit could not be started, or its answer could not be read — absent or empty where every such hook
+  each naming the `hook`, the `trigger` that ran it, and the `condition` that occurred —
+  `bound_elapsed`, `not_started` or `answer_unreadable` — absent or empty where every such hook
   answered. It is the non-gating half's mirror of `hook_unanswered`, which is why the two cover the
-  same three conditions: a `before:*` hook is not reported there, because the gated operation reports
-  it as that reason (Section 4.3), and `outputs` carries which condition occurred for it too, since
-  the reason routes and the condition diagnoses.
+  same three conditions.
+- `outputs` carries `unanswered_gates` for the gating half: the `before:*` hooks that gave the engine
+  no usable answer, each naming the `hook`, the `position` that ran it, the `condition` — the same
+  three tokens — and an `Implementation-defined` `detail`; absent or empty where every gate answered.
+  A gate is not reported in `unfinished_hooks`, because the gated operation reports it as
+  `hook_unanswered` (Section 4.3): the reason routes and the condition diagnoses, and both halves
+  spell the condition the same way, so one consumer branch reads both. It is an array rather than one
+  entry because the result re-enters the machine: a repository binding `<op>:hook_unanswered` to
+  anything that does not end the flow can reach a second position on the same traversal, which
+  Section 5.6 bounds rather than refuses.
+- `outputs` carries `failed_by_policy` where the policy ended the flow with `fail` (Section 5.2): the
+  `trigger` the edge fired on, and the `reason` the edge wrote where it wrote one (Section 6.5). The
+  key is absent where no `fail` ran. The token is reported here rather than in the envelope's `reason`
+  field because that field carries an operation reason (Section 4.3), a configuration reason
+  (Section 6.10) or a precondition reason (Section 8.6) — each from a registry a consumer branches on
+  and an engine MUST document additions to — and a repository-authored value there would be
+  indistinguishable from an engine one.
+- `message` is human-readable prose. Nothing parses it: every fact a consumer branches on has a field
+  or a token of its own, so a consumer reading `message` for structure reads a surface no engine holds
+  stable, and an engine putting structure there is spending a field that has no schema on one that
+  should have had its own.
 - A consumer MAY add fields but SHOULD NOT break the fields above within a major version.
 
 ### 8.3 Exit Codes
@@ -1079,13 +1197,13 @@ otherwise.
 ### 8.4 Escalation Payload
 
 When `status == "needs_caller"`, `escalation` carries: the `need` (a stable token naming what is
-required, for example `integrate_then_retry`, `resolve_conflicts`, `supply_identity`,
-`await_checks`, `human_review`, `intervention`, `flow_exhausted`), the `op` that produced it, and an
-`Implementation-defined` `detail`. The `op` is null where no operation produced the escalation — at a
-signal, at a lifecycle position where the gated operation has not run (Section 5.1), and at a bound
-the executor reached (Section 5.6). A front-end binds the resolver by the `need` token
-(Section 5.5); the `need` vocabulary is part of the public contract and MUST be documented and
-stable within a major version.
+required, for example `integrate_then_retry`, `reread_then_retry`, `resolve_conflicts`,
+`supply_identity`, `await_checks`, `human_review`, `intervention`, `flow_exhausted`), the `op` that
+produced it, and an `Implementation-defined` `detail`. The `op` is null where no operation produced
+the escalation — at a signal, at a lifecycle position where the gated operation has not run
+(Section 5.1), and at a bound the executor reached (Section 5.6). A front-end binds the resolver by
+the `need` token (Section 5.5); the `need` vocabulary is part of the public contract and MUST be
+documented and stable within a major version.
 
 Two needs name a **hold** rather than a request, and neither is resolvable: a front-end MUST NOT bind a
 resolver to either and MUST NOT resume the flow on either. Each hold is released out of band, by a new
@@ -1096,8 +1214,15 @@ invocation.
   hold, which is a condition to investigate rather than an outcome the policy chose, so it is a token of
   its own rather than a second use of `intervention`.
 
-Every other need names something a caller can supply, which is what makes `park` and `escalate`
-distinguishable in the result envelope.
+Every other need names something a caller can supply or an action it can take, which is what makes
+`park` and `escalate` distinguishable in the result envelope. `reread_then_retry` is the second kind:
+it is met by reading the moved state again and retrying, which is the re-entry a resume already
+performs (Section 5.5), so a driver meets it by resuming and nothing else.
+
+A need the built-in default raised (Section 5.4) is resolvable exactly as one an `escalate` action
+named, and carries the reason's default need (Section 4.3). Only the two holds above are
+unresolvable, and neither is reachable through that default: `intervention` is raised by `park` and
+`flow_exhausted` by the executor.
 
 ### 8.5 Versioning and the Version Grammar
 
@@ -1618,11 +1743,12 @@ copy the push would stay non-fast-forward until the flow bound ended the invocat
 The commit loop is Section 12.3's one operation earlier. `commit` is conditioned on the working-tree
 identity its position read (Sections 6.6, 9.1), so a tree that changed in between is reported as
 `commit:worktree_moved` and the retry re-dispatches the operation, which re-runs `before:commit` and
-reads the tree again. Routing it built in keeps the token count at one, as it does for
-`merge:head_moved`: the reason never terminates an invocation, so it needs no `need` of its own
-(Sections 5.4, 8.4). A working tree that changes between every attempt ends the invocation at the flow
-bound rather than committing a tree no position inspected, which for a caller still writing in the
-worktree is the correct report.
+reads the tree again. Routing it built in keeps this sequence from surfacing the reason at all, as it
+does for `merge:head_moved`. Both reasons still carry a `need` — `reread_then_retry` (Sections 4.3,
+8.4) — because a bare `commit` or `merge` entry point reaches the built-in default without a sequence
+to route it (Sections 5.4, 8.1). A working tree that changes between every attempt ends the
+invocation at the flow bound rather than committing a tree no position inspected, which for a caller
+still writing in the worktree is the correct report.
 
 Both loops are bounded by the flow bound (Section 5.6) rather than by a step count of their own: every
 `run_op` counts against it wherever it is dispatched, so a `push`/`integrate` pair that never converges —
@@ -1661,8 +1787,10 @@ The loop terminates on the flow bound (Section 5.6): every `run_op` counts again
 dispatched, so a pull request whose head moves between every attempt ends the invocation at
 `needs_caller` with the `flow_exhausted` need rather than retrying indefinitely — the same
 convergence argument Section 12.2 makes, with the re-read in place of the `integrate`. Because the
-routing is built in, `merge:head_moved` reaches a caller only where a repository binds it to an edge
-that ends the flow, so the condition adds a reason token and no `need` token (Sections 4.3, 8.4).
+routing is built in, `merge:head_moved` reaches a caller through this sequence only where a repository
+binds it to an edge that ends the flow — but it reaches one directly through a bare `merge` entry
+point, where the built-in default escalates it (Section 5.4), so the condition carries the
+`reread_then_retry` need as well as its reason token (Sections 4.3, 8.4).
 
 ### 12.4 Resolve Base
 
@@ -1712,8 +1840,15 @@ A conforming engine SHOULD include tests covering:
   carrying no `from` matches inside a from-context, an edge scoped to that context is selected over
   it for the same trigger key, and the ladder selects the key before the from-context selects among
   the edges bound to it (Section 5.4).
-- Unmatched policy: an unmatched operation outcome is fail-safe (parked/failed, reason surfaced, never
-  dropped); an unmatched signal is a no-op.
+- Undisposed policy: an unmatched operation outcome is fail-safe (parked/failed, reason surfaced,
+  never dropped); an outcome whose matched edge neither ends the flow nor dispatches an operation
+  reaches the same built-in default, so a `push:non_fast_forward → notify` edge under a
+  single-operation entry point emits the intent and then yields `needs_caller` with the decisive
+  result reported and the reason's default need, rather than an `ok` envelope, a dropped result or a
+  park (Sections 4.3, 5.4); an escalation the built-in default raised carries that default need, and a
+  `merge:head_moved` reached through a bare `merge` entry point escalates `reread_then_retry` rather
+  than `human_review`; an `escalate` edge naming no `reason` raises the trigger's default need, and
+  `human_review` where the trigger carries none; an unmatched signal is a no-op.
 - Determinism: a duplicate `(from, on)` edge or transition is a configuration error and the engine
   refuses to run.
 - Termination: a policy whose `run_op` results route back to an earlier operation stops at the flow
@@ -1761,10 +1896,13 @@ A conforming engine SHOULD include tests covering:
   `<op>:hook_unanswered` and no operation effect, rather than `<op>:blocked`, `<op>:failed` or a
   `flow_exhausted` hold, and the result re-enters the machine so a repository edge on it is taken; a
   hook the engine could not start and one whose answer it could not read yield the same reason, with
-  `outputs` distinguishing the three conditions; a gate that answered with an `error` result still
+  `outputs.unanswered_gates` naming which of `bound_elapsed`, `not_started` and `answer_unreadable`
+  occurred, and a traversal that routes past one unanswered gate into a second reports both entries
+  rather than the last; a gate that answered with an `error` result still
   yields `<op>:failed`, so a broken gate and a refusing gate are distinguishable; a result-triggered
   hook that has not answered when the bound elapses is stopped, leaves the flow unchanged, and is
-  reported in `outputs`; a `[hooks.<name>]` declaring no `run` is refused at validation with
+  reported in `outputs.unfinished_hooks` under the same three condition tokens, so one consumer branch
+  reads both halves; a `[hooks.<name>]` declaring no `run` is refused at validation with
   `malformed_policy` while a `run` naming a unit that does not exist is `hook_unanswered` at first use
   (Sections 4.3, 6.6, 6.10).
 - Front-ends: `ship` stops at the pull request, and over a working tree its guard reads as clean
@@ -1777,7 +1915,13 @@ A conforming engine SHOULD include tests covering:
   `before:merge`, so the squash message is transformed from the revision actually merged, and a head
   that moves between every attempt ends at the flow bound rather than merging a head no position
   inspected (Sections 5.6, 12.3); the same `repo.policy.toml` yields the same operation flow through
-  `ship` and an embedded driver.
+  `ship` and an embedded driver; a driver that resolves a need and resumes re-enters the point that
+  raised it — re-dispatching the operation whose result escalated, which re-runs that operation's
+  position, or re-entering the position where an edge there escalated — so a resolved
+  `commit:blocked` re-runs the gate rather than committing past it, the re-entered position reads the
+  working tree and the pull-request head again rather than reusing the identity taken before the
+  escalation, and a resolver that resolves every time ends at `needs_caller` with the
+  `flow_exhausted` need because every re-entry counts against the bound (Sections 5.5, 5.6, 6.6).
 - Invocation contract: exit codes mirror proto classes; `escalation` is present exactly for
   `needs_caller`; a parked flow is `needs_caller` with the `intervention` need and null
   `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed, while one
@@ -1796,9 +1940,18 @@ A conforming engine SHOULD include tests covering:
   template unit bound is refused at validation with `template_unbound` and publishes nothing, rather
   than reaching `create_pr` after a `push` has already run (Sections 6.10, 12.2); an invocation whose
   arguments cannot be decoded yields `usage_or_config` with `arguments_unreadable`, exit `2`, and an
-  envelope on stdout; an invocation against a repository configuring a forge with no forge repository
+  envelope on stdout whose `entry` is null, while an invocation decoded far enough to name an entry
+  point reports that entry point whatever failed after it and `entry` is non-null on every other path,
+  including every other `usage_or_config` reason (Sections 8.1, 8.2, 8.6); an invocation against a
+  repository configuring a forge with no forge repository
   coordinate supplied yields `usage_or_config` with `forge_coordinate_missing` and runs no operation,
-  while the same invocation with one supplied runs (Sections 8.1, 8.6); an invocation that produces no
+  while the same invocation with one supplied runs (Sections 8.1, 8.6); a `fail` on an `error`-class
+  result reports that result under `status` `error`, while a `fail` on a `needs_caller` result, on a
+  `done` result and at a lifecycle position each yield `status` `error` with null
+  `op`/`reason`/`class` and report the edge's trigger and reason in `outputs.failed_by_policy` — so a
+  `push:ok → fail` edge yields a failure rather than an `ok` envelope, and a `fail` edge carrying no
+  `reason` is well formed and reports its trigger alone (Sections 5.2, 6.5, 8.2); an invocation that
+  produces no
   result at all exits `1` with stdout empty, a code outside the four status-bearing ones is read the
   same way, and every result-bearing path emits exactly one JSON object on stdout and nothing else
   (Section 8.3).
@@ -1838,19 +1991,21 @@ A conforming engine SHOULD include tests covering:
 
 - One policy-graph executor run by both front-ends; `ship`/`land` and the embedded-driver contract.
 - The action-policy machine: triggers, actions, the `#class` fallback, from-context scoping with
-  unscoped edges, fail-safe-on-unmatched-outcome, no-op-on-unmatched-signal, determinism, and a
-  bounded flow.
-- The operation set and the reason-token registry with stable proto classes, each gated operation
-  running its `before:<op>` position as part of every dispatch, and a bounded wait on every hook the
-  engine invokes.
+  unscoped edges, fail-safe-on-undisposed-outcome, no-op-on-unmatched-signal, determinism, and a flow
+  bounded over `run_op` dispatches and resume re-entries.
+- The operation set and the reason-token registry with stable proto classes and a default `need` per
+  `needs_caller` reason, each gated operation running its `before:<op>` position as part of every
+  dispatch, and a bounded wait on every hook the engine invokes with the three conditions named.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), including the refusal of a
   policy that is not well formed, of one declaring a hook with no unit to run, of one binding a
   template body source with no template unit bound, and of one whose lifecycle positions dispatch one
   another in a cycle, base resolution to a branch and a base ref, and the execution-context labeling.
-- The invocation contract: result envelope, exit codes including the reserved code for an invocation
-  that produced no result and one JSON object on stdout for every one that did, escalation payload,
-  invocation preconditions, the forge repository coordinate, and versioning with a `version_floor`
-  floor.
+- The invocation contract: result envelope with every field described and `entry` nullable only where
+  no entry point was read, the `outputs` keys that report what the engine emitted and nobody
+  performed, what a hook left unanswered on either side of the division, and what the policy failed
+  with `fail`, exit codes including the reserved code for an invocation that produced no result and
+  one JSON object on stdout for every one that did, escalation payload, invocation preconditions, the
+  forge repository coordinate, and versioning with a `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors, the VCS backend
   separating the capabilities that acquire from the local ones that use what they acquired, the
   engine supplying the forge backend its repository coordinate as it supplies the VCS backend its
@@ -1881,10 +2036,11 @@ The Statement MUST record:
   where `[engine] remote` is unset (Section 6.2), the form of a hook's engine-invoked `run` unit and
   the bound the engine waits for one under (Section 6.6), which reason is reported when several
   configuration conditions hold (Section 6.10), the entry-point argument encodings and how a
-  front-end derives the forge repository coordinate where it does (Section 8.1), and the escalation
-  `detail` field (Section 8.4).
-- Any reason token the engine adds beyond a registry: an operation reason with its proto class
-  (Section 4.3), a configuration reason (Section 6.10), or a precondition reason (Section 8.6).
+  front-end derives the forge repository coordinate where it does (Section 8.1), the `detail` field of
+  an `unanswered_gates` entry (Section 8.2), and the escalation `detail` field (Section 8.4).
+- Any reason token the engine adds beyond a registry: an operation reason with its proto class and,
+  where that class is `needs_caller`, its default `need` (Section 4.3), a configuration reason
+  (Section 6.10), or a precondition reason (Section 8.6).
 - The `need` vocabulary the engine emits (Section 8.4).
 - The capability descriptors its VCS and forge plugins advertise (Section 9.3), the capabilities any
   operation it defines beyond Section 4.1 requires of a backend (Section 9.1), any bound a forge

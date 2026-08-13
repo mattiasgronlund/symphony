@@ -1,0 +1,276 @@
+{
+  "function": "compose_envelope",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 8.2 \"Result Envelope\"",
+    "VCSX-SPEC.md Section 8.4 \"Escalation Payload\"",
+    "VCSX-SPEC.md Section 5.2 \"Actions\"",
+    "VCSX-SPEC.md Section 5.4 \"Unmatched Policy and Determinism\"",
+    "VCSX-SPEC.md Section 4.3 \"Reason-Token Registry\""
+  ],
+  "description": "Compose the invocation's result envelope from what ended the run and the decisive operation result it ended with: the status, the nullability of `op` / `reason` / `class` and of `entry`, whether an escalation is present and which `need` it carries, and which Section 8.2 `outputs` key reports the ending.",
+  "given": "how the run ended (`ending`), the decisive operation result where the run has one (`decisive`), the entry point the invocation read (`entry`), and the ending's own arguments where it has them",
+  "expect": "the envelope's `status`, `entry`, `op`, `reason`, `class`, the `need` where an escalation is present, and the `outputs` keys the ending requires",
+  "notes": [
+    "`ending` names what disposed of the run, not an action the policy necessarily wrote: `fail` and `park` are Section 5.2 actions, `flow_bound` is the executor's (Section 5.6), `undisposed` is a traversal that ran out with a result no action disposed of (Section 5.4), `clean` is a run that reached the entry's effect, and `precondition` is a refusal before the policy ran (Sections 6.10, 8.6).",
+    "The `need` under `undisposed` is the decisive reason's `Default need` (Section 4.3), which the implementation reads from the registry rather than from the vector — as `match_edge` derives a proto class rather than being told one.",
+    "Keys absent from `expect` are unconstrained, so a vector pins the envelope's specified part without pinning entry-specific `outputs`.",
+    "`escalation_present` is asserted rather than the whole payload: the `op` field is Section 8.4's and the `detail` field is `Implementation-defined`."
+  ],
+  "vectors": [
+    {
+      "id": "fail_on_error_result_reports_it",
+      "description": "A `fail` whose run has an `error`-class decisive result reports it: the class agrees with the status, so Section 8.2's non-null invariant holds unchanged.",
+      "given": {
+        "ending": "fail",
+        "fail_reason": "push_failed",
+        "decisive": { "op": "push", "reason": "rejected", "class": "error" },
+        "entry": "push"
+      },
+      "expect": {
+        "status": "error",
+        "entry": "push",
+        "op": "push",
+        "reason": "rejected",
+        "class": "error",
+        "escalation_present": false,
+        "outputs_keys": ["failed_by_policy"]
+      }
+    },
+    {
+      "id": "fail_on_needs_caller_result_nulls_the_fields",
+      "description": "A `#needs_caller → fail` edge: no result whose class agrees with `error`, so all three are null rather than putting a `needs_caller` reason under an `error` status.",
+      "given": {
+        "ending": "fail",
+        "fail_reason": "no_holding_here",
+        "decisive": { "op": "push", "reason": "non_fast_forward", "class": "needs_caller" },
+        "entry": "push"
+      },
+      "expect": {
+        "status": "error",
+        "entry": "push",
+        "op": null,
+        "reason": null,
+        "class": null,
+        "escalation_present": false,
+        "outputs_keys": ["failed_by_policy"]
+      }
+    },
+    {
+      "id": "fail_on_done_result_is_a_failure_not_an_ok",
+      "description": "A `push:ok → fail` edge yields a failure. The status follows the policy's ending rather than the result's class, so a flow the policy failed is not reported as a clean run.",
+      "given": {
+        "ending": "fail",
+        "fail_reason": "policy_refuses_this_branch",
+        "decisive": { "op": "push", "reason": "ok", "class": "done" },
+        "entry": "push"
+      },
+      "expect": {
+        "status": "error",
+        "entry": "push",
+        "op": null,
+        "reason": null,
+        "class": null,
+        "escalation_present": false,
+        "outputs_keys": ["failed_by_policy"]
+      }
+    },
+    {
+      "id": "fail_at_a_lifecycle_position_has_no_result_at_all",
+      "description": "A `before:commit → fail` edge. A position has no outcome (Section 5.1), so the run has no decisive result to report.",
+      "given": {
+        "ending": "fail",
+        "fail_reason": "commits_are_not_allowed_here",
+        "decisive": null,
+        "entry": "commit"
+      },
+      "expect": {
+        "status": "error",
+        "entry": "commit",
+        "op": null,
+        "reason": null,
+        "class": null,
+        "escalation_present": false,
+        "outputs_keys": ["failed_by_policy"]
+      }
+    },
+    {
+      "id": "fail_without_a_reason_is_well_formed",
+      "description": "`reason` is OPTIONAL on a `fail` edge (Section 6.5); `failed_by_policy` carries the trigger regardless.",
+      "given": {
+        "ending": "fail",
+        "fail_reason": null,
+        "decisive": { "op": "merge", "reason": "checks_pending", "class": "needs_caller" },
+        "entry": "merge"
+      },
+      "expect": {
+        "status": "error",
+        "entry": "merge",
+        "op": null,
+        "reason": null,
+        "class": null,
+        "escalation_present": false,
+        "outputs_keys": ["failed_by_policy"]
+      }
+    },
+    {
+      "id": "park_nulls_the_fields_and_carries_intervention",
+      "description": "A park on a `done`-class result: the policy stopped the flow rather than an operation, so nothing decisive is reported (decision 0059).",
+      "given": {
+        "ending": "park",
+        "decisive": { "op": "push", "reason": "ok", "class": "done" },
+        "entry": "ship"
+      },
+      "expect": {
+        "status": "needs_caller",
+        "entry": "ship",
+        "op": null,
+        "reason": null,
+        "class": null,
+        "escalation_present": true,
+        "need": "intervention"
+      }
+    },
+    {
+      "id": "flow_bound_nulls_the_fields_and_carries_flow_exhausted",
+      "description": "The executor stopped the flow, so no operation asked the caller for anything (Section 5.6).",
+      "given": {
+        "ending": "flow_bound",
+        "decisive": { "op": "push", "reason": "non_fast_forward", "class": "needs_caller" },
+        "entry": "ship"
+      },
+      "expect": {
+        "status": "needs_caller",
+        "entry": "ship",
+        "op": null,
+        "reason": null,
+        "class": null,
+        "escalation_present": true,
+        "need": "flow_exhausted"
+      }
+    },
+    {
+      "id": "undisposed_needs_caller_result_takes_the_default_need",
+      "description": "A `push:non_fast_forward → notify` edge under a single-operation entry point: the edge matched, the intent was emitted, and no action disposed of the result, so it reaches the same built-in default an unmatched result reaches (Section 5.4).",
+      "given": {
+        "ending": "undisposed",
+        "decisive": { "op": "push", "reason": "non_fast_forward", "class": "needs_caller" },
+        "entry": "push"
+      },
+      "expect": {
+        "status": "needs_caller",
+        "entry": "push",
+        "op": "push",
+        "reason": "non_fast_forward",
+        "class": "needs_caller",
+        "escalation_present": true,
+        "need": "integrate_then_retry"
+      }
+    },
+    {
+      "id": "undisposed_moved_state_takes_reread_then_retry",
+      "description": "A bare `merge` entry point reaching `merge:head_moved` with no edge: the default need is the one a re-read meets, not `human_review` (Sections 4.3, 5.5).",
+      "given": {
+        "ending": "undisposed",
+        "decisive": { "op": "merge", "reason": "head_moved", "class": "needs_caller" },
+        "entry": "merge"
+      },
+      "expect": {
+        "status": "needs_caller",
+        "entry": "merge",
+        "op": "merge",
+        "reason": "head_moved",
+        "class": "needs_caller",
+        "escalation_present": true,
+        "need": "reread_then_retry"
+      }
+    },
+    {
+      "id": "undisposed_error_result_fails_and_reports_it",
+      "description": "A `push:rejected → notify` edge: the built-in default for the `error` class is `fail`, and the decisive result is reported because its class agrees with the status.",
+      "given": {
+        "ending": "undisposed",
+        "decisive": { "op": "push", "reason": "rejected", "class": "error" },
+        "entry": "push"
+      },
+      "expect": {
+        "status": "error",
+        "entry": "push",
+        "op": "push",
+        "reason": "rejected",
+        "class": "error",
+        "escalation_present": false
+      }
+    },
+    {
+      "id": "clean_ok_with_no_operation_nulls_the_fields",
+      "description": "A run that reached the entry's effect with no decisive operation result.",
+      "given": {
+        "ending": "clean",
+        "decisive": null,
+        "entry": "status"
+      },
+      "expect": {
+        "status": "ok",
+        "entry": "status",
+        "op": null,
+        "reason": null,
+        "class": null,
+        "escalation_present": false
+      }
+    },
+    {
+      "id": "arguments_unreadable_is_the_one_null_entry",
+      "description": "No Section 8.1 entry point was read, so `entry` is null — the only case in which it is (Sections 8.2, 8.6).",
+      "given": {
+        "ending": "precondition",
+        "precondition_reason": "arguments_unreadable",
+        "decisive": null,
+        "entry": null
+      },
+      "expect": {
+        "status": "usage_or_config",
+        "entry": null,
+        "op": null,
+        "reason": "arguments_unreadable",
+        "class": null,
+        "escalation_present": false
+      }
+    },
+    {
+      "id": "another_usage_or_config_reason_keeps_its_entry",
+      "description": "A precondition that failed after an entry point was read reports it: `entry` is non-null on every path but the one above.",
+      "given": {
+        "ending": "precondition",
+        "precondition_reason": "forge_coordinate_missing",
+        "decisive": null,
+        "entry": "ship"
+      },
+      "expect": {
+        "status": "usage_or_config",
+        "entry": "ship",
+        "op": null,
+        "reason": "forge_coordinate_missing",
+        "class": null,
+        "escalation_present": false
+      }
+    },
+    {
+      "id": "arguments_unreadable_after_an_entry_point_was_read_keeps_it",
+      "description": "An invocation decoded far enough to name an entry point reports it whatever failed after it, so the null case is bounded by what was read rather than by the reason alone (Section 8.2).",
+      "given": {
+        "ending": "precondition",
+        "precondition_reason": "arguments_unreadable",
+        "decisive": null,
+        "entry": "ship"
+      },
+      "expect": {
+        "status": "usage_or_config",
+        "entry": "ship",
+        "op": null,
+        "reason": "arguments_unreadable",
+        "class": null,
+        "escalation_present": false
+      }
+    }
+  ]
+}
