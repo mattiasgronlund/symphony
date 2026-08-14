@@ -40,71 +40,81 @@
 
   "reasons": {
     "spec_refs": ["VCSX-SPEC.md Section 4.3 \"Reason-Token Registry\""],
-    "note": "The Section 4.3 table normalized to one entry per (operation, reason). Its combined rows expand: the `status` / `diff` row to two entries, and the four universal rows to one entry per operation they cover — `failed` and `unsupported` for every operation, `blocked` and `hook_unanswered` for every gated one — each marked `universal: true`. `blocked`, `failed` and `hook_unanswered` divide a gate's outcomes by what the hook did: refused with a `needs_caller` result, refused with an `error` result, and gave no usable answer at all. An engine MUST document any reason it adds beyond this set, with its class.",
+    "note": "The Section 4.3 table normalized to one entry per (operation, reason). Its combined rows expand: the `status` / `diff` row to two entries, and the four universal rows to one entry per operation they cover — `failed` and `unsupported` for every operation, `blocked` and `hook_unanswered` for every gated one — each marked `universal: true`. `blocked`, `failed` and `hook_unanswered` divide a gate's outcomes by what the hook did: refused with a `needs_caller` result, refused with an `error` result, and gave no usable answer at all. An engine MUST document any reason it adds beyond this set, with its class. Every entry carries `default_need`: for a `needs_caller` reason, the need an escalation on that result carries where nothing in the policy named one (Section 4.3's column); `null` for a `done` or `error` reason, whose class default continues or fails rather than escalates.",
     "entries": [
-      { "token": "commit:ok", "operation": "commit", "reason": "ok", "class": "done" },
-      { "token": "commit:nothing_to_commit", "operation": "commit", "reason": "nothing_to_commit", "class": "done" },
-      { "token": "commit:worktree_moved", "operation": "commit", "reason": "worktree_moved", "class": "needs_caller" },
-      { "token": "commit:identity_missing", "operation": "commit", "reason": "identity_missing", "class": "needs_caller" },
-      { "token": "commit:blocked", "operation": "commit", "reason": "blocked", "class": "needs_caller", "universal": true },
-      { "token": "commit:hook_unanswered", "operation": "commit", "reason": "hook_unanswered", "class": "error", "universal": true },
-      { "token": "commit:failed", "operation": "commit", "reason": "failed", "class": "error", "universal": true },
-      { "token": "commit:unsupported", "operation": "commit", "reason": "unsupported", "class": "error", "universal": true },
+      { "token": "commit:ok", "operation": "commit", "reason": "ok", "class": "done", "default_need": null },
+      { "token": "commit:nothing_to_commit", "operation": "commit", "reason": "nothing_to_commit", "class": "done", "default_need": null },
+      { "token": "commit:worktree_moved", "operation": "commit", "reason": "worktree_moved", "class": "needs_caller", "default_need": "reread_then_retry" },
+      { "token": "commit:identity_missing", "operation": "commit", "reason": "identity_missing", "class": "needs_caller", "default_need": "supply_identity" },
+      { "token": "commit:blocked", "operation": "commit", "reason": "blocked", "class": "needs_caller", "default_need": "human_review", "universal": true },
+      { "token": "commit:hook_unanswered", "operation": "commit", "reason": "hook_unanswered", "class": "error", "default_need": null, "universal": true },
+      { "token": "commit:failed", "operation": "commit", "reason": "failed", "class": "error", "default_need": null, "universal": true },
+      { "token": "commit:unsupported", "operation": "commit", "reason": "unsupported", "class": "error", "default_need": null, "universal": true },
 
-      { "token": "integrate:ok", "operation": "integrate", "reason": "ok", "class": "done" },
-      { "token": "integrate:up_to_date", "operation": "integrate", "reason": "up_to_date", "class": "done" },
-      { "token": "integrate:merge_conflicts", "operation": "integrate", "reason": "merge_conflicts", "class": "needs_caller" },
-      { "token": "integrate:base_unresolved", "operation": "integrate", "reason": "base_unresolved", "class": "error" },
-      { "token": "integrate:base_unavailable", "operation": "integrate", "reason": "base_unavailable", "class": "error" },
-      { "token": "integrate:identity_missing", "operation": "integrate", "reason": "identity_missing", "class": "needs_caller" },
-      { "token": "integrate:failed", "operation": "integrate", "reason": "failed", "class": "error", "universal": true },
-      { "token": "integrate:unsupported", "operation": "integrate", "reason": "unsupported", "class": "error", "universal": true },
+      { "token": "integrate:ok", "operation": "integrate", "reason": "ok", "class": "done", "default_need": null },
+      { "token": "integrate:up_to_date", "operation": "integrate", "reason": "up_to_date", "class": "done", "default_need": null },
+      { "token": "integrate:merge_conflicts", "operation": "integrate", "reason": "merge_conflicts", "class": "needs_caller", "default_need": "resolve_conflicts" },
+      { "token": "integrate:base_unresolved", "operation": "integrate", "reason": "base_unresolved", "class": "error", "default_need": null },
+      { "token": "integrate:base_unavailable", "operation": "integrate", "reason": "base_unavailable", "class": "error", "default_need": null },
+      { "token": "integrate:identity_missing", "operation": "integrate", "reason": "identity_missing", "class": "needs_caller", "default_need": "supply_identity" },
+      { "token": "integrate:failed", "operation": "integrate", "reason": "failed", "class": "error", "default_need": null, "universal": true },
+      { "token": "integrate:unsupported", "operation": "integrate", "reason": "unsupported", "class": "error", "default_need": null, "universal": true },
 
-      { "token": "push:ok", "operation": "push", "reason": "ok", "class": "done" },
-      { "token": "push:up_to_date", "operation": "push", "reason": "up_to_date", "class": "done" },
-      { "token": "push:non_fast_forward", "operation": "push", "reason": "non_fast_forward", "class": "needs_caller" },
-      { "token": "push:pr_closed", "operation": "push", "reason": "pr_closed", "class": "needs_caller" },
-      { "token": "push:rejected", "operation": "push", "reason": "rejected", "class": "error" },
-      { "token": "push:blocked", "operation": "push", "reason": "blocked", "class": "needs_caller", "universal": true },
-      { "token": "push:hook_unanswered", "operation": "push", "reason": "hook_unanswered", "class": "error", "universal": true },
-      { "token": "push:failed", "operation": "push", "reason": "failed", "class": "error", "universal": true },
-      { "token": "push:unsupported", "operation": "push", "reason": "unsupported", "class": "error", "universal": true },
+      { "token": "push:ok", "operation": "push", "reason": "ok", "class": "done", "default_need": null },
+      { "token": "push:up_to_date", "operation": "push", "reason": "up_to_date", "class": "done", "default_need": null },
+      { "token": "push:non_fast_forward", "operation": "push", "reason": "non_fast_forward", "class": "needs_caller", "default_need": "integrate_then_retry" },
+      { "token": "push:pr_closed", "operation": "push", "reason": "pr_closed", "class": "needs_caller", "default_need": "human_review" },
+      { "token": "push:rejected", "operation": "push", "reason": "rejected", "class": "error", "default_need": null },
+      { "token": "push:blocked", "operation": "push", "reason": "blocked", "class": "needs_caller", "default_need": "human_review", "universal": true },
+      { "token": "push:hook_unanswered", "operation": "push", "reason": "hook_unanswered", "class": "error", "default_need": null, "universal": true },
+      { "token": "push:failed", "operation": "push", "reason": "failed", "class": "error", "default_need": null, "universal": true },
+      { "token": "push:unsupported", "operation": "push", "reason": "unsupported", "class": "error", "default_need": null, "universal": true },
 
-      { "token": "create_pr:created", "operation": "create_pr", "reason": "created", "class": "done" },
-      { "token": "create_pr:updated", "operation": "create_pr", "reason": "updated", "class": "done" },
-      { "token": "create_pr:base_mismatch", "operation": "create_pr", "reason": "base_mismatch", "class": "error" },
-      { "token": "create_pr:conflict", "operation": "create_pr", "reason": "conflict", "class": "needs_caller" },
-      { "token": "create_pr:blocked", "operation": "create_pr", "reason": "blocked", "class": "needs_caller", "universal": true },
-      { "token": "create_pr:hook_unanswered", "operation": "create_pr", "reason": "hook_unanswered", "class": "error", "universal": true },
-      { "token": "create_pr:failed", "operation": "create_pr", "reason": "failed", "class": "error", "universal": true },
-      { "token": "create_pr:unsupported", "operation": "create_pr", "reason": "unsupported", "class": "error", "universal": true },
+      { "token": "create_pr:created", "operation": "create_pr", "reason": "created", "class": "done", "default_need": null },
+      { "token": "create_pr:updated", "operation": "create_pr", "reason": "updated", "class": "done", "default_need": null },
+      { "token": "create_pr:base_mismatch", "operation": "create_pr", "reason": "base_mismatch", "class": "error", "default_need": null },
+      { "token": "create_pr:conflict", "operation": "create_pr", "reason": "conflict", "class": "needs_caller", "default_need": "human_review" },
+      { "token": "create_pr:blocked", "operation": "create_pr", "reason": "blocked", "class": "needs_caller", "default_need": "human_review", "universal": true },
+      { "token": "create_pr:hook_unanswered", "operation": "create_pr", "reason": "hook_unanswered", "class": "error", "default_need": null, "universal": true },
+      { "token": "create_pr:failed", "operation": "create_pr", "reason": "failed", "class": "error", "default_need": null, "universal": true },
+      { "token": "create_pr:unsupported", "operation": "create_pr", "reason": "unsupported", "class": "error", "default_need": null, "universal": true },
 
-      { "token": "merge:ok", "operation": "merge", "reason": "ok", "class": "done" },
-      { "token": "merge:not_open", "operation": "merge", "reason": "not_open", "class": "needs_caller" },
-      { "token": "merge:checks_pending", "operation": "merge", "reason": "checks_pending", "class": "needs_caller" },
-      { "token": "merge:checks_failed", "operation": "merge", "reason": "checks_failed", "class": "error" },
-      { "token": "merge:conflict", "operation": "merge", "reason": "conflict", "class": "needs_caller" },
-      { "token": "merge:head_moved", "operation": "merge", "reason": "head_moved", "class": "needs_caller" },
-      { "token": "merge:rejected", "operation": "merge", "reason": "rejected", "class": "error" },
-      { "token": "merge:blocked", "operation": "merge", "reason": "blocked", "class": "needs_caller", "universal": true },
-      { "token": "merge:hook_unanswered", "operation": "merge", "reason": "hook_unanswered", "class": "error", "universal": true },
-      { "token": "merge:failed", "operation": "merge", "reason": "failed", "class": "error", "universal": true },
-      { "token": "merge:unsupported", "operation": "merge", "reason": "unsupported", "class": "error", "universal": true },
+      { "token": "merge:ok", "operation": "merge", "reason": "ok", "class": "done", "default_need": null },
+      { "token": "merge:not_open", "operation": "merge", "reason": "not_open", "class": "needs_caller", "default_need": "human_review" },
+      { "token": "merge:checks_pending", "operation": "merge", "reason": "checks_pending", "class": "needs_caller", "default_need": "await_checks" },
+      { "token": "merge:checks_failed", "operation": "merge", "reason": "checks_failed", "class": "error", "default_need": null },
+      { "token": "merge:conflict", "operation": "merge", "reason": "conflict", "class": "needs_caller", "default_need": "resolve_conflicts" },
+      { "token": "merge:head_moved", "operation": "merge", "reason": "head_moved", "class": "needs_caller", "default_need": "reread_then_retry" },
+      { "token": "merge:rejected", "operation": "merge", "reason": "rejected", "class": "error", "default_need": null },
+      { "token": "merge:blocked", "operation": "merge", "reason": "blocked", "class": "needs_caller", "default_need": "human_review", "universal": true },
+      { "token": "merge:hook_unanswered", "operation": "merge", "reason": "hook_unanswered", "class": "error", "default_need": null, "universal": true },
+      { "token": "merge:failed", "operation": "merge", "reason": "failed", "class": "error", "default_need": null, "universal": true },
+      { "token": "merge:unsupported", "operation": "merge", "reason": "unsupported", "class": "error", "default_need": null, "universal": true },
 
-      { "token": "pull:ok", "operation": "pull", "reason": "ok", "class": "done" },
-      { "token": "pull:conflict", "operation": "pull", "reason": "conflict", "class": "needs_caller" },
-      { "token": "pull:identity_missing", "operation": "pull", "reason": "identity_missing", "class": "needs_caller" },
-      { "token": "pull:failed", "operation": "pull", "reason": "failed", "class": "error", "universal": true },
-      { "token": "pull:unsupported", "operation": "pull", "reason": "unsupported", "class": "error", "universal": true },
+      { "token": "pull:ok", "operation": "pull", "reason": "ok", "class": "done", "default_need": null },
+      { "token": "pull:conflict", "operation": "pull", "reason": "conflict", "class": "needs_caller", "default_need": "resolve_conflicts" },
+      { "token": "pull:identity_missing", "operation": "pull", "reason": "identity_missing", "class": "needs_caller", "default_need": "supply_identity" },
+      { "token": "pull:failed", "operation": "pull", "reason": "failed", "class": "error", "default_need": null, "universal": true },
+      { "token": "pull:unsupported", "operation": "pull", "reason": "unsupported", "class": "error", "default_need": null, "universal": true },
 
-      { "token": "status:ok", "operation": "status", "reason": "ok", "class": "done" },
-      { "token": "status:failed", "operation": "status", "reason": "failed", "class": "error", "universal": true },
-      { "token": "status:unsupported", "operation": "status", "reason": "unsupported", "class": "error", "universal": true },
+      { "token": "status:ok", "operation": "status", "reason": "ok", "class": "done", "default_need": null },
+      { "token": "status:failed", "operation": "status", "reason": "failed", "class": "error", "default_need": null, "universal": true },
+      { "token": "status:unsupported", "operation": "status", "reason": "unsupported", "class": "error", "default_need": null, "universal": true },
 
-      { "token": "diff:ok", "operation": "diff", "reason": "ok", "class": "done" },
-      { "token": "diff:base_unavailable", "operation": "diff", "reason": "base_unavailable", "class": "error" },
-      { "token": "diff:failed", "operation": "diff", "reason": "failed", "class": "error", "universal": true },
-      { "token": "diff:unsupported", "operation": "diff", "reason": "unsupported", "class": "error", "universal": true }
+      { "token": "diff:ok", "operation": "diff", "reason": "ok", "class": "done", "default_need": null },
+      { "token": "diff:base_unavailable", "operation": "diff", "reason": "base_unavailable", "class": "error", "default_need": null },
+      { "token": "diff:failed", "operation": "diff", "reason": "failed", "class": "error", "default_need": null, "universal": true },
+      { "token": "diff:unsupported", "operation": "diff", "reason": "unsupported", "class": "error", "default_need": null, "universal": true }
+    ]
+  },
+
+  "hook_conditions": {
+    "spec_refs": ["VCSX-SPEC.md Section 6.6 \"`[hooks]`\"", "VCSX-SPEC.md Section 8.2 \"Result Envelope\""],
+    "note": "The three ways a hook gives the engine no usable answer. Reported for a gate in `unanswered_gates` and for a result-triggered hook in `unfinished_hooks`, spelled the same way in both, so one consumer branch reads both halves. The condition diagnoses; the reason routes (Section 4.3).",
+    "entries": [
+      { "token": "bound_elapsed", "meaning": "The unit was still running when the bound elapsed, and was stopped." },
+      { "token": "not_started", "meaning": "The engine could not start the unit." },
+      { "token": "answer_unreadable", "meaning": "The unit answered, and the engine could not read the answer in the form it fixed." }
     ]
   },
 
@@ -179,12 +189,12 @@
     "entries": [
       { "token": "run_op", "effected_by": "engine", "args": ["op", "args?"] },
       { "token": "run", "effected_by": "engine", "args": ["hook", "context"] },
-      { "token": "escalate", "effected_by": "engine", "args": ["reason"], "note": "Abstract; the front-end binds the resolver (Section 5.5)." },
+      { "token": "escalate", "effected_by": "engine", "args": ["reason?"], "note": "Abstract; the front-end binds the resolver (Section 5.5). `reason` is OPTIONAL: an edge naming none raises the trigger's default need (Section 4.3), and `human_review` where the trigger carries none." },
       { "token": "create_task", "effected_by": "consumer", "args": ["spec"] },
       { "token": "set_state", "effected_by": "consumer", "args": ["target"] },
       { "token": "notify", "effected_by": "consumer", "args": ["channel", "payload"] },
       { "token": "park", "effected_by": "engine", "args": [] },
-      { "token": "fail", "effected_by": "engine", "args": ["reason"] }
+      { "token": "fail", "effected_by": "engine", "args": ["reason?"], "note": "`reason` is OPTIONAL and is a repository-authored token rather than one of this file's registries; it is reported in `outputs.failed_by_policy` and in `message`, never in the envelope's `reason` field." }
     ]
   },
 
@@ -193,6 +203,7 @@
     "note": "Part of the public contract: documented and stable within a MAJOR. The set below is the specification's named vocabulary; an engine documents any it adds. `raised_by` records what raises the need — the action that raises it, or `executor` for one no policy can write — and `resolvable` whether a front-end binds a resolver to it.",
     "entries": [
       { "token": "integrate_then_retry", "raised_by": "escalate", "resolvable": true },
+      { "token": "reread_then_retry", "raised_by": "escalate", "resolvable": true, "note": "Met by reading the moved state again and retrying, which is the re-entry a resume performs (Section 5.5), rather than by supplying anything. The default need of `commit:worktree_moved` and `merge:head_moved`." },
       { "token": "resolve_conflicts", "raised_by": "escalate", "resolvable": true },
       { "token": "supply_identity", "raised_by": "escalate", "resolvable": true },
       { "token": "await_checks", "raised_by": "escalate", "resolvable": true },
@@ -204,8 +215,29 @@
 
   "envelope_fields": {
     "spec_refs": ["VCSX-SPEC.md Section 8.2 \"Result Envelope\""],
-    "note": "Part of the major-stable surface. A consumer MAY add fields but SHOULD NOT break these within a MAJOR.",
-    "entries": ["vcsx_version", "entry", "status", "op", "reason", "class", "escalation", "outputs", "message"]
+    "note": "Part of the major-stable surface. A consumer MAY add fields but SHOULD NOT break these within a MAJOR. `nullable` records whether the specification admits a null, so a generated envelope type takes its optionality from here rather than from Section 8.2's example.",
+    "entries": [
+      { "token": "vcsx_version", "nullable": false },
+      { "token": "entry", "nullable": true, "note": "Null exactly where no Section 8.1 entry point was read: the `usage_or_config` status carrying the `arguments_unreadable` reason, and nowhere else." },
+      { "token": "status", "nullable": false },
+      { "token": "op", "nullable": true, "note": "Null where the run has no decisive operation result, and under `usage_or_config`." },
+      { "token": "reason", "nullable": true, "note": "Null where the run has no decisive operation result; carries a configuration or precondition reason under `usage_or_config`." },
+      { "token": "class", "nullable": true, "note": "Null where the run has no decisive operation result, and under `usage_or_config`." },
+      { "token": "escalation", "nullable": true, "note": "Present exactly when `status == \"needs_caller\"` (Section 8.4)." },
+      { "token": "outputs", "nullable": false },
+      { "token": "message", "nullable": false, "note": "Human-readable prose. Nothing parses it: every fact a consumer branches on has a field or a token of its own." }
+    ]
+  },
+
+  "output_keys": {
+    "spec_refs": ["VCSX-SPEC.md Section 8.2 \"Result Envelope\""],
+    "note": "The keys Section 8.2 fixes inside `outputs`. Each is absent or empty where the condition it reports did not occur; the rest of `outputs` is entry-specific and is not a shared vocabulary.",
+    "entries": [
+      { "token": "unperformed_intents", "fields": ["action", "arguments"], "meaning": "The consumer-effected intents the engine emitted and no consumer performed (Section 5.2)." },
+      { "token": "unfinished_hooks", "fields": ["hook", "trigger", "condition"], "meaning": "The result-triggered hooks that gave the engine no usable answer (Section 6.6). `condition` is a `hook_conditions` token." },
+      { "token": "unanswered_gates", "fields": ["hook", "position", "condition", "detail"], "meaning": "The `before:*` hooks that gave the engine no usable answer, whose operations reported `hook_unanswered` (Sections 4.3, 6.6). `condition` is a `hook_conditions` token; `detail` is Implementation-defined. An array, because one traversal can pass more than one unanswered gate." },
+      { "token": "failed_by_policy", "fields": ["trigger", "reason"], "meaning": "Present where the policy ended the flow with `fail` (Section 5.2). `reason` is the repository-authored token the edge wrote and is absent where the edge wrote none; it belongs to no registry in this file." }
+    ]
   },
 
   "escalation_fields": {

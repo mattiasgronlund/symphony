@@ -153,8 +153,11 @@ The proto outcome classes are a closed set:
 
 - An unmatched **signal** (an agent milestone or task-state event with no matching edge) is a benign
   no-op.
-- An unmatched **operation outcome** MUST be **fail-safe**: it is parked or failed and its proto reason
-  is surfaced. It MUST NOT be silently dropped, because a dropped operation outcome would strand a run.
+- An **operation outcome no action disposed of** MUST be **fail-safe**: it is parked or failed and its
+  proto reason is surfaced. It MUST NOT be silently dropped, because a dropped operation outcome would
+  strand a run. An outcome is disposed of by an action that ends the run or by a `run_op` whose own
+  result takes its place, so an outcome that matched no edge and one whose edge merely emitted an
+  intent are treated alike: matching is not disposal.
 
 ### 5.5 Reason-Token Class Contract
 

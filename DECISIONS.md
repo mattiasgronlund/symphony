@@ -2894,3 +2894,255 @@ RECOMMENDED defaulting rule in Section 8.1, not moving the coordinate back acros
 Relates to 0062, 0065, 0073 and 0084. Accepted and applied to `VCSX-SPEC.md` (Sections 3.3, 6.2, 7.3,
 8.1, 8.6, 9.2, 11, 13.1, 13.2), `conformance/vcsx/vocabulary.json`, `conformance/vcsx/README.md` and
 `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0086 — An unanswered gate's condition is named, and the three conditions are tokens
+
+**State:** Accepted
+**Folder:** [decisions/0086-unanswered-gate-diagnosis/](decisions/0086-unanswered-gate-diagnosis/)
+
+Resolves issue #42. Decision 0081 split what exceeding a hook bound produces into a routing half —
+`<op>:hook_unanswered`, a Section 4.3 reason with a fixed class — and a diagnosis half, which of three
+conditions occurred, which Section 4.3 sends to `outputs` "rather than in a token, because the repair
+is the same shape in each case". Section 8.2 then does that for one half of Section 6.6's division and
+not the other: the non-gating half gets a name, a field list and an absent-or-empty rule
+(`unfinished_hooks`), and the gating half gets a clause — "`outputs` carries which condition occurred
+for it too" — that **names no key, no shape and no field while requiring the report**. It is the only
+fact in Section 8.2 that is REQUIRED and unnamed, on a surface Section 8.5 calls major-stable, and the
+failure is silent in the direction that matters: a consumer finds no key it recognizes, concludes no
+gate failed, and reports a run whose diagnosis it never saw. There is a second level underneath, which
+is the report's second ask: the three conditions are **prose** in both Section 6.6 and Section 8.2, so
+`unfinished_hooks` — a named key with a named `condition` field — carries values every engine invents,
+and naming the gating half's key alone would move the defect one field deeper rather than close it.
+This is 0081's own argument one level below a token: that decision refused to let each engine mint its
+own reason because "the token would be chosen independently by every engine", and a key in `outputs`
+and the values inside it are in exactly that position. The asymmetry also reads as an unfinished edit
+rather than a choice — the review that landed on issue #35 equalized *which* conditions each half
+reports and left *where* asymmetric. Options: **A** name `outputs.unanswered_gates` (an array of
+`hook`, `position`, `condition`, `Implementation-defined` `detail`, absent or empty where every gate
+answered) and fix the conditions as three tokens — `bound_elapsed`, `not_started`, `answer_unreadable`
+— defined once in Section 6.6 and used by both keys (chosen; an array because the result re-enters the
+machine, so a repository binding `commit:hook_unanswered` to anything that does not end the flow can
+reach `before:push` on the same traversal, which Section 5.6 defends rather than refuses); **B** widen
+`unfinished_hooks` to both halves, distinguished by a field (rejected — the better shape for a consumer
+asking "which hooks broke", and it loses on what the existing key means: it is today exactly the set
+nothing else reports, Section 8.2's "non-gating half's mirror of `hook_unanswered`", and widening it
+makes the gating members duplicate a reason the envelope already states in `reason`, so a consumer that
+read it as "the failures that were not routed" starts filtering and the property that made it worth
+naming is gone); **C** `Implementation-defined`, documented under Section 13.3 (rejected — the honest
+minimum, and more than the document manages today, but it concedes at the `outputs` level what 0081
+refused at the token level, and the Conformance Statement records a *choice* rather than defines a
+shared fact, so a consumer reading two Statements to learn two spellings of one condition is doing the
+work the registry exists to remove). Reconsider if a second `outputs` key overlapping
+`unanswered_gates` appears — a report of every hook run, not only the failures — at which point B's
+one-view argument starts costing a join and beats the mirror property; reconsider also if a fourth
+condition appears, since the three are exhaustive over *how the engine failed to get an answer* and a
+fourth would mean Section 6.6's division is over something else. Relates to 0081, 0051, 0071 and 0059.
+Accepted and applied to `VCSX-SPEC.md` (Sections 6.6, 8.2, 13.1, 13.2, 13.3) and
+`conformance/vcsx/vocabulary.json`.
+
+## 0087 — A resume re-enters the point that raised the need, and re-reads
+
+**State:** Accepted
+**Folder:** [decisions/0087-resume-re-entry/](decisions/0087-resume-re-entry/)
+
+Resolves issue #43. Section 5.5 has an embedded driver bind a resolver and "resume the flow when the
+need is met", and Section 5.4 produces an escalation with no `escalate` action having run, since the
+built-in default for `needs_caller` *is* `escalate` — so a `before:commit` gate blocks, Section 6.6
+surfaces `commit:blocked`, no edge is bound, the default escalates, and a driver resolves. **Where the
+flow carries on is written nowhere**, and not only for a gate: the same silence covers every
+escalation, including the ones the document's own `ship` routing raises. The filing implementation
+resumed by dispatching the operation **without re-entering the position**, so a resolved need ran a
+commit a gate had refused and that no gate re-inspected — the failure Section 6.6 exists to prevent one
+layer down, where an operation that acted on state no position inspected returns a `done`-class result
+for a run nothing gated. One of the report's three candidates closed while it was in flight: decision
+0078 put the position **inside** the dispatch, so "dispatch the operation" and "re-enter the position"
+are one act, and the implementation's behavior is no longer expressible through a dispatch at all — it
+would have to be a resume landing *past* the position, which nothing describes and which Section 6.6
+forbids outright for `hook_unanswered`. Options: **A** a resume re-enters the point that raised the
+need — re-dispatching the operation whose result escalated, which runs its `before:<op>` position
+first, or re-entering the position where an edge there escalated (the null-`op` case, Section 8.4)
+(chosen; one rule for every escalation, the same answer for `blocked` and `hook_unanswered`, and the
+gate re-run rather than bypassed so neither yields a pass it did not give); **B** the escalation ends
+the invocation and the repair is picked up by the next one (rejected — the strongest rejected option,
+simplest to specify, removes suspended state and makes both front-ends identical, but it rewrites
+Section 5.5 rather than completing it: a driver that can genuinely meet the need must re-invoke, and it
+collapses Section 8.4's split between a need a front-end is expected to meet and a hold released out of
+band, since under B every need is released out of band, which is Section 8.4's definition of a hold);
+**C** the resume point is the driver's, bounded and documented (rejected — it widens front-end
+divergence from *which resolver is bound* to *where the executor resumes*, so two drivers run one
+`repo.policy.toml` through different operation flows, the property Section 13.1 tests and Section 5.5
+claims). Two properties are stated with A and neither is optional. **The count is over re-entry, not
+over dispatch**: "a resume's re-dispatch is a dispatch" covers the operation case and leaves the
+position case unbounded, because a `before:commit → escalate` edge re-enters a position *inside a
+dispatch whose count is already spent*, so a resolver that always resolves would loop there forever —
+quantifying over any re-entry puts both shapes on Section 5.6's bound and converges both on
+`flow_exhausted`, which is issue #4's property held in the one place this decision adds. **A resume
+re-reads**: the value of re-entering is that the position's reads happen again, and an engine that
+cached `expected_worktree` or `expected_head` across a resume would hand an operation a stale
+expectation, producing the condition decisions 0077 and 0079 exist to report rather than to produce.
+Reconsider if a front-end appears that cannot hold a suspended flow across a resolver call, at which
+point B becomes the practical answer rather than the minimal one; reconsider also if a need is added
+whose remedy is not re-running the raising point, since every need today is met at or before it.
+Relates to 0078, 0059, 0060, 0077, 0079 and 0088. Accepted and applied to `VCSX-SPEC.md` (Sections 5.5,
+5.6, 8.4, 13.1, 13.2).
+
+## 0088 — An outcome no action disposed of takes the default, and the registry carries each need
+
+**State:** Accepted
+**Folder:** [decisions/0088-default-need-per-reason/](decisions/0088-default-need-per-reason/)
+
+Resolves issue #44. Section 5.4 fixes what an **unmatched** operation outcome does, Section 5.6 names
+what ends a flow, and Section 5.2 makes the consumer-effected actions emit once — leaving a third case
+between them: a result that **matched** an edge whose action neither ends the flow nor re-enters the
+machine. `push:non_fast_forward → notify` under a single-operation entry point emits the intent, and
+the traversal has nowhere to go. Section 8.2 then requires three things that do not compose: the
+decisive result's class is `needs_caller`, so the status is, so an escalation is REQUIRED — and no
+`escalate` ran, so nothing named a `need`. The filing implementation's envelope constructor holds
+"exactly when" as an invariant and **panicked**: fail-closed rather than wrong, and evidence that an
+implementation taking Section 8.2 literally cannot represent a run the specification asks for. The
+half that reaches further than the report is the mapping: Section 5.4's built-in default for
+`needs_caller` is `escalate` and Section 8.4 says an escalation carries a `need`, and **nothing says
+which need for which reason** — already true for the unmatched case, made reachable from a policy edge
+by this one. Counted against the registry, there are **17** `needs_caller` results (13 reason-specific
+rows plus the universal `blocked` at each of four gated operations); the document fixes 2 of them, in
+Section 12.2's routing; the filing implementation invented 6 and defaulted 9 to `human_review`. So an
+engine derives 15 of 17 with no guidance while Section 5.5 has a front-end **bind its resolvers by
+exactly those tokens** — two engines offering one driver two resolver keys for one condition, which is
+what the `need` vocabulary being "part of the public contract" is supposed to exclude. Options: **A**
+extend the fail-safe rule from "unmatched" to "no action disposed of", where an outcome is disposed of
+by an action that ends the flow or by a `run_op` whose result takes its place, and put the default's
+need on Section 4.3's registry as a `Default need` column (chosen); **B** null the operation fields and
+end at `intervention` (rejected — reuses `park`'s machinery and needs no mapping, but it drops the
+decisive result, which Section 5.4 forbids in the neighbouring case for a reason that does not stop at
+whether an edge happened to match, and 0059's ground for nulling a park — no operation asked the caller
+for anything — is false here, so the envelope would report a hold the policy never asked for); **C**
+refuse the policy at validation (rejected — statically judgeable, and this repository has accepted
+static refusal where the refused policies were unrepresentable or nonsense, which these are not:
+`push:rejected → notify` means notify then report the failure, and the rewrite is not writable, since
+Section 5.4 allows at most one edge per `(from-context, trigger)`, so C removes a policy rather than
+repairing its report). The column goes on the **registry** rather than in a Section 8.4 table because
+the registry is already keyed by `(operation, reason)` and already generated from
+(`conformance/vcsx/vocabulary.json`, decisions 0051 and 0071), so the mapping becomes a field on a
+generated record and an upstream rename becomes a compile error — the same property 0086's tokens buy,
+and the difference between a normative mapping and a normative suggestion; Section 8.4 stays the `need`
+vocabulary. Two rows have no good answer in the existing vocabulary: `commit:worktree_moved` and
+`merge:head_moved` fall to `human_review`, which is wrong for them, because the state moved between the
+read and the write and the repair is to read it again, not to fetch a person. Both reach the default
+only through a bare `commit` or `merge` entry point, which is why Section 12.3's "adds a reason token
+and no `need` token" stops being true the moment a driver calls `merge` directly. They take a new
+need, **`reread_then_retry`**, minted here rather than deferred because it is meetable **only through
+0087** — a resume re-enters the raising point and the position re-reads — and a need no front-end can
+meet is a hold, which this one would have become for want of the resume semantics landing in the same
+change. One hole the repair exposes is recorded rather than fixed quietly: Section 6.5's own example is
+`{on = "#error", do = "escalate"}` with no `reason`, and the corpus carries the same shape, so an
+explicit `escalate` naming no reason needs an answer too — it raises the trigger's default need where
+the trigger is a `needs_caller` result and `human_review` otherwise, since an `error` or `done` result
+a policy chose to escalate names no remedy of its own and a position has no outcome to take one from.
+Reconsider the column's *placement* if the registry gains a second per-reason policy field, at which
+point it is carrying policy rather than identity and a separate table stops being a duplicate key;
+reconsider a *mapping* wherever a front-end's built-in routing contradicts it, since the two must
+agree. Relates to 0087, 0059, 0051, 0071, 0074, 0077 and 0079. Accepted and applied to `VCSX-SPEC.md`
+(Sections 4.3, 5.2, 5.4, 8.4, 12.3, 13.1, 13.2), `VCSX-CONTRACT.md` (Section 5.4),
+`conformance/vcsx/vocabulary.json`, `conformance/vcsx/vectors/compose-envelope.json` and
+`conformance/vcsx/README.md`.
+
+## 0089 — `fail` gets the envelope `park` has, and `fail(reason)` is the repository's token
+
+**State:** Accepted
+**Folder:** [decisions/0089-fail-envelope/](decisions/0089-fail-envelope/)
+
+Resolves issue #45. Section 5.2 gives `fail` one sentence and Section 8.2 has nowhere to put that
+ending unless an `error`-class result is already in hand, because its two rules are exhaustive in
+opposite directions: where `op`/`reason`/`class` are non-null, `class` is the class `status` reports;
+and all three are null in exactly three enumerated cases, none of which is a failed flow. The report
+enumerated every Section 5.2 disposition against every Section 4.2 class plus a lifecycle position — 32
+combinations — and three broke, all of them `fail`, each differently: `#needs_caller → fail` and
+`before:push → fail` **panicked**, and `push:ok → fail` composed an **`ok`** envelope, which is the
+report on its own: the specification's rules, taken literally, produce a success envelope for a flow
+the policy had just failed. The two failing shapes are not exotic — "never allow a commit in this
+repository" is `before:commit → fail` and "this repository never holds for a human" is `#needs_caller →
+fail` — and `park`, introduced in the same sentence of Section 5.2, composes on every one of them. This
+was **predicted**: decision 0059 closed `park`'s envelope and recorded `fail`'s as left open "which
+cannot be settled before what `fail(reason)`'s argument *is* has an answer", so this decision answers
+both. Options: **A** a fourth null case, scoped by the class that already governs the field — a `fail`
+reports the decisive result where the run has one whose class is `error`, and nulls all three otherwise
+(chosen); **B** relax the class invariant, reporting the result whatever its class and letting `status`
+be the policy's (rejected — the most information in the envelope and what a from-scratch design might
+pick, since it separates what the run did from what the last operation reported, but 0059 called that
+invariant "worth more than the case that motivated it — what a reviewer checks the next time a terminal
+action is added", and this *is* that next time: every consumer reading `class` as the class of the
+status breaks, and Section 8.5 makes it a `MAJOR` change to fix a case a `MINOR`-compatible clause
+covers); **C** refuse the edge at validation (rejected — what the filing implementation does meanwhile,
+and it names itself a meanwhile; as a normative answer it removes meaning rather than adding a report,
+since `before:commit → fail` stops being expressible and the workaround is `park`, which reports
+`needs_caller` for something the repository said was a failure). A's split is where it is for two
+reasons: the classes agree in the `error` case so 0059's invariant holds **unchanged** rather than
+gaining an exception, and an explicit `#error → fail` then reports what the built-in `error` default
+reports for the same flow — which is itself a `fail` — where nulling unconditionally would make writing
+the default down explicitly report strictly *less* than leaving it implicit. **The cost is stated**:
+two shapes for `fail`, which is what 0059 rejected as its option E for `park`, on the ground that a
+consumer must handle null regardless so it adds a case without removing one. The counter is that the
+argument turns on a point where `fail` and `park` differ — for `park`, reporting the result would put a
+`done`-class reason under a `needs_caller` status, the violation the null was introduced to avoid,
+while for `fail` on an `error` result the classes agree, so option E added a case to avoid a null a
+consumer needed anyway and this keeps a field that is already there. `fail(reason)`'s argument is a
+**repository-authored token**, surfaced in `message` as prose and in `outputs.failed_by_policy` as
+data, carrying the trigger the edge fired on and the reason it wrote — and **not** in `reason`, which
+carries tokens from three engine-owned registries a consumer branches on, where a repository-invented
+value would be indistinguishable from an engine one. The corpus already carries `{"do": "fail",
+"reason": "push_failed"}`, so the argument existed as an unhomed string rather than as a hypothetical.
+Reconsider if anything else is proposed for `reason`'s namespace, since the argument for keeping the
+token out rests on that namespace being engine-owned; reconsider the two shapes if a consumer is found
+branching on `op` being non-null as a proxy for "an operation was decisive", the check being whether
+the non-null rule still states in one sentence. Relates to 0059, 0088 and 0060. Accepted and applied to
+`VCSX-SPEC.md` (Sections 5.2, 6.5, 8.2, 13.1, 13.2), `conformance/vcsx/vocabulary.json`,
+`conformance/vcsx/vectors/compose-envelope.json` and `conformance/vcsx/README.md`.
+
+## 0090 — `entry` is a described field, null exactly where no entry point was read
+
+**State:** Accepted
+**Folder:** [decisions/0090-entry-nullable/](decisions/0090-entry-nullable/)
+
+Resolves issue #46. Decision 0084 made every condition reportable: an invocation whose arguments the
+engine cannot decode is refused with `arguments_unreadable`, `usage_or_config` and exit `2`, and
+Section 8.3 requires exactly one JSON object on stdout on every path that produces a result, so a
+caller parses one shape rather than branching on whether anything was written. Composing that envelope
+needs a field the case may not have: `vcsx`, `vcsx --repo /srv/work` and `vcsx frobnicate` have no
+first word, or a first word that is not one of Section 8.1's ten. Three engines will answer three ways
+— a JSON `null`, a sentinel, the literal word the caller typed — and a consumer reading `entry` as a
+Section 8.1 token gets a type error, a token no registry contains, or whatever a user mistyped. The
+sharper half is **why the gap exists**: `entry` is not merely un-nulled, it is *undescribed*. Section
+8.2's bullets cover `status`, `op`/`reason`/`class`, `escalation` and `outputs`; `vcsx_version`,
+`entry` and `message` appear in the example JSON and in nothing normative, so their type, nullability
+and meaning are inferred from one sample. Nobody wrote that `entry` is non-null because nobody wrote
+`entry`. Options: **A** describe the three fields and make `entry` null **exactly where no Section 8.1
+entry point was read** — `usage_or_config` carrying `arguments_unreadable`, and nowhere else (chosen);
+**B** only a decodable invocation owes an envelope, stderr and exit `2` otherwise (rejected — what the
+filing implementation does, and the right call *as a meanwhile* under the discipline of not minting
+Section 8.2 surface locally, but as a normative answer it hands back exactly what 0084 bought,
+reintroducing the parse-or-not branch at the one exit code where a caller has least idea what happened:
+for the condition whose whole content is "your invocation was unreadable", a caller would have to test
+stdout for emptiness first, and Section 8.3's "every path that produces a result" would hold only by
+making this path produce none); **C** a reserved `unknown` entry token (rejected for a reason that only
+shows up in an implementation — an engine generating its entry-point type from `vocabulary.json` gets
+`unknown` as a variant, and Section 8.6's identity precondition is a **total function of the entry
+point**, so every exhaustive match must answer for a variant where the question does not apply, which
+is what an option type says and a sentinel cannot; it also makes "the entry points" ambiguous wherever
+a section quantifies over Section 8.1's ten. A nullable field costs one option at one call site; a
+sentinel costs a nonsense arm in every total function over the type). The "exactly where" is
+load-bearing rather than stylistic: without it an engine may null the field wherever convenient,
+including where the command line parsed and the entry is known, and it is the same shape — and
+enforceable for the same reason — as the escalation rule Section 8.2 already states. Section 9's rule
+that a non-answer MUST NOT be spelled as the value's absent case does not reach this, on that rule's
+own terms: it requires the non-answer to map to a reason a caller can read, and the null travels with
+`reason: "arguments_unreadable"`, so the reason token carries the condition and the null is the field
+agreeing with it. `message` is described as prose **nothing parses**, stated now rather than later
+because it is the only field with no schema and therefore where structure gets put when it has nowhere
+else to go — the filing implementation reports being tempted to put a `fail` reason there, which is
+exactly the token 0089 gives an `outputs` key. Section 8.3 needs no change: the code is `2`, as it
+already is. Reconsider if a second condition is found where an envelope is owed and no entry point was
+read, since the clause names one case by name and two makes it a list; reconsider if the contract gains
+an encoding in which a null is not expressible, since the nullable-versus-sentinel argument is settled
+here on the shape of a generated type. Relates to 0084, 0065, 0089, 0051 and 0071. Accepted and applied
+to `VCSX-SPEC.md` (Sections 8.2, 13.1, 13.2), `conformance/vcsx/vocabulary.json`,
+`conformance/vcsx/vectors/compose-envelope.json` and `conformance/vcsx/README.md`.

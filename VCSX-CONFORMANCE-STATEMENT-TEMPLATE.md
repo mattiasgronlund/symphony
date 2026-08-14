@@ -77,6 +77,7 @@ concrete choice; do not leave a row blank.
 | Which reason is reported when several configuration conditions hold | 6.10 | `<first found / a documented precedence / all of them>` |
 | Entry-point argument encodings (argument *names* for shared concepts are fixed) | 8.1 | `<CLI flags / JSON on stdin / in-process struct / …>` |
 | How a front-end derives the forge repository coordinate where it defaults one | 8.1 | `<from the resolved remote's URL / not defaulted, always supplied>` |
+| `detail` field of an `outputs.unanswered_gates` entry | 8.2 | `<what the engine places there for a gate that gave no usable answer>` |
 | Escalation `detail` field contents | 8.4 | `<what the engine places there>` |
 | Where a backend writes its own bookkeeping state to answer a capability | 9.1 | `<which capabilities, and what they write>` |
 
@@ -120,7 +121,9 @@ major version. List every `need` this engine can emit, including the registry-na
 | `need` | Emitted by (`op`, position, action, or bound) | Meaning to the resolver |
 |--------|-----------------------------------------------|-------------------------|
 | `integrate_then_retry` | `<...>` | `<...>` |
+| `reread_then_retry` | `<...>` | `<...>` |
 | `resolve_conflicts` | `<...>` | `<...>` |
+| `supply_identity` | `<...>` | `<...>` |
 | `await_checks` | `<...>` | `<...>` |
 | `human_review` | `<...>` | `<...>` |
 | `intervention` | `park` (Section 5.2) | `<...>` |
@@ -131,6 +134,12 @@ Every conforming engine can emit `intervention` and `flow_exhausted`: `park` is 
 `repo.policy.toml` may write, and Section 5.6 requires the flow bound, so both are listed rather than
 left to the `<other>` row. They are the two needs no front-end resolves (Section 8.4); record how this
 engine surfaces each hold.
+
+The rest are reachable from the registry rather than from a policy alone: Section 4.3 gives every
+`needs_caller` reason a default `need`, and the built-in default raises it where nothing in the policy
+named one, so an engine defining the required operation set can emit each of the six. Record the
+`<other>` row for a need this engine adds — including the default need of any reason it adds beyond
+the registry.
 
 ## 6. Plugin Capability Descriptors
 
