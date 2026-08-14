@@ -3284,3 +3284,40 @@ flow, then the invocation pipeline — each found after the previous repair ship
 deployment needs Broker Core over repositories materialized some other way entirely, in which case
 the repair is to restore optionality with an OPTIONAL provisioning operation, not a second VCS
 adapter. Relates to 0092, 0091 and 0062.
+
+## 0094 — A policy that determines no base
+
+**State:** Proposed
+**Folder:** [decisions/0094-policy-determines-no-base/](decisions/0094-policy-determines-no-base/)
+
+Opened from decision 0093's second review finding, which made `provision` the one entry point that
+runs where no `repo.policy.toml` has been discovered and thereby exposed that no *other* entry point
+has a stated answer. Two ways reach the same state and `VCSX-SPEC.md` handles neither. Section 6.1
+gives exactly one rule for an unusable policy — "A discovered file that does not parse" — and a file
+never discovered is not one that fails to parse. Section 6.4 declares `branch` with neither an
+OPTIONAL marker nor a `Default:` line, which requires it by omission, and Section 6.10's only base
+row, `base_unresolvable`, presupposes `resolve = by_prefix` in both halves, so the default `fixed`
+strategy with no `branch` is named by no condition. The two are one question: the engine holds a
+policy selecting no base branch, and the repair in both is to edit a document. Measured:
+`vectors/policy-validation.json` supplies `base.branch` in all 32 vectors, including every vector
+whose subject is something else, so the key is treated as structurally present rather than as a
+value with an absence case. Which entries need a base is narrow — `integrate`, `create_pr` and the
+`ship` that dispatches one; `commit`, `push`, `pull`, `merge`, `provision` and `land` need none,
+Section 12.3 dispatching only `merge`, which takes its base from the pull request. Options:
+**A** refuse every entry but `provision` (total and cheap, but refuses `commit` for the absence of a
+value it never reads, which tells a user to satisfy a check rather than a requirement); **B** an
+absent policy is an empty policy and the base fails where needed (invents nothing, but loses to
+decision 0084's own argument — `ship` runs `commit`, `push`, then `create_pr`, so it publishes a
+work branch and then dies, the exact shape 0084 moved `template_unbound` to validation to prevent);
+**C**, recommended, a configuration error at validation scoped to the entries that can reach a base,
+with a `run_op` edge reaching one reporting that operation's `base_unresolved` instead — which keeps
+0084's guarantee, reuses the scoping Section 8.6 already applies verbatim to `git_access`, and sits
+in Section 6.10 rather than 8.6 by decision 0092's own test, since the repair is editing a document.
+C's cost is stated rather than absorbed: Section 6.10 is judged from five inputs and the entry point
+is not among them, so C adds a sixth, and "five inputs and no others" is load-bearing for
+`capability_unsupported` and 0092's third input. Left `Proposed` because that sixth input changes
+what validation is. Whichever option is taken, the absent document and the absent key MUST take one
+disposition and one reason token. Three sub-questions stay open and are recorded so acceptance is
+not mistaken for completeness: whether to widen `base_unresolvable` or mint a token, what `status`
+and `diff` do where a read's base is unselected rather than unheld, and whether `[base] branch`
+becomes explicitly REQUIRED. Relates to 0093, 0084, 0092 and 0002.
