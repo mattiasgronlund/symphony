@@ -177,8 +177,9 @@ Symphony is easiest to port when kept in these layers:
 
 - Issue tracker API (at least Linear and Forgejo; selected by `tracker.kind`).
 - Local filesystem for workspaces and logs.
-- Git CLI and a VCS host API (GitHub or Forgejo) for repository provisioning, push, and pull
-  requests.
+- A conforming VCS engine (Section 3.4), and through it the VCS host API (GitHub or Forgejo) and
+  whatever local version-control tooling its backend needs, for repository provisioning, push, and
+  pull requests.
 - A supported coding agent (for example Codex or Claude Code) and its adapter (Section 10.9).
 - Agent sandbox mechanism (for example `jai` on Linux, https://jai.scs.stanford.edu, or an
   equivalent on other platforms).
@@ -196,9 +197,14 @@ That principle factors the service into three layers:
      for a single interactive agent session with no polling daemon. Its conformance profile is
      `Broker Core Conformance` (Section 17).
 
-2. `VCS Engine` (OPTIONAL)
-   - The VCS-workflow mechanics: the `ship`/`land` entry points and one policy-graph executor that
-     runs the action-policy machine (Section 9.12) over a repository's Way of Working (Section 5).
+2. `VCS Engine`
+   - The VCS-workflow mechanics: obtaining and maintaining a repository's checkout (Section 9.7),
+     the `ship`/`land` entry points, and one policy-graph executor that runs the action-policy
+     machine (Section 9.12) over a repository's Way of Working (Section 5).
+   - REQUIRED of any deployment that obtains or maintains a repository, or that performs a remote
+     VCS or forge operation: this specification gives those operations to the engine and defines no
+     other component that performs them (Sections 9.7, 18.1.4). A deployment that performs none of
+     them — a single agent session in a workspace that already exists — needs no engine.
    - Symphony consumes the engine through its **contract**, not its implementation, the way this
      specification defers to the coding-agent app-server protocol (Section 10): the engine's entry
      points and policy vocabulary are named here, and its wire, configuration, and plugin schemas
@@ -225,10 +231,9 @@ flow through either front-end.
 
 Three deployment topologies compose the layers:
 
-- `daemon` — the autonomous daemon over the Broker Core, optionally driving the VCS Engine. The full
-  service described by this specification. Claims `Broker Core Conformance` and
-  `Daemon Conformance`, plus a conforming engine where it performs remote VCS or forge operations
-  (Section 18.1).
+- `daemon` — the autonomous daemon over the Broker Core, driving the VCS Engine. The full service
+  described by this specification. Claims `Broker Core Conformance` and `Daemon Conformance`, plus
+  a conforming engine, which it obtains repositories through (Sections 9.7, 18.1).
 - `interactive-agent` — the Broker Core plus the VCS Engine's `ship`/`land`, driving one interactive
   agent session with no polling daemon. It gets secret isolation and Way-of-Working automation
   without dispatch. Claims `Broker Core Conformance` plus a conforming engine.
@@ -440,19 +445,22 @@ repository-owned artifacts — which revision each part is sourced from (Section
   anyone who can commit — including the agent — can edit it, it is untrusted and MUST NOT carry
   credentials, authorization scope, or any setting Symphony executes with host access.
 - `repo.policy.toml` — repository-owned, host-side. It holds the repository's **Way of Working**: the
-  VCS engine selection, the work-branch name pattern (`scope.branch_pattern`), the action-policy
-  edges and host-side hooks (Section 9.12), the workflow transitions (`tracker.transitions`, Section
-  11.6), and the daemon task settings `[tasks]` / `[driver]` (Section 8.10). Its host-side-executed
-  parts are sourced from the protected **base revision** — which the agent cannot push to and which
-  is review-gated — so Way-of-Working trust equals base-branch trust (Section 15.4). Configuring
-  Symphony therefore needs no knowledge of a repository's Way of Working. An engine-native config
-  file (`vcsx.toml`) is merged into this surface (`VCSX-CONTRACT.md`).
+  work-branch name pattern (`scope.branch_pattern`), the action-policy edges and host-side hooks
+  (Section 9.12), the workflow transitions (`tracker.transitions`, Section 11.6), the daemon task
+  settings `[tasks]` / `[driver]` (Section 8.10), and the engine `version_floor` the document
+  requires of its reader (`[requires]`, Section 5.6). Its host-side-executed parts are sourced from
+  the protected **base revision** — which the agent cannot push to and which is review-gated —
+  so Way-of-Working trust equals base-branch trust (Section 15.4). Configuring Symphony therefore
+  needs no knowledge of a repository's policy machine, host-side hooks, transitions, or
+  branch-name pattern. An engine-native config file (`vcsx.toml`) is merged into this surface
+  (`VCSX-CONTRACT.md`).
 - Operator policy config — operator-owned, not modifiable by the repository or the agent. It holds
-  what the operator, not the repository, owns: outward credentials, the sandbox profile, tracker and
-  VCS endpoints, polling and concurrency, agent selection, the managed repositories with their
-  issue→repo routing (Section 8.7), and, per repository, a pointer to that repository's
-  `repo.policy.toml`. It does not contain the workflow state-machine or hooks. Its format and
-  discovery path are `Implementation-defined` and MUST be documented.
+  what the operator, not the repository, owns: outward credentials, the sandbox profile, the tracker
+  and code-host selections with their endpoints and access parameters, polling and concurrency,
+  agent selection, the managed repositories with their issue→repo routing (Section 8.7), and, per
+  repository, a pointer to that repository's `repo.policy.toml`. It does not contain the workflow
+  state-machine or hooks. Its format and discovery path are `Implementation-defined` and MUST be
+  documented.
 
 The dividing rules:
 
@@ -462,8 +470,11 @@ The dividing rules:
 - If a setting is consumed *inside the sandbox* (prompt template, in-sandbox hooks), it belongs to
   `WORKFLOW.md`.
 - Everything else Symphony uses outside the sandbox that is an *operator or deployment* concern
-  (credentials, sandbox profile, tracker/VCS endpoints, polling, concurrency, agent selection, repo
-  routing) belongs to the operator policy config.
+  (credentials, sandbox profile, the tracker and code-host selections with their endpoints and
+  access parameters, polling, concurrency, agent selection, repo routing) belongs to the operator
+  policy config. The values needed to *obtain* a repository cannot be configured inside it, so the
+  code-host selection, its access parameters, its credentials, and the remote are operator-owned
+  even though they concern one repository (Section 9.7).
 
 The work-branch-only / assigned-issue-only **scope guard** is a Broker Core built-in (Sections 3.4,
 10.8), enforced regardless of any configuration; only the branch *name* pattern is repository config
@@ -488,10 +499,11 @@ Loader behavior:
 Design note:
 
 - `WORKFLOW.md` SHOULD contain only what the agent needs inside the sandbox: the prompt template and
-  in-sandbox hooks. The repository's Way of Working (engine selection, host-side hooks, the
-  action-policy edges, transitions, task settings) lives in `repo.policy.toml`, and operator or
-  deployment settings (tracker, VCS, polling, concurrency, agent selection, sandbox profile,
-  credentials) live in the operator policy config — neither in `WORKFLOW.md`.
+  in-sandbox hooks. The repository's Way of Working (host-side hooks, the action-policy edges,
+  transitions, the branch-name pattern, task settings) lives in `repo.policy.toml`, and operator or
+  deployment settings (tracker, the code-host selection and its VCS access, polling, concurrency,
+  agent selection, sandbox profile, credentials) live in the operator policy config — neither in
+  `WORKFLOW.md`.
 
 Parsing rules:
 
@@ -520,6 +532,8 @@ Top-level operator-config keys:
 - `tracker` (its `transitions` field is repository-owned; see Section 5.3.1)
 - `polling`
 - `workspace`
+- `vcs` (per managed repository: the code-host selection, its access parameters and credentials, the
+  remote, and the commit/actor identities; its fields are documented in Section 9.7)
 - `agent`
 - `codex`
 
@@ -750,15 +764,19 @@ Dispatch gating behavior:
 
 `repo.policy.toml` is the repository-owned Way-of-Working surface (Section 5). The operator policy
 config points each managed repository at its `repo.policy.toml`; the repository owns the contents, so
-configuring Symphony needs no Way-of-Working knowledge. Symphony consumes it through the VCS engine
-contract (`VCSX-CONTRACT.md`, Section 3.4); this specification names its sections and defers the
-field-level schema to that contract.
+configuring Symphony needs no knowledge of its policy machine, host-side hooks, transitions, or
+branch-name pattern. Symphony consumes it through the VCS engine contract (`VCSX-CONTRACT.md`,
+Section 3.4); this specification names its sections and defers the field-level schema to that
+contract.
+
+The file carries no code-host selection, access parameters, credentials, or remote: those are read
+before the repository exists and are operator-owned (Sections 5, 9.7). What remains is what a clone
+inherits unchanged.
 
 Sections:
 
-- engine and code-host selection — which VCS engine realizes the Way of Working, and the code host
-  (`github`, `forgejo`) and checkout mode (git, jj) it targets. The matching credential is
-  operator-owned (`vcs.api_key`, Section 9.7).
+- `[requires]` — what the policy document requires of the engine reading it, namely the engine
+  `version_floor` (Sections 14.1, 18.1.4).
 - `scope.branch_pattern` — the work-branch name pattern (Default: `symphony/<identifier>`, Section
   9.8). Only the branch *name* is configurable here; the scope guard itself is a Broker Core built-in
   (Section 10.8).
@@ -771,9 +789,9 @@ An engine-native config file (`vcsx.toml`) is merged into this surface.
 
 Trust sourcing:
 
-- Host-side-executed sections (engine selection, host-side hooks, the operation flow, the branch-name
-  pattern) are read from the resolved base revision; the in-sandbox `before:commit` gate is read from
-  the worktree (Section 15.4). Way-of-Working trust therefore equals base-branch trust.
+- Host-side-executed sections (host-side hooks, the operation flow, the branch-name pattern) are
+  read from the resolved base revision; the in-sandbox `before:commit` gate is read from the
+  worktree (Section 15.4). Way-of-Working trust therefore equals base-branch trust.
 
 Discovery and reload:
 
@@ -888,15 +906,20 @@ Operator policy config:
 - `tracker.terminal_states`: list of strings, default `["Closed", "Cancelled", "Canceled", "Duplicate", "Done"]`
 - `polling.interval_ms`: integer, default `30000`
 - `workspace.root`: path resolved to absolute, default `<system-temp>/symphony_workspaces`
+- `vcs.forge`: string, `github` | `forgejo`, the code host the repository is published on (operator-owned, Section 9.7)
+- `vcs.git_access` / `vcs.forge_access`: where the version-control operations reach the remote, and where the forge operations reach the code host
+- `vcs.forge_parameters`: OPTIONAL per-backend extension bag, carried to the selected backend uninterpreted
+- `vcs.git_credential` / `vcs.forge_credential`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; `vcs.forge_credential` defaults to `vcs.git_credential`
+- `vcs.remote`: the remote the repository is provisioned from and the operations that touch one act against
+- `vcs.local_vcs`: the VCS for a checkout the engine creates; not consulted for one it did not create (Section 9.7)
 - `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
-- `vcs.api_key`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; the credential for the repository's selected code host
 - a `repo.policy.toml` pointer per managed repository (Section 5.6)
 - `observability.*`: namespace for OPTIONAL observability settings, no core fields (Section 18.2)
 - `observability.ledger.*`: usage-ledger settings, no core fields (Section 13.6)
 
 Repository Way of Working (`repo.policy.toml`, Section 5.6):
 
-- engine and code-host selection: which VCS engine realizes the Way of Working, and the code host (`github` | `forgejo`) and checkout mode it targets
+- `[requires]`: the engine `version_floor` the policy document requires of its reader (Sections 14.1, 18.1.4)
 - base branch: PR target and back-merge source
 - `scope.branch_pattern`: string, default `symphony/<identifier>` (work-branch name; the scope guard is a Broker Core built-in)
 - action-policy edges and host-side hooks: the `(trigger) → (action)` machine (Section 9.12)
@@ -910,6 +933,9 @@ Workspace hooks (repository-owned; in-sandbox in `WORKFLOW.md`, host-side in `re
 - `hooks.after_run`: shell script or null
 - `hooks.before_remove`: shell script or null
 - `hooks.timeout_ms`: integer, default `60000`
+
+Operator policy config (agent selection, adapter settings, and execution placement):
+
 - `agent.default_agent`: string, `codex` | `claude_code`, default implementation-defined
 - `agent.default_effort`: adapter-native value passed through to the agent, default implementation-defined
 - `agent.agent_by_label`: map `label -> {agent, effort}` (per-issue override), default `{}`
@@ -1397,8 +1423,9 @@ Workspace persistence:
 
 VCS-backed workspaces:
 
-- When the issue's repository is VCS-managed (Section 9.7), the per-issue workspace is a git worktree
-  of that repository's shared object store, not a bare directory. The path layout above is unchanged.
+- When the issue's repository is VCS-managed (Section 9.7), the per-issue workspace is a working
+  tree derived from that repository's shared object store, not a bare directory. The path layout
+  above is unchanged.
 
 ### 9.2 Workspace Creation and Reuse
 
@@ -1415,8 +1442,8 @@ Algorithm summary:
 
 Notes:
 
-- For VCS-managed repositories, workspace creation provisions a worktree of the repository's shared
-  object store (Section 9.7) rather than only an empty directory.
+- For VCS-managed repositories, workspace creation derives a working tree from the repository's
+  shared object store through the VCS engine (Section 9.7) rather than only an empty directory.
 - Additional workspace preparation (for example dependency bootstrap, build, or code generation) is
   handled via in-sandbox hooks (Section 5.3.4).
 
@@ -1521,44 +1548,59 @@ Network egress:
 
 ### 9.7 Repository Provisioning and the VCS Engine
 
-Symphony owns all interaction with the version-control remote, split between two roles:
+Symphony owns all interaction with the version-control remote and realizes every part of it through
+the **VCS engine contract** (Section 3.4, `VCSX-CONTRACT.md`), in two roles:
 
-- **Repository provisioning** (clone/fetch of the shared object store, below) is Broker Core work
-  (Section 3.4). It holds the VCS credentials directly and is never a VCS-engine responsibility; the
-  engine operates on an already-provisioned worktree.
+- **Repository provisioning** — obtaining the repository where it is absent, refreshing it where
+  it is present, and deriving the working tree a run acts in (below) — is the engine's `provision`
+  operation. Symphony decides when it runs and classifies its typed result; the engine performs it.
 - The per-issue git and forge **operations** the broker exposes — commit, push, back-merge, pull
-  request, merge (Sections 9.8–9.10) — are realized through the **VCS engine contract** (Section 3.4,
-  `VCSX-CONTRACT.md`). The engine's plugin layer provides the code-host backends (`github`, `forgejo`,
-  and others); there are no parallel Symphony VCS/forge adapters for those operations. The engine runs
-  in the executor's credentialed context (Sections 10.8, 15.3), so the agent never holds VCS or Forge
-  credentials.
+  request, merge (Sections 9.8–9.10) — are realized through the same contract. The engine's
+  plugin layer provides the code-host backends (`github`, `forgejo`, and others); there are no
+  parallel Symphony VCS/forge adapters for those operations or for provisioning. The engine runs
+  in the executor's credentialed context (Sections 10.8, 15.3), so the agent never holds VCS or
+  Forge credentials.
 
 Repository provisioning:
 
-- Symphony keeps one fetched object store per repository on the host. Each issue's working tree is a
-  worktree (or reference clone) of that store, created under the workspace root and bind-mounted
-  into the sandbox (Section 9.6). Sharing objects keeps provisioning fast and disk-efficient as the
-  number of repositories and concurrent issues grows.
-- Fetch and other network git operations run on the host with credentials the agent never sees.
-  Local git in the worktree is available to the agent.
-- Provisioning the object store — the initial clone, and the fetches that refresh it — is
-  host-side Symphony work that uses the VCS credentials the agent never holds; it is never
-  performed by the agent. The reference algorithm is `ensure_object_store` (Section 16); clone or
-  fetch failures are classified as `Repository Provisioning Failures` (Section 14.1) and recovered
-  per Section 14.2.
+- Symphony keeps one fetched copy of each repository on the host — its object store — and each
+  issue's working tree is derived from that copy and shares it, created under the workspace root and
+  bind-mounted into the sandbox (Section 9.6). Sharing keeps provisioning fast and disk-efficient as
+  the number of repositories and concurrent issues grows.
+- How that sharing is realized belongs to the engine's backend; this specification names the
+  relationship and presumes no storage model. A backend that cannot share storage across working
+  trees declares so in its capability descriptor, so the condition is reported when the
+  invocation is validated rather than at first use (`VCSX-CONTRACT.md`).
+- Provisioning runs host-side under the operator's `vcs.git_credential`, which the agent never sees,
+  and is never performed by the agent: the broker exposes no provisioning verb (Section 9.9). Local
+  VCS operations inside the working tree remain available to the agent.
+- The reference algorithm is `ensure_object_store` (Section 16.5); it invokes the engine once per
+  repository ahead of `provision_for_issue`. A provisioning failure is classified from the engine's
+  typed result as `Repository Provisioning Failures` (Section 14.1) and recovered per Section 14.2.
 
 Configuration:
 
-- Operator policy config (`vcs` object):
+- Operator policy config (`vcs` object, per managed repository — Sections 5.3, 8.7):
+  - `forge` (string) — the code host the repository is published on (`github`, `forgejo`, and
+    others). The operator names it, not the repository: it is read before the repository exists, so
+    it cannot be configured inside it (Section 5).
+  - `git_access` / `forge_access` (objects) — where the version-control operations reach the
+    remote, and where the forge operations reach the code host.
+  - `forge_parameters` (object) — OPTIONAL per-backend extension bag, carried to the selected
+    backend uninterpreted.
+  - `git_credential` (string) — the credential presented at `git_access`. Resolved through the
+    secret-provider interface (Section 15.3).
+  - `forge_credential` (string) — the credential presented at `forge_access`. Resolved through the
+    secret-provider interface (Section 15.3).
+    - Default: `git_credential`.
+  - `remote` (string) — the remote the repository is provisioned from, and the one the operations
+    that touch a remote act against.
+  - `local_vcs` (string) — the VCS for a checkout the engine creates. For a checkout the engine
+    did not create, the backend detects the mode instead and this value is not consulted
+    (`VCSX-CONTRACT.md`).
   - `author` / `actor` (objects) — identity mapping for commits and for the push/PR actor (Section
     9.8).
-  - `api_key` (string) — resolved through the secret-provider interface (Section 15.3). It is the
-    credential for the code host the repository selects (below).
 - Repository Way of Working (`repo.policy.toml`, Section 5.6):
-  - the code host (`github`, `forgejo`) and checkout mode (git, jj) — the repository's engine and
-    code-host selection (part of engine selection, Section 5.6). The engine reads it from
-    `repo.policy.toml`; Symphony supplies the matching operator credential (`vcs.api_key`) and, for
-    provisioning (which precedes reading the base revision), the repository's remote.
   - the base branch — the branch pull requests target and back-merges pull from.
   - `scope.branch_pattern` — the deterministic work-branch name pattern (Section 9.8). Default:
     `symphony/<identifier>`.
@@ -1617,7 +1659,9 @@ Identity:
 - The broker exposes a fixed neutral core of git verbs over the per-run socket (Section 10.8): for
   example `push` and `back-merge`. These are realized through the VCS engine (Section 9.7), whose
   plugin layer keeps them identical across code hosts (`github`, `forgejo`, …). Pull-request and
-  review verbs are forge operations (Section 9.10). Policy MAY extend this set.
+  review verbs are forge operations (Section 9.10). Policy MAY extend this set. Repository
+  provisioning is not among the verbs and MUST NOT be added to them: it runs host-side before the
+  agent session and is not reachable from the sandbox (Sections 9.6, 9.7).
 - Each verb returns a structured result with a stable reason code on failure (for example
   `non_fast_forward`, `scope_denied`). Ordinary failures are returned to the agent to adapt to;
   `scope_denied` fails the run (Section 10.8).
@@ -1625,9 +1669,9 @@ Identity:
 ### 9.10 Forge Operations, Pull Requests, and Review Writes
 
 Symphony performs pull-request and code-review operations through the VCS engine's forge plugin — the
-code host's collaboration layer above the git remote — for the code host the repository selects
-(`github`, `forgejo`, and others; Section 9.7), using the operator's `vcs.api_key`; the agent never
-holds forge credentials.
+code host's collaboration layer above the git remote — for the code host the operator selects
+(`vcs.forge`: `github`, `forgejo`, and others; Section 9.7), reaching it at `vcs.forge_access` under
+`vcs.forge_credential`; the agent never holds forge credentials.
 
 Pull requests:
 
@@ -1715,7 +1759,7 @@ Boundary travel (REQUIRED for `remote`):
 
 - A remote executor MUST instantiate the same secret-isolation boundary the in-process executor
   provides: the sandbox (Section 9.6), the per-run broker socket (Section 10.8), and a
-  credential-less agent (Section 15.3). The shared object store is cloned or fetched on the node's own
+  credential-less agent (Section 15.3). The shared object store is provisioned on the node's own
   context using the directly delivered credentials (`ensure_object_store`, Section 16.5), fresh per
   executor process. If the boundary cannot be instantiated, bring-up fails closed (`Executor Bring-up
   Failures`, Section 14.1); the run MUST NOT proceed credential-exposed.
@@ -2827,12 +2871,16 @@ API design notes:
    - Missing coding-agent executable
 
 2. `Repository Provisioning Failures`
-   - Object-store clone failure (initial provisioning of a repository's shared store)
-   - Object-store fetch failure (refreshing an existing store)
+   - Classified from the engine's typed provisioning result (Sections 9.7, 16.5): the remote
+     unreachable at the configured access parameters, a selected backend that cannot share storage
+     across working trees, and any other failure to obtain or refresh the repository
    - Repository authentication/credential failure (host-side; resolved through the secret provider,
      Section 15.3)
-   - Remote unreachable or network transport error
    - Invalid object-store path configuration
+
+   Important nuance: provisioning precedes reading `repo.policy.toml` (Sections 5, 15.4), so a
+   provisioning failure is recovered repo-scoped through this class (Section 14.2) rather than
+   through a policy edge in the repository it would have provisioned.
 
 3. `Workspace Failures`
    - Workspace directory creation failure
@@ -3126,8 +3174,8 @@ Repository-owned configuration is trusted by *where it is sourced from*, not by 
 The agent can edit the worktree and can commit, so Symphony sources each part of a repository's Way of
 Working from the revision that makes it safe:
 
-- Host-side-executed Way of Working — engine selection, host-side hooks, the operation flow, and the
-  branch-name pattern (`repo.policy.toml`, Section 5.6) — is read from the resolved **base revision**.
+- Host-side-executed Way of Working — host-side hooks, the operation flow, and the branch-name
+  pattern (`repo.policy.toml`, Section 5.6) — is read from the resolved **base revision**.
   The agent cannot push to the base branch (it is review-gated by branch protection), so it cannot
   alter host-side behavior from within a run. Way-of-Working trust equals base-branch trust.
 - In-sandbox parts — the `WORKFLOW.md` prompt and in-sandbox hooks, and the `before:commit`
@@ -3275,8 +3323,8 @@ function reconcile_running_issues(state):
 
 ```text
 function dispatch_issue(issue, state, attempt):
-  # Ensure the repository's shared object store exists before a per-issue worktree is cut from it
-  # (Section 9.7). Host-side, credentialed clone/fetch; Symphony's own work, never the agent's.
+  # Ensure the repository's shared object store exists before a per-issue working tree is derived
+  # from it (Section 9.7). Host-side and credentialed, performed by the engine, never by the agent.
   store = ensure_object_store(repo_of(issue))
   if store failed:
     # Repository Provisioning Failures (Section 14.1) are repo-scoped, not per-worker: skip this
@@ -3328,13 +3376,11 @@ function dispatch_issue(issue, state, attempt):
 
 ```text
 function ensure_object_store(repo):
-  # Host-side, credentialed; the agent never sees credentials (Section 15.3). This is Symphony's own
-  # provisioning work and is never delegated to the agent. See Section 9.7.
+  # Host-side, credentialed; the agent never sees credentials (Section 15.3). Symphony decides when
+  # provisioning runs and classifies its result; the engine performs it, and it is never delegated
+  # to the agent. See Section 9.7.
   store_path = object_store_path(repo)          # host-side, outside the workspace root (Section 9.6)
-  if not exists(store_path):
-    result = vcs.clone_object_store(repo, store_path)   # initial clone
-  else:
-    result = vcs.fetch_object_store(repo, store_path)   # refresh existing store
+  result = engine.provision(repo, store_path)   # creates the store where absent, refreshes it where present
   if result failed:
     return provisioning_error(result)           # Repository Provisioning Failures (Section 14.1)
   return store_path
@@ -3342,8 +3388,9 @@ function ensure_object_store(repo):
 
 The store path is host-side and `Implementation-defined` (for example a sibling of the workspace
 root); implementations MUST document where it lives. `ensure_object_store` runs per repository ahead
-of `provision_for_issue` (Section 16.4), so a clone or fetch failure is recovered repo-scoped
-(Section 14.2) and no worker is spawned.
+of `provision_for_issue` (Section 16.4), so a provisioning failure is recovered repo-scoped
+(Section 14.2) and no worker is spawned. Whether the engine creates the store or refreshes an
+existing one is the engine's determination, not a branch Symphony takes.
 
 ### 16.6 Worker Attempt (Workspace + Prompt + Agent)
 
@@ -3354,13 +3401,16 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
   # `orchestrator_channel` is the network up-channel (buffered and replayed on reconnect) instead of
   # an in-process channel. The executor instantiates the sandbox, the per-run broker socket, and the
   # credential-less agent wherever it runs.
-  workspace = workspace_manager.provision_for_issue(issue)  # VCS worktree or bare dir
+  # For a VCS-managed repository the working tree is derived from the repository's store through the
+  # engine (Sections 9.2, 9.7); for a non-VCS workspace it is a bare directory.
+  workspace = workspace_manager.provision_for_issue(issue)
   if workspace failed:
     fail_worker("workspace error")
 
   # Bring the work branch up to date with base; postpone if it would conflict (resolved later
-  # only if a push is rejected). See Section 9.8.
-  vcs.attempt_clean_backmerge(issue, workspace)
+  # only if a push is rejected). This is the engine's back-merge operation (Sections 9.7, 9.8);
+  # Symphony has no VCS adapter of its own.
+  engine.integrate(issue, workspace)
 
   if run_hook("before_run", workspace.path) failed:
     fail_worker("before_run hook error")
@@ -3527,6 +3577,13 @@ except where a bullet states otherwise.
 - Config defaults apply when OPTIONAL values are missing
 - `tracker.kind` validation enforces currently supported kind (`linear`)
 - `tracker.api_key` resolves through the secret provider (file provider)
+- `vcs.git_credential` and `vcs.forge_credential` resolve through the secret provider, and
+  `vcs.forge_credential` defaults to `vcs.git_credential` when unset
+- The code-host selection (`vcs.forge`), its access parameters and extension bag, the credential
+  pair, the remote, and `vcs.local_vcs` resolve from the operator policy config and not from
+  `repo.policy.toml` (Sections 5, 9.7)
+- Two repositories whose Ways of Working differ run under one operator policy config that names
+  neither repository's policy machine, host-side hooks, transitions, or branch-name pattern
 - Secret-provider resolution works for tracker auth; `$VAR` resolution works for non-secret path
   values only
 - `~` path expansion works
@@ -3557,10 +3614,16 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - The per-run broker socket is mounted into the sandbox and bound to one run; without it the broker
   is unreachable
 - Secret-bearing environment variables are scrubbed before the sandbox starts
-- VCS-managed workspaces are provisioned as worktrees of a shared per-repo object store
-- The shared per-repo object store is provisioned host-side (initial clone, then refresh fetches)
-  with credentials the agent never sees, before any per-issue worktree is cut from it
-- The agent does local git including commit; Symphony provisions host-side (Broker Core) and realizes
+- VCS-managed workspaces are working trees derived from a shared per-repo object store, and two
+  trees derived from one store see the same objects
+- The shared per-repo object store is obtained through the VCS engine, host-side and with
+  credentials the agent never sees, before any per-issue working tree is derived from it; a second
+  provisioning of a repository already present refreshes it rather than obtaining it again
+- The broker's verb set contains no provisioning verb, so the agent cannot reach provisioning
+  (Sections 9.7, 9.9)
+- A backend that cannot share storage across working trees reports it when the invocation is
+  validated rather than at first use (`VCS Engine`)
+- The agent does local git including commit; Symphony obtains repositories and realizes
   push/back-merge and pull-request/review writes through the VCS engine and its forge plugin (Sections
   9.7–9.10)
 - The work branch is Symphony-derived from `scope.branch_pattern` (`symphony/<identifier>`) and the
@@ -3644,9 +3707,10 @@ These checks are `Daemon Conformance`.
 - Retry queue entries include attempt, due time, identifier, and error
 - Stall detection kills stalled sessions and schedules retry
 - Slot exhaustion requeues retries with explicit error reason
-- A repository object-store clone/fetch failure (`Repository Provisioning Failures`) skips that
-  repository's dispatches for the tick and is retried on a later tick, leaving other repositories
-  and running workers untouched; it is not converted to a per-worker backoff retry
+- A repository provisioning failure returned by the engine (`Repository Provisioning Failures`)
+  skips that repository's dispatches for the tick and is retried on a later tick, leaving other
+  repositories and running workers untouched; it is not converted to a per-worker backoff retry, and
+  no worker is spawned for the skipped repository
 - A persistent repository authentication/credential or invalid-store-path failure follows the
   documented `Implementation-defined` park-vs-retry policy
 - A below-`version_floor` refusal or a usage/configuration engine result (`Engine Invocation
@@ -3803,8 +3867,10 @@ the groups its topology composes: `interactive-agent` satisfies Sections 18.1.1,
 Required of every conforming implementation, whichever profiles its topology claims.
 
 - Enabler-not-enforcer layering (Section 3.4): the Broker Core (secret isolation + scope) is the only
-  enforced guarantee and is independently conformant; the VCS engine and autonomous daemon are
-  OPTIONAL layers; the `daemon`, `interactive-agent`, and `engine-direct` topologies compose them
+  enforced guarantee and is independently conformant — satisfiable for a single agent session in a
+  workspace that already exists; the autonomous daemon is an OPTIONAL layer, while a conforming VCS
+  engine is REQUIRED wherever a repository is obtained, maintained, or written to remotely
+  (Section 18.1.4); the `daemon`, `interactive-agent`, and `engine-direct` topologies compose them
 - Typed config layer with defaults, secret-provider resolution, and `$` expansion for non-secret
   paths
 - Three configuration artifacts (Section 5): operator policy config, repository-owned
@@ -3834,8 +3900,9 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   resources; adapters emit the neutral event vocabulary and token-usage record (`input_tokens`,
   `output_tokens`, `total_tokens`) and advertise a capability descriptor (resume mode, native step
   cap, accepted effort); one adapter per (agent, transport) with no protocol impersonation
-- Repository object-store provisioning (host-side credentialed clone, then refresh fetches) runs
-  before per-issue worktree provisioning; clone/fetch failures are classified as `Repository
+- Repository provisioning runs through the VCS engine (Section 9.7), host-side and credentialed,
+  before any per-issue working tree is derived from the store, and exposes no provisioning verb to
+  the agent; a provisioning failure is classified from the engine's typed result as `Repository
   Provisioning Failures` and recovered repo-scoped (skip the repository's dispatches, retry on a
   later tick) rather than as a per-worker failure
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
@@ -3886,15 +3953,19 @@ Required of the `daemon` topology only.
 
 #### 18.1.4 VCS Engine
 
-A conforming VCS engine is REQUIRED of any deployment that performs a remote VCS or forge
-operation — push, back-merge, pull-request creation, or merge. A deployment that performs none of
-them needs no engine. The engine's own obligations are those of the engine contract and its
-specification (Section 3.4); the items below are what this specification requires of a deployment
-that uses one, not a restatement of the engine's checklist.
+A conforming VCS engine is REQUIRED of any deployment that obtains or maintains a repository, or
+that performs a remote VCS or forge operation — provisioning, push, back-merge, pull-request
+creation, or merge. A deployment that performs none of them needs no engine. The engine's own
+obligations are those of the engine contract and its specification (Section 3.4); the items below
+are what this specification requires of a deployment that uses one, not a restatement of the
+engine's checklist.
 
-- Repository provisioning (host-side, Broker Core) plus a VCS engine (Section 3.4) whose plugin layer
-  (`github`, `forgejo`) realizes push/back-merge and the forge operations; a
-  `scope.branch_pattern`-derived work branch and configurable authorship
+- A VCS engine (Section 3.4) whose plugin layer (`github`, `forgejo`) realizes provisioning,
+  push/back-merge and the forge operations; a `scope.branch_pattern`-derived work branch and
+  configurable authorship
+- The code-host selection, its access parameters and extension bag, the credential pair, the remote,
+  and the creation-time local VCS are operator config supplied to the engine per invocation
+  (`vcs.*`, Sections 5, 9.7); `repo.policy.toml` carries none of them
 - The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
   writes (post/reply/resolve), advertising a static forge-capability descriptor
 - The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback, an

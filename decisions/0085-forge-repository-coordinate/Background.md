@@ -131,3 +131,37 @@ RECOMMENDED defaulting rule in Section 8.1, not a move of the coordinate back ac
 Relates to 0062 (whose repository-owned remote is the analogy option C rests on and which does not
 carry), 0065 (which built the precondition registry this reason joins), 0073 (which enumerated what
 a consumer mediates) and 0084 (whose refuse-before-publishing argument this one shares).
+
+## Re-evaluation, 2026-08-14 — the service root, reversed by 0091
+
+The coordinate half of this decision stands unchanged: the forge repository coordinate is a Section
+8.1 common argument, consumer-supplied, engine-opaque, and not derived from the checkout in any mode.
+Decision 0092 extends that reasoning from the coordinate to the backend selection itself.
+
+What is reversed is the disposal of the **service root**. The reasoning above records it twice: "the
+service root was settled first, and on a security argument", and then "the credential and the service
+root stay out of the argument list, for the reason the report gave for excluding the credential:
+Section 11 has the engine run 'where they are already held'". Settling it meant leaving it implicit.
+
+That conflated two conclusions. "Not derived from the checkout" is what the security argument
+establishes, and it remains correct. "Not expressible at all" is what the specification ended up
+saying, and it is a different claim that the argument does not support. Measured after this decision
+was applied, `VCSX-SPEC.md` contains zero occurrences of `endpoint`, `URL`, `URI` and `instance`, and
+the only relevant use of `service` is Section 11's ambient sentence — so a self-hosted Forgejo, a
+GitHub Enterprise Server, and a second account behind a different base were all unexpressible, and
+two conforming engines given the same policy, coordinate and credential could reach different
+instances and both report `create_pr:ok`. That is the conformance hole decision 0062 closed for the
+remote, reproduced one seam over by a decision that was reasoning carefully about the same value.
+
+The shape of the defect is worth naming because it is a recurrence rather than a one-off: a value was
+reasoned about, judged to belong on the consumer's side, and then left ambient *because* it belonged
+there — as though the consumer's side were outside the contract. It is not; Section 8.1 is exactly the
+part of the contract that describes it. Decision 0091 supplies the parameters, splitting the root into
+a git-access and a forge-API-access parameter because the two are not one origin, and this decision's
+own Background is where that fact was already recorded: GitHub serves `api.github.com` for the public
+host and `<host>/api/v3` for an enterprise one.
+
+The exclusion of the *credential* from the argument list, argued here on the same sentence, is
+narrowed rather than reversed: decision 0092 has the engine read the credential from a consumer-owned
+configuration or take a reference the consumer resolves, and Section 11's "the engine holds no
+long-lived credentials of its own" becomes "does not persist a credential beyond an invocation".

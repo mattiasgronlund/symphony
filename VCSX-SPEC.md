@@ -48,14 +48,17 @@ algorithm*, this document governs.
 
 ### 1.3 Relationship to Consumers
 
-`vcsx` is driven by a consumer that owns credentials and (when applicable) the agent boundary. A
-consumer may be a human at an interactive prompt or an automation service. `vcsx` itself:
+`vcsx` is driven by a consumer that owns the configuration, the credentials and (when applicable) the
+agent boundary. A consumer may be a human at an interactive prompt or an automation service. `vcsx`
+itself:
 
 - holds no long-lived credentials of its own; the consumer supplies credentials to the forge/VCS
-  plugins for the duration of an invocation (Section 9), or runs the engine in a context that already
-  holds them.
-- performs no repository *provisioning* (initial clone / object-store fetch). The engine operates on an
-  already-provisioned worktree; provisioning is the consumer's responsibility.
+  plugins for the duration of an invocation (Sections 8.1, 9), or runs the engine in a context that
+  already holds them, and the engine persists neither beyond the invocation.
+- obtains and maintains the checkout it acts in, from the remote, the access parameters and the
+  credentials the consumer supplies (Sections 4.1, 8.1). Which remote a repository is taken from,
+  which code host it is published to, and where either is reached are the consumer's; acquiring and
+  refreshing what they name is the engine's.
 - enforces no agent-secret boundary. When a consumer runs the engine on behalf of a sandboxed,
   credential-less agent, the consumer instantiates that boundary and mediates the engine's
   credentialed operations; `vcsx` distinguishes host-side from in-sandbox execution (Section 3.2) so a
@@ -67,6 +70,9 @@ consumer may be a human at an interactive prompt or an automation service. `vcsx
 
 - Run version-control and forge operations behind one policy-graph executor with deterministic,
   most-specific-wins matching and no silent drops.
+- Obtain and maintain the checkout those operations act in — creating it where none exists, refreshing
+  it where one does (Section 4.1) — so a consumer managing a repository implements no version control
+  of its own.
 - Let a repository express its whole Way of Working in one file (`repo.policy.toml`), consumed
   identically by the interactive and embedded front-ends.
 - Keep the engine format-neutral: message formulation, hygiene, and merge policy are repository
@@ -78,7 +84,8 @@ consumer may be a human at an interactive prompt or an automation service. `vcsx
 
 ### 2.2 Non-Goals
 
-- Repository provisioning (clone / object-store fetch) and credential storage — the consumer's.
+- Credential storage — the consumer's. The engine takes a credential for the duration of an
+  invocation (Sections 1.3, 8.1) and persists none beyond it.
 - Any agent-sandbox or secret-isolation mechanism — the consumer's.
 - Prescribing a commit convention, message format, content-hygiene rule, or branch-protection policy —
   repository-owned Way of Working.
@@ -118,9 +125,9 @@ consumer may be a human at an interactive prompt or an automation service. `vcsx
 The engine distinguishes two execution contexts, so a consumer that runs an agent inside a sandbox can
 split one policy across the boundary:
 
-- **Host-side** — operations and hooks that touch the remote or hold credentials (integrate, push,
-  pull, create_pr, merge, host-side hooks). A consumer sources host-side policy from a trusted
-  revision (for example a protected base branch) so an untrusted worktree cannot alter it.
+- **Host-side** — operations and hooks that touch the remote or hold credentials (provision,
+  integrate, push, pull, create_pr, merge, host-side hooks). A consumer sources host-side policy from
+  a trusted revision (for example a protected base branch) so an untrusted worktree cannot alter it.
 - **In-sandbox** — operations and hooks that run in the working tree without credentials (the
   `before:commit` gate/scan, in-sandbox hooks). A consumer sources these from the worktree.
 
@@ -135,10 +142,22 @@ The `VCS backend` detects and adapts to the checkout mode; policy is written mod
 - `git` — a plain git checkout.
 - `jj` — a jj checkout, including a jj checkout colocated on git storage and a jj secondary workspace
   that has no colocated git storage. In a secondary workspace the backend resolves the remote
-  (Section 6.2) and the work branch from jj rather than from a colocated git remote.
+  (Section 8.1) and the work branch from jj rather than from a colocated git remote.
 
 The mode is reported by the `status` operation (Section 4.1) and is `Implementation-defined` in its
-detection mechanism; the backend MUST document how it detects the mode.
+detection mechanism; the backend MUST document how it detects the mode. No `repo.policy.toml` key
+selects it. For a checkout the engine did not create, `detect_mode()` (Section 9.1) is what answers,
+and a mode it could not determine is `checkout_unreadable` (Section 8.6). The one checkout for which
+there is nothing yet to detect is one the engine creates, and the consumer names `local_vcs` for it
+(Sections 4.1, 8.1); a checkout the engine did not create carries none, so exactly one of the two
+paths answers for any checkout.
+
+A checkout mode's storage arrangement is likewise the backend's. This specification states only the
+relationship the provisioning operation needs — one fetched copy of a repository, and the working
+trees that share it (Section 4.1) — and names no mechanism for realizing it, because a mode whose
+secondary working tree holds no storage of the kind another mode colocates realizes it differently. A
+backend that cannot derive more than one working tree from one fetched copy declares so in its
+capability descriptor (Sections 9.1, 9.3) rather than discovering it at first use.
 
 No checkout mode carries the forge repository coordinate. Which repository on the code host the forge
 operations act against is supplied by the consumer (Sections 8.1, 11) and is not derived from the
@@ -162,6 +181,19 @@ checkout mode that records the working tree as a commit of its own before it can
 of the three — which is why Section 9.1 requires such a backend to keep that commit outside what the
 work branch reaches, rather than leaving the arrangement to each backend.
 
+- `provision` — ensure the repository is present and current: create the store where the location
+  holds none, refresh it where it holds one, and derive from it the working tree the invocation acts
+  in. Store and trees are stated as a relationship rather than a mechanism — one fetched copy of a
+  repository, and the working trees that share it — and how a backend realizes it is the backend's
+  (Sections 3.3, 9.1). The operation is host-side (Section 3.2): it reaches the remote at `git_access`
+  under `git_credential` (Sections 8.1, 9.1). It has **no lifecycle position**, and its result does
+  not re-enter the action-policy machine as an `<op>:<reason>` trigger (Section 5): both are matched
+  against `[policy]` edges read from `repo.policy.toml`, which is inside the repository this operation
+  exists to obtain, so a gate on it would be absent on the invocation that creates the checkout and
+  present on one that refreshes it — a trigger that sometimes exists, which Section 5.4's
+  one-edge-per-trigger rule is written to prevent. The consumer classifies the result. No front-end
+  sequence dispatches it (Sections 12.2, 12.3): a consumer obtains the checkout by dispatching the
+  operation, so no entry named for something else acquires one as a side effect.
 - `status` — inspect working state. Outputs: `mode` (Section 3.3), `branch`, `dirty`, `conflicted`,
   `ahead`/`behind` versus the resolved base (Section 6.4), and the pull-request state when a forge
   is configured (number and open/closed/merged). Where the checkout holds no copy of the resolved
@@ -180,7 +212,7 @@ work branch reaches, rather than leaving the arrangement to each backend.
   a subset, so nothing selects the commit's content out of band.
 - `integrate` — bring the resolved base into the work branch (a merge/update-branch), preserving
   recorded conflict resolutions where the backend supports them. The base is the branch as the
-  configured remote holds it (Sections 6.2, 6.4), acquired rather than read from the checkout's
+  resolved remote holds it (Sections 6.4, 8.1), acquired rather than read from the checkout's
   copy. Gated at no fixed position; typically run in response to `push:non_fast_forward`.
 - `push` — push the work branch to the remote with the refspec pinned to the work branch. Where a
   forge is configured, the operation first reads the work branch's pull-request state (Section 9.2
@@ -196,13 +228,14 @@ work branch reaches, rather than leaving the arrangement to each backend.
   re-parented (Section 11). `pull:conflict` is therefore a merge conflict, which the caller resolves and
   `commit` finalizes; the operation set has no step that resumes a sequential replay. Where the remote
   carries no counterpart the operation is a benign no-op and reports `pull:ok`: the work branch is
-  engine-derived and need not exist on the remote before the first push (Sections 6.2, 6.3). An
+  engine-derived and need not exist on the remote before the first push (Sections 6.3, 8.1). An
   acquisition the engine could not complete is not that no-op and reports `pull:failed`
   (Sections 4.3, 9.1).
 
 An engine MAY define additional operations and their `before:<op>` positions; the operations above are
 the required set and the four positions `before:commit`, `before:push`, `before:create_pr`,
-`before:merge` are the required lifecycle positions.
+`before:merge` are the required lifecycle positions. `provision` has none, for the reason its entry
+states: the policy that would carry the gate is not readable when the operation must first run.
 
 A gated operation's position runs as part of dispatching it. The engine runs `before:<op>` whenever
 `<op>` is dispatched — by a front-end sequence (Sections 12.2, 12.3), by a `[policy]` `run_op` edge
@@ -225,12 +258,12 @@ inspects the working tree it runs in (Sections 6.6, 10.4), and a clean tree carr
 find.
 
 Note: the operations that reach the remote are exactly those Section 3.2 places host-side — among
-the version-control operations, `integrate`, `push` and `pull`. `status` and `diff` are read-only
-and report against the base ref the checkout already holds (Section 6.4), so their `ahead`/`behind`
-counts and their delta MAY be stale where the remote has moved. The asymmetry follows from the trust
-split rather than being an omission: acquiring the base is a host-side act, and marking a read-only
-operation host-side would deny it to a consumer running the engine in-sandbox without credentials
-(Section 3.2). A caller that needs current figures runs `integrate` first.
+the version-control operations, `provision`, `integrate`, `push` and `pull`. `status` and `diff` are
+read-only and report against the base ref the checkout already holds (Section 6.4), so their
+`ahead`/`behind` counts and their delta MAY be stale where the remote has moved. The asymmetry
+follows from the trust split rather than being an omission: acquiring the base is a host-side act, and
+marking a read-only operation host-side would deny it to a consumer running the engine in-sandbox
+without credentials (Section 3.2). A caller that needs current figures runs `integrate` first.
 
 ### 4.2 Operation Result Envelope and Proto Classes
 
@@ -264,6 +297,9 @@ and `blocked` and `hook_unanswered` for every operation gated at a lifecycle pos
 | `(any gated)` | `blocked` | `needs_caller` | `human_review` | A `before:<op>` gate or scan blocked the operation (Section 6.6). |
 | `(any gated)` | `hook_unanswered` | `error` | — | A `before:<op>` hook gave the engine no usable answer: `bound_elapsed`, `not_started` or `answer_unreadable` (Section 6.6). |
 | `(any)` | `unsupported` | `error` | — | The operation requires a plugin capability the backend does not declare (Section 9.3). |
+| `provision` | `ok` | `done` | — | The checkout is present and current. |
+| `provision` | `unreachable` | `needs_caller` | `human_review` | The remote could not be reached at `git_access` (Sections 8.1, 9.1). |
+| `provision` | `store_unsupported` | `error` | — | A working tree was to be derived from a store the backend cannot share (Sections 4.1, 9.3). |
 | `commit` | `ok` | `done` | — | A commit was created. |
 | `commit` | `nothing_to_commit` | `done` | — | No changes to commit; benign no-op. |
 | `commit` | `worktree_moved` | `needs_caller` | `reread_then_retry` | The working tree is no longer the one read at `before:commit`; re-read then retry. |
@@ -361,6 +397,24 @@ built-in `needs_caller` default escalates it (Sections 5.3, 5.4). Only absence r
 supplied identity is judged for shape before the policy runs whatever the entry (Section 8.6), so a
 malformed one is `identity_invalid` in every invocation.
 
+`provision:unreachable` is `needs_caller` where every other way provisioning can fail is the universal
+`failed`, and the difference is whether the invocation's own arguments name what to change. A remote
+the engine could not reach at `git_access` is a condition the caller repairs — the endpoint, the
+credential, or the network between them, the first two supplied with the invocation (Section 8.1)
+— and reporting it under `failed` would send a caller to read a diagnostic for a state its own
+arguments describe. The reason names no cause beyond that: which of the three it was is not something
+the engine can establish from the far side of a transport, and a reason per cause would be a registry
+of the ways a network fails.
+
+`provision:store_unsupported` is a reason of its own rather than the universal `unsupported`, and the
+descriptor is what separates them. Whether a backend can derive more than one working tree from one
+store is a static declaration (Sections 9.1, 9.3), so a consumer that derives more than one against a
+backend declaring it cannot is refused at validation with `capability_unsupported`, before anything is
+fetched (Section 6.10). What the declaration does not settle is what the location already holds: a
+store arranged in a way the selected backend cannot extend is a fact about the location rather than
+about the descriptor, and `provision` reports `store_unsupported` for it, as `integrate` reports
+`base_unavailable` for a base the checkout does not hold.
+
 `blocked`, `failed` and `hook_unanswered` divide a `before:<op>` position's outcomes by what the hook
 did. A gate that answered and refused with a `needs_caller` result is `blocked`; one that answered
 with an `error` result is `failed` (Section 6.6). A gate that gave the engine no usable answer at all
@@ -388,7 +442,7 @@ A trigger is one of:
 
 - **Lifecycle positions** around an operation: `before:commit`, `before:push`, `before:create_pr`,
   `before:merge` (and any engine-defined `before:<op>`). A lifecycle position is matched exactly; it
-  has no class form.
+  has no class form. `provision` has no position and raises no trigger (Section 4.1).
 - **Typed operation results** `<op>:<reason>` (Section 4.3).
 - **Signals** raised by the consumer, including agent milestone signals (`ready-for-review`, `blocked`,
   `done`) and **task-state events** (`tasks:all_closed`, `task:#needs_help`) when the consumer runs the
@@ -617,40 +671,25 @@ two facts a caller acts on — which position, and which unit.
 - A discovered file that does not parse yields no policy to validate. The engine reads no policy
   from it and refuses to run, reporting a configuration error (Section 6.10).
 - Unknown keys SHOULD be ignored for forward compatibility.
+- The consumer configuration (Section 8.1) is the loader's second input and carries no key this
+  surface carries. What a clone inherits unchanged is `repo.policy.toml`'s and what is needed to
+  obtain the clone is the consumer's (Section 6.2), so the two sets are disjoint and the precedence
+  rule above governs the `vcsx.toml` merge alone, needing no exception for the consumer's half.
 
-### 6.2 `[engine]`
+### 6.2 `[requires]`
 
 - `version_floor` (string) — the minimum engine version the policy requires, stated as a
   `MAJOR.MINOR` version (Section 8.5). A value that is not one is a configuration error
   (Section 6.10) rather than a floor the engine compares.
-- `vcs` (string) — the VCS backend selector (for example `git`, `jj`); MAY be `auto` for detection
-  (Section 3.3).
-- `forge` (string) — the forge backend selector (for example `github`, `forgejo`).
-- `remote` (string, OPTIONAL) — the name of the remote the operations that touch one act against
-  (`integrate`, `push`, `pull`; Sections 3.2, 9.1). It also names which of the checkout's copies of the
-  base a read resolves against, which acquires nothing (Section 6.4).
-  - Default: unset — the backend's default remote for the checkout mode, which is
-    `Implementation-defined` and MUST be documented (Section 13.3).
 
-The backend selection is read here in both standalone and embedded use. An embedding consumer supplies
-the *credential* the selected backend uses (Section 9) and the *forge repository coordinate* it acts
-against (Section 8.1), not the selection — so which code host a repository targets is
-repository-owned, while the credential for it and the repository on it are the consumer's. The split
-is not arbitrary: the host a repository publishes to is a property of its Way of Working, while which
-repository a credential is presented to is a decision that belongs with the credential (Section 11).
-
-The remote is repository-owned on the same reasoning: a repository that publishes its work branch to
-a fork, or that carries more than one remote, states which one here rather than leaving two
-conforming engines to push the same branch to different places. The engine resolves the remote once
-per invocation and supplies it to each capability that takes one (Section 9.1); a backend does not
-read it from the policy itself, and does not infer it from the work branch's own upstream binding,
-which need not exist — the work branch is engine-derived (Section 6.3) and MAY be absent from the
-checkout at the first push.
-
-The engine performs no repository provisioning (Section 1.3), so the named remote is one the
-provisioned checkout already carries. A name the checkout does not carry is not a configuration
-error — Section 6.10's validation reads the policy alone, and whether a remote exists is a property
-of the checkout — so it surfaces at first use as the operation's `failed` reason (Section 4.3).
+The table states what the policy document requires of the engine reading it, and selects nothing. The
+values needed to obtain a repository cannot be configured inside that repository: reading
+`repo.policy.toml` needs the repository, obtaining the repository needs the forge selection, its
+access parameters, its credentials and the remote, and reading those from the file needs the
+repository again. Those values are therefore the consumer's and arrive with the invocation
+(Section 8.1). What `repo.policy.toml` holds is what a clone inherits unchanged — the scope, the base,
+the policy edges, the hooks, the transitions, the message configuration and the task tables — none of
+which is consulted before the repository exists.
 
 ### 6.3 `[scope]`
 
@@ -691,7 +730,7 @@ where the checkout holds no copy of the selected branch, resolution answers that
 Naming the ref rather than the branch alone is what makes a read deterministic. A checkout MAY hold
 several copies of one base branch — its own local branch, and a remote-tracking copy for each remote it
 carries — which are the same commit only until one of them is updated. Resolution selects the copy
-belonging to the resolved remote (Section 6.2), so `ahead_behind` and `diff` report against the base
+belonging to the resolved remote (Section 8.1), so `ahead_behind` and `diff` report against the base
 `integrate` would bring in rather than against whichever copy a backend preferred.
 
 Base resolution is configuration, not a hook. An operation reads the resolved base; it never accepts a
@@ -927,7 +966,7 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | Condition | Reason |
 |-----------|--------|
 | A discovered `repo.policy.toml`, or a `vcsx.toml` merged into it, that does not parse (Section 6.1) | `malformed_policy` |
-| A key whose value does not satisfy the constraints its section states — an `[engine] version_floor` that is not a `MAJOR.MINOR` version (Sections 6.2, 8.5), for example | `malformed_policy` |
+| A key whose value does not satisfy the constraints its section states — a `[requires] version_floor` that is not a `MAJOR.MINOR` version (Sections 6.2, 8.5), for example | `malformed_policy` |
 | An edge whose action cannot be dispatched from the arguments it carries — a `run_op` with no `op`, a `run` with no `hook` (Sections 5.2, 6.5) | `malformed_policy` |
 | A declared hook that names no unit to run — a `[hooks.<name>]` table with no `run` (Section 6.6) | `malformed_policy` |
 | An edge's `on` is not a trigger the engine recognizes (Section 6.5) | `unknown_trigger` |
@@ -940,7 +979,7 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map (Section 6.4) | `base_unresolvable` |
 | A `set_state`/transition binding without a consumer that can apply it (Section 5.2) | `set_state_unbound` |
 | A `[messages.pr]` `body_source = "template"` with no template unit bound (Sections 5.2, 10.2) | `template_unbound` |
-| A policy requiring a capability no configured backend declares (Section 9.3) | `capability_unsupported` |
+| A policy, or the consumer configuration, requiring a capability no selected backend declares (Section 9.3) | `capability_unsupported` |
 | A `version_floor` above the running engine version (Section 8.5) | `version_floor_unmet` |
 
 The first four conditions are well-formedness failures and the rest are consistency failures, and
@@ -951,14 +990,16 @@ other condition in the table names; where another names the state — a missing 
 Section 6.1's rule that an unknown key SHOULD be ignored for forward compatibility covers a key the
 schema does not declare, not a declared key whose value the schema does not admit.
 
-Validation is judged from four inputs and no others, and naming them is what makes "determinable
+Validation is judged from five inputs and no others, and naming them is what makes "determinable
 before the policy runs" a question with an answer (Sections 8.6, 9.3):
 
 - the policy document, with `vcsx.toml` merged in (Section 6.1);
 - what the engine holds independently of the invocation — its own version (Section 8.5), which is
-  what `version_floor_unmet` turns on, together with the descriptors its configured backends
-  advertise (Section 9.3) and its own defaults (Section 6.8), which are what
-  `capability_unsupported` turns on;
+  what `version_floor_unmet` turns on, together with its own defaults (Section 6.8);
+- the consumer's selection and access configuration (Section 8.1), which fixes which backends the
+  plugin layer loads and therefore which descriptors the engine reads (Section 9.3); the descriptors
+  of the selected backends, together with the defaults above, are what `capability_unsupported` turns
+  on;
 - the actions the consumer can effect (Section 5.2), which is what `set_state_unbound` turns on;
 - the repository units the consumer bound, which is what `template_unbound` turns on.
 
@@ -967,6 +1008,11 @@ and not a Section 5.2 action, so an engine judging only the document and the act
 condition undeterminable and defer it to first use — and first use of a `template` body source is a
 `create_pr`, which a `ship` reaches only after it has pushed (Section 12.2). A policy that cannot
 compose a body would then publish a work branch before saying so.
+
+The third is an input rather than something the engine holds because the consumer supplies it with the
+invocation (Section 6.2), and nothing about the ordering changes to admit it: Section 8.6 establishes
+`arguments_unreadable` before validation, so the invocation's arguments are decoded by the time the
+checks above run.
 
 What is *not* judged here is what only a checkout or a run can answer. Whether the unit a `run` names
 exists and can be started is a property of the worktree rather than of the document, so a hook the
@@ -1027,8 +1073,9 @@ nothing is merged, and `land` re-reads and retries within the flow bound (Sectio
 
 An embedded driver invokes the same executor programmatically. It:
 
-- supplies the execution context (host-side vs in-sandbox sourcing, Section 3.2), the credentials the
-  plugins use, and the forge repository coordinate where a forge is configured (Section 8.1);
+- supplies the execution context (host-side vs in-sandbox sourcing, Section 3.2), the backend
+  selection, the access parameters and credentials the plugins use, and the forge repository
+  coordinate where a forge is configured (Section 8.1);
 - binds `escalate` to its own resolver (Section 5.5) — for example an automation service that turns an
   escalation into an agent-assigned task;
 - MAY run a **task model**: tasks with an `id`, a `description`, a `status` (`open`/`closed`/`blocked`),
@@ -1051,20 +1098,44 @@ structured input and output. The contract is the same either way; only the encod
 The entry points are the front-end sequences and the individual operations:
 
 - `ship`, `land` — the front-end sequences (Section 7).
-- `status`, `diff`, `commit`, `integrate`, `push`, `create_pr`, `merge`, `pull` — individual operations
-  (Section 4.1), for a driver that composes its own sequence.
+- `provision`, `status`, `diff`, `commit`, `integrate`, `push`, `create_pr`, `merge`, `pull` —
+  individual operations (Section 4.1), for a driver that composes its own sequence.
 
 Common arguments: the identity the work branch is derived from (Section 6.3), the commit identity
 the commits an entry writes are attributed to (Section 10.1), a message input for
-`commit`/`create_pr` (Section 10), the forge repository coordinate where a forge is configured
-(Section 6.2), and the execution context (Section 3.2). The two identities are
+`commit`/`create_pr` (Section 10), the backend selection, the forge repository coordinate where a
+forge is configured, the `remote`, the access parameters, extension bag and credentials described
+below, and the execution context (Section 3.2). The two identities are
 separate arguments: the first fills the work-branch pattern and the second names an author, and a
 consumer supplies each where its capability takes one (Section 9.1). Exact argument encodings are
 `Implementation-defined` and MUST be documented; argument *names* for shared concepts MUST match
 this specification.
 
+The **backend selection** names which VCS backend and which forge backend the plugin layer loads
+(Section 9). It is the consumer's for the reason Section 6.2 states: the selection is what obtaining
+the repository needs, and `repo.policy.toml` is inside the repository it would obtain.
+
+- `local_vcs` — the VCS for a checkout the engine creates (Sections 3.3, 4.1). It is absent for a
+  checkout the engine did not create, where `detect_mode()` answers (Section 9.1), so exactly one of
+  the two settles any checkout's mode.
+
+The **remote** is the consumer's on the same reasoning: it names where the repository was obtained
+from, which is settled before there is a repository to read a policy out of.
+
+- `remote` (OPTIONAL) — the name of the remote the version-control operations that touch one act
+  against (`provision`, `integrate`, `push`, `pull`; Sections 3.2, 9.1). It is the remote the
+  repository was provisioned from, and it also names which of the checkout's copies of the base a read
+  resolves against, which acquires nothing (Section 6.4).
+  - Default: unset — the backend's default remote for the checkout mode, which is
+    `Implementation-defined` and MUST be documented (Section 13.3).
+
+The engine resolves the remote once per invocation and supplies it to each capability that takes one
+(Section 9.1); a backend does not read it from the policy, and does not infer it from the work
+branch's own upstream binding, which need not exist — the work branch is engine-derived
+(Section 6.3) and MAY be absent from the checkout at the first push.
+
 The **forge repository coordinate** names which repository on the code host the forge operations act
-against (Section 9.2). It is REQUIRED where `[engine] forge` is configured and carries no meaning
+against (Section 9.2). It is REQUIRED where a forge is configured and carries no meaning
 where none is, and its absence where one is configured is refused before the policy runs
 (Section 8.6). The engine holds it opaque, as it holds the commit identity (Section 10.1) and the base
 ref (Section 6.4) opaque: it takes one, supplies it to the forge backend, and does not interpret it.
@@ -1076,6 +1147,51 @@ caller to state it on every invocation; a front-end that does MUST document how.
 front-end's, as above, and deriving it there keeps the derivation on the same side of the trust
 boundary as the credential the coordinate will be used with (Section 11) — which is the whole of why
 the coordinate is the consumer's rather than the checkout's.
+
+Two **access parameters** name where the engine reaches, one per plugin layer:
+
+- `git_access` — where the version-control operations reach the remote. REQUIRED for an entry that
+  can reach one, and its absence there is refused before the policy runs (Section 8.6). Exactly the
+  network-touching capabilities Section 9.1 enumerates act against it.
+- `forge_access` — where the forge operations reach the code host. REQUIRED where a forge is
+  configured, and its absence there is refused before the policy runs (Section 8.6). Every capability
+  of Section 9.2 acts against it.
+
+The engine holds both opaque, as it holds the forge repository coordinate, the commit identity and
+the base ref opaque: it takes them, supplies each to the plugin that uses it, and interprets neither.
+Their shape is service-specific — one code host serves its API from a different name than its
+version-control transport and another from a different path under the same name — and a parameter the
+engine parsed would put a backend's addressing grammar back in the engine, which is the mixing
+Sections 9.1 and 9.2 are separate to prevent. A parameter a backend cannot use is therefore that
+backend's own `failed` at first use rather than a shape the engine judged, as a coordinate it cannot
+use is.
+
+A consumer MAY supply `forge_parameters`, an OPTIONAL per-backend parameter set the engine carries to
+the selected forge backend uninterpreted. A backend MUST document the keys it reads, which are
+`Implementation-defined` per backend (Section 13.3). A key the backend does not recognize is that
+backend's own disposition rather than a shape the engine judged, on the same ground: the engine reads
+no key of the set, so it holds nothing to judge one against.
+
+The consumer supplies two credentials:
+
+- `git_credential` — the credential presented at `git_access`.
+- `forge_credential` — the credential presented at `forge_access`.
+  - Default: `git_credential`.
+
+Each credential is supplied with the access parameter it is used against, both from the consumer, so
+the credential and the endpoint it reaches are one decision made by one party (Section 11).
+Credentials reach the plugins for the duration of an invocation (Section 1.3); the engine persists
+neither beyond it.
+
+The consumer-supplied values this section names — the backend selection and `local_vcs`, the forge
+repository coordinate, the `remote`, the two access parameters, `forge_parameters` and the credential
+pair — MAY be read by the engine from a **consumer configuration**: a consumer-owned file, distinct
+from `repo.policy.toml` and never sourced from the repository. Its discovery precedence is
+`Implementation-defined` and MUST be documented (Section 13.3). It carries no key `repo.policy.toml`
+carries, so the two are disjoint and neither shadows the other (Section 6.1). It MAY carry a
+credential directly or a reference the consumer resolves, so a consumer holding its secrets in a
+provider of its own need not write one to disk to use this engine; under either form the engine
+persists no credential beyond the invocation.
 
 An invocation whose arguments the engine cannot decode in the encoding it published is refused with
 the `usage_or_config` status and the `arguments_unreadable` reason (Section 8.6), so the surface this
@@ -1240,7 +1356,7 @@ unresolvable, and neither is reachable through that default: `intervention` is r
   codes a caller may observe, which Section 8.3 already makes total by reading every code outside the
   four the same way — so a consumer written against any `MINOR` from the one that states that rule
   onward absorbs a later reservation without changing.
-- A consumer declares a `version_floor` (Section 6.2); an engine below the floor refuses to run
+- A policy declares a `version_floor` (Section 6.2); an engine below the floor refuses to run
   (fail-closed) with a usage/config result rather than mis-executing a policy that assumes newer
   surface.
 
@@ -1250,8 +1366,9 @@ Between validating the policy (Section 6.10) and running it, the engine establis
 preconditions the invoked entry point depends on, in order, reporting the first that fails — with one
 exception, `arguments_unreadable`, which this section establishes before validation for the reason
 stated below. Where a
-forge is configured (Section 6.2) it requires the forge repository coordinate (Section 8.1), whose
-absence it judges itself, because the argument is either present or is not. It
+forge is configured it requires the forge repository coordinate and the forge-API access parameter
+`forge_access` (Section 8.1), whose absence it judges itself in each case, because the argument is
+either present or is not. It
 resolves the work branch (Section 6.3), which calls a VCS backend capability — `derive_work_branch`,
 or `current_branch` where no `branch_pattern` is configured — and judges the name it resolved with
 `accepts_branch_name`. Where the caller supplied a commit identity (Section 10.1) it accepts it with
@@ -1285,6 +1402,15 @@ at first use where only the run does. That dispatch runs the operation's `before
 dispatch does (Section 4.1): the entry point fixes which invocations are refused in advance, not which
 are gated.
 
+`git_access` is scoped by that same rule. For an entry that can reach a remote — `provision`,
+`integrate`, `push`, `pull`, and a front-end sequence that dispatches one — it is REQUIRED and its
+absence is refused here; an entry outside the set that reaches such an operation through a `run_op`
+edge reports that operation's own `failed` (Section 4.3), which is the disposition this section
+already gives an identity the precondition does not cover. Neither access parameter is judged for
+shape, because the engine interprets neither (Section 8.1): a parameter a backend cannot use is that
+backend's first-use `failed` rather than a precondition this registry names, exactly as a coordinate
+it cannot use is.
+
 A precondition the engine cannot establish is not an operation result. No operation ran, so the
 Section 4.3 registry does not apply, no proto class is assigned, and there is no `<op>:<reason>` for
 the policy machine to route — the entry points are the front-end sequences and the individual
@@ -1296,7 +1422,9 @@ run in which the policy did not run.
 | Condition | Reason |
 |-----------|--------|
 | The invocation's arguments could not be decoded in the encoding the engine published (Section 8.1) | `arguments_unreadable` |
-| A forge is configured (Section 6.2) and no forge repository coordinate was supplied (Section 8.1) | `forge_coordinate_missing` |
+| A forge is configured and no forge repository coordinate was supplied (Section 8.1) | `forge_coordinate_missing` |
+| A forge is configured and no `forge_access` was supplied (Section 8.1) | `forge_access_missing` |
+| An entry that can reach a remote was invoked and no `git_access` was supplied (Section 8.1) | `git_access_missing` |
 | The work branch is the checkout's current branch (Section 6.3) and the checkout has none | `no_current_branch` |
 | The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
 | The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it whatever the entry (Section 10.1) | `identity_invalid` |
@@ -1312,22 +1440,35 @@ operation has run, and once one is dispatched its failure is that operation's ow
 condition — reading it as one would make every precondition reportable as `<op>:failed` and leave
 this registry nothing to name.
 
-What separates this registry from Section 6.10's is what each is judged from. A configuration error is
-judged from the policy document together with what the engine holds independently of the invocation —
-the descriptors its configured backends advertise (Section 9.3), its own defaults (Section 6.8), the
-actions a consumer can effect and the repository units it bound (Section 6.10) — while a precondition
-failure needs the invocation's arguments and the checkout the engine was pointed at. Both refuse to
-run the policy and both report `usage_or_config`, which is why that status names usage and
-configuration together. Validation precedes precondition establishment, so where a configuration error
-and a precondition failure both hold, the configuration reason is reported —
+What separates this registry from Section 6.10's is stated in one direction only. **A configuration
+error is judged without reading the checkout**, from the five inputs Section 6.10 enumerates — the
+policy document, what the engine holds independently of the invocation, the consumer's selection and
+access configuration, the actions a consumer can effect and the repository units it bound. The
+converse does not hold and is not claimed: a precondition MAY need the checkout and MAY be judged
+from the invocation's arguments alone, as `arguments_unreadable`, `forge_coordinate_missing`,
+`git_access_missing` and `forge_access_missing` are. Each row above says what it is judged from.
+
+Where both sides are checkout-free, what separates them is the artifact at fault: **a configuration
+error names a defect a consumer repairs by editing a document; a precondition failure names one it
+repairs by changing the invocation.** That is a distinction a consumer can act on without knowing the
+order in which an engine establishes either.
+
+Both refuse to run the policy and both report `usage_or_config`, which is why that status names usage
+and configuration together. Validation precedes precondition establishment, so where a configuration
+error and a precondition failure both hold, the configuration reason is reported —
 `arguments_unreadable` excepted, for the reason above.
 
 Two boundaries follow from stating it that way. A descriptor field a backend can answer only once it
-has opened the checkout is **not** something the engine holds independently of the invocation, so a
-policy requiring it is not a configuration error and keeps Section 9.3's first-use disposition. And a
-capability a backend declares statically is one the engine holds from the selection alone
-(Section 6.2), so `capability_unsupported` is inside this definition rather than a counterexample to
-it — which is what Section 9.3's "where determinable" refers to.
+has opened the checkout is **not** on the configuration side, so a policy requiring it is not a
+configuration error and keeps Section 9.3's first-use disposition. And a capability a backend declares
+statically is one the engine holds from the consumer's selection alone (Section 8.1), which it holds
+before it validates, so `capability_unsupported` is inside this definition rather than a
+counterexample to it — which is what Section 9.3's "where determinable" refers to.
+
+The three rows naming a missing argument — the forge repository coordinate and the two access
+parameters — are judged with no capability consulted and no checkout opened, and are preconditions
+rather than configuration errors because an argument is not a document: the policy is well formed and
+what is absent is what the invocation was to supply.
 
 ## 9. Plugin API
 
@@ -1360,6 +1501,16 @@ report a failure is a property of how its signature happened to be written.
 
 Realizes the version-control operations. Required capabilities:
 
+- `ensure_store(remote, local_vcs)` → `provision:*`, creating the store where the location holds none
+  and refreshing it where it holds one, acquiring from the remote (Section 4.1). `local_vcs` names the
+  VCS for a store this capability creates (Sections 3.3, 8.1) and is absent where one already exists.
+  A remote it could not reach is `provision:unreachable` and not the universal `failed`, because the
+  endpoint and the credential it was given are the invocation's own arguments (Sections 4.3, 8.1).
+- `derive_working_tree()` → `provision:*`, deriving the working tree the invocation acts in from the
+  store `ensure_store` maintains, so trees share one fetched copy of the repository rather than each
+  carrying its own (Section 4.1). Reads and writes the checkout; acquires nothing. A backend that
+  cannot share a store across working trees declares so in the descriptor below rather than
+  discovering it here (Sections 4.3, 9.3).
 - `detect_mode()` → checkout mode (Section 3.3), or that the mode could not be determined. The
   engine consults the VCS backend before the first dispatch, when it resolves the work branch
   (Section 8.6), so a mode the backend could not determine is the precondition reason
@@ -1416,7 +1567,7 @@ Realizes the version-control operations. Required capabilities:
 - `merge_base(base_ref, identity)` → `integrate:*`, bringing the acquired base into the work branch and
   preserving recorded conflict resolutions where supported.
 - `fetch_counterpart(remote, work_branch)` → the ref of the work branch's remote counterpart, none where
-  the remote carries none (Section 6.2), or that the acquisition failed. The last two are distinct
+  the remote carries none (Section 8.1), or that the acquisition failed. The last two are distinct
   answers and an acquisition the backend could not complete — the remote unreachable, the credential
   refused, the configured remote name absent from the checkout — MUST NOT be answered as an absent
   counterpart, because the two carry different results: an absent counterpart is a benign `pull:ok` and
@@ -1431,17 +1582,20 @@ Realizes the version-control operations. Required capabilities:
   on something else, on the remote not having moved for example, does not satisfy it merely by
   refusing in the common case (Section 11).
 
-The network-touching capabilities are exactly `fetch_base`, `fetch_counterpart` and `push`: they reach
-the remote, need a credential, and realize the version-control operations Section 3.2 places host-side.
-Every other capability above is local to the checkout — it reads or writes the worktree and the history
-the checkout already holds, acquires nothing over the network, and needs no credential. That is an
+The network-touching capabilities are exactly `ensure_store`, `fetch_base`, `fetch_counterpart` and
+`push`: they reach the remote at `git_access` under `git_credential` (Section 8.1) and realize the
+version-control operations Section 3.2 places host-side. Every other capability above is local to the
+checkout — it reads or writes the worktree and the history the checkout already holds, takes neither
+the access parameter nor the credential, and acquires nothing over the network. That is an
 enumeration rather than a property of a signature, so a capability's context is read off this list and
 never inferred from its arguments: `resolve_base_ref` takes a `remote` and acquires nothing, because the
 remote names which of the checkout's copies it answers with (Section 6.4), and `merge_base`,
-`merge_counterpart` and `commit` write commits and are still local, because the distinction is
-credentials rather than mutation.
+`merge_counterpart`, `commit` and `derive_working_tree` write to the checkout and are still local,
+because the distinction is credentials rather than mutation.
 
-An operation is realized through one capability or several. `integrate` is `fetch_base` then
+An operation is realized through one capability or several. `provision` is `ensure_store` then
+`derive_working_tree`, which is what places the acquisition on the network side of the enumeration
+above and the tree derivation on the local side; `integrate` is `fetch_base` then
 `merge_base`; `pull` is `fetch_counterpart` then `merge_counterpart`; `commit` is `worktree_revision`
 at its position then `commit`, which is what makes the tree the gate inspected the tree captured
 (Section 6.6); `status` reads through
@@ -1481,9 +1635,11 @@ commit no branch the engine named reaches is not something a caller can observe 
 specification's operations: what `status` and `diff` report against, and what a `push` publishes, are
 branches (Sections 4.1, 9.1).
 
-`remote` is the resolved remote (Section 6.2) and `base_ref` is the resolved base ref (Section 6.4),
+`remote` is the resolved remote (Section 8.1) and `base_ref` is the resolved base ref (Section 6.4),
 both supplied by the engine; a backend reads neither from the policy nor infers one from the checkout's
-own bindings.
+own bindings. `git_access` and `git_credential` are supplied the same way, to the four capabilities
+the enumeration above places on the network and to no other, so where a backend reaches and what it
+presents there are the consumer's decisions rather than values the backend held (Sections 8.1, 11).
 
 `identity` on `commit`, `merge_base` and `merge_counterpart` is the commit identity (Sections 8.1,
 10.1), supplied by the engine as `remote` is; the three capabilities that take one are exactly those
@@ -1498,8 +1654,9 @@ requires of a VCS backend is realizable through it. An engine MAY define additio
 (Section 13.3), so a capability beyond this list is visible as the engine's own rather than as shared
 surface.
 
-Descriptor fields: supported modes, whether `merge_base` can reuse recorded conflict resolutions, and
-whether the backend can operate in a workspace with no colocated remote (Section 3.3).
+Descriptor fields: supported modes, whether `merge_base` can reuse recorded conflict resolutions,
+whether the backend can operate in a workspace with no colocated remote (Section 3.3), and whether it
+can derive more than one working tree from one store (Sections 4.1, 9.3).
 
 ### 9.2 Forge Backend Plugin
 
@@ -1533,15 +1690,17 @@ Realizes the pull-request and review operations. Required:
   not determine the pull request's head there is no `expected_head` to supply, and the operation
   reports `merge:failed` rather than merging blind.
 
-Every capability above acts against the forge repository coordinate the consumer supplied
-(Section 8.1), which the engine supplies to the backend as it supplies the resolved remote to the
-version-control capabilities (Section 9.1). No signature above takes a repository and a backend infers
-none: which repository on the code host is acted on is neither read from the policy nor derived from
-the checkout (Sections 3.3, 11).
+Every capability above acts against the forge repository coordinate the consumer supplied, at the
+forge-API access parameter `forge_access` and under `forge_credential` (Section 8.1) — all three
+supplied by the engine to the backend, as it supplies the resolved remote, `git_access` and
+`git_credential` to the version-control capabilities (Section 9.1). No signature above takes a
+repository, an endpoint or a credential and a backend infers none: which repository on the code host
+is acted on, where the code host is reached, and what is presented there are neither read from the
+policy nor derived from the checkout (Sections 3.3, 11).
 
 Every capability above reaches the code host, needs a credential, and realizes an operation Section
 3.2 places host-side; the forge plugin has no local half for an enumeration like Section 9.1's to
-separate. What a consumer mediates is therefore Section 9.1's three network-touching capabilities
+separate. What a consumer mediates is therefore Section 9.1's four network-touching capabilities
 together with every capability of this section (Section 11).
 
 OPTIONAL:
@@ -1562,9 +1721,13 @@ configuration error surfaced at validation where determinable, carrying `capabil
 operation's `unsupported` reason (Section 4.3).
 
 What is determinable follows from what validation is judged from (Sections 6.10, 8.6). A capability a
-backend declares statically follows from the backend selection alone, so a `[messages.squash]
-strategy` no configured forge declares is refused at validation — whether the policy states the
-strategy or takes the Section 6.8 default, since the engine holds its own default. What remains on the
+backend declares statically follows from the consumer's selection alone (Section 8.1), which the
+engine holds before it validates, so a `[messages.squash]
+strategy` no selected forge declares is refused at validation — whether the policy states the
+strategy or takes the Section 6.8 default, since the engine holds its own default. A consumer
+configuration that derives more than one working tree from one store against a VCS backend declaring
+it cannot (Section 9.1) is refused the same way, and for the same reason: the declaration is static
+and the consumer's requirement is held before the policy runs. What remains on the
 first-use side is a capability required by an operation an engine defines beyond Section 4.1, an
 OPTIONAL capability such an operation reaches, and a descriptor field a backend can answer only once
 it has opened the checkout. None of those is reachable through the required operation set and the
@@ -1634,14 +1797,20 @@ position needs no identity to condition on where the other two do (Sections 6.6,
 `vcsx` enforces no security invariant of its own; it provides the structure a consumer uses to enforce
 one:
 
-- The engine holds no long-lived credentials. A consumer supplies credentials to the plugins for an
-  invocation or runs the engine where they are already held.
+- The engine holds no long-lived credentials: it takes a credential for the duration of an invocation
+  and persists none beyond it (Sections 1.3, 8.1). A consumer supplies credentials to the plugins for
+  an invocation or runs the engine where they are already held.
 - The engine labels every policy edge and hook with its execution context (Section 3.2) so a
   consumer can source host-side policy from a trusted revision and in-sandbox policy from the
   worktree, and can mediate the credentialed operations. An in-sandbox edge or hook MUST NOT receive
-  credentials. The capabilities that touch the network are named and enumerable — three of the VCS
+  credentials. The capabilities that touch the network are named and enumerable — four of the VCS
   backend's and every required capability of the forge backend (Sections 9.1, 9.2) — so what a
   consumer mediates is a fixed list rather than something inferred from an operation's description.
+- Provisioning is host-side (Sections 3.2, 4.1). `provision` reaches the remote at `git_access` under
+  `git_credential`, so it sits with `integrate`, `push`, `pull` and every forge operation on the side
+  of the boundary the consumer mediates; the in-sandbox half of a split policy receives no credentials
+  and so reaches nothing the operation needs. Adding the operation therefore completes the fixed list
+  above rather than adding a mechanism a consumer must enforce.
 - The engine pins every push refspec to the derived work branch, so a consumer's scope guard has a
   fixed target, and no push the engine causes drops, rewrites or re-parents a commit already on the
   remote work branch (Section 9.1). The second is a property of the effect and not of the transport: a
@@ -1652,15 +1821,24 @@ one:
   re-parents a commit already on it — an update that reconciles a divergence merges (Section 4.1) — so
   the branch remains publishable without rewriting it. A `rebase` or `squash` merge strategy
   (Section 6.8) is not an exception: it writes to the base branch.
-- The consumer supplies the forge repository coordinate (Section 8.1) with the credential it is used
-  under, and the engine derives neither from the checkout. Which repository a credential is presented
-  to is therefore one decision made by one party. A coordinate read from the checkout or from the
-  policy would let a writer with access to either redirect a credentialed operation to a repository
-  the credential's holder did not choose, and Section 3.2 leaves the sourcing boundary to the consumer
-  rather than enforcing one that would prevent it. The service the credential is presented to travels
-  with the credential on the same reasoning: the engine runs where both are already held.
-- The engine performs no repository provisioning and reads no base or branch from untrusted content;
-  base resolution is configuration (Section 6.4).
+- Everything that decides which system is reached, and with what, comes from the consumer: the backend
+  selection, the forge repository coordinate, the `remote`, the two access parameters,
+  `forge_parameters` and the two credentials (Section 8.1). The engine derives none of them from the
+  checkout or from `repo.policy.toml`. Which backend receives a credential, where that credential is
+  presented, and which repository it acts on are therefore one decision made by one party. A
+  selection, a coordinate or an access parameter read from the checkout or from the policy would let a
+  writer with access to either redirect a credentialed operation to a system the credential's holder
+  did not choose, and Section 3.2 leaves the sourcing boundary to the consumer rather than enforcing
+  one that would prevent it.
+- Each credential is supplied with the access parameter it is used against: `git_credential` with
+  `git_access` and `forge_credential` with `forge_access` (Section 8.1). Where `forge_credential` is
+  unset it defaults to `git_credential`, and what that rule admits is bounded by the same one party: a
+  defaulted credential is presented at the consumer's own `forge_access`, so a mismatch is an
+  authentication refusal from a system the consumer chose rather than a credential reaching an
+  unchosen host.
+- The engine obtains the repository it acts in from those same consumer-supplied values
+  (Sections 4.1, 8.1), and reads no base or branch from untrusted content; base resolution is
+  configuration (Section 6.4).
 
 A consumer that runs a sandboxed, credential-less agent (for example the Symphony service) instantiates
 the agent boundary and the secret isolation; those are the consumer's, not the engine's.
@@ -1886,6 +2064,20 @@ A conforming engine SHOULD include tests covering:
   `before:commit` read it creates no commit and yields `worktree_moved` rather than `ok` or
   `nothing_to_commit`, while a `worktree_revision()` that could not determine an identity yields
   `commit:failed` rather than a commit conditioned on nothing (Sections 4.3, 6.6, 9.1).
+- Provisioning: a `provision` into a location holding no repository yields a checkout the remaining
+  operations run against; a `provision` where one exists refreshes it and fetches no second copy, the
+  store the first left being the one the second used; two working trees derived from one store resolve
+  the same base ref and reach the same commits, so neither carries a copy of its own; a VCS backend
+  that does not declare it can derive more than one working tree from one store is refused at
+  validation with `capability_unsupported` rather than at first use, while a location already holding
+  a store the selected backend cannot extend yields `provision:store_unsupported` (Sections 4.3, 9.3);
+  a remote the engine could not reach yields `provision:unreachable` rather than the universal
+  `failed`; `provision` has no lifecycle position and no `[policy]` edge can gate it or route its
+  result, so a policy that names one is refused with `unknown_trigger`; an edge declared `in_sandbox` receives
+  no credential whatever it dispatches, `provision` included, so the operation set gains no in-sandbox
+  path to a credentialed acquisition (Sections 3.2, 11); no front-end sequence dispatches `provision`,
+  so a `ship` in a location holding no repository refuses on the checkout rather than acquiring one as
+  a side effect (Sections 4.1, 8.6, 12.2).
 - Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
   `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6);
   a gated operation dispatched by a `[policy]` `run_op` edge rather than by a front-end sequence — a
@@ -1943,9 +2135,14 @@ A conforming engine SHOULD include tests covering:
   envelope on stdout whose `entry` is null, while an invocation decoded far enough to name an entry
   point reports that entry point whatever failed after it and `entry` is non-null on every other path,
   including every other `usage_or_config` reason (Sections 8.1, 8.2, 8.6); an invocation against a
-  repository configuring a forge with no forge repository
+  configured forge with no forge repository
   coordinate supplied yields `usage_or_config` with `forge_coordinate_missing` and runs no operation,
-  while the same invocation with one supplied runs (Sections 8.1, 8.6); a `fail` on an `error`-class
+  while the same invocation with one supplied runs; an invocation against a configured forge with no
+  `forge_access` supplied likewise yields `usage_or_config` with `forge_access_missing` and runs no
+  operation, and an entry that can reach a remote invoked with no `git_access` yields
+  `git_access_missing`, while an access parameter the backend cannot use runs the policy and is that
+  backend's own `failed` at first use rather than either precondition (Sections 8.1, 8.6); a `fail` on
+  an `error`-class
   result reports that result under `status` `error`, while a `fail` on a `needs_caller` result, on a
   `done` result and at a lifecycle position each yield `status` `error` with null
   `op`/`reason`/`class` and report the edge's trigger and reason in `outputs.failed_by_policy` — so a
@@ -1960,21 +2157,35 @@ A conforming engine SHOULD include tests covering:
   writes carries the supplied commit identity — the mechanical merge commit an `integrate` or a
   `pull` writes included — on a host whose environment supplies no usable identity of its own
   (Section 10.1).
+- Configuration ownership: a `repo.policy.toml` carrying a key this specification no longer declares —
+  a `vcs`, `forge` or `remote` left over from the table `[requires]` replaced — is ignored under
+  Section 6.1's forward-compatibility rule rather than refused, so a policy written against an earlier
+  surface still runs; two consumers with the same consumer configuration and the same policy reach the
+  same backend and the same remote, whatever each repository's file says; a `[messages.squash]
+  strategy` no selected forge declares is refused at validation with `capability_unsupported`, the
+  consumer's selection being what fixes whose descriptor is read (Sections 6.1, 6.2, 6.10, 8.1).
 - Plugins: an undeclared capability yields `capability_unsupported` at validation where determinable
   and the operation's `unsupported` reason at first use otherwise, never a silent no-op; a
-  `[messages.squash] strategy` no configured forge declares is refused at validation whether the
+  `[messages.squash] strategy` no selected forge declares is refused at validation whether the
   policy states it or takes the Section 6.8 default, and a Conformance Statement claiming
   Section 9.3's first-use half names the engine-added operation or optional capability it
   demonstrated the claim against, because that half has no producer among the required operation set
   and policy keys (Sections 6.8, 9.3); git and jj
   checkout modes (including a jj secondary workspace) are handled; the remote-touching operations
-  act against the resolved remote, a configured `[engine] remote` overriding the backend's default
-  (Section 6.2); no forge capability infers a repository from the checkout or the policy, and a
+  act against the resolved remote, a consumer-supplied `remote` overriding the backend's default
+  (Section 8.1); no forge capability infers a repository from the checkout or the policy, and a
   front-end that defaults the forge repository coordinate from the resolved remote and one given it
-  explicitly reach the same repository (Sections 8.1, 9.2); the capabilities that reach the network
-  are exactly `fetch_base`,
+  explicitly reach the same repository (Sections 8.1, 9.2); two engines given the same policy, the
+  same coordinate and the same access parameters reach the same instance of the code host, so no
+  engine supplies an endpoint of its own; a `forge_credential` left unset is presented at
+  `forge_access` as `git_credential`; a `forge_parameters` key no backend declares reaches the
+  selected backend uninterpreted and its disposition is that backend's, the engine neither refusing
+  the invocation nor reporting a configuration reason for it (Sections 8.1, 9.2); the capabilities
+  that reach the network
+  are exactly `ensure_store`, `fetch_base`,
   `fetch_counterpart` and `push` among the VCS backend's and every required capability of the forge
-  backend, and no other VCS capability is invoked with a credential (Sections 9.1, 9.2); a push that
+  backend, and no other VCS capability is invoked with a credential or an access parameter
+  (Sections 9.1, 9.2); a push that
   would drop, rewrite or re-parent a commit already on the remote work branch sends nothing and
   yields `push:non_fast_forward` whatever the transport, including where the local work branch has
   been moved to an ancestor of the remote's tip by a writer outside the engine (Sections 9.1, 11); a
@@ -1996,7 +2207,12 @@ A conforming engine SHOULD include tests covering:
 - The operation set and the reason-token registry with stable proto classes and a default `need` per
   `needs_caller` reason, each gated operation running its `before:<op>` position as part of every
   dispatch, and a bounded wait on every hook the engine invokes with the three conditions named.
-- `repo.policy.toml` loader and validation (with `vcsx.toml` merge), including the refusal of a
+- The provisioning operation: a store created where the location holds none and refreshed where it
+  holds one, the working tree the invocation acts in derived from that store, and the store/tree
+  relationship stated as one fetched copy with the trees that share it — the mechanism the backend's,
+  the inability to share it declared in the descriptor.
+- `repo.policy.toml` loader and validation (with `vcsx.toml` merge), the consumer configuration as a
+  second and disjoint input, including the refusal of a
   policy that is not well formed, of one declaring a hook with no unit to run, of one binding a
   template body source with no template unit bound, and of one whose lifecycle positions dispatch one
   another in a cycle, base resolution to a branch and a base ref, and the execution-context labeling.
@@ -2005,12 +2221,15 @@ A conforming engine SHOULD include tests covering:
   performed, what a hook left unanswered on either side of the division, and what the policy failed
   with `fail`, exit codes including the reserved code for an invocation that produced no result and
   one JSON object on stdout for every one that did, escalation payload, invocation preconditions, the
-  forge repository coordinate, and versioning with a `version_floor` floor.
+  backend selection, the forge repository coordinate, the remote, the two access parameters, the
+  per-backend extension bag, the credential pair with its default, and versioning with a
+  `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors, the VCS backend
   separating the capabilities that acquire from the local ones that use what they acquired, the
-  engine supplying the forge backend its repository coordinate as it supplies the VCS backend its
-  resolved remote, and every value-answering capability able to report that it could not determine
-  its answer.
+  engine supplying each plugin the parameter and credential it uses — the forge backend its
+  repository coordinate, `forge_access` and `forge_credential`, the VCS backend its resolved remote,
+  `git_access` and `git_credential` — and every value-answering capability able to report that it
+  could not determine its answer.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, and every commit the engine writes attributed to the supplied commit identity.
 - Checkout-mode handling (git, jj, jj secondary workspace), a pinned push refspec whose push never
@@ -2032,10 +2251,12 @@ The Statement MUST record:
   `version_floor` the build satisfies.
 - A resolution for every `Implementation-defined` behavior in this specification: checkout-mode
   detection (Section 3.3), the flow bound's value and any further bound the engine imposes
-  (Section 5.6), `repo.policy.toml` discovery precedence (Section 6.1), the backend's default remote
-  where `[engine] remote` is unset (Section 6.2), the form of a hook's engine-invoked `run` unit and
+  (Section 5.6), `repo.policy.toml` discovery precedence (Section 6.1), the form of a hook's
+  engine-invoked `run` unit and
   the bound the engine waits for one under (Section 6.6), which reason is reported when several
-  configuration conditions hold (Section 6.10), the entry-point argument encodings and how a
+  configuration conditions hold (Section 6.10), the consumer configuration's discovery precedence, the
+  backend's default remote where the consumer supplies none, the entry-point argument encodings and
+  how a
   front-end derives the forge repository coordinate where it does (Section 8.1), the `detail` field of
   an `unanswered_gates` entry (Section 8.2), and the escalation `detail` field (Section 8.4).
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class and,
@@ -2043,7 +2264,9 @@ The Statement MUST record:
   (Section 6.10), or a precondition reason (Section 8.6).
 - The `need` vocabulary the engine emits (Section 8.4).
 - The capability descriptors its VCS and forge plugins advertise (Section 9.3), the capabilities any
-  operation it defines beyond Section 4.1 requires of a backend (Section 9.1), any bound a forge
+  operation it defines beyond Section 4.1 requires of a backend (Section 9.1), the `forge_parameters`
+  keys each forge backend reads, which are `Implementation-defined` per backend (Section 8.1), any
+  bound a forge
   backend imposes on its search for a work branch's pull request (Section 9.2), and where a backend
   writes its own bookkeeping state to answer a capability (Section 9.1).
 
