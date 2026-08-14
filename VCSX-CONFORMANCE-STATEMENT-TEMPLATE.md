@@ -49,7 +49,9 @@ claim. Mark each complete.
       contract (Sections 7.1–7.3)
 - [ ] The action-policy machine: triggers, actions, the `#class` fallback, fail-safe on an unmatched
       outcome, no-op on an unmatched signal, determinism (Section 5)
-- [ ] The required operation set and the four required lifecycle positions (Section 4.1)
+- [ ] The required operation set and the four required lifecycle positions (Section 4.1), including
+      `provision` — which has none, is validated against no policy document, and establishes no
+      precondition that reads a checkout (Sections 6.1, 6.10, 8.6)
 - [ ] The reason-token registry with its stable proto classes (Sections 4.2, 4.3)
 - [ ] `repo.policy.toml` loader and validation, with the `vcsx.toml` merge, the refusal of a policy
       that is not well formed, base resolution, and execution-context labeling (Sections 3.2, 6)
@@ -71,7 +73,9 @@ concrete choice; do not leave a row blank.
 | Checkout-mode detection mechanism | 3.3 | `<how git / jj / jj secondary workspace are distinguished>` |
 | Flow bound: the `run_op` count (at least 64), and any further bound imposed | 5.6 | `<count, plus any wall-clock or other bound>` |
 | `repo.policy.toml` discovery precedence (explicit override, then repository default) | 6.1 | `<...>` |
-| The backend's default remote where `[engine] remote` is unset, per backend | 6.2 | `<name each backend uses>` |
+| Consumer-configuration discovery precedence (Section 4's second input) | 8.1 | `<...>` |
+| The backend's default remote where the consumer supplies no `remote`, per backend | 8.1 | `<name each backend uses>` |
+| The `forge_parameters` keys each forge backend reads | 8.1 | `<per backend: the keys read, and what each does>` |
 | Form of a hook's engine-invoked `run` unit | 6.6 | `<executable path / shell string / named task / …>` |
 | Hook bound: how long the engine waits for a hook to answer (at least 600 s admitted) | 6.6 | `<duration, and whether a deployment may configure it>` |
 | Which reason is reported when several configuration conditions hold | 6.10 | `<first found / a documented precedence / all of them>` |
@@ -105,9 +109,12 @@ tokens without a class edge.
 
 ### 4.3 Precondition Reasons (Section 8.6)
 
-These likewise carry no proto class and are reported under `usage_or_config`. They differ from
-Section 4.2's by what they are judged from: a precondition failure needs the invocation's arguments
-and the checkout, so it is not statically determinable from `repo.policy.toml`.
+These likewise carry no proto class and are reported under `usage_or_config`. The boundary against
+Section 4.2's is stated in one direction only (Section 8.6): a configuration error is judged without
+reading the checkout, while a precondition MAY need the checkout and MAY be judged from the
+invocation's arguments alone. Where both are checkout-free, what separates them is the artifact at
+fault — a configuration error is repaired by editing a document, a precondition failure by changing
+the invocation.
 
 | Reason | Condition |
 |--------|-----------|
@@ -149,9 +156,14 @@ configuration error. Declare what each shipped backend advertises.
 
 ### 6.1 VCS Backends (Section 9.1)
 
-| Backend | Supported modes | Recorded-resolution reuse | Operates with no colocated remote |
-|---------|-----------------|---------------------------|-----------------------------------|
-| `<git / jj / …>` | `<...>` | [ ] | [ ] |
+| Backend | Supported modes | Recorded-resolution reuse | Operates with no colocated remote | Derives >1 working tree from one store |
+|---------|-----------------|---------------------------|-----------------------------------|----------------------------------------|
+| `<git / jj / …>` | `<...>` | [ ] | [ ] | [ ] |
+
+A backend that does not declare the last column is refused at validation with
+`capability_unsupported` where a consumer derives more than one working tree from one store
+(Sections 4.3, 6.10, 9.3) — the other half of Section 9.3's split, and determinable because the
+consumer's selection fixes whose descriptor is read.
 
 Section 9.1's required capabilities are a minimum. If this engine defines operations beyond Section
 4.1, list what it additionally requires of a VCS backend; leave empty if it defines none.

@@ -194,3 +194,104 @@ plans rather than fixed ahead of them.
 `Plan.md` step 3 is amended accordingly. The `provision:*` reasons and their proto classes are
 unaffected: an operation outside the machine still returns a typed result, and Section 4.2's envelope
 is what carries it.
+
+## Review finding, 2026-08-14 — `provision` became an entry point with no invocation to stand on
+
+Found in review of this decision's applied change, on the branch and before merge. Three defects, one
+seam: what `provision` is invoked with, and what the engine runs before it.
+
+**The shape of the defect, part one — the pipeline that precedes every operation.** Section 8.1 lists
+`provision` among the entry points. Section 8.6 opens "Between validating the policy (Section 6.10)
+and running it, the engine establishes the preconditions the invoked entry point depends on", and
+neither section was given an exemption. Walk it for the invocation this decision exists to enable —
+a `provision` into a location holding no repository:
+
+- Validation takes "the policy document, with `vcsx.toml` merged in" as its first input, and
+  Section 6.1 resolves `repo.policy.toml`'s path "relative to the repository root". There is no
+  repository root. Section 6.1's only rule for a policy the engine cannot use is one that "does not
+  parse"; an absent one has no disposition at all.
+- Section 8.6 then "resolves the work branch …, which calls a VCS backend capability —
+  `derive_work_branch`, or `current_branch` where no `branch_pattern` is configured".
+  `derive_work_branch` needs `scope.branch_pattern` out of the file that does not exist;
+  `current_branch()` needs the checkout that does not exist. Section 9.1 states the same thing from
+  the other side: the engine consults `detect_mode()` "before the first dispatch, when it resolves
+  the work branch".
+
+So the invocation that creates a checkout is refused with `checkout_unreadable` before `ensure_store`
+runs. The document relies on exactly this reading elsewhere: the test matrix this decision added
+asserts that "a `ship` in a location holding no repository refuses on the checkout rather than
+acquiring one as a side effect". That behavior is correct for `ship` and fatal for `provision`, and
+nothing distinguishes them.
+
+**This is the third register the cycle reaches, and the third time it was not carried forward.**
+Decision 0092 established that the values needed to obtain a repository cannot be configured inside
+it. The `before:provision` finding above carried it to *control flow*: the policy that would route
+around a provisioning outcome is not readable when provisioning must first run. This carries it to
+the *invocation pipeline*: the policy validation and the checkout-reading preconditions that precede
+every operation are themselves downstream of the repository, so an operation that obtains the
+repository precedes them too. Three recurrences of one argument, each found only after the previous
+repair shipped. The pattern worth recording is that the cycle was treated as a fact about
+configuration keys and re-derived from scratch at each new register, when it is a fact about
+ordering: anything read out of the repository is unavailable to the step that obtains it. Applying
+it as a sweep over "what does the engine read before dispatching?" would have found all three at
+once.
+
+**Part two — the operation's locations are not arguments.** "The location" is load-bearing in four
+places: Section 4.1 ("create the store where the location holds none"), Section 4.3 (what separates
+`provision:store_unsupported` from `capability_unsupported` is "what the location already holds"),
+Section 9.1, and the Section 13.2 checklist. Section 8.1's argument list names neither a store
+location nor a working-tree location, `ensure_store(remote, local_vcs)` takes no location, and
+`derive_working_tree()` takes no arguments at all — so neither where the tree is derived nor which
+store it derives from is expressible. `SPEC.md`'s reference algorithm had already written the
+argument the contract cannot receive: `engine.provision(repo, store_path)`.
+
+**Part three — one operation cannot serve `SPEC.md`'s two phases.** Section 4.1 makes `provision`
+`ensure_store` then `derive_working_tree`, always both. `SPEC.md` calls it twice for different work:
+`ensure_object_store` wants the store alone, once per repository, and `provision_for_issue` wants a
+tree, once per issue. Under one indivisible operation the per-repository call derives a working tree
+nothing named and nothing uses, which is a directory appearing on the host for no reason a consumer
+asked for.
+
+**The repair.** `store_location` is a REQUIRED argument of `provision` and `tree_location` is an
+OPTIONAL one; the operation maintains the store and derives a working tree where the invocation
+names a place to derive one. That supplies the missing locations, makes the store-only phase
+expressible, and leaves the capability signatures able to carry what they act on. `provision` is then
+stated as **the one entry point established without a policy document and without reading a
+checkout**: no policy is validated for it, so no reason judged from the document — `malformed_policy`
+through `version_floor_unmet` — can arise; and the preconditions established are exactly those judged
+from the invocation's arguments, so no work branch is resolved, no mode detected, and no identity
+accepted. `capability_unsupported` survives both cuts, because Section 6.10's third input is the
+consumer's configuration rather than the repository's — which is the input decision 0092 added, and
+is what makes the shared-store refusal "before anything is fetched" reachable for the one operation
+that fetches.
+
+The cost is stated rather than absorbed. A below-`version_floor` engine provisions successfully and
+refuses on the next invocation, because the floor is declared in the file provisioning obtains; that
+is the cycle again and not a gap in the repair. And `SPEC.md`'s per-issue invocation names both
+locations, so it refreshes a store the tick's earlier call already refreshed — idempotent by the
+property Section 13.1 already tests ("refreshes it and fetches no second copy"), and a redundant
+acquisition rather than a wrong one. Making it avoidable would need a tree-only third phase, which
+buys one saved fetch per issue at the price of an operation whose name would have to promise the
+store is already current — a precondition on a location, which is the one thing Section 4.3 says the
+descriptor cannot settle.
+
+**The option not taken: split `provision` into two operations.** A `provision_store` and a
+`provision_tree` would carry their own locations naturally, make the two phases explicit, and remove
+the optional-argument-changes-the-work shape, which is a real smell. It loses on the contract: the
+operation set is shared surface (`VCSX-CONTRACT.md` Section 6, `conformance/vcsx/vocabulary.json`),
+and two operations need two reason sets where the failures are identical — `unreachable` belongs to
+the store half and `store_unsupported` to the tree half, but `failed` and `unsupported` are universal
+and would double. One operation whose arguments say how far to go keeps one reason registry over one
+name, and the consumer that wants only the store omits an argument rather than learning a second
+verb.
+
+Reconsider the split if a third phase appears — a consumer that needs to derive a tree while
+guaranteeing no acquisition, for example under a network the invocation must not touch. The evidence
+is a consumer asking for provisioning with the network denied, and the repair is then two operations,
+not an argument that means "skip the half you would otherwise do".
+
+**Blast radius.** The missing exemption reached `VCSX-SPEC.md` Sections 6.1, 6.10 and 8.6; the
+missing locations reached Sections 4.1, 4.3, 8.1, 9.1 and 13.2 and `SPEC.md` Section 16.5. Two new
+precondition reasons follow, `store_location_missing` and `local_vcs_missing` (the latter from
+decision 0092's finding), and both land in `conformance/vcsx/vocabulary.json` and
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.

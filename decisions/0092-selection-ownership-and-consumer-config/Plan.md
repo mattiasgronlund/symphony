@@ -21,8 +21,12 @@ Matrix", 18 "Implementation Checklist", plus Section 5.2's design note.
 ## Tokens introduced
 
 - `[requires]` — replaces the `[engine]` table, holding `version_floor` alone.
-- `local_vcs` — the consumer-supplied VCS choice for a checkout the engine creates (decision 0093);
-  absent for one it did not create, where `detect_mode()` answers.
+- `local_vcs` — the consumer-supplied VCS selection: which VCS backend the plugin layer loads, and
+  the mode for a checkout the engine creates (decision 0093). REQUIRED on every invocation; for a
+  checkout the engine did not create, `detect_mode()` answers the *mode* while this still names the
+  backend. Amended by this decision's review finding on the deleted `[engine] vcs` selector, which
+  the narrower form left unnamed.
+- `local_vcs_missing` — the precondition reason for its absence (Section 8.6).
 - "consumer configuration" as a prose term, not a filename: discovery is `Implementation-defined`.
 
 ## Steps
@@ -56,9 +60,12 @@ Matrix", 18 "Implementation Checklist", plus Section 5.2's design note.
    the disjointness is stated and the precedence sentence is unchanged.
 
 5. **Checkout mode is detected, not declared (Section 3.3)** — ensure the section states that the
-   checkout mode is determined by the VCS backend's `detect_mode()` (Section 9.1) for a checkout the
-   engine did not create, and carries no policy key. *Done when* Section 3.3 names no configured
-   selector and `detect_mode()` is the only path stated.
+   checkout *mode* is determined by the VCS backend's `detect_mode()` (Section 9.1) for a checkout
+   the engine did not create, and carries no `repo.policy.toml` key. Ensure it also states that
+   which *backend* does the detecting is the consumer's `local_vcs` (Section 8.1), REQUIRED on every
+   invocation, so the two questions are separated rather than conflated. *Done when* Section 3.3
+   names no policy key, `detect_mode()` is the only path stated for the mode of a checkout the
+   engine did not create, and `local_vcs` is named as the backend selection.
 
 6. **The remote (Sections 6.4 "`[base]` and Base Resolution", 8.1, 9.1)** — ensure the remote is the
    consumer-supplied value the repository was provisioned from, resolved once per invocation and
@@ -99,9 +106,11 @@ Matrix", 18 "Implementation Checklist", plus Section 5.2's design note.
     party. *Done when* the one-party statement covers the selection and not only the coordinate.
 
 11. **`VCSX-CONTRACT.md` Sections 4 and 10** — ensure "engine selection" is removed from the list of
-    `repo.policy.toml` sections and from the host-side-sourced Way-of-Working list, and that the
-    surface names the consumer configuration as the engine's other input. *Done when* neither section
-    lists engine selection as repository-owned.
+    `repo.policy.toml` sections and from the host-side-sourced Way-of-Working list, that `[requires]`
+    takes its place in the Section 4 list so the contract and `SPEC.md` Section 5.6 enumerate the
+    same sections, and that the surface names the consumer configuration as the engine's other input.
+    *Done when* neither section lists engine selection as repository-owned and the two documents'
+    section lists agree.
 
 12. **`SPEC.md` operator surface (Sections 5.3, 6.4, 9.7)** — ensure the operator policy config's
     top-level key list includes `vcs` (absent today though Sections 6.4 and 9.7 document it), and that
@@ -133,6 +142,11 @@ Matrix", 18 "Implementation Checklist", plus Section 5.2's design note.
   consumer configuration as a second, disjoint input.
 - **`VCSX-SPEC.md` Conformance Statement (Section 13.3)** — add a row for the consumer
   configuration's discovery precedence.
+- **`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`** — the template is the engine-side counterpart of
+  Section 13.3 and drifts silently, since nothing validates it against the spec. Retire the
+  `[engine] remote` row, add rows for the consumer configuration's discovery precedence and the
+  `forge_parameters` keys each forge backend reads, and correct Section 4.3's preamble, which states
+  the two-directional precondition boundary step 8 replaced.
 - **`SPEC.md` cheat sheet (Section 6.4)**, **test matrix (Section 17)** and **checklist (Section 18)**
   — reflect the moved keys, the added `vcs` object fields, and the narrowed Way-of-Working claim.
 - **`conformance/vcsx/vocabulary.json`** — update the `config_reasons` note, which currently records
@@ -151,10 +165,20 @@ Matrix", 18 "Implementation Checklist", plus Section 5.2's design note.
 - `SPEC.md` gains operator keys `vcs.forge`, `vcs.git_access`, `vcs.forge_access`,
   `vcs.forge_parameters`, `vcs.remote` and `vcs.local_vcs`, and names `[requires]` as a
   `repo.policy.toml` section (it never named `[engine]`, so there was no rename to make).
+- `VCSX-SPEC.md` gains the precondition reason **`local_vcs_missing`** (Section 8.6), added by this
+  decision's review finding so that `local_vcs`'s REQUIRED status has a stated failure mode.
+- `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`'s row **"The backend's default remote where
+  `[engine] remote` is unset"** is retitled to name the consumer-supplied `remote` and cites
+  Section 8.1 rather than 6.2.
 
 ## Status
 
 Applied to `VCSX-SPEC.md`, `VCSX-CONTRACT.md`, `SPEC.md`, `conformance/vcsx/vocabulary.json` and
 `conformance/vcsx/vectors/policy-validation.json` (whose seven `[engine]` policy inputs the rename
 would otherwise have left asserting a refusal the engine no longer makes). Step 8 was applied in the
-amended, one-directional form recorded in this decision's review finding.
+amended, one-directional form recorded in this decision's first review finding.
+
+Steps 5, 11 and the template sync bullet were applied in the amended form recorded in this decision's
+second review finding: `local_vcs` is the VCS backend selection and not only a creation-time mode,
+`[requires]` replaces "engine selection" in `VCSX-CONTRACT.md`'s Section 4 list rather than leaving a
+gap, and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` is brought back into line with Section 13.3.

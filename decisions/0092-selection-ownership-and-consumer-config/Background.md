@@ -213,3 +213,64 @@ precondition establishment, `arguments_unreadable` excepted — and so is Sectio
 
 `Plan.md` step 8 is amended accordingly; step 7's five-input restatement stands unchanged, since the
 config side was never the false half.
+
+## Review finding, 2026-08-14 — deleting `[engine]` left the VCS backend with no name
+
+Found in review of this decision's applied change, on the branch and before merge. The defect is in
+what this decision removed, not in what it added.
+
+**The shape of the defect.** `[engine]` carried four keys, and this decision moved three of them to
+the consumer. Two arrived under their own names: Section 8.1 bullets `remote`, and `SPEC.md`'s
+operator config carries `vcs.forge`. The third, `vcs` — "the VCS backend selector (for example
+`git`, `jj`); MAY be `auto` for detection" — was deleted without a counterpart. The key introduced
+beside it, `local_vcs`, is not one: Section 8.1 scoped it to "the VCS for a checkout the engine
+creates" and stated it "is absent for a checkout the engine did not create". So for every invocation
+against a checkout that already exists — every invocation but the one that first creates one —
+nothing in the argument list names which VCS backend the plugin layer is to load, while the prose
+one paragraph above it says the backend selection "names which VCS backend and which forge backend
+the plugin layer loads".
+
+**What branches on the missing value.** This decision's own Section 6.10 fifth input is "the
+consumer's selection and access configuration …, which fixes which backends the plugin layer loads
+and therefore which descriptors the engine reads", and it rewrote Section 9.3 to say a statically
+declared capability "follows from the consumer's selection alone (Section 8.1), which the engine
+holds before it validates". Both are false wherever the selection has no name. The VCS descriptor is
+then not held before validation, so a `capability_unsupported` turning on a VCS capability is not
+determinable there and falls back to Section 9.3's first-use half — which is precisely the fallback
+decision 0093 relies on *not* taking for its shared-store declaration, whose whole point is a refusal
+"before anything is fetched".
+
+**This is the second time in this decision that a restatement outran the argument list.** The
+Section 8.6 finding recorded above promoted an incidentally loose clause into a load-bearing and
+wrong one. This one asserts that the selection fixes the backends while deleting the only key that
+named one of them. Two recurrences, same shape: the prose about what the consumer supplies was
+written from the intent rather than checked against the bullets underneath it. The check that would
+have caught both is mechanical — read the argument list, not the paragraph introducing it.
+
+**The repair.** `local_vcs` is widened rather than joined by a second key: it names **which VCS
+backend the plugin layer loads**, and, for a checkout the engine creates, the mode it creates. It is
+REQUIRED on every invocation. For a checkout the engine did not create, `detect_mode()` remains
+authoritative for the *mode* — a backend MAY support several (Section 9.3's descriptor field is
+"supported modes", plural) — so this decision's invariant that the mode is detected rather than
+declared survives untouched; what `local_vcs` settles is which backend does the detecting. Its
+absence is the precondition reason `local_vcs_missing`, so REQUIRED has a stated failure mode rather
+than being an unenforced adjective, which is the defect Section 8.1's `forge_access` avoided by
+carrying `forge_access_missing`.
+
+**The option not taken: restore `vcs` as a consumer key and keep `local_vcs` narrow.** It has a real
+argument. Backend and mode are different things — a backend that supports both modes is exactly the
+case Section 3.3 describes — and one token doing both jobs is the conflation the old `[engine] vcs`
+already carried, `auto` being the tell that the key could not decide which of the two it was. It
+loses on what the second key would have to be called on the consumer's side: `SPEC.md`'s operator
+object is `vcs`, so the selector lands as `vcs.vcs`, and the alternative of renaming it for
+`SPEC.md` alone breaks Section 8.1's rule that argument names for shared concepts match. Widening
+one key costs a conflation the document already lived with and adds no token to either document;
+splitting costs a token in three documents and a name nobody would defend. `auto` does not return:
+`local_vcs` names a mode to create, which `auto` cannot, and an existing checkout's mode was never
+its job.
+
+Reconsider if a deployment needs one backend to create a checkout and a different one to drive it —
+the evidence being a backend whose `supported modes` is a single mode and a consumer that provisions
+in one mode and operates in another. The repair would then be the split above, and `vcs.vcs` would
+have to be renamed on `SPEC.md`'s side with Section 8.1's matching rule relaxed deliberately rather
+than by accident.

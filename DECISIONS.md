@@ -13,8 +13,11 @@ focused prose description. The folder holds the supporting detail:
 
 **States:** `Proposed` (under consideration) · `Accepted` (decided; to be / being applied) ·
 `Rejected` (decided against; kept for the record) · `Superseded` (replaced by a later decision; kept
-for the record). A `Superseded` chapter names the decision that replaced it; unlike `Rejected`, a
-superseded decision may have been sound and parts of it may survive in its successor (decision 0033).
+for the record). A `Superseded` chapter names the decision that replaced it, as
+`Superseded (by NNNN)`; unlike `Rejected`, a superseded decision may have been sound and parts of it
+may survive in its successor (decision 0033). A State MAY carry a parenthetical naming a later
+decision that revisited *part* of it without replacing it — the State itself stays one of the four,
+since a decision still standing is still `Accepted`.
 
 New decisions get the next zero-padded number and a folder `decisions/NNNN-short-slug/`. Copy
 `decisions/_template/` to start. See `CLAUDE.md` for the working conventions.
@@ -1520,7 +1523,7 @@ before an implementation exists this reuses). Accepted and applied to `VCSX-SPEC
 
 ## 0062 — The remote is named in `[engine]` and supplied to the capabilities that touch it
 
-**State:** Superseded by 0092
+**State:** Superseded (by 0092)
 **Folder:** [decisions/0062-engine-remote-selection/](decisions/0062-engine-remote-selection/)
 
 Superseded in *placement* only, and by an argument this decision could not have reached: decision
@@ -2840,7 +2843,7 @@ to `VCSX-SPEC.md` (Sections 6.10, 8.1, 8.3, 8.5, 8.6, 13.1, 13.2), `conformance/
 
 ## 0085 — The forge repository coordinate is the consumer's
 
-**State:** Accepted (service-root disposal re-evaluated by 0091; principle extended by 0092)
+**State:** Accepted (re-evaluated in part by 0091; principle extended by 0092)
 **Folder:** [decisions/0085-forge-repository-coordinate/](decisions/0085-forge-repository-coordinate/)
 
 Resolves issue #39. Section 6.2 assigns the forge **selection** to the repository and the
@@ -3215,7 +3218,16 @@ anything else does — at the cost of 0062's out-of-scope fork case, which now n
 The tracker selection does not move: the cycle reaches it and confirms the existing operator
 ownership. Recorded as considered and *not* load-bearing: 0085's fork objection, which
 repository-declares-operator-overrides would have defeated — so if the cycle is ever broken that
-option becomes live again and the objection will not be available. Validation's boundary is redrawn at
+option becomes live again and the objection will not be available. A second review finding, on the
+branch and before merge, repairs what deleting `[engine]` left behind: `vcs` was removed without a
+counterpart, so nothing named the VCS backend for any checkout the engine did not create, while this
+decision's own new validation input asserts that the consumer's selection "fixes which backends the
+plugin layer loads". `local_vcs` is widened to be that selection — REQUIRED on every invocation,
+naming the backend, and naming the created checkout's mode as before, with `detect_mode()` still
+authoritative for the mode of a checkout the engine did not create — rather than adding a second key
+that would land on `SPEC.md`'s side as `vcs.vcs`. Its absence is the precondition
+`local_vcs_missing`, established before validation because the selection is what fixes whose
+descriptor validation reads. Validation's boundary is redrawn at
 the checkout: Section 6.10 is judged from five inputs including the consumer's selection, Section 8.6
 from what needs the checkout, using the seam Section 8.6 already has in establishing
 `arguments_unreadable` before validation. Assumption recorded: the consumer file MAY carry a
@@ -3255,6 +3267,20 @@ require without re-opening Section 18.1.1 anyway); a store-blind engine; a post-
 *for* its storage behaviour and would have no way to state a requirement). The engine's identity
 changes and the specification says so: Sections 1.3, 2.2 and 11 are rewritten rather than amended. The
 secret-isolation invariant is untouched — provisioning is host-side like `push` and `merge`, and no
-provisioning verb joins the broker's verb set. Reconsider if a deployment needs Broker Core over
-repositories materialized some other way entirely, in which case the repair is to restore optionality
-with an OPTIONAL provisioning operation, not a second VCS adapter. Relates to 0092, 0091 and 0062.
+provisioning verb joins the broker's verb set. A second review finding, on the branch and before
+merge, repairs the seam the operation was given no way to stand on: `provision` was listed as an
+entry point while Section 8.6 still validated a policy read out of the repository and resolved a work
+branch against a checkout — both of which `provision` exists to produce, so the invocation that
+creates a checkout was refused with `checkout_unreadable` before it ran. Its two locations were also
+never arguments, though "the location" carried four claims including what separates
+`provision:store_unsupported` from `capability_unsupported`. `store_location` (REQUIRED) and
+`tree_location` (OPTIONAL) become arguments, which also makes `SPEC.md`'s store-only phase
+expressible; and `provision` is stated as the one entry point validated against no policy document
+and establishing no precondition that reads a checkout. `capability_unsupported` survives both cuts
+because it turns on the consumer's configuration rather than the repository's — 0092's input, doing
+the work here. The cost is recorded: a `version_floor` cannot bind the step that obtains the file
+declaring it. This is the third register the bootstrap cycle reached — configuration, then control
+flow, then the invocation pipeline — each found after the previous repair shipped. Reconsider if a
+deployment needs Broker Core over repositories materialized some other way entirely, in which case
+the repair is to restore optionality with an OPTIONAL provisioning operation, not a second VCS
+adapter. Relates to 0092, 0091 and 0062.

@@ -19,10 +19,15 @@ Checklist", and Section 14.1's `Repository Provisioning Failures` class.
 
 ## Tokens introduced
 
-- `provision` — the operation, with a `before:provision` lifecycle position, classified host-side.
+- `provision` — the operation, classified host-side. It has **no lifecycle position** and is outside
+  the action-policy machine, per this decision's first review finding; it is also the one entry point
+  established without a policy document and without reading a checkout, per the second.
+- `store_location` (REQUIRED) and `tree_location` (OPTIONAL) — `provision`'s locations, added by the
+  second review finding. `store_location_missing` is the precondition reason for the first's absence.
 - Section 4.3 reasons: `provision:ok` (`done`), `provision:unreachable` (`needs_caller`),
-  `provision:store_unsupported` (`error`), `provision:failed` (`error`). The universal `blocked`,
-  `unsupported` and `hook_unanswered` reasons apply as they do to every gated operation.
+  `provision:store_unsupported` (`error`), `provision:failed` (`error`). The universal `failed` and
+  `unsupported` reasons apply; `blocked` and `hook_unanswered` do **not**, since they are defined for
+  an operation gated at a lifecycle position and `provision` has none.
 
 ## Steps
 
@@ -110,8 +115,12 @@ Checklist", and Section 14.1's `Repository Provisioning Failures` class.
   broker verb set contains no provisioning verb.
 - **`SPEC.md` cheat sheet (Section 6.4)** — no new operator key beyond decision 0092's, since
   provisioning consumes the same values.
-- **`conformance/vcsx/vocabulary.json`** — add the provisioning operation to `operations`, its reasons
-  to the reason registry with their classes, and its `before:<op>` position.
+- **`conformance/vcsx/vocabulary.json`** — add the provisioning operation to `operations` with
+  `lifecycle_position: null`, and its reasons to the reason registry with their classes. No
+  `before:<op>` position is added, per this decision's first review finding, and no `blocked` or
+  `hook_unanswered` entry follows for it.
+- **`conformance/vcsx/README.md`** — keep the derived counts honest: the reason table's row and entry
+  totals, and the list of results that need fixtures rather than vectors.
 
 ## Anchor changes
 
@@ -120,13 +129,40 @@ Checklist", and Section 14.1's `Repository Provisioning Failures` class.
   and `provision_for_issue` are retained and delegate.
 - `SPEC.md` Section 18.1.1's phrase **"the VCS engine and autonomous daemon are OPTIONAL layers"** is
   removed, superseded by a statement that the engine is required where a repository is managed.
+- `VCSX-SPEC.md` gains `provision`'s arguments **`store_location`** and **`tree_location`**
+  (Section 8.1) and the precondition reason **`store_location_missing`** (Section 8.6), from this
+  decision's second review finding. The capability signatures change with them:
+  `ensure_store(remote, local_vcs)` → `ensure_store(store_location, remote, local_vcs)`, and
+  `derive_working_tree()` → `derive_working_tree(store_location, tree_location)`.
+- `SPEC.md`'s reference algorithm `ensure_object_store` calls `engine.provision` with a store
+  location and no tree location; `run_agent_attempt`'s `provision_for_issue` names both.
 
 ## Status
 
 Applied to `VCSX-SPEC.md`, `VCSX-CONTRACT.md`, `SPEC.md`, `conformance/vcsx/vocabulary.json` and
 `conformance/vcsx/README.md`. Step 3 was applied in the amended form recorded in this decision's
-review finding: `provision` has no lifecycle position and is outside the action-policy machine, so it
-carries neither `blocked` nor `hook_unanswered`.
+first review finding: `provision` has no lifecycle position and is outside the action-policy machine,
+so it carries neither `blocked` nor `hook_unanswered`.
+
+The second review finding adds three post-conditions, applied to `VCSX-SPEC.md` Sections 4.1, 6.1,
+6.10, 8.1, 8.6, 9.1, 13.1 and 13.2, `SPEC.md` Sections 9.7 and 16.5, and the conformance corpus:
+
+15. **`provision`'s locations (Sections 4.1, 8.1, 9.1)** — ensure `store_location` is a REQUIRED
+    argument of `provision` and `tree_location` an OPTIONAL one, that the operation maintains the
+    store and derives a working tree only where the invocation names a place for one, and that
+    `ensure_store` and `derive_working_tree` take the locations they act on. *Done when* no sentence
+    in the document says "the location" without an argument that names it.
+
+16. **`provision` precedes validation (Sections 4.1, 6.1, 6.10)** — ensure the document states that
+    `provision` is validated without a policy document, so no reason judged from the document can
+    arise for it, and that `capability_unsupported` survives because Section 6.10's third input is
+    the consumer's rather than the repository's. *Done when* Section 6.1 says what an absent policy
+    means for `provision` and Section 6.10 names the entry point it does not judge from a document.
+
+17. **`provision` reads no checkout (Section 8.6)** — ensure the section establishes for `provision`
+    only the preconditions judged from the invocation's arguments, resolving no work branch, detecting
+    no mode and accepting no identity. *Done when* the section names `provision`'s precondition set
+    explicitly and `checkout_unreadable` is unreachable for it.
 
 Open and deliberately not closed here: `SPEC.md` Section 9.12 still enumerates the machine's
 operations as `commit`, `integrate`, `push`, `create_pr` and `merge`. That is arguably correct now

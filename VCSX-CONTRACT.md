@@ -83,6 +83,8 @@ Entry points:
 
 `repo.policy.toml` is the **repository-owned** Way-of-Working file. It holds:
 
+- `[requires]` — what the policy document requires of the engine reading it, namely the engine
+  `version_floor`,
 - `scope.branch_pattern` — the branch-*name* pattern for the work branch (the scope invariant itself
   is not configurable; Section 10),
 - the action-policy edges and hooks (Section 5),
@@ -97,10 +99,11 @@ daemon.
 The engine's other configuration input is the **consumer configuration**: the consumer's own, and
 never sourced from the repository. It holds what the engine needs before there is a repository to
 read a policy from — which VCS and forge backends are selected, where each is reached and under
-which credential, and the remote the repository was provisioned from — none of which a file inside
-the repository can supply to the step that obtains the repository. The term names the input, not a
-file: where the engine discovers it is `Implementation-defined` and MUST be documented. The two
-surfaces carry disjoint keys, so neither shadows the other.
+which credential, the remote the repository was provisioned from, and where `provision` materializes
+the store and the working tree — none of which a file inside the repository can supply to the step
+that obtains the repository. The term names the input, not a file: where the engine discovers it is
+`Implementation-defined` and MUST be documented. The two surfaces carry disjoint keys, so neither
+shadows the other.
 
 The field-level schema of both surfaces is deferred (Section 11). The **sourcing** of
 `repo.policy.toml` — which revision each part is read from — is fixed in Section 10.
@@ -198,11 +201,15 @@ against the selected backends — the VCS backend, and a code host such as GitHu
 operation set and its result classing are host-neutral. Named operations include:
 
 - `provision` — ensure the repository is present and current: create the store where absent, refresh
-  it where present, and derive the working tree the invocation acts in. It is credentialed, like
-  `push` and `merge`; the agent's broker verb set (Section 8) carries no provisioning verb. It has no
-  lifecycle position and raises no `<op>:<reason>` trigger: both are matched against `[policy]` edges
-  read from `repo.policy.toml`, which is inside the repository this operation obtains, so a consumer
-  dispatches it and classifies its result rather than routing it through the machine.
+  it where present, and, where the invocation names a place for one, derive a working tree from it.
+  The store and the tree are named by the consumer, as a store location and an OPTIONAL tree
+  location; an invocation naming no tree location maintains the store alone. It is credentialed,
+  like `push` and `merge`; the agent's broker verb set (Section 8) carries no provisioning verb. It
+  runs before everything the engine reads out of the repository, so it has no lifecycle position,
+  raises no `<op>:<reason>` trigger, is validated against no policy document, and establishes no
+  precondition that reads a checkout: all four are matched, read, or judged against what is inside
+  the repository this operation obtains. A consumer dispatches it and classifies its result rather
+  than routing it through the machine.
 - `commit`
 - `integrate` — bring the base branch into the work branch (back-merge / update-branch).
 - `push`
