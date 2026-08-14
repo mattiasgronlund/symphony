@@ -23,6 +23,7 @@
     "entries": [
       { "token": "status", "read_only": true, "lifecycle_position": null },
       { "token": "diff", "read_only": true, "lifecycle_position": null },
+      { "token": "provision", "read_only": false, "lifecycle_position": null },
       { "token": "commit", "read_only": false, "lifecycle_position": "before:commit" },
       { "token": "integrate", "read_only": false, "lifecycle_position": null },
       { "token": "push", "read_only": false, "lifecycle_position": "before:push" },
@@ -34,7 +35,7 @@
 
   "lifecycle_positions": {
     "spec_refs": ["VCSX-SPEC.md Sections 4.1 \"Operation Set\", 5.1 \"Triggers\""],
-    "note": "The required positions. Matched exactly; a lifecycle position has no #class form (Section 5.3).",
+    "note": "The required positions. Matched exactly; a lifecycle position has no #class form (Section 5.3). `provision` has none and raises no `<op>:<reason>` trigger: both are matched against `[policy]` edges read from `repo.policy.toml`, which is inside the repository `provision` exists to obtain, so a gate on it would be absent on creation and present on refresh (Section 4.1).",
     "entries": ["before:commit", "before:push", "before:create_pr", "before:merge"]
   },
 
@@ -42,6 +43,12 @@
     "spec_refs": ["VCSX-SPEC.md Section 4.3 \"Reason-Token Registry\""],
     "note": "The Section 4.3 table normalized to one entry per (operation, reason). Its combined rows expand: the `status` / `diff` row to two entries, and the four universal rows to one entry per operation they cover — `failed` and `unsupported` for every operation, `blocked` and `hook_unanswered` for every gated one — each marked `universal: true`. `blocked`, `failed` and `hook_unanswered` divide a gate's outcomes by what the hook did: refused with a `needs_caller` result, refused with an `error` result, and gave no usable answer at all. An engine MUST document any reason it adds beyond this set, with its class. Every entry carries `default_need`: for a `needs_caller` reason, the need an escalation on that result carries where nothing in the policy named one (Section 4.3's column); `null` for a `done` or `error` reason, whose class default continues or fails rather than escalates.",
     "entries": [
+      { "token": "provision:ok", "operation": "provision", "reason": "ok", "class": "done", "default_need": null },
+      { "token": "provision:unreachable", "operation": "provision", "reason": "unreachable", "class": "needs_caller", "default_need": "human_review" },
+      { "token": "provision:store_unsupported", "operation": "provision", "reason": "store_unsupported", "class": "error", "default_need": null },
+      { "token": "provision:failed", "operation": "provision", "reason": "failed", "class": "error", "default_need": null, "universal": true },
+      { "token": "provision:unsupported", "operation": "provision", "reason": "unsupported", "class": "error", "default_need": null, "universal": true },
+
       { "token": "commit:ok", "operation": "commit", "reason": "ok", "class": "done", "default_need": null },
       { "token": "commit:nothing_to_commit", "operation": "commit", "reason": "nothing_to_commit", "class": "done", "default_need": null },
       { "token": "commit:worktree_moved", "operation": "commit", "reason": "worktree_moved", "class": "needs_caller", "default_need": "reread_then_retry" },
@@ -120,7 +127,7 @@
 
   "config_reasons": {
     "spec_refs": ["VCSX-SPEC.md Section 6.1 \"File Discovery and `vcsx.toml` Merge\"", "VCSX-SPEC.md Section 6.10 \"Validation\"", "VCSX-SPEC.md Section 5.6 \"Flow Bound and Termination\"", "VCSX-SPEC.md Section 9.3 \"Capability Descriptors\""],
-    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — a refused policy has no operation result to classify. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds. The first entry is a well-formedness failure and the rest are consistency failures: validation takes a document, so a policy that does not parse yields none for the other conditions to be judged against. Validation is judged from four inputs (Section 6.10): the policy document, what the engine holds independently of the invocation (its configured backends' descriptors and its own defaults), the actions the consumer can effect, and the repository units it bound.",
+    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — a refused policy has no operation result to classify. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds. The first entry is a well-formedness failure and the rest are consistency failures: validation takes a document, so a policy that does not parse yields none for the other conditions to be judged against. Validation is judged from five inputs (Section 6.10): the policy document with `vcsx.toml` merged in, what the engine holds independently of the invocation (its own defaults), the consumer's selection and access configuration (the selected backends' descriptors among them), the actions the consumer can effect, and the repository units it bound. `provision` is judged from those inputs less the policy document, since it is the operation that obtains the repository the document is in, so no reason here but `capability_unsupported` can be reported for it.",
     "entries": [
       { "token": "malformed_policy", "meaning": "The policy is not well formed: a discovered `repo.policy.toml` (or a `vcsx.toml` merged into it) does not parse, a key's value does not satisfy the constraints its section states, an edge's action cannot be dispatched from the arguments it carries, or a declared hook names no unit to run. Reported for a well-formedness failure no other condition names." },
       { "token": "unknown_trigger", "meaning": "An edge's `on` is not a trigger the engine recognizes." },
@@ -133,17 +140,21 @@
       { "token": "base_unresolvable", "meaning": "A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map." },
       { "token": "set_state_unbound", "meaning": "A `set_state`/transition binding without a consumer that can apply it." },
       { "token": "template_unbound", "meaning": "A `[messages.pr]` `body_source = \"template\"` with no template unit bound (Sections 5.2, 10.2). Judged from the repository units the consumer bound, which is why Section 6.10 names them among validation's inputs; a template is a repository unit rather than a Section 5.2 action, so `set_state_unbound`'s input does not reach it." },
-      { "token": "capability_unsupported", "meaning": "A policy requiring a capability no configured backend declares (Section 9.3). Determinable because a statically declared capability follows from the backend selection alone; a descriptor field only the checkout answers is not, and keeps Section 9.3's first-use disposition." },
+      { "token": "capability_unsupported", "meaning": "A policy requiring a capability no selected backend declares (Section 9.3). Determinable because a statically declared capability follows from the consumer's selection alone; a descriptor field only the checkout answers is not, and keeps Section 9.3's first-use disposition." },
       { "token": "version_floor_unmet", "meaning": "A `version_floor` above the running engine version." }
     ]
   },
 
   "precondition_reasons": {
     "spec_refs": ["VCSX-SPEC.md Section 8.6 \"Invocation Preconditions\""],
-    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — no operation ran, so there is no result to classify. Distinct from `config_reasons` by what each is judged from: a configuration error is judged from the policy document together with what the engine holds independently of the invocation, a precondition failure needs the invocation's arguments and the checkout. Validation precedes precondition establishment, so where both hold the configuration reason is reported — `arguments_unreadable` excepted, which is established first of everything because an engine that cannot decode its arguments cannot locate the policy it would validate. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds.",
+    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — no operation ran, so there is no result to classify. Distinct from `config_reasons` in one direction only: a configuration error is judged from the five inputs Section 6.10 names, none of which reads the checkout. The converse is not claimed — a precondition MAY need the checkout and MAY be judged from the invocation's arguments alone, as `arguments_unreadable`, `local_vcs_missing`, `forge_coordinate_missing`, `git_access_missing`, `forge_access_missing` and `store_location_missing` are. Where both sides are checkout-free, what separates them is the artifact at fault: a configuration error is repaired by editing a document, a precondition failure by changing the invocation. Validation precedes precondition establishment, so where both hold the configuration reason is reported — with two exceptions established before validation: `arguments_unreadable`, because an engine that cannot decode its arguments cannot locate the policy it would validate, and `local_vcs_missing`, because the selection is what fixes whose descriptor validation reads. `provision` establishes only the reasons judged from the invocation's arguments and none that read a checkout, being the operation that produces one (Section 8.6). Part of the major-stable surface (Section 8.5). An engine MUST document any it adds.",
     "entries": [
       { "token": "arguments_unreadable", "meaning": "The invocation's arguments could not be decoded in the encoding the engine published (Section 8.1). Established before validation rather than after it." },
-      { "token": "forge_coordinate_missing", "meaning": "A forge is configured (Section 6.2) and no forge repository coordinate was supplied (Section 8.1). A coordinate the backend cannot use is that backend's own `failed` at first use instead, because the engine holds the coordinate opaque and judges no shape." },
+      { "token": "local_vcs_missing", "meaning": "No `local_vcs` was supplied, so no VCS backend is selected (Section 8.1). Established before validation, and after `arguments_unreadable`: the selection is what fixes whose descriptor validation reads, so a `capability_unsupported` presupposes a backend this argument names." },
+      { "token": "forge_coordinate_missing", "meaning": "A forge is configured and no forge repository coordinate was supplied (Section 8.1). A coordinate the backend cannot use is that backend's own `failed` at first use instead, because the engine holds the coordinate opaque and judges no shape." },
+      { "token": "git_access_missing", "meaning": "An entry that can reach a remote was invoked and no `git_access` was supplied (Section 8.1). A `git_access` the backend cannot use is that backend's own `failed` at first use instead, because the engine holds the parameter opaque and judges no shape." },
+      { "token": "forge_access_missing", "meaning": "A forge is configured and no `forge_access` was supplied (Section 8.1). A `forge_access` the backend cannot use is that backend's own `failed` at first use instead, on the same reading." },
+      { "token": "store_location_missing", "meaning": "`provision` was invoked and no `store_location` was supplied (Section 8.1). The argument carries no meaning for any other entry, so its absence is refused only here. A `store_location` the backend cannot use is that backend's own `failed` at first use instead, on the same reading as the access parameters." },
       { "token": "no_current_branch", "meaning": "The work branch is the checkout's current branch (no `branch_pattern` configured) and the checkout has none." },
       { "token": "work_branch_invalid", "meaning": "The derived work branch name is not a legal branch name for the VCS backend." },
       { "token": "identity_invalid", "meaning": "The caller-supplied commit identity is absent where the entry requires one — `commit`, `integrate`, `pull`, and a front-end sequence that dispatches one — or is malformed as the VCS backend judges it, which is judged whatever the entry. An identity absent at an entry the requirement does not cover is the operation's `identity_missing` at the dispatch instead (Section 4.3)." },
@@ -262,6 +273,7 @@
     "entries": [
       { "token": "ship", "kind": "front_end_sequence" },
       { "token": "land", "kind": "front_end_sequence" },
+      { "token": "provision", "kind": "operation" },
       { "token": "status", "kind": "operation" },
       { "token": "diff", "kind": "operation" },
       { "token": "commit", "kind": "operation" },
@@ -288,7 +300,7 @@
     "spec_refs": ["VCSX-SPEC.md Section 6 \"`repo.policy.toml` Schema\""],
     "note": "`vcsx.toml` is merged in per Section 6.1.",
     "entries": [
-      { "token": "[engine]", "spec_ref": "Section 6.2" },
+      { "token": "[requires]", "spec_ref": "Section 6.2" },
       { "token": "[scope]", "spec_ref": "Section 6.3" },
       { "token": "[base]", "spec_ref": "Section 6.4" },
       { "token": "[policy]", "spec_ref": "Section 6.5" },

@@ -109,3 +109,32 @@ to.
 Relates to 0058 (the same "a required value MUST reach the backend through the required interface"
 correction, one operation over), 0064 (which says what `integrate` does with the remote it now
 receives), and 0061 (which constrains how `pull` updates the branch, not where it reads from).
+
+## Re-evaluation, 2026-08-14 — superseded in placement by 0092
+
+This decision put the remote in `repo.policy.toml` and supported the placement by citing Section
+6.2's rationale: "§6.2's own rationale that 'which code host a repository targets is
+repository-owned' applies with equal force to which remote at that host." Decision 0092 retires that
+rationale, and on a mechanism this decision did not have available.
+
+The mechanism is a bootstrap cycle. Reading `repo.policy.toml` requires having the repository;
+obtaining the repository requires the forge kind, its access parameters and a credential; those were
+configured in `repo.policy.toml`. Option E here — "a per-invocation `remote` argument", rejected
+because "it relocates the divergence rather than closing it, and Section 6.2 puts backend *selection*
+on the repository's side" — was rejected against a premise that no longer holds. The half of the
+rejection that stands is the one about divergence, and 0092 answers it differently from option E: the
+remote is not a free per-invocation argument but the single value the repository was provisioned
+from, so two conforming engines given the same configuration still push to the same place. The
+conformance hole this decision was filed to close stays closed.
+
+What survives unchanged is the part worth keeping: **the capabilities that take a `remote` are
+exactly the version-control operations Section 3.2 places host-side, and every other Section 9.1
+capability is local to the checkout.** Decision 0093 extends that enumeration with the provisioning
+capabilities rather than contradicting it. The 0058 correction restated here — every value an
+operation needs, and that the engine resolves, MUST reach the backend through a capability signature
+— is likewise untouched; only the value's source changes.
+
+The reconsideration trigger recorded above has also become live rather than being resolved: the
+fork-and-upstream arrangement is still unaddressed, and 0092 explicitly leaves it out of scope for
+the same reason this decision did. It is now a read/write remote pair in the consumer's
+configuration rather than a pair of repository-owned keys.

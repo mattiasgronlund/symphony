@@ -75,12 +75,13 @@ The registry is a faithful view, not a byte-for-byte transcription. Three places
 - **`reasons`** is keyed one entry per `(operation, reason)`. Section 4.3's combined rows expand: the
   `status` / `diff` row to `status:ok` and `diff:ok`, and the four universal rows to one entry per
   operation they cover — `failed` and `unsupported` for every operation, `blocked` and
-  `hook_unanswered` for every gated one, each marked `universal: true`. So 35 table rows yield 56
+  `hook_unanswered` for every gated one, each marked `universal: true`. So 38 table rows yield 61
   entries. Section 4.3's `Default need` column expands with them: `blocked`'s one row becomes four
-  entries carrying the same need, so 14 rows with a need yield 17 entries with one.
+  entries carrying the same need, so 15 rows with a need yield 18 entries with one.
 - **`operations`** carries `lifecycle_position: null` for the operations Section 4.1 gates at no fixed
-  position (`integrate`, `pull`) and for the read-only ones (`status`, `diff`), rather than omitting
-  the field.
+  position (`integrate`, `pull`), for the read-only ones (`status`, `diff`), and for `provision`,
+  which has no position at all (Section 4.1) and therefore carries neither `blocked` nor
+  `hook_unanswered` — rather than omitting the field.
 - **`reasons`** likewise carries `default_need: null` for every `done` and `error` entry, where
   Section 4.3's column reads `—`, rather than omitting the field — the same choice, for the same
   reason: a generated record has the property either way, and its absence would be indistinguishable
@@ -185,6 +186,14 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
 
 - **Front-end sequences** (`ship`, `land`; Sections 7.1–7.2, 12.2–12.3) — they run operations against
   a real repository and forge.
+- **Provisioning** (`provision`, Sections 4.1, 9.1) — obtaining and refreshing a repository acts on
+  a real remote and a real store, so none of the operation's results has a vector: `provision:ok`,
+  `provision:unreachable`, and `provision:store_unsupported`, whose input is a capability descriptor
+  no vector file supplies (Section 9.3). The tokens are in `vocabulary.json` under `reasons`. The
+  operation's exemptions are on the same side for a different reason: that a `provision` is
+  validated against no policy document and establishes no checkout-reading precondition (Sections
+  6.1, 6.10, 8.6) is an absence of refusals, and a vector corpus asserts the reason a refusal
+  carries rather than that none was carried.
 - **Plugin behavior** — checkout-mode detection, the pinned push refspec whose push never drops,
   rewrites or re-parents a commit already on the remote work branch (decision 0083), the
   history-preserving work-branch update, and both halves of the undeclared-capability case:
@@ -192,8 +201,10 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   (Sections 3.3, 9.1–9.3). The last two need a capability descriptor as input, which no vector file
   supplies — so a `[messages.squash] strategy` refused against a forge's declared strategies has no
   vector either, whether the policy states the strategy or takes the Section 6.8 default. The forge
-  repository coordinate is on the same side: whether one was supplied is determined by the
-  invocation (`forge_coordinate_missing`, Section 8.6), which no vector file models.
+  repository coordinate, the backend selection, the access parameters and `provision`'s store
+  location are on the same side: whether one was supplied is determined by the invocation
+  (`forge_coordinate_missing`, `local_vcs_missing`, `git_access_missing`, `forge_access_missing` and
+  `store_location_missing`, Section 8.6), which no vector file models.
 - **Invocation preconditions** (Section 8.6) — whether the work branch derives and whether a commit
   identity is well formed are judged against a real checkout by a real backend, through
   `accepts_branch_name` and `accepts_identity` (Section 9.1), so no vector file can supply the input.

@@ -1,4 +1,4 @@
-# Sessions — 0085 The forge repository coordinate is the consumer's
+# Sessions — 0093 The engine is the only VCS adapter, and the engine layer is required
 
 <!--
 Every Claude Code session that worked on this decision. The session id is the transcript filename
@@ -7,5 +7,5 @@ Every Claude Code session that worked on this decision. The session id is the tr
 
 | Date | Session name | Session id |
 |------|--------------|------------|
-| 2026-08-13 | Resolve issues #35–#39 | 47a352f2-da76-4871-b63e-61d341a96612 |
-| 2026-08-14 | §6.2 backend selection ownership (re-evaluation) | 8b7b3673-6b69-4b4a-985d-9e3e0c2ed407 |
+| 2026-08-14 | §6.2 backend selection ownership | 8b7b3673-6b69-4b4a-985d-9e3e0c2ed407 |
+| 2026-08-14 | branch review before merge | 69881daf-c801-49fe-830a-0b51b0251d2d |

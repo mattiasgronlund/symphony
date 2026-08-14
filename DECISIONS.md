@@ -13,8 +13,11 @@ focused prose description. The folder holds the supporting detail:
 
 **States:** `Proposed` (under consideration) · `Accepted` (decided; to be / being applied) ·
 `Rejected` (decided against; kept for the record) · `Superseded` (replaced by a later decision; kept
-for the record). A `Superseded` chapter names the decision that replaced it; unlike `Rejected`, a
-superseded decision may have been sound and parts of it may survive in its successor (decision 0033).
+for the record). A `Superseded` chapter names the decision that replaced it, as
+`Superseded (by NNNN)`; unlike `Rejected`, a superseded decision may have been sound and parts of it
+may survive in its successor (decision 0033). A State MAY carry a parenthetical naming a later
+decision that revisited *part* of it without replacing it — the State itself stays one of the four,
+since a decision still standing is still `Accepted`.
 
 New decisions get the next zero-padded number and a folder `decisions/NNNN-short-slug/`. Copy
 `decisions/_template/` to start. See `CLAUDE.md` for the working conventions.
@@ -1520,8 +1523,17 @@ before an implementation exists this reuses). Accepted and applied to `VCSX-SPEC
 
 ## 0062 — The remote is named in `[engine]` and supplied to the capabilities that touch it
 
-**State:** Accepted
+**State:** Superseded (by 0092)
 **Folder:** [decisions/0062-engine-remote-selection/](decisions/0062-engine-remote-selection/)
+
+Superseded in *placement* only, and by an argument this decision could not have reached: decision
+0092 shows that the values needed to obtain a repository cannot be configured inside it, which moves
+`[engine] remote` to the consumer along with the backend selection whose repository-ownership 0062
+cited as its own support. What survives intact is the invariant this decision was really about — the
+capabilities that take a `remote` are exactly the version-control operations Section 3.2 places
+host-side — and the conformance hole it closed, since two conforming engines given the same
+configuration still push to the same place. What is lost is the fork case 0062 left explicitly out of
+scope, which now needs a read/write remote pair rather than a repository-owned key.
 
 Resolves part 1 of issue #9. `VCSX-SPEC.md` Section 9.1 gave the VCS backend `push(work_branch)` and
 `pull(work_branch)`, neither carrying a remote, and Section 6.2's `[engine]` configured `version_floor`,
@@ -2831,7 +2843,7 @@ to `VCSX-SPEC.md` (Sections 6.10, 8.1, 8.3, 8.5, 8.6, 13.1, 13.2), `conformance/
 
 ## 0085 — The forge repository coordinate is the consumer's
 
-**State:** Accepted
+**State:** Accepted (re-evaluated in part by 0091; principle extended by 0092)
 **Folder:** [decisions/0085-forge-repository-coordinate/](decisions/0085-forge-repository-coordinate/)
 
 Resolves issue #39. Section 6.2 assigns the forge **selection** to the repository and the
@@ -3146,3 +3158,129 @@ an encoding in which a null is not expressible, since the nullable-versus-sentin
 here on the shape of a generated type. Relates to 0084, 0065, 0089, 0051 and 0071. Accepted and applied
 to `VCSX-SPEC.md` (Sections 8.2, 13.1, 13.2), `conformance/vcsx/vocabulary.json`,
 `conformance/vcsx/vectors/compose-envelope.json` and `conformance/vcsx/README.md`.
+
+## 0091 — Forge access parameters, and the credential pair
+
+**State:** Accepted
+**Folder:** [decisions/0091-forge-access-parameters/](decisions/0091-forge-access-parameters/)
+
+`VCSX-SPEC.md` cannot say *where* a forge is: `endpoint`, `URL`, `URI` and `instance` occur zero times
+in the document, and the one relevant use of `service` is Section 11's "the service the credential is
+presented to travels with the credential", which is ambient context rather than a parameter. So
+`forge = "forgejo"` selects a kind of software and every Forgejo instance is the same value to the
+engine — a self-hosted instance is reachable by Symphony for issues (`tracker.endpoint`) and
+unreachable for pull requests, and two conforming engines given the same policy, coordinate and
+credential can reach different instances and both report `create_pr:ok`, which is the conformance hole
+0062 closed for the remote. Decision 0085 reasoned about the service root and settled it by leaving it
+out of the argument list; that half is reversed here. The consumer supplies a **git-access parameter**
+and a **forge-API-access parameter** — two rather than one because Section 9.1 has exactly three
+network-touching capabilities and Section 9.2 has no local half, so the parameters map one-to-one onto
+the plugins, and because git and API access are not one origin (GitHub serves `api.github.com` for the
+public host and `<host>/api/v3` for an enterprise one) — plus an OPTIONAL per-backend extension bag,
+all held opaque by the engine as the coordinate and the base ref are, which keeps URI grammar inside
+the forge plugin. Credentials become a pair, git and forge, the forge one defaulting to the git one:
+one credential is correct for a GitHub PAT and false wherever git access is a deploy key. The
+defaulting rule's cost is recorded — a forgotten forge credential presents a git credential to an API
+endpoint — and it is bounded to an authentication refusal because both the parameter and the
+credential come from the same party. Options rejected: a single service root (cannot express an
+endpoint pair differing by host on GitHub and by path on GitHub Enterprise); an opaque bag alone
+(nothing portable, and a missing endpoint becomes a first-use failure after a push, the disposition
+0084 argues against); a third core web-base parameter (speculation, and the bag covers it); one
+credential and an undefaulted pair. Ownership is deliberately left to 0092 so the parameter shape
+stays re-evaluable on its own. Reconsider by promoting a bag key to the core set when two independent
+backends both require it. Relates to 0085, 0062, 0073 and 0084.
+
+## 0092 — Backend, forge and tracker selection are the consumer's, read from a consumer config
+
+**State:** Accepted
+**Folder:** [decisions/0092-selection-ownership-and-consumer-config/](decisions/0092-selection-ownership-and-consumer-config/)
+
+Section 6.2 puts `vcs`, `forge` and `remote` in `repo.policy.toml` and argues that "which code host a
+repository targets is repository-owned"; Section 11 of the same document says "the service the
+credential is presented to travels with the credential". The paragraph also uses "host" for the kind
+of forge software and for the instance one clause apart. What decides it is neither contradiction but
+a **bootstrap cycle**: reading `repo.policy.toml` requires the repository, obtaining the repository
+requires the forge kind, its access parameters and a credential, and those were configured in
+`repo.policy.toml`. No override escapes it — an override applied only after cloning does not help
+anyone clone — and `SPEC.md` already contains the workaround in prose, at Section 9.7's "for
+provisioning (which precedes reading the base revision)". `SPEC.md` Section 10.9 corroborates with the
+right test applied one domain over: the agent is operator-selected "because agent choice carries model
+credentials and sandbox shape". So the forge selection, the 0091 access parameters and credentials,
+the remote and the tracker selection are the consumer's, with **no overrides**; the engine reads them
+from a consumer-owned configuration file whose discovery is `Implementation-defined` and MUST be
+documented. Because the keys leave `repo.policy.toml` entirely rather than being shadowed, Section
+6.1's precedence rule needs no exception. `[engine]` keeps `version_floor` alone and is renamed
+`[requires]`. The checkout mode is detected rather than declared, `detect_mode()` being authoritative
+for any checkout the engine did not create; the creation-time choice is deferred to 0093. The remote is
+the one the repository was provisioned from, which supersedes 0062's placement while keeping its
+invariant and surviving its objection to derivation, since a provisioning remote exists before
+anything else does — at the cost of 0062's out-of-scope fork case, which now needs a read/write pair.
+The tracker selection does not move: the cycle reaches it and confirms the existing operator
+ownership. Recorded as considered and *not* load-bearing: 0085's fork objection, which
+repository-declares-operator-overrides would have defeated — so if the cycle is ever broken that
+option becomes live again and the objection will not be available. A second review finding, on the
+branch and before merge, repairs what deleting `[engine]` left behind: `vcs` was removed without a
+counterpart, so nothing named the VCS backend for any checkout the engine did not create, while this
+decision's own new validation input asserts that the consumer's selection "fixes which backends the
+plugin layer loads". `local_vcs` is widened to be that selection — REQUIRED on every invocation,
+naming the backend, and naming the created checkout's mode as before, with `detect_mode()` still
+authoritative for the mode of a checkout the engine did not create — rather than adding a second key
+that would land on `SPEC.md`'s side as `vcs.vcs`. Its absence is the precondition
+`local_vcs_missing`, established before validation because the selection is what fixes whose
+descriptor validation reads. Validation's boundary is redrawn at
+the checkout: Section 6.10 is judged from five inputs including the consumer's selection, Section 8.6
+from what needs the checkout, using the seam Section 8.6 already has in establishing
+`arguments_unreadable` before validation. Assumption recorded: the consumer file MAY carry a
+credential or a reference the consumer resolves, since `SPEC.md` Section 15.3 forbids materializing
+secrets that way, and Section 11's "holds no long-lived credentials" narrows to not persisting one
+beyond an invocation. Relates to 0091, 0093, 0062, 0085 and 0002.
+
+## 0093 — The engine is the only VCS adapter, and the engine layer is required
+
+**State:** Accepted
+**Folder:** [decisions/0093-engine-owns-provisioning/](decisions/0093-engine-owns-provisioning/)
+
+Two components implement version control, split at provisioning: `VCSX-SPEC.md` Section 2.2 makes
+provisioning a Non-Goal and `SPEC.md` Section 9.7 makes it Broker Core work "never a VCS-engine
+responsibility". `SPEC.md`'s reference algorithms carry four VCS-touching calls —
+`vcs.clone_object_store`, `vcs.fetch_object_store`, `workspace_manager.provision_for_issue` and
+`vcs.attempt_clean_backmerge`. The third is where the duplication bites: creating each issue's tree is
+`git worktree add` against `jj workspace add`, so the checkout mode is fixed by a component with no
+VCS backend abstraction, and moving only the clone leaves Symphony holding a VCS implementation. The
+fourth is a defect independent of everything else — the back-merge is an operation Section 9.7 routes
+to the engine, so the `vcs.` prefix manufactures the adapter Section 9.7 denies exists. After 0092 the
+operator names the forge kind, parameters, credentials and remote once and two implementations consume
+them, so every future backend is implemented twice or the two disagree. And `engine-direct` cannot
+start: no orchestrator, no Symphony adapter, and Section 2.2 forbidding the engine to provision.
+Provisioning therefore moves into the engine, which becomes the only component implementing version
+control, with the contract naming a **store and trees derived from it** as a relationship rather than
+a mechanism, since a jj secondary workspace is not a git worktree. The price is stated rather than
+absorbed: `SPEC.md` Section 18.1.1 lists "the VCS engine and autonomous daemon are OPTIONAL layers" as
+a REQUIRED conformance item, and that bullet is rewritten — Broker Core remains the only *enforced*
+guarantee and remains satisfiable for a single agent session in an existing workspace, but it can no
+longer obtain one. Options rejected: keeping the non-goal (bounded duplication that stops being
+bounded at a third backend, and the checkout mode decided in the wrong component); an implicit
+ensure-step or an OPTIONAL operation (both add a capability without removing one, leaving two paths
+that must not race, and Symphony's adapter disappears only by a choice the specification cannot
+require without re-opening Section 18.1.1 anyway); a store-blind engine; a post-condition with an
+`Implementation-defined` mechanism (a consumer running many issues per repository chooses an engine
+*for* its storage behaviour and would have no way to state a requirement). The engine's identity
+changes and the specification says so: Sections 1.3, 2.2 and 11 are rewritten rather than amended. The
+secret-isolation invariant is untouched — provisioning is host-side like `push` and `merge`, and no
+provisioning verb joins the broker's verb set. A second review finding, on the branch and before
+merge, repairs the seam the operation was given no way to stand on: `provision` was listed as an
+entry point while Section 8.6 still validated a policy read out of the repository and resolved a work
+branch against a checkout — both of which `provision` exists to produce, so the invocation that
+creates a checkout was refused with `checkout_unreadable` before it ran. Its two locations were also
+never arguments, though "the location" carried four claims including what separates
+`provision:store_unsupported` from `capability_unsupported`. `store_location` (REQUIRED) and
+`tree_location` (OPTIONAL) become arguments, which also makes `SPEC.md`'s store-only phase
+expressible; and `provision` is stated as the one entry point validated against no policy document
+and establishing no precondition that reads a checkout. `capability_unsupported` survives both cuts
+because it turns on the consumer's configuration rather than the repository's — 0092's input, doing
+the work here. The cost is recorded: a `version_floor` cannot bind the step that obtains the file
+declaring it. This is the third register the bootstrap cycle reached — configuration, then control
+flow, then the invocation pipeline — each found after the previous repair shipped. Reconsider if a
+deployment needs Broker Core over repositories materialized some other way entirely, in which case
+the repair is to restore optionality with an OPTIONAL provisioning operation, not a second VCS
+adapter. Relates to 0092, 0091 and 0062.

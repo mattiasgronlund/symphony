@@ -28,7 +28,8 @@ and result surface*. Neither document restates the other's schema.
 This stub fixes:
 
 - the executor and its two front-ends (Section 3),
-- the repo-owned policy surface `repo.policy.toml` (Section 4),
+- the repo-owned policy surface `repo.policy.toml` and the consumer configuration alongside it
+  (Section 4),
 - the action-policy machine — triggers, actions, matching, unmatched policy, and the reason-token
   class contract (Section 5),
 - the engine operations and their typed results (Section 6),
@@ -38,9 +39,11 @@ This stub fixes:
 - the trust-sourcing rule and the secret/integrity taxonomy (Section 10).
 
 This stub does **not** fix — and defers to the full engine spec (Section 11): any engine wire/RPC
-schema and its version grammar, the field-level `repo.policy.toml` schema, the plugin API for
-code-host backends, the concrete reason-token registry beyond the classes and named results below, and
-all internal algorithms.
+schema and its version grammar, the field-level `repo.policy.toml` schema, the field-level schema of
+the consumer configuration and the rule that locates it, the plugin API for VCS and code-host
+backends, how a backend realizes the store `provision` maintains and the working trees derived from
+it, the concrete reason-token registry beyond the classes and named results below, and all internal
+algorithms.
 
 Names in this document and in `SPEC.md` MUST stay identical. A token added or renamed here is a change
 to the shared contract and MUST be reflected in both documents (see Section 12).
@@ -54,6 +57,9 @@ to the shared contract and MUST be reflected in both documents (see Section 12).
   This document names no implementation language normatively.
 - Symphony reaches the engine only through this contract; a code host (for example GitHub or Forgejo)
   is reached through the engine's plugin layer, not through parallel Symphony adapters.
+- The engine obtains and maintains the repository it acts in: `provision` (Section 6) creates the
+  checkout where none exists and refreshes one that does, so a consumer implements no version
+  control alongside it. A checkout the engine did not create remains drivable.
 
 ## 3. Executor and Front-Ends
 
@@ -77,7 +83,8 @@ Entry points:
 
 `repo.policy.toml` is the **repository-owned** Way-of-Working file. It holds:
 
-- engine selection,
+- `[requires]` — what the policy document requires of the engine reading it, namely the engine
+  `version_floor`,
 - `scope.branch_pattern` — the branch-*name* pattern for the work branch (the scope invariant itself
   is not configurable; Section 10),
 - the action-policy edges and hooks (Section 5),
@@ -89,8 +96,17 @@ An engine-native configuration file (`vcsx.toml`) is merged into `repo.policy.to
 surface, so a repository expresses one policy consumed identically by the interactive front-end and the
 daemon.
 
-The field-level schema of these sections is deferred (Section 11). Their **sourcing** — which revision
-each part is read from — is fixed in Section 10.
+The engine's other configuration input is the **consumer configuration**: the consumer's own, and
+never sourced from the repository. It holds what the engine needs before there is a repository to
+read a policy from — which VCS and forge backends are selected, where each is reached and under
+which credential, the remote the repository was provisioned from, and where `provision` materializes
+the store and the working tree — none of which a file inside the repository can supply to the step
+that obtains the repository. The term names the input, not a file: where the engine discovers it is
+`Implementation-defined` and MUST be documented. The two surfaces carry disjoint keys, so neither
+shadows the other.
+
+The field-level schema of both surfaces is deferred (Section 11). The **sourcing** of
+`repo.policy.toml` — which revision each part is read from — is fixed in Section 10.
 
 ## 5. The Action-Policy Machine
 
@@ -181,9 +197,19 @@ one place the two front-ends legitimately differ.
 ## 6. Engine Operations and Typed Results
 
 `run_op` (Section 5.2) runs an engine operation. The engine's plugin layer realizes each operation
-against the selected code host (for example GitHub or Forgejo); the operation set and its result
-classing are host-neutral. Named operations include:
+against the selected backends — the VCS backend, and a code host such as GitHub or Forgejo; the
+operation set and its result classing are host-neutral. Named operations include:
 
+- `provision` — ensure the repository is present and current: create the store where absent, refresh
+  it where present, and, where the invocation names a place for one, derive a working tree from it.
+  The store and the tree are named by the consumer, as a store location and an OPTIONAL tree
+  location; an invocation naming no tree location maintains the store alone. It is credentialed,
+  like `push` and `merge`; the agent's broker verb set (Section 8) carries no provisioning verb. It
+  runs before everything the engine reads out of the repository, so it has no lifecycle position,
+  raises no `<op>:<reason>` trigger, is validated against no policy document, and establishes no
+  precondition that reads a checkout: all four are matched, read, or judged against what is inside
+  the repository this operation obtains. A consumer dispatches it and classifies its result rather
+  than routing it through the machine.
 - `commit`
 - `integrate` — bring the base branch into the work branch (back-merge / update-branch).
 - `push`
@@ -197,9 +223,10 @@ is class `needs_caller`. The exhaustive per-operation reason registry is deferre
 
 ## 7. Lifecycle Positions
 
-The four lifecycle-position triggers of Section 5.1 are the fixed points around the operations of
-Section 6. Earlier positional hook names map onto the machine as follows, so a repository expressing a
-policy in the older positional form aligns to the same edges:
+The lifecycle-position triggers of Section 5.1 are the fixed points around the operations of
+Section 6. `provision` has none, for the reason its entry in Section 6 states. Earlier positional hook
+names map onto the machine as follows, so a repository expressing a policy in the older positional
+form aligns to the same edges:
 
 | Positional hook name | Machine trigger |
 |----------------------|-----------------|
@@ -275,11 +302,15 @@ sandbox boundary without holding credentials.
 
 Sourcing (which revision each part of `repo.policy.toml` is read from):
 
-- **Host-side-executed** Way of Working — engine selection, host-side hooks, the operation flow, and
-  the branch-name pattern — is read from the resolved **base revision**, which the agent cannot push to
-  and which is review-gated. WoW-config trust therefore equals base-branch trust.
+- **Host-side-executed** Way of Working — host-side hooks, the operation flow, and the branch-name
+  pattern — is read from the resolved **base revision**, which the agent cannot push to and which is
+  review-gated. WoW-config trust therefore equals base-branch trust.
 - **In-sandbox** parts — the `before:commit` gate/scan — are read from the **worktree**, where an
   agent's edit is harmless and where a pull request's own gate change is correctly exercised.
+
+The consumer configuration (Section 4) is sourced from no revision of the repository. The selections
+and access values it carries are the consumer's, so which backend receives a credential and which
+endpoint that credential is presented to are one decision made by one party.
 
 Secret/integrity taxonomy:
 
@@ -299,7 +330,11 @@ This surface deliberately does not fix, deferring them to the full engine specif
 - the engine invocation contract (result envelope, exit codes, escalation payload) and the version
   grammar (`VCSX-SPEC.md` Section 8);
 - the field-level schema of `repo.policy.toml` and its sections (`VCSX-SPEC.md` Section 6);
-- the plugin API for code-host backends (`VCSX-SPEC.md` Section 9);
+- the field-level schema of the consumer configuration (Section 4) and the rule by which the engine
+  locates it (`VCSX-SPEC.md` Section 8.1);
+- the plugin API for VCS and code-host backends (`VCSX-SPEC.md` Section 9);
+- the mechanism by which a backend realizes the store `provision` maintains and the working trees
+  derived from it (`VCSX-SPEC.md` Sections 3.3, 9.1);
 - the concrete per-operation reason-token registry beyond the classes (Section 5.5) and the named
   results (Section 6) here (`VCSX-SPEC.md` Section 4.3);
 - the engine's internal algorithms (`VCSX-SPEC.md` Section 12).
