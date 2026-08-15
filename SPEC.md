@@ -449,8 +449,11 @@ repository-owned artifacts — which revision each part is sourced from (Section
   (Section 9.12), the workflow transitions (`tracker.transitions`, Section 11.6), the daemon task
   settings `[tasks]` / `[driver]` (Section 8.10), and the engine `version_floor` the document
   requires of its reader (`[requires]`, Section 5.6). Its host-side-executed parts are sourced from
-  the protected **base revision** — which the agent cannot push to and which is review-gated —
-  so Way-of-Working trust equals base-branch trust (Section 15.4). Configuring Symphony therefore
+  the **policy branch** (`vcs.policy_branch`, Section 9.7) — which the agent cannot push to and
+  which nothing Symphony merges reaches — so Way-of-Working trust equals policy-branch trust
+  (Section 15.4). The branch is named by the operator and not by this file, because a value that
+  selects the trusted revision cannot be read from the revision it selects. Configuring Symphony
+  therefore
   needs no knowledge of a repository's policy machine, host-side hooks, transitions, or
   branch-name pattern. An engine-native config file (`vcsx.toml`) is merged into this surface
   (`VCSX-CONTRACT.md`).
@@ -465,8 +468,8 @@ repository-owned artifacts — which revision each part is sourced from (Section
 The dividing rules:
 
 - If a setting is the *repository's Way of Working* — how it commits, reviews, transitions tickets,
-  formats messages, or merges — it belongs to `repo.policy.toml`, sourced by trust (base revision
-  for host-side parts; the worktree for the in-sandbox `before:commit` gate; Section 15.4).
+  formats messages, or merges — it belongs to `repo.policy.toml`, sourced by trust (the policy
+  branch for host-side parts; the worktree for the in-sandbox `before:commit` gate; Section 15.4).
 - If a setting is consumed *inside the sandbox* (prompt template, in-sandbox hooks), it belongs to
   `WORKFLOW.md`.
 - Everything else Symphony uses outside the sandbox that is an *operator or deployment* concern
@@ -474,7 +477,9 @@ The dividing rules:
   access parameters, polling, concurrency, agent selection, repo routing) belongs to the operator
   policy config. The values needed to *obtain* a repository cannot be configured inside it, so the
   code-host selection, its access parameters, its credentials, and the remote are operator-owned
-  even though they concern one repository (Section 9.7).
+  even though they concern one repository (Section 9.7). The policy branch is operator-owned on the
+  same shape of reasoning one step further in: it selects the revision `repo.policy.toml` is read
+  from, so it cannot be read from `repo.policy.toml` (Sections 9.7, 15.4).
 
 The work-branch-only / assigned-issue-only **scope guard** is a Broker Core built-in (Sections 3.4,
 10.8), enforced regardless of any configuration; only the branch *name* pattern is repository config
@@ -533,7 +538,8 @@ Top-level operator-config keys:
 - `polling`
 - `workspace`
 - `vcs` (per managed repository: the code-host selection, its access parameters and credentials, the
-  remote, and the commit/actor identities; its fields are documented in Section 9.7)
+  remote, the policy branch, the default pull-request target and its bound, and the commit/actor
+  identities; its fields are documented in Section 9.7)
 - `agent`
 - `codex`
 
@@ -607,10 +613,10 @@ Fields:
 Hooks exist at two trust levels, distinguished by where they run and which revision they are sourced
 from (Section 15.4):
 
-- Host-side hooks are defined in `repo.policy.toml`, sourced from the protected base revision, and
+- Host-side hooks are defined in `repo.policy.toml`, sourced from the protected policy branch, and
   run on the host outside the sandbox with host access. They are for privileged setup (for example
-  dependency bootstrap that reaches credentialed mirrors). Because they are base-sourced, an agent
-  cannot alter them from within a run (Section 15.4).
+  dependency bootstrap that reaches credentialed mirrors). Because they are policy-branch-sourced,
+  an agent cannot alter them from within a run (Section 15.4).
 - `WORKFLOW.md` hooks are sourced from the worktree, run inside the sandbox without credentials, and
   are untrusted. They are for in-sandbox build/test/workspace preparation.
 
@@ -742,8 +748,8 @@ Prompt authority:
   satisfy through the broker has no effect.
 - The prompt SHOULD describe how the agent expresses intent — when to emit which milestone signal
   (Section 11.6) — rather than which tracker transitions to perform. The transitions are defined in
-  `repo.policy.toml` (base-sourced, Section 15.4), not in the worktree-sourced prompt, so no prompt
-  wording widens the transitions an agent can cause.
+  `repo.policy.toml` (policy-branch-sourced, Section 15.4), not in the worktree-sourced prompt, so
+  no prompt wording widens the transitions an agent can cause.
 
 ### 5.5 Workflow Validation and Error Surface
 
@@ -790,8 +796,9 @@ An engine-native config file (`vcsx.toml`) is merged into this surface.
 Trust sourcing:
 
 - Host-side-executed sections (host-side hooks, the operation flow, the branch-name pattern) are
-  read from the resolved base revision; the in-sandbox `before:commit` gate is read from the
-  worktree (Section 15.4). Way-of-Working trust therefore equals base-branch trust.
+  read from the policy branch (`vcs.policy_branch`, Section 9.7); the in-sandbox `before:commit`
+  gate is read from the worktree (Section 15.4). Way-of-Working trust therefore equals
+  policy-branch trust.
 
 Discovery and reload:
 
@@ -807,8 +814,8 @@ Configuration is resolved in this order:
 1. Load the operator policy config, select the `WORKFLOW.md` path (explicit runtime setting,
    otherwise cwd default), and resolve each managed repository's `repo.policy.toml` pointer.
 2. Parse the operator policy config, the `WORKFLOW.md` front matter, and each `repo.policy.toml`
-   (host-side sections from the base revision, the in-sandbox `before:commit` gate from the worktree;
-   Section 15.4) into raw config maps.
+   (host-side sections from the policy branch, the in-sandbox `before:commit` gate from the
+   worktree; Section 15.4) into raw config maps.
 3. Apply built-in defaults for missing OPTIONAL fields.
 4. Resolve secrets through the secret-provider interface, and `$VAR_NAME` indirection for non-secret
    path values that explicitly contain `$VAR_NAME`.
@@ -835,7 +842,7 @@ Dynamic reload is REQUIRED:
 
 - The software MUST detect changes to all three configuration artifacts: `WORKFLOW.md`,
   `repo.policy.toml`, and the operator policy config (Section 5). A `repo.policy.toml` host-side
-  section is re-read from the base revision, its in-sandbox `before:commit` gate from the worktree
+  section is re-read from the policy branch, its in-sandbox `before:commit` gate from the worktree
   (Section 15.4).
 - On change, it MUST re-read and re-apply the affected configuration and prompt template without
   restart. Live operator-config reload includes credentials and scope, and live `repo.policy.toml`
@@ -911,6 +918,9 @@ Operator policy config:
 - `vcs.forge_parameters`: OPTIONAL per-backend extension bag, carried to the selected backend uninterpreted
 - `vcs.git_credential` / `vcs.forge_credential`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; `vcs.forge_credential` defaults to `vcs.git_credential`
 - `vcs.remote`: the remote the repository is provisioned from and the operations that touch one act against
+- `vcs.policy_branch`: REQUIRED, no default; the branch `repo.policy.toml`'s host-side parts are read from. Never a pull-request target (Sections 9.7, 9.10, 15.4)
+- `vcs.base_branch`: the operator's default pull-request target; middle of three sources (issue, then this, then `repo.policy.toml`), default unset
+- `vcs.base_branch_allowed`: OPTIONAL bound on the targets a per-issue source may name, default unset (unbounded)
 - `vcs.local_vcs`: REQUIRED; the VCS backend the engine loads, and the checkout mode for one it creates. For a checkout it did not create the backend detects the mode (Section 9.7)
 - `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
 - a `repo.policy.toml` pointer per managed repository (Section 5.6)
@@ -920,7 +930,8 @@ Operator policy config:
 Repository Way of Working (`repo.policy.toml`, Section 5.6):
 
 - `[requires]`: the engine `version_floor` the policy document requires of its reader (Sections 14.1, 18.1.4)
-- base branch: PR target and back-merge source
+- base branch: the repository's own contribution to the PR target and back-merge source; lowest of
+  three sources (Section 9.7)
 - `scope.branch_pattern`: string, default `symphony/<identifier>` (work-branch name; the scope guard is a Broker Core built-in)
 - action-policy edges and host-side hooks: the `(trigger) → (action)` machine (Section 9.12)
 - `tracker.transitions`: list of `{from, on, to}` entries, default `[]` (workflow state-machine, Sections 9.12, 11.6)
@@ -1595,6 +1606,18 @@ Configuration:
     - Default: `git_credential`.
   - `remote` (string) — the remote the repository is provisioned from, and the one the operations
     that touch a remote act against.
+  - `policy_branch` (string) — the branch `repo.policy.toml`'s host-side-executed parts are read
+    from (Section 15.4). REQUIRED; it has no default, because every default that resolves to the
+    pull-request target would make the trust root a branch Symphony merges into. It MUST NOT be the
+    target of a pull request Symphony creates or merges (Section 9.10), and MUST be a branch the
+    agent cannot write to by any route (Section 15.4).
+  - `base_branch` (string) — the default pull-request target and back-merge source for the
+    repository. The middle of three sources (below).
+    - Default: unset — the repository's `repo.policy.toml` supplies one, or the invocation does.
+  - `base_branch_allowed` (list of strings) — OPTIONAL bound on the targets a per-issue source may
+    name, as branch names or patterns. An issue naming a target outside it is refused
+    (`VCSX-CONTRACT.md`).
+    - Default: unset — a per-issue target is unbounded.
   - `local_vcs` (string) — the VCS backend the engine loads, and the checkout mode for a checkout it
     creates. REQUIRED. For a checkout the engine did not create, the backend detects the *mode*
     instead and this value names only which backend detects it (`VCSX-CONTRACT.md`).
@@ -1605,9 +1628,33 @@ Configuration:
   - `author` / `actor` (objects) — identity mapping for commits and for the push/PR actor (Section
     9.8).
 - Repository Way of Working (`repo.policy.toml`, Section 5.6):
-  - the base branch — the branch pull requests target and back-merges pull from.
+  - the base branch — the repository's own contribution to the pull-request target, and the lowest
+    of the three sources below.
   - `scope.branch_pattern` — the deterministic work-branch name pattern (Section 9.8). Default:
     `symphony/<identifier>`.
+
+The **pull-request target** — the branch pull requests target and back-merges pull from — resolves
+from three sources, most specific first:
+
+1. the issue, where the deployment supplies a per-issue target (below);
+2. `vcs.base_branch`, the operator's default for the repository;
+3. the base branch in `repo.policy.toml`, which the repository states for itself.
+
+A deployment MAY let an issue name its target. Which carrier does so — a label the operator maps, a
+tracker field, or something tracker-specific — is `Implementation-defined` and MUST be documented,
+as the `branch_name` hint's treatment is (Section 9.8). Where `vcs.base_branch_allowed` is
+configured, a per-issue target outside it is refused before the run starts and no work branch is
+created for the issue.
+
+Important boundary: the pull-request target is not the policy branch and carries none of its trust
+weight (Section 15.4). A target reaches the working tree — through the back-merge — and therefore
+reaches the in-sandbox parts, which run without credentials and without host access; it never
+selects the revision host-side hooks are read from. That is why the target is configurable from
+three sources including an issue, while the policy branch is the operator's alone.
+
+Where no source supplies a target, the operations that need one are refused before the run does
+anything (`VCSX-CONTRACT.md`); the operations that do not need one — commit, push, provisioning —
+are unaffected.
 
 ### 9.8 Git Automation and Work Branch
 
@@ -1644,9 +1691,9 @@ Push:
 
 Back-merge and conflict handoff:
 
-- At the start of a run, Symphony attempts to bring the work branch up to date with the base branch
-  (`repo.policy.toml`, Section 5.6). If the update applies cleanly it is taken; if it would conflict,
-  it is postponed so the agent is not interrupted up front.
+- At the start of a run, Symphony attempts to bring the work branch up to date with the resolved
+  pull-request target (Section 9.7). If the update applies cleanly it is taken; if it would
+  conflict, it is postponed so the agent is not interrupted up front.
 - Conflict resolution is required only when a push is rejected as non-fast-forward. The engine's
   back-merge then stages the merge in the worktree; Symphony hands the conflicted tree to the agent
   (via continuation guidance) to resolve, and dispatches the completing operation once the agent
@@ -1685,8 +1732,10 @@ Pull requests:
 
 - Symphony maintains one pull request per issue. It is created on first push and updated (new
   commits, refreshed title/body) on later runs, and reused across retries and continuations. The
-  title and body are composed (below); the base is the base branch (`repo.policy.toml`, Section 5.6)
-  and the head is the work branch.
+  title and body are composed (below); the base is the resolved pull-request target (Section 9.7)
+  and the head is the work branch. Symphony MUST NOT create or merge a pull request whose base is
+  the policy branch (`vcs.policy_branch`), so no work the service lands can reach the revision its
+  host-side Way of Working is read from (Section 15.4).
 - Issue link: when the tracker is the same platform as the forge, the forge establishes the
   pull-request-to-issue link natively (for example a reference in the pull-request body). When the
   tracker is a separate system (for example Linear), the pull-request reference is written onto the
@@ -2384,7 +2433,7 @@ State machine:
 - Ticket state transitions are governed by a workflow state-machine defined in `repo.policy.toml`
   (`tracker.transitions`, Sections 5.3.1, 5.6) as `set_state` bindings within the action-policy
   machine (Section 9.12). Because transitions are host-side-executed Way of Working, they are sourced
-  from the protected base revision (Section 15.4), not from `WORKFLOW.md` or the worktree.
+  from the protected policy branch (Section 15.4), not from `WORKFLOW.md` or the worktree.
 - The state-machine is a directed graph over tracker workflow-state names — the `active_states` and
   `terminal_states` of Section 5.3.1, plus any intermediate handoff states such as `Human Review` or
   `Merging`. Each transition is a `{from, on, to}` entry: in state `from`, when trigger `on` fires,
@@ -2426,9 +2475,9 @@ Process authority:
 - The repository-owned prompt (Section 5.4) shapes how the agent works and which milestone signal it
   emits; it does not define the state-machine and cannot grant a trigger a transition the graph does
   not define. Run outcomes are orchestrator-emitted and not influenceable by prompt wording. Process
-  authority is repository-owned but base-sourced (Sections 5.6, 15.4): the transitions live in
-  `repo.policy.toml` read from the protected base revision, while the prompt is worktree-sourced, so
-  no prompt wording widens the set of transitions an agent can cause.
+  authority is repository-owned but policy-branch-sourced (Sections 5.6, 15.4): the transitions live
+  in `repo.policy.toml` read from the protected policy branch, while the prompt is worktree-sourced,
+  so no prompt wording widens the set of transitions an agent can cause.
 
 ### 11.7 Adapter Capability Descriptor
 
@@ -3183,9 +3232,28 @@ The agent can edit the worktree and can commit, so Symphony sources each part of
 Working from the revision that makes it safe:
 
 - Host-side-executed Way of Working — host-side hooks, the operation flow, and the branch-name
-  pattern (`repo.policy.toml`, Section 5.6) — is read from the resolved **base revision**.
-  The agent cannot push to the base branch (it is review-gated by branch protection), so it cannot
-  alter host-side behavior from within a run. Way-of-Working trust equals base-branch trust.
+  pattern (`repo.policy.toml`, Section 5.6) — is read from the **policy branch**
+  (`vcs.policy_branch`, Section 9.7), which the operator names and which is not the branch pull
+  requests target. Two properties make it trustworthy, and they are separate:
+  - The agent cannot push to it. The scope guard permits no branch but the run's work branch
+    (Section 10.8), and the engine pins every push refspec to that branch (Section 9.9), so no
+    push the agent can request reaches the policy branch. This holds without configuration.
+  - Nothing Symphony merges reaches it. No pull request Symphony creates or merges targets the
+    policy branch (Section 9.10), so an agent's work cannot arrive there by being reviewed and
+    landed either.
+  Way-of-Working trust therefore equals policy-branch trust, and the policy branch is a branch the
+  service only reads.
+
+  The policy branch MUST be one the agent cannot write to by any route. The two properties above
+  close the routes this specification defines; how an implementation establishes that no other route
+  exists — branch protection, repository permissions, or a mirror the service alone can write —
+  is `Implementation-defined` and MUST be documented.
+
+  Important nuance: this is why the policy branch is separate from the pull-request target rather
+  than defaulted to it. Landing pull requests on the target is what Symphony is for, so a target
+  that were also the trust root would be a branch the service writes to on every issue it completes,
+  leaving Way-of-Working trust resting on each reviewer noticing a host-side hook change in a diff
+  otherwise about product code.
 - In-sandbox parts — the `WORKFLOW.md` prompt and in-sandbox hooks, and the `before:commit`
   gate/scan — are read from the **worktree**. An agent edit there is harmless: these run inside the
   sandbox without credentials or host access, and running a pull request's own gate change against
@@ -3193,9 +3261,9 @@ Working from the revision that makes it safe:
 
 Hook implications:
 
-- Host-side hooks (`repo.policy.toml`, base-sourced) are trusted and run on the host outside the
-  sandbox; they MAY receive repo-internal integrity values (Section 15.3) but never place outward
-  credentials in the agent's reach.
+- Host-side hooks (`repo.policy.toml`, policy-branch-sourced) are trusted and run on the host
+  outside the sandbox; they MAY receive repo-internal integrity values (Section 15.3) but never
+  place outward credentials in the agent's reach.
 - `WORKFLOW.md` and in-sandbox hooks (worktree-sourced) are untrusted, MUST NOT be granted
   credentials or host access, and run inside the sandbox (Section 9.6).
 - Hooks run with the workspace directory as their working directory.
@@ -3656,8 +3724,17 @@ deployment satisfies by using a conforming engine rather than by implementing th
   descriptor; review-thread writes (post/reply/resolve) are OPTIONAL and capability-gated
   (`VCS Engine`)
 - Configuration trust sourcing (Section 15.4): an agent worktree edit to a host-side hook does not
-  change host-side behavior (it is read from the base revision), an in-sandbox `before:commit` change
-  is honored, and a repo-internal integrity value never enters the sandbox
+  change host-side behavior (it is read from `vcs.policy_branch`), an in-sandbox `before:commit`
+  change is honored, and a repo-internal integrity value never enters the sandbox
+- The policy branch is not reachable by the agent through either route (Section 15.4): a brokered
+  push naming it is refused by the scope guard, and an issue's pull request merging to the resolved
+  target leaves the host-side Way of Working unchanged, because the merge does not reach the policy
+  branch. A configuration naming the policy branch as a pull-request target is refused (Section
+  9.10)
+- The pull-request target resolves issue, then `vcs.base_branch`, then `repo.policy.toml`, most
+  specific winning; a per-issue target outside `vcs.base_branch_allowed` is refused before the run
+  starts and no work branch is created; where no source supplies one, an operation needing a target
+  is refused while commit, push and provisioning are unaffected (Section 9.7)
 - The action-policy machine (Section 9.12): an `op:#class` edge catches an unnamed operation reason,
   an unmatched operation outcome is fail-safe (parked, not silently dropped), and an unmatched signal
   is a benign no-op (`VCS Engine`)
@@ -3893,9 +3970,9 @@ Required of every conforming implementation, whichever profiles its topology cla
 - Typed config layer with defaults, secret-provider resolution, and `$` expansion for non-secret
   paths
 - Three configuration artifacts (Section 5): operator policy config, repository-owned
-  `repo.policy.toml` (Way of Working; host-side sections base-sourced), and repository-owned
-  `WORKFLOW.md` (in-sandbox, worktree-sourced); dynamic watch/reload/re-apply for all three with
-  last-known-good on invalid reload
+  `repo.policy.toml` (Way of Working; host-side sections policy-branch-sourced), and
+  repository-owned `WORKFLOW.md` (in-sandbox, worktree-sourced); dynamic watch/reload/re-apply for
+  all three with last-known-good on invalid reload
 - Structured logs with `issue_id`, `issue_identifier`, and `session_id`
 - Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)
 - A published Conformance Statement (Section 19) recording the claimed profiles and topology, the
@@ -3909,7 +3986,7 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
 
 - Workspace manager with sanitized per-issue workspaces
 - Workspace lifecycle hooks at two trust levels sourced by trust (host-side hooks in
-  `repo.policy.toml` from the base revision; `WORKFLOW.md` hooks in the sandbox from the worktree,
+  `repo.policy.toml` from the policy branch; `WORKFLOW.md` hooks in the sandbox from the worktree,
   Section 15.4)
 - Hook timeout config (`hooks.timeout_ms`, default `60000`)
 - Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
@@ -3987,6 +4064,10 @@ engine's checklist.
   5, 9.7); `repo.policy.toml` carries none of them. The store and working-tree locations are
   supplied the same way, per invocation, since Symphony owns the host layout and the engine
   materializes it
+- `vcs.policy_branch` is operator config with no default, is the revision host-side Way of Working is
+  read from, and is never a pull-request target; the pull-request target resolves from the issue,
+  then `vcs.base_branch`, then `repo.policy.toml`, bounded by `vcs.base_branch_allowed` where an
+  issue supplies one (Sections 9.7, 9.10, 15.4)
 - The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
   writes (post/reply/resolve), advertising a static forge-capability descriptor
 - The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback, an

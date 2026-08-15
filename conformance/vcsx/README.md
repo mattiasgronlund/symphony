@@ -201,10 +201,13 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   (Sections 3.3, 9.1–9.3). The last two need a capability descriptor as input, which no vector file
   supplies — so a `[messages.squash] strategy` refused against a forge's declared strategies has no
   vector either, whether the policy states the strategy or takes the Section 6.8 default. The forge
-  repository coordinate, the backend selection, the access parameters and `provision`'s store
-  location are on the same side: whether one was supplied is determined by the invocation
-  (`forge_coordinate_missing`, `local_vcs_missing`, `git_access_missing`, `forge_access_missing` and
-  `store_location_missing`, Section 8.6), which no vector file models.
+  repository coordinate, the backend selection, the access parameters, `provision`'s store location
+  and the base branch are on the same side: whether one was supplied is determined by the invocation
+  (`forge_coordinate_missing`, `local_vcs_missing`, `git_access_missing`, `forge_access_missing`,
+  `store_location_missing`, `base_branch_missing` and `base_branch_not_permitted`, Section 8.6),
+  which no vector file models. `base_branch_missing` is the near miss: `[base] branch` is one of its
+  three sources and vectors do model policies, but the other two sources and the invoked entry point
+  are not vector inputs, so the condition is not determined by a policy document alone.
 - **Invocation preconditions** (Section 8.6) — whether the work branch derives and whether a commit
   identity is well formed are judged against a real checkout by a real backend, through
   `accepts_branch_name` and `accepts_identity` (Section 9.1), so no vector file can supply the input.

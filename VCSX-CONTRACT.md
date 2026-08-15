@@ -99,11 +99,14 @@ daemon.
 The engine's other configuration input is the **consumer configuration**: the consumer's own, and
 never sourced from the repository. It holds what the engine needs before there is a repository to
 read a policy from — which VCS and forge backends are selected, where each is reached and under
-which credential, the remote the repository was provisioned from, and where `provision` materializes
-the store and the working tree — none of which a file inside the repository can supply to the step
-that obtains the repository. The term names the input, not a file: where the engine discovers it is
-`Implementation-defined` and MUST be documented. The two surfaces carry disjoint keys, so neither
-shadows the other.
+which credential, the remote the repository was provisioned from, where `provision` materializes the
+store and the working tree, the **policy branch** the host-side parts of `repo.policy.toml` are read
+from, and the pull-request target with any bound on what an invocation may name — none of which a
+file inside the repository can supply to the step that obtains the repository or selects the
+revision the file itself is read from, and the last of which the file MAY also supply as the
+lowest-precedence source. The term
+names the input, not a file: where the engine discovers it is `Implementation-defined` and MUST be
+documented. The two surfaces carry disjoint keys, so neither shadows the other.
 
 The field-level schema of both surfaces is deferred (Section 11). The **sourcing** of
 `repo.policy.toml` — which revision each part is read from — is fixed in Section 10.
@@ -303,8 +306,11 @@ sandbox boundary without holding credentials.
 Sourcing (which revision each part of `repo.policy.toml` is read from):
 
 - **Host-side-executed** Way of Working — host-side hooks, the operation flow, and the branch-name
-  pattern — is read from the resolved **base revision**, which the agent cannot push to and which is
-  review-gated. WoW-config trust therefore equals base-branch trust.
+  pattern — is read from a **trusted revision the consumer names**, which the agent cannot write to
+  and which the consumer's own merges do not reach. WoW-config trust therefore equals trusted-branch
+  trust. That revision is not the pull-request target and is not derived from `repo.policy.toml`: a
+  branch named inside the file cannot select the revision the file is read from, and a branch the
+  consumer merges into is one the work it lands could rewrite.
 - **In-sandbox** parts — the `before:commit` gate/scan — are read from the **worktree**, where an
   agent's edit is harmless and where a pull request's own gate change is correctly exercised.
 

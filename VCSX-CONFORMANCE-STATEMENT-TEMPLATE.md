@@ -74,6 +74,7 @@ concrete choice; do not leave a row blank.
 | Flow bound: the `run_op` count (at least 64), and any further bound imposed | 5.6 | `<count, plus any wall-clock or other bound>` |
 | `repo.policy.toml` discovery precedence (explicit override, then repository default) | 6.1 | `<...>` |
 | Consumer-configuration discovery precedence (Section 4's second input) | 8.1 | `<...>` |
+| How a front-end lets a caller name a `base_branch`, where it does | 8.1 | `<flag / per-task field / not offered, always from config>` |
 | The backend's default remote where the consumer supplies no `remote`, per backend | 8.1 | `<name each backend uses>` |
 | The `forge_parameters` keys each forge backend reads | 8.1 | `<per backend: the keys read, and what each does>` |
 | Form of a hook's engine-invoked `run` unit | 6.6 | `<executable path / shell string / named task / …>` |

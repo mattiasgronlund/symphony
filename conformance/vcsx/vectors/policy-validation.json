@@ -40,6 +40,16 @@
       "expect": { "valid": true }
     },
     {
+      "id": "policy_omitting_the_base_branch_is_valid",
+      "description": "`[base] branch` is OPTIONAL and the lowest of three sources (Section 6.4). A policy omitting it is well formed; whether any source supplies a base is an invocation-time question (`base_branch_missing`, Section 8.6), which no vector models.",
+      "given": {
+        "policy": { "requires": { "version_floor": "1.0" }, "edges": [] },
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "valid": true }
+    },
+    {
       "id": "duplicate_edge_is_non_deterministic",
       "description": "At most one edge per (from-context, trigger); a duplicate is a configuration error (Section 5.4).",
       "given": {

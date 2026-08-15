@@ -3285,39 +3285,54 @@ deployment needs Broker Core over repositories materialized some other way entir
 the repair is to restore optionality with an OPTIONAL provisioning operation, not a second VCS
 adapter. Relates to 0092, 0091 and 0062.
 
-## 0094 — A policy that determines no base
+## 0094 — The policy branch is not the base branch
 
-**State:** Proposed
-**Folder:** [decisions/0094-policy-determines-no-base/](decisions/0094-policy-determines-no-base/)
+**State:** Accepted
+**Folder:** [decisions/0094-policy-branch-and-base-source/](decisions/0094-policy-branch-and-base-source/)
 
-Opened from decision 0093's second review finding, which made `provision` the one entry point that
-runs where no `repo.policy.toml` has been discovered and thereby exposed that no *other* entry point
-has a stated answer. Two ways reach the same state and `VCSX-SPEC.md` handles neither. Section 6.1
-gives exactly one rule for an unusable policy — "A discovered file that does not parse" — and a file
-never discovered is not one that fails to parse. Section 6.4 declares `branch` with neither an
-OPTIONAL marker nor a `Default:` line, which requires it by omission, and Section 6.10's only base
-row, `base_unresolvable`, presupposes `resolve = by_prefix` in both halves, so the default `fixed`
-strategy with no `branch` is named by no condition. The two are one question: the engine holds a
-policy selecting no base branch, and the repair in both is to edit a document. Measured:
-`vectors/policy-validation.json` supplies `base.branch` in all 32 vectors, including every vector
-whose subject is something else, so the key is treated as structurally present rather than as a
-value with an absence case. Which entries need a base is narrow — `integrate`, `create_pr` and the
-`ship` that dispatches one; `commit`, `push`, `pull`, `merge`, `provision` and `land` need none,
-Section 12.3 dispatching only `merge`, which takes its base from the pull request. Options:
-**A** refuse every entry but `provision` (total and cheap, but refuses `commit` for the absence of a
-value it never reads, which tells a user to satisfy a check rather than a requirement); **B** an
-absent policy is an empty policy and the base fails where needed (invents nothing, but loses to
-decision 0084's own argument — `ship` runs `commit`, `push`, then `create_pr`, so it publishes a
-work branch and then dies, the exact shape 0084 moved `template_unbound` to validation to prevent);
-**C**, recommended, a configuration error at validation scoped to the entries that can reach a base,
-with a `run_op` edge reaching one reporting that operation's `base_unresolved` instead — which keeps
-0084's guarantee, reuses the scoping Section 8.6 already applies verbatim to `git_access`, and sits
-in Section 6.10 rather than 8.6 by decision 0092's own test, since the repair is editing a document.
-C's cost is stated rather than absorbed: Section 6.10 is judged from five inputs and the entry point
-is not among them, so C adds a sixth, and "five inputs and no others" is load-bearing for
-`capability_unsupported` and 0092's third input. Left `Proposed` because that sixth input changes
-what validation is. Whichever option is taken, the absent document and the absent key MUST take one
-disposition and one reason token. Three sub-questions stay open and are recorded so acceptance is
-not mistaken for completeness: whether to widen `base_unresolvable` or mint a token, what `status`
-and `diff` do where a read's base is unselected rather than unheld, and whether `[base] branch`
-becomes explicitly REQUIRED. Relates to 0093, 0084, 0092 and 0002.
+Opened from decision 0093's second review finding and reframed twice under review; the path is kept
+in `Background.md` because it is the argument. `SPEC.md` Section 15.4, echoed in `VCSX-CONTRACT.md`
+Section 10, makes host-side Way of Working readable only from "the resolved **base revision**" — the
+whole security argument for anything the engine runs on the host — while `VCSX-SPEC.md` Section 6.4
+puts `[base] branch` inside `repo.policy.toml`, the file that sentence reads from the base revision.
+To read the policy you need the base; to know the base you need the policy, and no document says how
+the first read resolves. Breaking it in place means reading the policy from whatever the checkout
+holds, which lets an agent-editable revision decide which revision is trusted. That is the fourth
+instance of the cycle 0092 and 0093 chased, and the sharpest, the other three costing availability
+where this one costs a guarantee. Stating the argument in full then exposed a second and larger
+defect: it stands on two legs, and only one holds. The agent cannot *push* to the base — guaranteed
+already by Section 10.8's scope guard, "push only to the run's work branch", with no configuration
+required. But the base is trusted because it is *review-gated*, and landing pull requests on the base
+branch is Symphony's entire purpose, so the trust root is a branch the service routinely merges into
+and the only thing between an agent-authored host-side hook and its execution with operator
+credentials is a reviewer noticing. Section 9.8 already worries about the adjacent case, requiring
+the actor differ from the approver so a pull request cannot be self-approved. Measured: all 32
+vectors in `vectors/policy-validation.json` supply `base.branch`, including every vector whose
+subject is something else, which is how both defects survived. The repair separates the two jobs the
+one value was doing — trust root, needed *before* the policy is read, and pull-request target, needed
+*after* — since only the first is circular. The operator names a **policy branch**, REQUIRED with no
+default, and no pull request Symphony creates or merges targets it; the guarantee is stated over what
+Symphony does rather than over a config file, so a consumer checks it through the operations. It MUST
+be unwritable by the agent, with the establishing mechanism `Implementation-defined` and MUST
+document, since the scope guard covers the push path but not the others. The **pull-request target**
+then becomes an ordinary configuration question with three sources in precedence order — the
+invocation, operator config, then `repo.policy.toml`, which keeps a legitimate say including its
+`by_prefix` mapping because reading it no longer depends on the value. An operator MAY bound what an
+invocation may name; the bound is deliberately weaker than the trust-root case because a badly chosen
+target reaches only the in-sandbox parts, which run without credentials. How a ticket carries one is
+`Implementation-defined` and MUST be documented. Where no source supplies one the refusal is a
+**precondition** scoped to the entries that need a target — `ship`, `integrate`, `create_pr` — which
+is what the reframing bought: under the original framing it was a configuration error and would have
+forced validation to take the entry point as a sixth input, the change that left this decision
+`Proposed` through two drafts. Refusing up front rather than at first use preserves 0084's guarantee,
+`ship` reading the target only at `create_pr`, after it has pushed. Options rejected: leaving the
+base in the policy and answering only the missing-value question (leaves both defects); moving the
+single value to the consumer (fixes the cycle, leaves the trust root a merge target — the smaller
+half of the repair). Cost accepted: two branch-shaped values where there was one, and a policy that
+cannot be reviewed alongside the code change needing it — which is the cost of the guarantee, since a
+trust root reviewable alongside a code change is one a code change can alter. Assumption recorded:
+the policy branch is REQUIRED with no default, the sheet's question on defaulting having gone
+unanswered while the primary answer chose "the trust root is never a merge target", which any default
+resolving to the main branch would void. Reconsider if operators report policy branches drifting far
+enough from the main line that host-side hooks no longer match the code they run against. Relates to
+0092, 0093, 0084, 0085 and 0002.

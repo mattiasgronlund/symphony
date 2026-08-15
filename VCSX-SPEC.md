@@ -127,7 +127,10 @@ split one policy across the boundary:
 
 - **Host-side** — operations and hooks that touch the remote or hold credentials (provision,
   integrate, push, pull, create_pr, merge, host-side hooks). A consumer sources host-side policy from
-  a trusted revision (for example a protected base branch) so an untrusted worktree cannot alter it.
+  a trusted revision it names itself so an untrusted worktree cannot alter it. That revision is not
+  derived from the policy: a branch named inside `repo.policy.toml` cannot select the revision
+  `repo.policy.toml` is read from, and it MUST NOT be a branch the consumer's own merges reach, or
+  the work the consumer lands could rewrite what it trusts.
 - **In-sandbox** — operations and hooks that run in the working tree without credentials (the
   `before:commit` gate/scan, in-sandbox hooks). A consumer sources these from the worktree.
 
@@ -720,7 +723,12 @@ which is consulted before the repository exists.
 
 ### 6.4 `[base]` and Base Resolution
 
-- `branch` (string) — the base branch the pull request targets and `integrate` pulls from.
+- `branch` (string, OPTIONAL) — the base branch the pull request targets and `integrate` pulls from.
+  It is the repository's own contribution to a value the invocation and the consumer configuration
+  may also supply, and the lowest of the three in precedence: the invocation's `base_branch` wins,
+  then the consumer configuration's, then this (Section 8.1). Where none of the three supplies one,
+  an entry that needs a base is refused before the policy runs (Section 8.6).
+  - Default: unset — the consumer supplies the base, or the entry does not need one.
 - `resolve` (string, OPTIONAL) — a base-resolution strategy when a single `branch` is insufficient:
   - `fixed` (Default) — `branch` is the base.
   - `by_prefix` — the base is selected from a table mapping work-branch-name prefixes to base branches
@@ -1172,6 +1180,34 @@ The engine resolves the remote once per invocation and supplies it to each capab
 branch's own upstream binding, which need not exist — the work branch is engine-derived
 (Section 6.3) and MAY be absent from the checkout at the first push.
 
+The **base branch** is the pull-request target and what `integrate` brings in, and the consumer may
+supply it two ways:
+
+- `base_branch` (OPTIONAL) — the base for this invocation. It wins over the consumer
+  configuration's and over `[base] branch` (Section 6.4), most specific first.
+- `base_branch_allowed` (OPTIONAL) — the set of bases an invocation may name, as names or patterns.
+  A `base_branch` outside it is refused before the policy runs (Section 8.6). It belongs to the
+  consumer configuration rather than to a single invocation, so the party bounding the choice is not
+  the party making it.
+
+Where no source supplies a base, an entry that needs one is refused before the policy runs; an entry
+that needs none runs (Section 8.6). The engine holds a base branch opaque as it holds the coordinate
+opaque: it resolves which of the three sources applies, supplies the result to the capabilities that
+take one, and interprets nothing about the name.
+
+The **policy branch** is the revision the engine reads the host-side parts of `repo.policy.toml`
+from (Sections 3.2, 6.1):
+
+- `policy_branch` — REQUIRED. The engine discovers and reads the policy (Section 6.1), but *which
+  revision* it reads the host-side parts from is the consumer's decision, because Section 3.2 makes
+  sourcing by trust the consumer's. This argument is that decision, made explicit.
+
+It is REQUIRED with no default, and specifically no default derived from `[base] branch`: a branch
+named inside the policy cannot select the revision the policy is read from. Two properties are
+required of whatever it names, and neither is one the engine can establish for itself — a consumer
+that runs an agent MUST NOT let that agent write to it, and MUST NOT direct its own merges at it
+(Section 11). The engine holds it opaque, as it holds the base branch and the coordinate opaque.
+
 Two **locations** name where `provision` acts (Section 4.1):
 
 - `store_location` — where the fetched copy of the repository is maintained. REQUIRED for
@@ -1237,10 +1273,10 @@ Credentials reach the plugins for the duration of an invocation (Section 1.3); t
 neither beyond it.
 
 The consumer-supplied values this section names — `local_vcs` and `forge`, the forge repository
-coordinate, the `remote`, `provision`'s two locations, the two access parameters, `forge_parameters`
-and the credential pair — MAY be read by the engine from a **consumer configuration**: a
-consumer-owned file, distinct
-from `repo.policy.toml` and never sourced from the repository. Its discovery precedence is
+coordinate, the `remote`, `policy_branch`, `base_branch` and `base_branch_allowed`, `provision`'s
+two locations, the two access parameters, `forge_parameters` and the credential pair — MAY be read
+by the engine from a **consumer configuration**: a consumer-owned file, distinct from
+`repo.policy.toml` and never sourced from the repository. Its discovery precedence is
 `Implementation-defined` and MUST be documented (Section 13.3). It carries no key `repo.policy.toml`
 carries, so the two are disjoint and neither shadows the other (Section 6.1). It MAY carry a
 credential directly or a reference the consumer resolves, so a consumer holding its secrets in a
@@ -1468,6 +1504,19 @@ shape, because the engine interprets neither (Section 8.1): a parameter a backen
 backend's first-use `failed` rather than a precondition this registry names, exactly as a coordinate
 it cannot use is.
 
+The base is scoped by the same rule as `git_access`. For an entry that needs one — `integrate`,
+`create_pr`, and a front-end sequence that dispatches one — a base is REQUIRED and its absence from
+all three sources is refused here as `base_branch_missing`; `commit`, `push`, `pull`, `merge`,
+`land` and `provision` need none and run without one, `land` taking its base from the pull request
+it merges (Section 12.3). An entry outside the set that reaches a base-needing operation through a
+`run_op` edge reports that operation's own reason at the dispatch (Section 4.3), which is the
+disposition this section already gives an identity the precondition does not cover.
+
+`base_branch_not_permitted` is judged wherever a `base_branch` was supplied, whatever the entry,
+because the bound is about what the invocation may name rather than about what the entry needs — the
+same shape as the commit identity, whose *malformedness* is judged whatever the entry while its
+*absence* is judged only where one is required.
+
 `provision` establishes only the preconditions judged from the invocation's arguments. It resolves
 no work branch, consults no `detect_mode()`, and accepts no commit identity, because each of those
 reads a checkout this operation exists to produce — so `no_current_branch`, `work_branch_invalid`,
@@ -1493,6 +1542,8 @@ run in which the policy did not run.
 | A forge is configured and no `forge_access` was supplied (Section 8.1) | `forge_access_missing` |
 | An entry that can reach a remote was invoked and no `git_access` was supplied (Section 8.1) | `git_access_missing` |
 | `provision` was invoked and no `store_location` was supplied (Section 8.1) | `store_location_missing` |
+| An entry that needs a base was invoked and no source supplied one (Sections 6.4, 8.1) | `base_branch_missing` |
+| A supplied `base_branch` is outside the consumer's `base_branch_allowed` (Section 8.1) | `base_branch_not_permitted` |
 | The work branch is the checkout's current branch (Section 6.3) and the checkout has none | `no_current_branch` |
 | The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
 | The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it whatever the entry (Section 10.1) | `identity_invalid` |
@@ -1514,8 +1565,15 @@ policy document, what the engine holds independently of the invocation, the cons
 access configuration, the actions a consumer can effect and the repository units it bound. The
 converse does not hold and is not claimed: a precondition MAY need the checkout and MAY be judged
 from the invocation's arguments alone, as `arguments_unreadable`, `local_vcs_missing`,
-`forge_coordinate_missing`, `git_access_missing`, `forge_access_missing` and
-`store_location_missing` are. Each row above says what it is judged from.
+`forge_coordinate_missing`, `git_access_missing`, `forge_access_missing`, `store_location_missing`,
+`base_branch_missing` and `base_branch_not_permitted` are. Each row above says what it is judged
+from.
+
+`base_branch_missing` is the one row judged partly from the policy document, since `[base] branch`
+is its lowest source (Section 6.4), and it is still a precondition rather than a configuration
+error. The policy is well formed either way: a document that omits an OPTIONAL key carries no defect
+to repair, and what is absent is a value the invocation or the consumer configuration was free to
+supply. That is the invocation's side of the line below.
 
 Where both sides are checkout-free, what separates them is the artifact at fault: **a configuration
 error names a defect a consumer repairs by editing a document; a precondition failure names one it
@@ -1899,6 +1957,14 @@ one:
   re-parents a commit already on it — an update that reconciles a divergence merges (Section 4.1) — so
   the branch remains publishable without rewriting it. A `rebase` or `squash` merge strategy
   (Section 6.8) is not an exception: it writes to the base branch.
+- The revision host-side policy is read from is the consumer's `policy_branch` (Section 8.1), and
+  the engine derives no default for it from the policy, because a branch named inside
+  `repo.policy.toml` cannot select the revision `repo.policy.toml` is read from. Two properties of
+  it are the consumer's to establish, stated as obligations on the consumer rather than as
+  guarantees of the engine: an agent the consumer sandboxes MUST NOT be able to write to it, and the
+  consumer MUST NOT direct its own merges at it. The second is the one a consumer that lands pull
+  requests has to act on — a trusted revision that is also a merge target is one the work being
+  landed can rewrite, which makes host-side trust a property of review rather than of sourcing.
 - Everything that decides which system is reached, and with what, comes from the consumer: the
   backend selection, the forge repository coordinate, the `remote`, the two access parameters,
   `forge_parameters` and the two credentials (Section 8.1). Where the engine materializes a store
@@ -2160,6 +2226,16 @@ A conforming engine SHOULD include tests covering:
   (Sections 3.2, 11); no front-end sequence dispatches `provision`, so a `ship` in a location
   holding no repository refuses on the checkout rather than acquiring one as a side effect (Sections
   4.1, 8.6, 12.2).
+- The base branch and its three sources: an invocation-supplied `base_branch` beats the consumer
+  configuration's, which beats `[base] branch`, and `status` reports against whichever applied; a
+  policy omitting `[base] branch` is well formed and validates (Section 6.4); an `integrate` or a
+  `create_pr` with no base from any source yields `base_branch_missing` and runs nothing, while a
+  `commit`, a `push`, a `pull`, a `merge`, a `land` and a `provision` all run without one, `land`
+  taking its base from the pull request it merges; a `base_branch` outside the consumer's
+  `base_branch_allowed` yields `base_branch_not_permitted` whatever the entry, including entries
+  that need no base; an entry outside the base-needing set that routes to `integrate` through a
+  `run_op` edge reports that operation's own reason rather than a precondition (Sections 6.4, 8.1,
+  8.6).
 - Provisioning precedes the policy and the checkout: a `provision` into a `store_location` holding
   no repository, with no `repo.policy.toml` anywhere to discover, runs and reports `provision:ok`
   rather than any configuration reason, while the same invocation of any other entry point is not
@@ -2309,6 +2385,9 @@ A conforming engine SHOULD include tests covering:
   mechanism the backend's, the inability to share it declared in the descriptor. It is validated
   without a policy document and establishes no precondition that reads a checkout, being the
   operation that obtains both.
+- Base resolution from three sources — the invocation, the consumer configuration, then
+  `[base] branch` — with the bound on what an invocation may name, and the refusal scoped to the
+  entries that need a base.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), the consumer configuration as a
   second and disjoint input, including the refusal of a
   policy that is not well formed, of one declaring a hook with no unit to run, of one binding a
@@ -2320,8 +2399,9 @@ A conforming engine SHOULD include tests covering:
   with `fail`, exit codes including the reserved code for an invocation that produced no result and
   one JSON object on stdout for every one that did, escalation payload, invocation preconditions, the
   backend selection, the forge repository coordinate, the remote, `provision`'s store and tree
-  locations, the two access parameters, the per-backend extension bag, the credential pair with its
-  default, and versioning with a `version_floor` floor.
+  locations, the base branch with its three-source precedence and its bound, the two access
+  parameters, the per-backend extension bag, the credential pair with its default, and versioning
+  with a `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors, the VCS backend
   separating the capabilities that acquire from the local ones that use what they acquired, the
   engine supplying each plugin the parameter and credential it uses — the forge backend its
