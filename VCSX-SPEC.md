@@ -117,8 +117,8 @@ itself:
      execution context the consumer provides (Section 3.2).
 
 6. `Scanner` and `Message Formulator` (Section 10)
-   - The content-scan seam (`scan-content` at `before:commit`) and the composition/transform seams for
-     commit, pull-request, and squash messages.
+   - The content-scan seam (`scan-content`, at the lifecycle position a policy edge binds it to) and
+     the composition/transform seams for commit, pull-request, and squash messages.
 
 ### 3.2 Execution Contexts (Trust)
 
@@ -127,7 +127,10 @@ split one policy across the boundary:
 
 - **Host-side** — operations and hooks that touch the remote or hold credentials (provision,
   integrate, push, pull, create_pr, merge, host-side hooks). A consumer sources host-side policy from
-  a trusted revision (for example a protected base branch) so an untrusted worktree cannot alter it.
+  a trusted revision it names itself so an untrusted worktree cannot alter it. That revision is not
+  derived from the policy: a branch named inside `repo.policy.toml` cannot select the revision
+  `repo.policy.toml` is read from, and it MUST NOT be a branch the consumer's own merges reach, or
+  the work the consumer lands could rewrite what it trusts.
 - **In-sandbox** — operations and hooks that run in the working tree without credentials (the
   `before:commit` gate/scan, in-sandbox hooks). A consumer sources these from the worktree.
 
@@ -187,6 +190,15 @@ checkout mode that records the working tree as a commit of its own before it can
 of the three — which is why Section 9.1 requires such a backend to keep that commit outside what the
 work branch reaches, rather than leaving the arrangement to each backend.
 
+- `load_policy` — obtain the merged host-side policy surface, once, for a unit of work. It reads
+  `repo.policy.toml` from the policy source (Sections 6.1, 8.1), merges any `vcsx.toml`, and returns
+  the surface; the consumer holds it and supplies it to every subsequent invocation, which therefore
+  read no repository. This is the operation that makes Section 3.2's "the consumer sources config by
+  trust" literally true, and it is why no capability of Section 9.1 reads a file at a revision — one
+  operation does it once, rather than a capability doing it per read. Like `provision`, it has no
+  lifecycle position and raises no `<op>:<reason>` trigger, for the same reason: the edges that
+  would gate or route it are in the document it exists to obtain. Its failures are the four
+  Section 6.1 names, reported as configuration errors.
 - `provision` — ensure the repository is present and current: create the store where
   `store_location` holds none, refresh it where it holds one, and, where the invocation names a
   `tree_location`, derive the working tree there from that store (Section 8.1). An invocation naming
@@ -203,7 +215,7 @@ work branch reaches, rather than leaving the arrangement to each backend.
   operation exists to obtain, so a gate on it would be absent on the invocation that creates the
   checkout and present on one that refreshes it — a trigger that sometimes exists, which Section
   5.4's one-edge-per-trigger rule is written to prevent. No policy document is validated for it, for
-  the same reason (Sections 6.1, 6.10). And no precondition that reads a checkout is established for
+  the same reason (Sections 6.1, 6.11). And no precondition that reads a checkout is established for
   it (Section 8.6), because the checkout is what it produces. The consumer classifies the result. No
   front-end sequence dispatches it (Sections 12.2, 12.3): a consumer obtains the checkout by
   dispatching the operation, so no entry named for something else acquires one as a side effect.
@@ -259,7 +271,7 @@ caller takes around it: Section 6.6 surfaces a block as the gated operation's ow
 dispatch it does not make. An operation gated at no fixed position — `integrate` and `pull` — enters
 none wherever it is dispatched. Because the dispatch runs the position and a position's `run_op` edge
 makes a dispatch of its own, a set of `[policy]` edges that returns a position to itself describes
-dispatches that reach no operation at all; Section 6.10 refuses a policy carrying one
+dispatches that reach no operation at all; Section 6.11 refuses a policy carrying one
 (`position_cycle`).
 
 Note: a position runs where its operation runs and nowhere else. A `ship` over a working tree the
@@ -308,7 +320,7 @@ and `blocked` and `hook_unanswered` for every operation gated at a lifecycle pos
 |-----------|--------|-------|--------------|---------|
 | `(any)` | `failed` | `error` | — | The operation failed, including when a `before:<op>` hook blocked it with an `error` result (Section 6.6). |
 | `(any gated)` | `blocked` | `needs_caller` | `human_review` | A `before:<op>` gate or scan blocked the operation (Section 6.6). |
-| `(any gated)` | `hook_unanswered` | `error` | — | A `before:<op>` hook gave the engine no usable answer: `bound_elapsed`, `not_started` or `answer_unreadable` (Section 6.6). |
+| `(any gated)` | `hook_unanswered` | `error` | — | A unit the engine ran at a `before:<op>` position — a hook, or the `pr_to_squash` transform (Section 10.3) — gave the engine no usable answer: `bound_elapsed`, `not_started` or `answer_unreadable` (Section 6.6). |
 | `(any)` | `unsupported` | `error` | — | The operation requires a plugin capability the backend does not declare (Section 9.3). |
 | `provision` | `ok` | `done` | — | The checkout is present and current. |
 | `provision` | `unreachable` | `needs_caller` | `human_review` | The remote could not be reached at `git_access` (Sections 8.1, 9.1). |
@@ -423,7 +435,7 @@ of the ways a network fails.
 the descriptor is what separates them. Whether a backend can derive more than one working tree from
 one store is a static declaration (Sections 9.1, 9.3), so a consumer that derives more than one
 against a backend declaring it cannot is refused at validation with `capability_unsupported`, before
-anything is fetched (Section 6.10). What the declaration does not settle is what `store_location`
+anything is fetched (Section 6.11). What the declaration does not settle is what `store_location`
 already holds: a store arranged in a way the selected backend cannot extend is a fact about that
 location rather than about the descriptor, and `provision` reports `store_unsupported` for it, as
 `integrate` reports `base_unavailable` for a base the checkout does not hold.
@@ -439,6 +451,13 @@ rather than routing, and is reported in `outputs` under `unanswered_gates` (Sect
 in a reason of its own, because the repair is the same shape in each case. The condition is a token
 rather than prose (Section 6.6), so what routes and what diagnoses are both spellings a consumer can
 branch on.
+
+The reason is spelled for the hook because that is the unit at almost every position, and it covers
+the `pr_to_squash` transform at `before:merge` on the same terms (Section 10.3). What the token
+names is the engine getting no usable answer from a unit it ran at a position, and the two cases
+carry the same disposition — the operation does not act — so one reason serves both rather than a
+second token carrying an identical repair. Which unit it was is what `unanswered_gates` names
+(Section 8.2), alongside the condition.
 
 Every operation therefore has at least one `done` reason and at least one `error` reason, so an
 `error`-class result is expressible for every operation including the read-only ones; every gated
@@ -502,7 +521,7 @@ disposition is fixed:
   envelope (Section 8.2) rather than drop it, on the same principle that forbids silently dropping an
   operation outcome no action disposed of (Section 5.4): an intent the engine emitted and no consumer
   performed is reported, so a policy that degrades against a lesser consumer degrades visibly.
-- `set_state` is a configuration error, caught before the policy runs (Section 6.10), because a
+- `set_state` is a configuration error, caught before the policy runs (Section 6.11), because a
   workflow state that never advances strands the flow rather than merely losing information.
 
 This is not a second point of front-end divergence. The engine's behavior is identical in either
@@ -549,11 +568,11 @@ on.
   `integrate_then_retry`, rather than ending a run that neither escalated, parked nor failed. The rule
   is stated over disposition rather than over matching because what strands a flow is a result nothing
   acted on, and whether an edge happened to match is not that.
-- The policy graph MUST be deterministic: at most one edge per `(from-context, trigger)` key, where a
-  duplicate is a configuration error (Section 6.10). "from-context" allows a repository to give the same
-  trigger different edges at different lifecycle points where the engine models them (for example a
-  transition graph keyed on a workflow-state `from`, Section 6.7); absent such a model the key is the
-  trigger alone.
+- The policy graph MUST be deterministic: at most one edge per `(from-context, trigger)` key, where
+  a duplicate is a configuration error (Section 6.11). "from-context" allows a repository to give
+  the same trigger different edges at different lifecycle points where the engine models them (for
+  example a transition graph keyed on a workflow-state `from`, Section 6.7); absent such a model the
+  key is the trigger alone.
 - An edge that carries no `from` is **unscoped**: it is a candidate in every from-context, including
   none. Scoping is opt-in per edge, so a repository that scopes some edges does not thereby scope
   the rest, and adding its first transition edge changes what one trigger does in one context rather
@@ -629,7 +648,7 @@ lifecycle position introduces, where an edge on `before:push` dispatches `integr
 `push` re-gates the position.
 One shape is refused before it runs rather than bounded: a cycle of lifecycle positions, each
 position's `run_op` edge dispatching the operation the next position gates, reaches no operation on
-any traversal and is a configuration error (`position_cycle`, Section 6.10). The bound holds every
+any traversal and is a configuration error (`position_cycle`, Section 6.11). The bound holds every
 loop that runs operations, which is every loop whose cycle passes through a typed operation result.
 
 A conforming executor MUST bound one invocation's flow by a count of `run_op` dispatches and resume
@@ -681,11 +700,27 @@ two facts a caller acts on — which position, and which unit.
   `Implementation-defined` and MUST be documented.
 - An engine-native `vcsx.toml`, when present, is merged into the same surface; `repo.policy.toml` keys
   take precedence on conflict. A consumer MAY present the merged surface as one document.
-- A discovered file that does not parse yields no policy to validate. The engine reads no policy
-  from it and refuses to run, reporting a configuration error (Section 6.10).
-- `provision` is the one entry point that runs where no file has been discovered, because it is the
-  operation that obtains the repository the file is in (Sections 4.1, 6.10). Its dispatch reads no
-  policy and is validated from the Section 6.10 inputs that are not the document.
+- **A policy that cannot be used yields one disposition and four diagnoses.** Four conditions leave
+  the engine without a policy it can run:
+  - the source it is read from could not be read — `policy_source_unreadable`;
+  - no `repo.policy.toml` was discovered there — `policy_not_found`;
+  - a discovered file, or a `vcsx.toml` merged into it, does not parse — `malformed_policy`;
+  - a discovered file parses and is invalid — one of the remaining Section 6.11 reasons.
+
+  In every one of the four the engine reads no policy, refuses to run, and reports
+  `usage_or_config` with the reason naming the cause (Section 6.11). The disposition is one because
+  a consumer's response is one — it cannot run this repository's policy — while the reasons stay
+  four because the **repair** differs: make the source readable, commit the file, fix the syntax,
+  fix the value. Diagnosis belongs in the reason and the log; it does not belong in the disposition.
+
+  `policy_source_unreadable` names no cause beyond that. Whether the branch is absent, the remote
+  unreachable, or the credential refused is not something the engine can establish from the far side
+  of a transport, and a reason per cause would be a registry of the ways a network fails — which is
+  the reading `provision:unreachable` already takes (Section 4.3).
+- `provision` is the one entry point that runs where no policy could be read, whichever of the four
+  conditions holds, because it is the operation that obtains the repository the file is in
+  (Sections 4.1, 6.11). Its dispatch reads no policy and is validated from the Section 6.11 inputs
+  that are not the document.
 - Unknown keys SHOULD be ignored for forward compatibility.
 - The consumer configuration (Section 8.1) is the loader's second input and carries no key this
   surface carries. What a clone inherits unchanged is `repo.policy.toml`'s and what is needed to
@@ -696,7 +731,7 @@ two facts a caller acts on — which position, and which unit.
 
 - `version_floor` (string) — the minimum engine version the policy requires, stated as a
   `MAJOR.MINOR` version (Section 8.5). A value that is not one is a configuration error
-  (Section 6.10) rather than a floor the engine compares.
+  (Section 6.11) rather than a floor the engine compares.
 
 The table states what the policy document requires of the engine reading it, and selects nothing. The
 values needed to obtain a repository cannot be configured inside that repository: reading
@@ -720,15 +755,20 @@ which is consulted before the repository exists.
 
 ### 6.4 `[base]` and Base Resolution
 
-- `branch` (string) — the base branch the pull request targets and `integrate` pulls from.
+- `branch` (string, OPTIONAL) — the base branch the pull request targets and `integrate` pulls from.
+  It is the repository's own contribution to a value the invocation and the consumer configuration
+  may also supply, and the lowest of the three in precedence: the invocation's `base_branch` wins,
+  then the consumer configuration's, then this (Section 8.1). Where none of the three supplies one,
+  an entry that needs a base is refused before the policy runs (Section 8.6).
+  - Default: unset — the consumer supplies the base, or the entry does not need one.
 - `resolve` (string, OPTIONAL) — a base-resolution strategy when a single `branch` is insufficient:
   - `fixed` (Default) — `branch` is the base.
   - `by_prefix` — the base is selected from a table mapping work-branch-name prefixes to base branches
     (longest-prefix-wins, with a required empty-prefix default). This models track-aware bases without
     naming a specific deployment's mapping.
 - `prefixes` (table, OPTIONAL) — the prefix→base map used when `resolve = by_prefix`. A missing or
-  malformed map is a configuration error (Section 6.10); the engine surfaces `integrate:base_unresolved`
-  / `create_pr:base_mismatch` rather than guessing.
+  malformed map is a configuration error (Section 6.11); the engine surfaces
+  `integrate:base_unresolved` / `create_pr:base_mismatch` rather than guessing.
 
 Resolving the base produces two values, because the two plugin layers need different things from it:
 
@@ -770,8 +810,8 @@ op = "integrate"               # action argument
 [[policy.edge]]
 on = "before:commit"
 do = "run"                     # run a hook
-hook = "scan-content"          # a hook name (Section 6.6)
-context = "in_sandbox"
+hook = "scan-content"          # a hook name (Section 6.6); its context
+                               # follows the artifact that declares it
 
 [[policy.edge]]
 on = "#error"                  # class fallback: any error with no more-specific edge
@@ -782,32 +822,61 @@ An edge's `on` MUST be a trigger the engine recognizes (a known lifecycle positi
 `op:#class` / `#class` form over a known operation, or a known signal). A duplicate `(from, on)` is a
 configuration error (Section 5.4). An edge MUST also carry the arguments the action its `do` names
 needs in order to be dispatched — `op` for `run_op`, `hook` for `run` — and an edge that omits one
-is a configuration error (Section 6.10).
+is a configuration error (Section 6.11).
 
 `reason` is OPTIONAL on an `escalate` or a `fail` edge, and an edge omitting it is well formed:
 neither action needs it to be dispatched. An `escalate` without one raises the trigger's default need
 (Sections 4.3, 5.2), and a `fail` without one is reported by its trigger alone (Section 8.2).
 
-### 6.6 `[hooks]`
+### 6.6 `[hooks.engine]`
 
-A hook is a named unit `run` invokes. Each hook declares its execution context (Section 3.2):
+A hook is a named unit `run` invokes:
 
 ```toml
-[hooks.scan-content]
-context = "in_sandbox"         # runs in the worktree, no credentials
+[hooks.engine.notify-release]
 run = "..."                    # engine-invoked unit; its form is Implementation-defined
-
-[hooks.notify-release]
-context = "host_side"          # runs with host access; MAY receive repo-internal integrity values
-run = "..."
 ```
 
 The table's keys:
 
 - `run` (string) — the engine-invoked unit. REQUIRED for a declared hook; its form is
-  `Implementation-defined` and MUST be documented (Section 13.3). A `[hooks.<name>]` table declaring
-  no `run` is a configuration error (Section 6.10).
-- `context` (string) — `host_side` or `in_sandbox` (Section 3.2).
+  `Implementation-defined` and MUST be documented (Section 13.3). A `[hooks.engine.<name>]` table
+  declaring no `run` is a configuration error (Section 6.11).
+
+The namespace is `hooks.engine` rather than `hooks` because a consumer MAY carry hooks of its own
+under `hooks` — Symphony's workspace lifecycle hooks are one such set — and two schemas sharing one
+table have no rule for a name they both want. Prefixing both is what makes each set's owner readable
+where it is declared, rather than inferable from whether an entry is a table or a scalar. A
+consumer's namespace is not this specification's to define; that it is disjoint from `hooks.engine`
+is.
+
+**A hook does not declare its execution context.** Which context a hook runs in is fixed by the
+artifact it is declared in: one declared in `repo.policy.toml` is host-side, one declared in the
+consumer's in-sandbox artifact is in-sandbox. The engine still receives a context for every hook,
+because it is handed one merged surface and never sees two artifacts (Section 3.2) — the consumer
+tags each hook while assembling that surface, which is the same act as sourcing it by trust.
+
+Deriving it rather than declaring it removes a combination the declared form admitted: a hook marked
+`host_side` whose unit the working tree supplies. Under derivation that is not a rule to enforce but
+a thing that cannot be written, because a host-side hook is one the working tree did not declare.
+
+Where the unit is resolved from follows the context, and follows it for the same reason the
+declaration does:
+
+- An `in_sandbox` unit resolves from the **working tree**, which is where it runs and where the
+  consumer sources in-sandbox policy from (Section 3.2).
+- A `host_side` unit resolves from the **same source the host-side policy was read from**, and MUST
+  NOT resolve from the working tree. A consumer that sources host-side policy from a trusted
+  revision so an untrusted working tree cannot alter it gains nothing if the program that policy
+  names is one the working tree supplies. The engine MUST NOT run a `host_side` unit with the
+  working tree as its working directory; it supplies the working tree's location to the unit
+  instead, so a host-side hook can still inspect the tree — reading it as data is what a scan or a
+  build check is for — without executing anything the tree carries.
+
+This specification names no branch here, because the engine has none: which revision counts as
+trusted is the consumer's (Section 3.2), and this rule says only that the unit and the declaration
+come from the same one. How an engine resolves a `host_side` unit is `Implementation-defined` and
+MUST be documented (Section 13.3).
 
 How the engine treats a hook:
 
@@ -829,6 +898,12 @@ least 600 seconds, and an engine that lets a deployment configure it MUST hold t
 the same floor. The floor's exact value is arbitrary in the way Section 5.6's is; that it is fixed is
 not, because a repository whose `before:commit` gate is its own test suite otherwise runs on one
 engine and not on another.
+
+The bound is stated over the hook because that is the unit at almost every position, and it holds
+for every unit the engine runs at a lifecycle position and waits on. The `pr_to_squash` transform
+(Section 10.3) is the one such unit no `[hooks.engine]` table declares, and it is bounded on the
+same terms and reports the same reason: what makes the bound necessary is that the program is one
+this specification does not describe, not which key named it.
 
 What exceeding the bound produces divides with the division the bullets above already draw, by whether
 anything waits on the answer:
@@ -926,17 +1001,20 @@ Message formulation is repository configuration; the engine bakes in no format (
 
 [messages.pr]
 body_source = "auto"           # "auto" (compose) | "agent" (caller prose) | "template"
-title_scan  = "strict"         # scan profile for the title
-body_scan   = "relaxed"        # scan profile for the body (Section 10.4)
 
 [messages.squash]
 strategy   = "squash"          # merge strategy: "squash" | "merge" | "rebase"
 transform  = "pr_to_squash"    # a repo-owned transform applied at before:merge (Section 10.3)
 ```
 
+No table here binds a content scan. A scan is declared as a hook and run by a `[policy]` edge at a
+lifecycle position (Sections 6.5, 6.6, 10.4), which is the binding a repository writes for every
+other unit the engine hands control to at a position; a second surface for one unit family would
+also make a position no edge binds run something, where Section 5.4 has such a position run nothing.
+
 - `strategy` (string, OPTIONAL) — the merge strategy the `merge` operation requests of the forge
   (Sections 9.2, 10.3). One of `squash`, `merge` or `rebase`. A value the schema does not admit is a
-  configuration error (Section 6.10) rather than a silently defaulted one, because Section 6.1's
+  configuration error (Section 6.11) rather than a silently defaulted one, because Section 6.1's
   forward-compatibility rule covers a key the schema does not declare and not a declared key whose
   value it does not admit.
   - Default: `merge`.
@@ -958,6 +1036,14 @@ work-branch guarantee — such a strategy writes to the base branch, which is a 
 does not rank the three against one another. The default above rests on what each strategy does to the
 commits, not on that sentence.
 
+- `transform` (string, OPTIONAL) — names the repository unit run at `before:merge` under a `squash`
+  strategy, which derives the squash subject and body from the pull request (Section 10.3). The unit
+  is the consumer's to bind, as a `template` body source's unit is (Sections 6.11, 10.2); a
+  `transform` naming a unit the consumer bound nothing to is a configuration error
+  (`transform_unbound`, Section 6.11).
+  - Default: none. Where no transform is named nothing is unbound and none runs; the code host
+    composes the squash message it writes (Section 9.2).
+
 ### 6.9 `[tasks]` and `[driver]`
 
 When the consumer runs the OPTIONAL task model (Section 7.3), these tables configure it:
@@ -974,37 +1060,96 @@ run = "ship"                   # the front-end sequence completion runs
 
 These tables are inert when the consumer runs no task model (for example the interactive front-end).
 
-### 6.10 Validation
+### 6.10 `[[branch]]` Sections
+
+A repository MAY vary its Way of Working by the branch a unit of work targets. One policy document
+carries the variation, so the whole of it stays reviewable in one place:
+
+```toml
+[[branch]]
+match = { prefix = "release/" }
+
+[[branch.policy.edge]]
+on   = "before:push"
+do   = "run"
+hook = "sign-artifacts"
+
+[branch.messages.squash]
+strategy = "merge"             # a release track keeps individual commits
+```
+
+- `match` (table) — REQUIRED, and it names **exactly one** matcher. `prefix` is the matcher this
+  specification defines: the section applies where the resolved base branch (Section 6.4) starts
+  with its value. A `match` naming no recognized matcher, or more than one, is a configuration error
+  (Section 6.11).
+- Any key the top level carries MAY appear under a section, and means for that branch what it means
+  at the top level.
+
+Resolution is by **longest prefix**, and exactly one section applies. Where several match, the one
+whose prefix is longest wins; where none matches, the top level applies alone. That is what makes
+the feature safe to add: Section 5.4 refuses a policy in which two edges could match one trigger,
+and a scheme in which two sections could both contribute an edge for one trigger would reintroduce
+exactly that ambiguity one level up. Longest-prefix-wins settles it by construction rather than by a
+precedence rule an implementation could read differently.
+
+No empty-prefix default is required, which is where this differs from the `by_prefix` base
+resolution (Section 6.4). There, the strategy must select *some* branch, so a default is the only
+way to make resolution total. Here the top level is the default, and a section states only its
+differences.
+
+A section **merges over** the top level, key by key, which mirrors the rule the `vcsx.toml` merge
+already uses (Section 6.1). So a release track adds a signing gate without restating every hook, and
+a key it does not mention keeps whatever the top level said. Two sections with the same `match` are
+refused (Section 6.11) rather than merged in file order: file order is not a property a repository
+should have to reason about, and 5.4's refusal of non-determinism is the posture this specification
+takes wherever two things could both apply.
+
+The matcher is named inside `match` rather than being the bare string it is today's only kind, so a
+later decision adding another — a glob, say, for a repository whose branches carry a suffix rather
+than a prefix — adds a key beside `prefix` instead of changing every section already written.
+
+Important nuance: under `policy_source = "target_branch"` (Section 8.1) these sections come from the
+pull-request target, so whoever can land a change there can author one. That is a property of the
+mode rather than of this feature, and `SPEC.md` Section 15.4 states it where the mode is chosen.
+
+### 6.11 Validation
 
 A policy is validated before use. Each configuration error carries a stable reason token, surfaced in
 the result envelope (Section 8.2), so a caller can branch on the cause without parsing `message`:
 
 | Condition | Reason |
 |-----------|--------|
+| The source host-side policy is read from could not be read — the branch absent, the remote unreachable, or the credential refused alike (Sections 6.1, 8.1) | `policy_source_unreadable` |
+| No `repo.policy.toml` was discovered at the source (Section 6.1) | `policy_not_found` |
 | A discovered `repo.policy.toml`, or a `vcsx.toml` merged into it, that does not parse (Section 6.1) | `malformed_policy` |
 | A key whose value does not satisfy the constraints its section states — a `[requires] version_floor` that is not a `MAJOR.MINOR` version (Sections 6.2, 8.5), for example | `malformed_policy` |
 | An edge whose action cannot be dispatched from the arguments it carries — a `run_op` with no `op`, a `run` with no `hook` (Sections 5.2, 6.5) | `malformed_policy` |
-| A declared hook that names no unit to run — a `[hooks.<name>]` table with no `run` (Section 6.6) | `malformed_policy` |
+| A declared hook that names no unit to run — a `[hooks.engine.<name>]` table with no `run` (Section 6.6) | `malformed_policy` |
 | An edge's `on` is not a trigger the engine recognizes (Section 6.5) | `unknown_trigger` |
 | An edge's `do` is not a known action (Section 5.2) | `unknown_action` |
 | A `run_op` names an operation the engine does not define (Section 4.1) | `unknown_operation` |
 | A `run` names a hook the `[hooks]` table does not declare (Section 6.6) | `unknown_hook` |
 | A duplicate `(from, on)` policy edge — non-determinism (Section 5.4) | `duplicate_edge` |
+| Two `[[branch]]` sections with the same `match` — non-determinism one level up (Section 6.11) | `duplicate_branch_section` |
 | A duplicate `(from, on)` transition (Section 6.7) | `duplicate_transition` |
 | A cycle of lifecycle positions, each position's `run_op` edge dispatching the operation the next position gates, so no operation on the cycle can run (Sections 4.1, 5.6) | `position_cycle` |
 | A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map (Section 6.4) | `base_unresolvable` |
 | A `set_state`/transition binding without a consumer that can apply it (Section 5.2) | `set_state_unbound` |
 | A `[messages.pr]` `body_source = "template"` with no template unit bound (Sections 5.2, 10.2) | `template_unbound` |
+| A `[messages.squash]` `transform` naming a unit the consumer bound nothing to (Sections 6.8, 10.3) | `transform_unbound` |
 | A policy, or the consumer configuration, requiring a capability no selected backend declares (Section 9.3) | `capability_unsupported` |
+| A `policy_branch` equal to the branch the resolved base names (Sections 6.4, 8.1) | `policy_branch_is_target` |
 | A `version_floor` above the running engine version (Section 8.5) | `version_floor_unmet` |
 
-The first four conditions are well-formedness failures and the rest are consistency failures, and
-the order is not incidental: validation takes a document, and a policy that does not parse yields
-none for the checks below it to run against. `malformed_policy` covers a well-formedness failure no
-other condition in the table names; where another names the state — a missing or malformed
-`prefixes` map is `base_unresolvable` (Section 6.4) — that condition's reason is reported.
-Section 6.1's rule that an unknown key SHOULD be ignored for forward compatibility covers a key the
-schema does not declare, not a declared key whose value the schema does not admit.
+The first two conditions leave the engine without a document at all, the next four are
+well-formedness failures, and the rest are consistency failures. The order is not incidental:
+validation takes a document, a policy that could not be obtained yields none for the well-formedness
+checks to run against, and one that does not parse yields none for the consistency checks below it.
+`malformed_policy` covers a well-formedness failure no other condition in the table names; where
+another names the state — a missing or malformed `prefixes` map is `base_unresolvable` (Section 6.4)
+— that condition's reason is reported. Section 6.1's rule that an unknown key SHOULD be ignored for
+forward compatibility covers a key the schema does not declare, not a declared key whose value the
+schema does not admit.
 
 Validation is judged from five inputs and no others, and naming them is what makes "determinable
 before the policy runs" a question with an answer (Sections 8.6, 9.3):
@@ -1017,18 +1162,30 @@ before the policy runs" a question with an answer (Sections 8.6, 9.3):
   of the selected backends, together with the defaults above, are what `capability_unsupported` turns
   on;
 - the actions the consumer can effect (Section 5.2), which is what `set_state_unbound` turns on;
-- the repository units the consumer bound, which is what `template_unbound` turns on.
+- the repository units the consumer bound, which is what `template_unbound` and `transform_unbound`
+  turn on.
 
-The last is stated rather than left to inference because a template is a Section 10.2 repository unit
-and not a Section 5.2 action, so an engine judging only the document and the action set would find the
-condition undeterminable and defer it to first use — and first use of a `template` body source is a
-`create_pr`, which a `ship` reaches only after it has pushed (Section 12.2). A policy that cannot
-compose a body would then publish a work branch before saying so.
+The last is stated rather than left to inference because a template is a Section 10.2 repository
+unit and not a Section 5.2 action, so an engine judging only the document and the action set would
+find the condition undeterminable and defer it to first use — and first use of a `template` body
+source is a `create_pr`, which a `ship` reaches only after it has pushed (Section 12.2). A policy
+that cannot compose a body would then publish a work branch before saying so. A `pr_to_squash`
+transform is the same kind of unit and is refused here for the same reason, with more of the flow
+behind it: its first use is the `merge` a `land` reaches only once the pull request is open
+(Sections 10.3, 12.3).
 
 The third is an input rather than something the engine holds because the consumer supplies it with the
 invocation (Section 6.2), and nothing about the ordering changes to admit it: Section 8.6 establishes
 `arguments_unreadable` and `local_vcs_missing` before validation, so the invocation's arguments are
 decoded and its backend selection is known by the time the checks above run.
+
+`policy_branch_is_target` is judged from the consumer's configuration and the policy together, and
+from no checkout, which is what places it here rather than among the preconditions. A trusted
+revision that is also the branch pull requests target is one the work being landed can rewrite, so
+the two values naming the same branch is a defect in the configuration rather than a state the
+engine can work around. Refusing it at validation is what keeps the refusal ahead of `commit`: a
+consumer that discovered the conflict when `create_pr` ran would already have published a work
+branch, which is the disposition Section 6.11 exists to avoid.
 
 `provision` is validated from those inputs **less the first**. The policy document is not among
 them, because the operation exists to obtain the repository the document is in (Sections 4.1, 6.1),
@@ -1046,10 +1203,13 @@ a repository cannot bind the step that obtains the repository. The refusal still
 and before any policy runs (Section 8.5), and what precedes it wrote no branch and published
 nothing.
 
-What is *not* judged here is what only a checkout or a run can answer. Whether the unit a `run` names
-exists and can be started is a property of the worktree rather than of the document, so a hook the
-engine could not start is `hook_unanswered` at first use (Sections 4.3, 6.6) and not a configuration
-error; a `[hooks.<name>]` that names no unit at all is the document's own defect and is refused here.
+What is *not* judged here is what only a checkout or a run can answer. Whether the unit a `run`
+names exists and can be started is a property of wherever that unit resolves from — the working tree
+for an `in_sandbox` hook, the host-side policy's own source for a `host_side` one (Section 6.6) —
+rather than of the document, so a hook the engine could not start is `hook_unanswered` at first use
+(Sections 4.3, 6.6) and not a configuration error; a `[hooks.engine.<name>]` that names no unit at
+all is the document's own defect and is refused here. The disposition is the same for both contexts;
+only where the engine looked differs.
 
 Two boundaries against neighbouring reasons follow. `version_floor_unmet` names a floor the engine
 read and does not satisfy; a floor it cannot read is `malformed_policy`. The engine refuses either
@@ -1172,6 +1332,57 @@ The engine resolves the remote once per invocation and supplies it to each capab
 branch's own upstream binding, which need not exist — the work branch is engine-derived
 (Section 6.3) and MAY be absent from the checkout at the first push.
 
+The **base branch** is the pull-request target and what `integrate` brings in, and the consumer may
+supply it two ways:
+
+- `base_branch` (OPTIONAL) — the base for this invocation. It wins over the consumer
+  configuration's and over `[base] branch` (Section 6.4), most specific first.
+- `base_branch_allowed` (OPTIONAL) — the set of bases an invocation may name, as names or patterns.
+  A `base_branch` outside it is refused before the policy runs (Section 8.6). It belongs to the
+  consumer configuration rather than to a single invocation, so the party bounding the choice is not
+  the party making it. The `policy_branch` is excluded whatever this lists, and whether or not it is
+  configured at all: a bound an operator must remember to set is a guarantee that fails by omission,
+  and this one is the specification's rather than the operator's.
+
+Where no source supplies a base, an entry that needs one is refused before the policy runs; an entry
+that needs none runs (Section 8.6). The engine holds a base branch opaque as it holds the coordinate
+opaque: it resolves which of the three sources applies, supplies the result to the capabilities that
+take one, and interprets nothing about the name.
+
+The **policy source** names where host-side policy is read from:
+
+- `policy_source` — `policy_branch` or `target_branch`.
+  - Default: `policy_branch`. The revision is named separately from the pull-request target, so
+    nothing the consumer merges reaches what it trusts.
+  - `target_branch` reads host-side policy from the pull-request target itself. `policy_branch` is
+    then neither required nor meaningful, and a `policy_branch` equal to the target is the
+    configuration rather than an error in it, so `policy_branch_is_target` does not arise
+    (Section 6.11).
+
+It is a named mode rather than a flag because the trust properties Section 11 states are conditional
+on it, and a conditional guarantee is worth stating only where a consumer can tell which state
+holds. What `target_branch` gives up is stated where the guarantee is, not left to be derived.
+
+The **policy branch** is the revision the engine reads the host-side parts of `repo.policy.toml`
+from under the default mode (Sections 3.2, 6.1):
+
+- `policy_branch` — REQUIRED under `policy_source = "policy_branch"`; its absence is then refused
+  before the policy runs (Section 8.6). Which revision host-side policy is read from is the
+  consumer's decision, because Section 3.2 makes sourcing by trust the consumer's, and this argument
+  is that decision made explicit.
+  - It resolves to the copy belonging to the resolved `remote`, and never to a local branch of the
+    same name. This is Section 6.4's rule for the base ref applied to the trust root, and it carries
+    more weight here: a checkout MAY hold several copies of one branch, and for the base the wrong
+    one yields a stale number, while for the policy branch it yields host-side hooks chosen by
+    whoever can write that checkout. A consumer running the engine against a checkout it did not
+    create is exactly where that matters.
+
+It is REQUIRED with no default, and specifically no default derived from `[base] branch`: a branch
+named inside the policy cannot select the revision the policy is read from. Two properties are
+required of whatever it names, and neither is one the engine can establish for itself — a consumer
+that runs an agent MUST NOT let that agent write to it, and MUST NOT direct its own merges at it
+(Section 11). The engine holds it opaque, as it holds the base branch and the coordinate opaque.
+
 Two **locations** name where `provision` acts (Section 4.1):
 
 - `store_location` — where the fetched copy of the repository is maintained. REQUIRED for
@@ -1237,10 +1448,10 @@ Credentials reach the plugins for the duration of an invocation (Section 1.3); t
 neither beyond it.
 
 The consumer-supplied values this section names — `local_vcs` and `forge`, the forge repository
-coordinate, the `remote`, `provision`'s two locations, the two access parameters, `forge_parameters`
-and the credential pair — MAY be read by the engine from a **consumer configuration**: a
-consumer-owned file, distinct
-from `repo.policy.toml` and never sourced from the repository. Its discovery precedence is
+coordinate, the `remote`, `policy_branch`, `base_branch` and `base_branch_allowed`, `provision`'s
+two locations, the two access parameters, `forge_parameters` and the credential pair — MAY be read
+by the engine from a **consumer configuration**: a consumer-owned file, distinct from
+`repo.policy.toml` and never sourced from the repository. Its discovery precedence is
 `Implementation-defined` and MUST be documented (Section 13.3). It carries no key `repo.policy.toml`
 carries, so the two are disjoint and neither shadows the other (Section 6.1). It MAY carry a
 credential directly or a reference the consumer resolves, so a consumer holding its secrets in a
@@ -1281,7 +1492,7 @@ Every invocation returns one structured result:
   wherever it finds it convenient.
 - `status` is the invocation's outcome. For a run that executed the policy it is the overall proto
   class: `ok` (all steps `done`), `needs_caller`, or `error`. For a run in which the policy did not
-  run it is `usage_or_config` (Sections 6.10, 8.6). A flow the policy stopped with `park`
+  run it is `usage_or_config` (Sections 6.11, 8.6). A flow the policy stopped with `park`
   (Section 5.2) is `needs_caller`: it did not reach the entry's intended effect, so it is not `ok`,
   and `park` does not fail the flow, so it is not `error`. A flow the executor stopped at its bound
   (Section 5.6) is `needs_caller` on the same reasoning: the entry's intended effect was not
@@ -1294,7 +1505,7 @@ Every invocation returns one structured result:
   which the executor stopped; and a flow the policy failed with `fail` (Section 5.2) on anything
   other than an `error`-class result. In neither of the middle two did an operation ask the caller for
   anything, so there is nothing decisive to report. Under `usage_or_config` there is no operation
-  result: `op` and `class` are null and `reason` carries the configuration reason (Section 6.10) or
+  result: `op` and `class` are null and `reason` carries the configuration reason (Section 6.11) or
   the precondition reason (Section 8.6).
 - A `fail` is scoped by the class the rule above already turns on. Where the run has a decisive
   result whose class is `error`, a `fail` reports it: the class agrees with the status, so the
@@ -1316,22 +1527,26 @@ Every invocation returns one structured result:
   `bound_elapsed`, `not_started` or `answer_unreadable` — absent or empty where every such hook
   answered. It is the non-gating half's mirror of `hook_unanswered`, which is why the two cover the
   same three conditions.
-- `outputs` carries `unanswered_gates` for the gating half: the `before:*` hooks that gave the engine
-  no usable answer, each naming the `hook`, the `position` that ran it, the `condition` — the same
-  three tokens — and an `Implementation-defined` `detail`; absent or empty where every gate answered.
-  A gate is not reported in `unfinished_hooks`, because the gated operation reports it as
+- `outputs` carries `unanswered_gates` for the gating half: the `before:*` units that gave the
+  engine no usable answer, each naming the `hook`, the `position` that ran it, the `condition` — the
+  same three tokens — and an `Implementation-defined` `detail`; absent or empty where every such
+  unit answered. The key is named for the gate that is almost always the unit at a position, and the
+  `pr_to_squash` transform (Section 10.3) is reported here too rather than in a key of its own,
+  because it reaches the consumer through the same reason and carries the same three conditions; the
+  `hook` field carries the unit's name in either case. A gate is not reported in `unfinished_hooks`,
+  because the gated operation reports it as
   `hook_unanswered` (Section 4.3): the reason routes and the condition diagnoses, and both halves
-  spell the condition the same way, so one consumer branch reads both. It is an array rather than one
-  entry because the result re-enters the machine: a repository binding `<op>:hook_unanswered` to
+  spell the condition the same way, so one consumer branch reads both. It is an array rather than
+  one entry because the result re-enters the machine: a repository binding `<op>:hook_unanswered` to
   anything that does not end the flow can reach a second position on the same traversal, which
   Section 5.6 bounds rather than refuses.
-- `outputs` carries `failed_by_policy` where the policy ended the flow with `fail` (Section 5.2): the
-  `trigger` the edge fired on, and the `reason` the edge wrote where it wrote one (Section 6.5). The
-  key is absent where no `fail` ran. The token is reported here rather than in the envelope's `reason`
-  field because that field carries an operation reason (Section 4.3), a configuration reason
-  (Section 6.10) or a precondition reason (Section 8.6) — each from a registry a consumer branches on
-  and an engine MUST document additions to — and a repository-authored value there would be
-  indistinguishable from an engine one.
+- `outputs` carries `failed_by_policy` where the policy ended the flow with `fail` (Section 5.2):
+  the `trigger` the edge fired on, and the `reason` the edge wrote where it wrote one (Section 6.5).
+  The key is absent where no `fail` ran. The token is reported here rather than in the envelope's
+  `reason` field because that field carries an operation reason (Section 4.3), a configuration
+  reason (Section 6.11) or a precondition reason (Section 8.6) — each from a registry a consumer
+  branches on and an engine MUST document additions to — and a repository-authored value there would
+  be indistinguishable from an engine one.
 - `message` is human-readable prose. Nothing parses it: every fact a consumer branches on has a field
   or a token of its own, so a consumer reading `message` for structure reads a surface no engine holds
   stable, and an engine putting structure there is spending a field that has no schema on one that
@@ -1346,7 +1561,7 @@ branch without parsing:
 - `0` — `ok` (all `done`).
 - `10` — `needs_caller` (an escalation is present).
 - `20` — `error`.
-- `2` — `usage_or_config` (Sections 6.10, 8.6); the policy did not run.
+- `2` — `usage_or_config` (Sections 6.11, 8.6); the policy did not run.
 - `1` — the invocation produced no result at all (below); this is not an invocation status.
 
 The JSON result is emitted for each of the four status-bearing codes regardless of which, so a caller
@@ -1398,7 +1613,7 @@ unresolvable, and neither is reachable through that default: `intervention` is r
 
 - The engine version is `MAJOR.MINOR`. The invocation envelope, the invocation status values, the
   proto classes, the exit-code mapping, the `need` vocabulary, the class of every listed reason
-  (Section 4.3), the configuration reasons (Section 6.10), and the precondition reasons
+  (Section 4.3), the configuration reasons (Section 6.11), and the precondition reasons
   (Section 8.6) are the **major-stable surface**: they do not change within a `MAJOR`.
 - New reason tokens, new `need` tokens, new configuration reasons, new precondition reasons, new
   operations, and new plugin backends MAY be introduced in a `MINOR` release; existing consumers
@@ -1416,7 +1631,7 @@ unresolvable, and neither is reachable through that default: `intervention` is r
 
 ### 8.6 Invocation Preconditions
 
-Between validating the policy (Section 6.10) and running it, the engine establishes the
+Between validating the policy (Section 6.11) and running it, the engine establishes the
 preconditions the invoked entry point depends on, in order, reporting the first that fails — with one
 exception, `arguments_unreadable`, which this section establishes before validation for the reason
 stated below. Where a
@@ -1438,13 +1653,19 @@ registry to report. A capability consulted here that answers neither yes nor no 
 could not read the checkout it was pointed at — establishes no precondition either way, and is
 `checkout_unreadable` rather than the refusal its negative answer would have produced (Section 9).
 
-Two preconditions are established **before** validation rather than after it. An engine that cannot
-decode the invocation's arguments cannot locate the policy it would validate, so
-`arguments_unreadable` is judged first of everything. `local_vcs_missing` follows it and still
-precedes validation, because the selection is what fixes whose descriptor the engine reads
-(Section 6.10): a validation that reports `capability_unsupported` has already loaded a backend, and
-loading one is what this argument names. The ordering rule this section states below holds for every
-other reason in this registry.
+Three preconditions are established **before** validation rather than after it, and each for the
+same shape of reason — validation cannot proceed without what the argument names.
+
+- `arguments_unreadable` is judged first of everything: an engine that cannot decode the
+  invocation's arguments cannot locate the policy it would validate.
+- `local_vcs_missing` follows, because the selection is what fixes whose descriptor the engine reads
+  (Section 6.11): a validation that reports `capability_unsupported` has already loaded a backend,
+  and loading one is what this argument names.
+- `policy_branch_missing` follows, because the policy document is the first of Section 6.11's five
+  inputs and this argument is what says where to read it from. There is nothing to validate until it
+  is known.
+
+The ordering rule this section states below holds for every other reason in this registry.
 
 The entry point alone fixes that scope: a front-end sequence that dispatches one means the
 sequence's own dispatches (Sections 12.2, 12.3), so `ship` requires an identity and `land` does not,
@@ -1468,13 +1689,26 @@ shape, because the engine interprets neither (Section 8.1): a parameter a backen
 backend's first-use `failed` rather than a precondition this registry names, exactly as a coordinate
 it cannot use is.
 
+The base is scoped by the same rule as `git_access`. For an entry that needs one — `integrate`,
+`create_pr`, and a front-end sequence that dispatches one — a base is REQUIRED and its absence from
+all three sources is refused here as `base_branch_missing`; `commit`, `push`, `pull`, `merge`,
+`land` and `provision` need none and run without one, `land` taking its base from the pull request
+it merges (Section 12.3). An entry outside the set that reaches a base-needing operation through a
+`run_op` edge reports that operation's own reason at the dispatch (Section 4.3), which is the
+disposition this section already gives an identity the precondition does not cover.
+
+`base_branch_not_permitted` is judged wherever a `base_branch` was supplied, whatever the entry,
+because the bound is about what the invocation may name rather than about what the entry needs — the
+same shape as the commit identity, whose *malformedness* is judged whatever the entry while its
+*absence* is judged only where one is required.
+
 `provision` establishes only the preconditions judged from the invocation's arguments. It resolves
 no work branch, consults no `detect_mode()`, and accepts no commit identity, because each of those
 reads a checkout this operation exists to produce — so `no_current_branch`, `work_branch_invalid`,
 `identity_invalid` and `checkout_unreadable` are unreachable for it, and a `provision` into a
 location holding no repository is refused by none of them. What remains is `arguments_unreadable`,
 `local_vcs_missing`, `git_access_missing` and `store_location_missing`, together with the forge pair
-where a forge is configured. This is the Section 6.10 exemption's counterpart on the precondition
+where a forge is configured. This is the Section 6.11 exemption's counterpart on the precondition
 side and rests on the same sentence: the engine cannot read a repository it has not yet obtained.
 
 A precondition the engine cannot establish is not an operation result. No operation ran, so the
@@ -1489,17 +1723,20 @@ run in which the policy did not run.
 |-----------|--------|
 | The invocation's arguments could not be decoded in the encoding the engine published (Section 8.1) | `arguments_unreadable` |
 | No `local_vcs` was supplied, so no VCS backend is selected (Section 8.1) | `local_vcs_missing` |
+| No `policy_branch` was supplied, so the policy cannot be located (Section 8.1) | `policy_branch_missing` |
 | A forge is configured and no forge repository coordinate was supplied (Section 8.1) | `forge_coordinate_missing` |
 | A forge is configured and no `forge_access` was supplied (Section 8.1) | `forge_access_missing` |
 | An entry that can reach a remote was invoked and no `git_access` was supplied (Section 8.1) | `git_access_missing` |
 | `provision` was invoked and no `store_location` was supplied (Section 8.1) | `store_location_missing` |
+| An entry that needs a base was invoked and no source supplied one (Sections 6.4, 8.1) | `base_branch_missing` |
+| A supplied `base_branch` is outside the consumer's `base_branch_allowed` (Section 8.1) | `base_branch_not_permitted` |
 | The work branch is the checkout's current branch (Section 6.3) and the checkout has none | `no_current_branch` |
 | The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
 | The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it whatever the entry (Section 10.1) | `identity_invalid` |
 | A VCS backend capability consulted before the first dispatch could not answer — the checkout could not be read (Sections 3.3, 9.1) | `checkout_unreadable` |
 
 Precondition reasons carry no proto class, for the same reason configuration reasons do not
-(Section 6.10), and they share the `usage_or_config` status, so a consumer already branching on that
+(Section 6.11), and they share the `usage_or_config` status, so a consumer already branching on that
 status absorbs a new one without a class edge. An engine MUST document any precondition reason it
 adds beyond this registry (Section 13.3). An engine MUST NOT report a precondition reason for a
 condition an operation has a reason that names, and the first dispatch is the boundary: before it no
@@ -1508,14 +1745,21 @@ operation has run, and once one is dispatched its failure is that operation's ow
 condition — reading it as one would make every precondition reportable as `<op>:failed` and leave
 this registry nothing to name.
 
-What separates this registry from Section 6.10's is stated in one direction only. **A configuration
-error is judged without reading the checkout**, from the five inputs Section 6.10 enumerates — the
+What separates this registry from Section 6.11's is stated in one direction only. **A configuration
+error is judged without reading the checkout**, from the five inputs Section 6.11 enumerates — the
 policy document, what the engine holds independently of the invocation, the consumer's selection and
 access configuration, the actions a consumer can effect and the repository units it bound. The
 converse does not hold and is not claimed: a precondition MAY need the checkout and MAY be judged
 from the invocation's arguments alone, as `arguments_unreadable`, `local_vcs_missing`,
-`forge_coordinate_missing`, `git_access_missing`, `forge_access_missing` and
-`store_location_missing` are. Each row above says what it is judged from.
+`policy_branch_missing`, `forge_coordinate_missing`, `git_access_missing`, `forge_access_missing`,
+`store_location_missing`, `base_branch_missing` and `base_branch_not_permitted` are. Each row above
+says what it is judged from.
+
+`base_branch_missing` is the one row judged partly from the policy document, since `[base] branch`
+is its lowest source (Section 6.4), and it is still a precondition rather than a configuration
+error. The policy is well formed either way: a document that omits an OPTIONAL key carries no defect
+to repair, and what is absent is a value the invocation or the consumer configuration was free to
+supply. That is the invocation's side of the line below.
 
 Where both sides are checkout-free, what separates them is the artifact at fault: **a configuration
 error names a defect a consumer repairs by editing a document; a precondition failure names one it
@@ -1524,7 +1768,7 @@ order in which an engine establishes either.
 
 Both refuse to run the policy and both report `usage_or_config`, which is why that status names usage
 and configuration together. Validation precedes precondition establishment, so where a configuration
-error and a precondition failure both hold, the configuration reason is reported — the two
+error and a precondition failure both hold, the configuration reason is reported — the three
 established before validation excepted, for the reason above.
 
 Two boundaries follow from stating it that way. A descriptor field a backend can answer only once it
@@ -1534,11 +1778,11 @@ statically is one the engine holds from the consumer's selection alone (Section 
 before it validates, so `capability_unsupported` is inside this definition rather than a
 counterexample to it — which is what Section 9.3's "where determinable" refers to.
 
-The five rows naming a missing argument — the VCS backend selection, the forge repository
-coordinate, the two access parameters and `provision`'s store location — are judged with no
-capability consulted and no checkout opened, and are preconditions rather than configuration errors
-because an argument is not a document: the policy is well formed and what is absent is what the
-invocation was to supply.
+The six rows naming a missing argument — the VCS backend selection, the policy branch, the forge
+repository coordinate, the two access parameters and `provision`'s store location — are judged with
+no capability consulted and no checkout opened, and are preconditions rather than configuration
+errors because an argument is not a document: the policy is well formed and what is absent is what
+the invocation was to supply.
 
 ## 9. Plugin API
 
@@ -1795,22 +2039,22 @@ The executor reads a descriptor before invoking a capability and MUST NOT invoke
 undeclared capability yields an `error`-class result rather than a silent no-op. A repository policy that
 requires an unsupported capability (for example a squash strategy a forge cannot perform) is a
 configuration error surfaced at validation where determinable, carrying `capability_unsupported`
-(Section 6.10); where it is not determinable before the policy runs, it surfaces at first use as the
+(Section 6.11); where it is not determinable before the policy runs, it surfaces at first use as the
 operation's `unsupported` reason (Section 4.3).
 
-What is determinable follows from what validation is judged from (Sections 6.10, 8.6). A capability a
-backend declares statically follows from the consumer's selection alone (Section 8.1), which the
-engine holds before it validates, so a `[messages.squash]
-strategy` no selected forge declares is refused at validation — whether the policy states the
-strategy or takes the Section 6.8 default, since the engine holds its own default. A consumer
-configuration that derives more than one working tree from one store against a VCS backend declaring
-it cannot (Section 9.1) is refused the same way, and for the same reason: the declaration is static
-and the consumer's requirement is held before the policy runs. What remains on the
-first-use side is a capability required by an operation an engine defines beyond Section 4.1, an
-OPTIONAL capability such an operation reaches, and a descriptor field a backend can answer only once
-it has opened the checkout. None of those is reachable through the required operation set and the
-policy keys this specification defines, so a Conformance Statement claiming the first-use half names
-the operation or optional capability it demonstrated the claim against (Section 13.1).
+What is determinable follows from what validation is judged from (Sections 6.11, 8.6). A capability
+a backend declares statically follows from the consumer's selection alone (Section 8.1), which the
+engine holds before it validates, so a `[messages.squash] strategy` no selected forge declares is
+refused at validation — whether the policy states the strategy or takes the Section 6.8 default,
+since the engine holds its own default. A consumer configuration that derives more than one working
+tree from one store against a VCS backend declaring it cannot (Section 9.1) is refused the same way,
+and for the same reason: the declaration is static and the consumer's requirement is held before the
+policy runs. What remains on the first-use side is a capability required by an operation an engine
+defines beyond Section 4.1, an OPTIONAL capability such an operation reaches, and a descriptor field
+a backend can answer only once it has opened the checkout. None of those is reachable through the
+required operation set and the policy keys this specification defines, so a Conformance Statement
+claiming the first-use half names the operation or optional capability it demonstrated the claim
+against (Section 13.1).
 
 ## 10. Message Formulation
 
@@ -1845,8 +2089,8 @@ The pull-request title and body are **composed** per `[messages.pr]` (Section 6.
 - `body_source = "agent"` — use caller-supplied prose only.
 - `body_source = "template"` — use a repository template over the durable inputs.
 
-The title is scanned with the `title_scan` profile and the body with the `body_scan` profile (Section
-10.4). One pull request is maintained per work branch (created, then updated).
+The composed title and body are what a scan at `before:create_pr` inspects (Section 10.4). One pull
+request is maintained per work branch (created, then updated).
 
 ### 10.3 Squash (`pr_to_squash`)
 
@@ -1857,14 +2101,40 @@ durable history can be stricter than the live pull-request surface. `land` runs 
 authors a message. The transform is a repository unit; the engine supplies only the position and the
 pull-request content.
 
+The unit is named by `[messages.squash]` `transform` and bound by the consumer, as a `template` body
+source's unit is (Sections 6.8, 10.2); a `transform` naming a unit the consumer bound nothing to is
+refused at validation (`transform_unbound`, Section 6.11). It is a unit the engine runs at a
+lifecycle position and waits on, so Section 6.6's bound applies to it. A transform that gives the
+engine no usable answer — it did not start, it was still running when the bound elapsed, or it
+answered in a shape the engine could not read — yields `merge:hook_unanswered` (Section 4.3) and the
+operation does not act: the pull request is not merged, and a caller reading its state finds the one
+it had before (Section 9.2). No separate prohibition on merging with the pull request's own title
+and body is needed — an operation that does not act publishes nothing, so a transform is not stepped
+around by an engine that could not run it.
+
 ### 10.4 Content Scanning
 
-A scan profile is a repository-owned check (`scan-content`) that inspects content — a commit diff, a
-title, a body — and blocks by returning a `needs_caller`/`error` result with a stable reason, which
-the engine surfaces as the scanned operation's `blocked` or `failed` reason (Section 6.6). The
-engine ships no scan rules; profiles such as `strict` and `relaxed` are names a repository binds to its
-own checks. Scanning at `before:commit` runs in-sandbox; scanning title/body during `create_pr` runs in
-the consumer's context.
+A scan is a repository-owned check (`scan-content`) that inspects content — a commit diff, a title,
+a body — and blocks by returning a `needs_caller`/`error` result with a stable reason, which the
+engine surfaces as the scanned operation's `blocked` or `failed` reason (Section 6.6). The engine
+ships no scan rules; a profile such as `strict` or `relaxed` is a repository's own name for one of
+its checks, and which rules a profile applies — to a title as against a body — is the repository's
+on the same terms.
+
+A scan is bound the way every other unit the engine hands control to at a position is: it is
+declared as a hook and a `[policy]` edge runs it at a lifecycle position (Sections 5.2, 6.5, 6.6).
+No `[messages]` key binds one (Section 6.8), so the three contents are bound alike and a position no
+edge binds runs no scan, which is what Section 5.4 has such a position do. An edge naming a hook the
+document does not declare is `unknown_hook` and a hook the engine could not start is
+`hook_unanswered` at first use, so a scan needs no configuration reason of its own (Section 6.11).
+
+What the engine supplies at the position is the content and nothing else, as Section 10.3 supplies
+the pull-request content to the transform: the commit message and the diff the commit would record
+at `before:commit`, the composed title and body at `before:create_pr` (Sections 10.1, 10.2). A
+scan's execution context follows the artifact that declares it, as every hook's does (Sections 3.2,
+6.6): the `before:commit` scan is the in-sandbox one — the message was authored there and the tree
+it inspects is there — where a scan the host-side policy declares over the composed title and body
+runs in the consumer's context.
 
 The title and body scanned at `before:create_pr` are the values the operation writes: the engine
 composes them once (Section 10.2) and recomposes nothing between the scan and the write, so that
@@ -1899,6 +2169,14 @@ one:
   re-parents a commit already on it — an update that reconciles a divergence merges (Section 4.1) — so
   the branch remains publishable without rewriting it. A `rebase` or `squash` merge strategy
   (Section 6.8) is not an exception: it writes to the base branch.
+- The revision host-side policy is read from is the consumer's `policy_branch` (Section 8.1), and
+  the engine derives no default for it from the policy, because a branch named inside
+  `repo.policy.toml` cannot select the revision `repo.policy.toml` is read from. Two properties of
+  it are the consumer's to establish, stated as obligations on the consumer rather than as
+  guarantees of the engine: an agent the consumer sandboxes MUST NOT be able to write to it, and the
+  consumer MUST NOT direct its own merges at it. The second is the one a consumer that lands pull
+  requests has to act on — a trusted revision that is also a merge target is one the work being
+  landed can rewrite, which makes host-side trust a property of review rather than of sourcing.
 - Everything that decides which system is reached, and with what, comes from the consumer: the
   backend selection, the forge repository coordinate, the `remote`, the two access parameters,
   `forge_parameters` and the two credentials (Section 8.1). Where the engine materializes a store
@@ -2115,7 +2393,7 @@ A conforming engine SHOULD include tests covering:
   one another in a cycle is refused at validation with `position_cycle` rather than reaching the
   bound, and reaching no operation is what distinguishes it — a policy whose cycle passes through a
   typed operation result, an edge on `before:push` dispatching `integrate` and an `integrate:ok` edge
-  dispatching `push`, is accepted and bounded (Sections 5.6, 6.10).
+  dispatching `push`, is accepted and bounded (Sections 5.6, 6.11).
 - Operations and reasons: each operation returns a registry reason (Section 4.3) with its documented
   proto class; `push:non_fast_forward` is `needs_caller` and routes to `integrate`; `push:pr_closed`
   refuses a push over a CLOSED/MERGED pull request; `create_pr:base_mismatch` is surfaced, not
@@ -2160,18 +2438,61 @@ A conforming engine SHOULD include tests covering:
   (Sections 3.2, 11); no front-end sequence dispatches `provision`, so a `ship` in a location
   holding no repository refuses on the checkout rather than acquiring one as a side effect (Sections
   4.1, 8.6, 12.2).
+- The base branch and its three sources: an invocation-supplied `base_branch` beats the consumer
+  configuration's, which beats `[base] branch`, and `status` reports against whichever applied; a
+  policy omitting `[base] branch` is well formed and validates (Section 6.4); an `integrate` or a
+  `create_pr` with no base from any source yields `base_branch_missing` and runs nothing, while a
+  `commit`, a `push`, a `pull`, a `merge`, a `land` and a `provision` all run without one, `land`
+  taking its base from the pull request it merges; a `base_branch` outside the consumer's
+  `base_branch_allowed` yields `base_branch_not_permitted` whatever the entry, including entries
+  that need no base; an entry outside the base-needing set that routes to `integrate` through a
+  `run_op` edge reports that operation's own reason rather than a precondition (Sections 6.4, 8.1,
+  8.6).
 - Provisioning precedes the policy and the checkout: a `provision` into a `store_location` holding
   no repository, with no `repo.policy.toml` anywhere to discover, runs and reports `provision:ok`
   rather than any configuration reason, while the same invocation of any other entry point is not
   required to (Sections 4.1, 6.1); a `provision` against a policy carrying a `version_floor` above
   the running engine version still runs, and the next invocation of another entry against the
-  repository it obtained is refused with `version_floor_unmet` (Sections 6.10, 8.5); a `provision`
+  repository it obtained is refused with `version_floor_unmet` (Sections 6.11, 8.5); a `provision`
   establishes `arguments_unreadable`, `local_vcs_missing`, `git_access_missing` and
   `store_location_missing` and none of `no_current_branch`, `work_branch_invalid`,
   `identity_invalid` or `checkout_unreadable`, so an empty location refuses on a missing argument or
   not at all (Sections 8.1, 8.6); a `capability_unsupported` turning on the selected VCS backend's
   descriptor is still reported at validation for a `provision`, the selection being an input the
-  consumer supplied rather than one read from the repository (Sections 6.10, 9.3).
+  consumer supplied rather than one read from the repository (Sections 6.11, 9.3).
+- Policy loading and unusability: the policy is obtained once per unit of work through
+  `load_policy`, and a change to the policy source after that does not take effect until the next
+  unit of work; each of the four unusable conditions — source unreadable, file absent, unparseable,
+  invalid — refuses with `usage_or_config` and its own reason, so a consumer branching on the status
+  handles all four alike while the reason distinguishes the repair; `policy_source_unreadable`
+  covers an absent branch, an unreachable remote and a refused credential without distinguishing
+  them; under `policy_source = "target_branch"` a `policy_branch` equal to the target is not an
+  error and `policy_branch` is not required (Sections 6.1, 6.11, 8.1).
+- The policy branch: a `policy_branch` naming the same branch as the resolved base is refused with
+  `policy_branch_is_target` and runs no operation, in particular no `commit` and no `push`; an
+  invocation supplying no `policy_branch` yields `policy_branch_missing`, and yields it in
+  preference to any configuration reason, since the policy cannot be located to validate; a checkout
+  holding a local branch named as the policy branch reads the copy the resolved remote holds and not
+  the local one; a supplied `base_branch` naming the policy branch yields
+  `base_branch_not_permitted` whatever `base_branch_allowed` lists and whether or not it is
+  configured (Sections 6.11, 8.1, 8.6).
+- Hook namespace and derived context: a hook declared in `repo.policy.toml` is host-side and one
+  declared in the consumer's in-sandbox artifact is in-sandbox, with no key in either saying so; a
+  `[hooks.engine.<name>]` and a consumer lifecycle key of the same name coexist without collision;
+  a `[hooks.engine.<name>]` declaring no `run` is refused with `malformed_policy` while a
+  consumer-namespaced key is not read as a hook at all (Sections 3.2, 6.6, 6.11).
+- Per-branch sections: the longest matching `prefix` applies and merges over the top level key by
+  key, a key the section does not mention keeping the top level's value; where no section matches,
+  the top level applies alone; two sections with the same `match` are refused with
+  `duplicate_branch_section`; a `match` naming no recognized matcher, or more than one, is
+  `malformed_policy` (Sections 6.10, 6.11).
+- Hook unit resolution: a `host_side` hook whose `run` names a unit present both in the host-side
+  policy's source and in the working tree runs the former, and a working-tree unit of that name with
+  no counterpart in the policy source is not started at all; a `host_side` hook does not run with
+  the working tree as its working directory and is given the tree's location instead, so a host-side
+  scan over working-tree content still completes; an `in_sandbox` hook resolves its unit from the
+  working tree and runs there; a unit the engine could not start yields `hook_unanswered` in either
+  context, so only where the engine looked differs (Sections 6.6, 8.6).
 - Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
   `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6);
   a gated operation dispatched by a `[policy]` `run_op` edge rather than by a front-end sequence — a
@@ -2188,9 +2509,9 @@ A conforming engine SHOULD include tests covering:
   yields `<op>:failed`, so a broken gate and a refusing gate are distinguishable; a result-triggered
   hook that has not answered when the bound elapses is stopped, leaves the flow unchanged, and is
   reported in `outputs.unfinished_hooks` under the same three condition tokens, so one consumer branch
-  reads both halves; a `[hooks.<name>]` declaring no `run` is refused at validation with
+  reads both halves; a `[hooks.engine.<name>]` declaring no `run` is refused at validation with
   `malformed_policy` while a `run` naming a unit that does not exist is `hook_unanswered` at first use
-  (Sections 4.3, 6.6, 6.10).
+  (Sections 4.3, 6.6, 6.11).
 - Front-ends: `ship` stops at the pull request, and over a working tree its guard reads as clean
   dispatches no `commit` and so enters no `before:commit` (Sections 4.1, 12.2); `ship` retries a
   `commit:worktree_moved` by re-dispatching the operation, which re-runs `before:commit` and reads the
@@ -2213,7 +2534,7 @@ A conforming engine SHOULD include tests covering:
   `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed, while one
   that is not a `MAJOR.MINOR` version is refused as `malformed_policy` rather than compared; a
   policy file that does not parse and an edge omitting the argument its action requires are refused
-  with the same reason and null `op`/`class` (Section 6.10); a checkout with no current branch where
+  with the same reason and null `op`/`class` (Section 6.11); a checkout with no current branch where
   no `branch_pattern` is configured, an illegal derived work-branch name, and a commit identity that
   is absent where the entry requires one or malformed each refuse to run the policy and yield
   `usage_or_config` with the precondition reason and null `op`/`class`, the last two judged through
@@ -2224,7 +2545,9 @@ A conforming engine SHOULD include tests covering:
   than a precondition reason, while a malformed identity supplied to that same entry is refused
   before the policy runs (Sections 4.3, 8.6); a policy binding `body_source = "template"` with no
   template unit bound is refused at validation with `template_unbound` and publishes nothing, rather
-  than reaching `create_pr` after a `push` has already run (Sections 6.10, 12.2); an invocation
+  than reaching `create_pr` after a `push` has already run, and one naming a `[messages.squash]`
+  `transform` with no unit bound is refused with `transform_unbound` on the same terms, rather than
+  reaching `merge` after a pull request is open (Sections 6.11, 12.2, 12.3); an invocation
   whose arguments cannot be decoded yields `usage_or_config` with `arguments_unreadable`, exit `2`,
   and an envelope on stdout whose `entry` is null, while an invocation decoded far enough to name an
   entry point reports that entry point whatever failed after it and `entry` is non-null on every
@@ -2239,7 +2562,7 @@ A conforming engine SHOULD include tests covering:
   `local_vcs_missing` whatever the entry point, and yields it in preference to any configuration
   reason, since the selection is what fixes whose descriptor validation reads; a `provision`
   supplying no `store_location` yields `store_location_missing`, while another entry supplying none
-  runs, the argument carrying no meaning there (Sections 6.10, 8.1, 8.6); a `fail` on an
+  runs, the argument carrying no meaning there (Sections 6.11, 8.1, 8.6); a `fail` on an
   `error`-class result reports that result under `status` `error`, while a `fail` on a
   `needs_caller` result, on a `done` result and at a lifecycle position each yield `status` `error`
   with null `op`/`reason`/`class` and report the edge's trigger and reason in
@@ -2253,13 +2576,27 @@ A conforming engine SHOULD include tests covering:
   writes carries the supplied commit identity — the mechanical merge commit an `integrate` or a
   `pull` writes included — on a host whose environment supplies no usable identity of its own
   (Section 10.1).
+- Content scanning: a scan is reached through a `[policy]` edge at a lifecycle position and through
+  no `[messages]` key, so a `before:create_pr` scan blocking with a `needs_caller` result yields
+  `create_pr:blocked` while the same repository with no edge at that position publishes the composed
+  title and body unscanned, the position running nothing (Sections 5.4, 6.5, 10.4); the same policy
+  scans a commit diff at `before:commit` with no key naming a profile for it; a scan is handed the
+  content of its position and a `run` edge naming a hook the document does not declare is refused at
+  validation with `unknown_hook` (Sections 6.6, 6.11).
+- The squash transform: a `pr_to_squash` that gives the engine no usable answer yields
+  `merge:hook_unanswered` and leaves the pull request unmerged at the head it had, rather than
+  merging it under its own title and body, with `outputs.unanswered_gates` naming which of
+  `bound_elapsed`, `not_started` and `answer_unreadable` occurred as it does for a gate; a
+  `[messages.squash]` `transform` naming a unit the consumer bound nothing to is refused at
+  validation with `transform_unbound` before any operation runs, while a `[messages.squash]` naming
+  no transform is valid and merges (Sections 4.3, 6.6, 6.8, 6.11, 10.3).
 - Configuration ownership: a `repo.policy.toml` carrying a key this specification no longer declares —
   a `vcs`, `forge` or `remote` left over from the table `[requires]` replaced — is ignored under
   Section 6.1's forward-compatibility rule rather than refused, so a policy written against an earlier
   surface still runs; two consumers with the same consumer configuration and the same policy reach the
   same backend and the same remote, whatever each repository's file says; a `[messages.squash]
   strategy` no selected forge declares is refused at validation with `capability_unsupported`, the
-  consumer's selection being what fixes whose descriptor is read (Sections 6.1, 6.2, 6.10, 8.1).
+  consumer's selection being what fixes whose descriptor is read (Sections 6.1, 6.2, 6.11, 8.1).
 - Plugins: an undeclared capability yields `capability_unsupported` at validation where determinable
   and the operation's `unsupported` reason at first use otherwise, never a silent no-op; a
   `[messages.squash] strategy` no selected forge declares is refused at validation whether the
@@ -2309,19 +2646,25 @@ A conforming engine SHOULD include tests covering:
   mechanism the backend's, the inability to share it declared in the descriptor. It is validated
   without a policy document and establishes no precondition that reads a checkout, being the
   operation that obtains both.
+- Base resolution from three sources — the invocation, the consumer configuration, then
+  `[base] branch` — with the bound on what an invocation may name, and the refusal scoped to the
+  entries that need a base.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), the consumer configuration as a
   second and disjoint input, including the refusal of a
   policy that is not well formed, of one declaring a hook with no unit to run, of one binding a
   template body source with no template unit bound, and of one whose lifecycle positions dispatch one
-  another in a cycle, base resolution to a branch and a base ref, and the execution-context labeling.
+  another in a cycle, base resolution to a branch and a base ref, and the execution-context labeling
+  — including that a hook's unit resolves by its context, a `host_side` one from the host-side
+  policy's own source rather than from the working tree.
 - The invocation contract: result envelope with every field described and `entry` nullable only where
   no entry point was read, the `outputs` keys that report what the engine emitted and nobody
   performed, what a hook left unanswered on either side of the division, and what the policy failed
   with `fail`, exit codes including the reserved code for an invocation that produced no result and
   one JSON object on stdout for every one that did, escalation payload, invocation preconditions, the
   backend selection, the forge repository coordinate, the remote, `provision`'s store and tree
-  locations, the two access parameters, the per-backend extension bag, the credential pair with its
-  default, and versioning with a `version_floor` floor.
+  locations, the base branch with its three-source precedence and its bound, the two access
+  parameters, the per-backend extension bag, the credential pair with its default, and versioning
+  with a `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors, the VCS backend
   separating the capabilities that acquire from the local ones that use what they acquired, the
   engine supplying each plugin the parameter and credential it uses — the forge backend its
@@ -2329,7 +2672,9 @@ A conforming engine SHOULD include tests covering:
   `git_access` and `git_credential` — and every value-answering capability able to report that it
   could not determine its answer.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
-  format, and every commit the engine writes attributed to the supplied commit identity.
+  format, every commit the engine writes attributed to the supplied commit identity, a scan reached
+  through a policy edge at a lifecycle position rather than through a key of its own, and a
+  transform that gives no usable answer leaving the pull request unmerged.
 - Checkout-mode handling (git, jj, jj secondary workspace), a pinned push refspec whose push never
   drops, rewrites or re-parents a commit already on the remote work branch, a history-preserving
   work-branch update, and the two operations conditioned on the state their position inspected — the
@@ -2348,18 +2693,18 @@ The Statement MUST record:
 - The engine version and the major-stable surface it claims (Section 8.5), including the lowest
   `version_floor` the build satisfies.
 - A resolution for every `Implementation-defined` behavior in this specification: checkout-mode
-  detection (Section 3.3), the flow bound's value and any further bound the engine imposes
-  (Section 5.6), `repo.policy.toml` discovery precedence (Section 6.1), the form of a hook's
-  engine-invoked `run` unit and
-  the bound the engine waits for one under (Section 6.6), which reason is reported when several
-  configuration conditions hold (Section 6.10), the consumer configuration's discovery precedence, the
-  backend's default remote where the consumer supplies none, the entry-point argument encodings and
-  how a
-  front-end derives the forge repository coordinate where it does (Section 8.1), the `detail` field of
-  an `unanswered_gates` entry (Section 8.2), and the escalation `detail` field (Section 8.4).
+  detection (Section 3.3), the flow bound's value and any further bound the engine imposes (Section
+  5.6), `repo.policy.toml` discovery precedence (Section 6.1), the form of a hook's engine-invoked
+  `run` unit, how a `host_side` unit is resolved from the host-side policy's source and what working
+  directory it is given, and the bound the engine waits for one under (Section 6.6), which reason is
+  reported when several configuration conditions hold (Section 6.11), the consumer configuration's
+  discovery precedence, the backend's default remote where the consumer supplies none, the
+  entry-point argument encodings and how a front-end derives the forge repository coordinate where
+  it does (Section 8.1), the `detail` field of an `unanswered_gates` entry (Section 8.2), and the
+  escalation `detail` field (Section 8.4).
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class and,
   where that class is `needs_caller`, its default `need` (Section 4.3), a configuration reason
-  (Section 6.10), or a precondition reason (Section 8.6).
+  (Section 6.11), or a precondition reason (Section 8.6).
 - The `need` vocabulary the engine emits (Section 8.4).
 - The capability descriptors its VCS and forge plugins advertise (Section 9.3), the capabilities any
   operation it defines beyond Section 4.1 requires of a backend (Section 9.1), the `forge_parameters`

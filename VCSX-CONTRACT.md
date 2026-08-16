@@ -87,7 +87,12 @@ Entry points:
   `version_floor`,
 - `scope.branch_pattern` — the branch-*name* pattern for the work branch (the scope invariant itself
   is not configurable; Section 10),
-- the action-policy edges and hooks (Section 5),
+- the action-policy edges, and the named hook units `[hooks.engine.<name>]` a `run` edge invokes
+  (Section 5). A hook declares no execution context: the artifact it is declared in fixes that, so
+  a hook in `repo.policy.toml` is host-side and one in the consumer's in-sandbox artifact is not.
+  The `hooks` namespace is shared with the consumer, whose own hooks sit under a disjoint prefix,
+- `[[branch]]` sections, each matching a base-branch prefix and merging its keys over the top level
+  so one policy document can differ by the branch a unit of work targets,
 - `tracker.transitions` — the workflow state-machine, expressed as `set_state` bindings in the machine
   (Section 5),
 - `[tasks]` and `[driver]` — the task model and computed-completion wiring (Section 8).
@@ -99,11 +104,14 @@ daemon.
 The engine's other configuration input is the **consumer configuration**: the consumer's own, and
 never sourced from the repository. It holds what the engine needs before there is a repository to
 read a policy from — which VCS and forge backends are selected, where each is reached and under
-which credential, the remote the repository was provisioned from, and where `provision` materializes
-the store and the working tree — none of which a file inside the repository can supply to the step
-that obtains the repository. The term names the input, not a file: where the engine discovers it is
-`Implementation-defined` and MUST be documented. The two surfaces carry disjoint keys, so neither
-shadows the other.
+which credential, the remote the repository was provisioned from, where `provision` materializes the
+store and the working tree, the **policy branch** the host-side parts of `repo.policy.toml` are read
+from, and the pull-request target with any bound on what an invocation may name — none of which a
+file inside the repository can supply to the step that obtains the repository or selects the
+revision the file itself is read from, and the last of which the file MAY also supply as the
+lowest-precedence source. The term
+names the input, not a file: where the engine discovers it is `Implementation-defined` and MUST be
+documented. The two surfaces carry disjoint keys, so neither shadows the other.
 
 The field-level schema of both surfaces is deferred (Section 11). The **sourcing** of
 `repo.policy.toml` — which revision each part is read from — is fixed in Section 10.
@@ -200,6 +208,13 @@ one place the two front-ends legitimately differ.
 against the selected backends — the VCS backend, and a code host such as GitHub or Forgejo; the
 operation set and its result classing are host-neutral. Named operations include:
 
+- `load_policy` — obtain the merged host-side policy surface once for a unit of work, from the
+  policy source the consumer names. The consumer holds the result and supplies it to subsequent
+  invocations, so no other operation reads the repository's configuration. Like `provision` it has
+  no lifecycle position and raises no trigger, the edges that would gate it being in the document it
+  obtains. Four conditions leave it without a usable policy — the source unreadable, the file
+  absent, unparseable, or invalid — and all four are configuration errors differing in reason
+  rather than in disposition.
 - `provision` — ensure the repository is present and current: create the store where absent, refresh
   it where present, and, where the invocation names a place for one, derive a working tree from it.
   The store and the tree are named by the consumer, as a store location and an OPTIONAL tree
@@ -286,14 +301,18 @@ three surfaces have distinct origins:
   and carries that same configured identity; the engine attributes no commit to an identity it
   derives from the host it runs on.
 - **Pull-request message — composed.** Title and body are composed from agent-supplied prose and/or
-  durable inputs (the ticket, the closed task list from Section 8, commit subjects). The title is
-  scanned strictly; the body is scanned with the tracker-key relaxation the code host's integration
-  needs. One pull request is maintained per issue (created, then updated). The default body is
-  auto-composed from the durable inputs; agent-supplied prose, when present, overrides (replaces) it.
+  durable inputs (the ticket, the closed task list from Section 8, commit subjects), and are what a
+  `scan-content` check at the `before:create_pr` position inspects — strictly for the title, with
+  the tracker-key relaxation the code host's integration needs for the body. Which rules apply to
+  which is the repository's, as every scan rule is: the check is reached through a policy edge at
+  the position, and no configuration key names a profile per field. One pull request is maintained
+  per issue (created, then updated). The default body is auto-composed from the durable inputs;
+  agent-supplied prose, when present, overrides (replaces) it.
 - **Squash message — transformed.** The squash subject/body are mechanically derived from the pull
-  request by a repo-owned `pr_to_squash` transform at the `before:merge` position (title verbatim, body
-  laundered — for example stripping tracker keys). `land` runs this transform; it never authors a
-  message.
+  request by a repo-owned `pr_to_squash` transform at the `before:merge` position (title verbatim,
+  body laundered — for example stripping tracker keys). `land` runs this transform; it never authors
+  a message. A transform that gives the engine no usable answer leaves the pull request unmerged
+  rather than merging it under its own title and body.
 
 A credential-free content seam on the broker CLI lets the agent supply pull-request text across the
 sandbox boundary without holding credentials.
@@ -303,10 +322,18 @@ sandbox boundary without holding credentials.
 Sourcing (which revision each part of `repo.policy.toml` is read from):
 
 - **Host-side-executed** Way of Working — host-side hooks, the operation flow, and the branch-name
-  pattern — is read from the resolved **base revision**, which the agent cannot push to and which is
-  review-gated. WoW-config trust therefore equals base-branch trust.
+  pattern — is read from a **trusted revision the consumer names**, which the agent cannot write to
+  and which the consumer's own merges do not reach. WoW-config trust therefore equals trusted-branch
+  trust. That revision is not the pull-request target and is not derived from `repo.policy.toml`: a
+  branch named inside the file cannot select the revision the file is read from, and a branch the
+  consumer merges into is one the work it lands could rewrite.
 - **In-sandbox** parts — the `before:commit` gate/scan — are read from the **worktree**, where an
   agent's edit is harmless and where a pull request's own gate change is correctly exercised.
+- A hook's **unit** — the program its declaration names — is sourced as its declaration is: from the
+  trusted revision for a host-side hook, from the worktree for an in-sandbox one. A host-side
+  declaration sourced from a revision the agent cannot write, naming a program the agent can, would
+  carry no trust at all. A host-side hook does not run with the worktree as its working directory;
+  it is given the worktree's location, so it can read the tree without executing from it.
 
 The consumer configuration (Section 4) is sourced from no revision of the repository. The selections
 and access values it carries are the consumer's, so which backend receives a credential and which

@@ -3284,3 +3284,290 @@ flow, then the invocation pipeline — each found after the previous repair ship
 deployment needs Broker Core over repositories materialized some other way entirely, in which case
 the repair is to restore optionality with an OPTIONAL provisioning operation, not a second VCS
 adapter. Relates to 0092, 0091 and 0062.
+
+## 0094 — The policy branch is not the base branch
+
+**State:** Accepted
+**Folder:** [decisions/0094-policy-branch-and-base-source/](decisions/0094-policy-branch-and-base-source/)
+
+Opened from decision 0093's second review finding and reframed twice under review; the path is kept
+in `Background.md` because it is the argument. `SPEC.md` Section 15.4, echoed in `VCSX-CONTRACT.md`
+Section 10, makes host-side Way of Working readable only from "the resolved **base revision**" — the
+whole security argument for anything the engine runs on the host — while `VCSX-SPEC.md` Section 6.4
+puts `[base] branch` inside `repo.policy.toml`, the file that sentence reads from the base revision.
+To read the policy you need the base; to know the base you need the policy, and no document says how
+the first read resolves. Breaking it in place means reading the policy from whatever the checkout
+holds, which lets an agent-editable revision decide which revision is trusted. That is the fourth
+instance of the cycle 0092 and 0093 chased, and the sharpest, the other three costing availability
+where this one costs a guarantee. Stating the argument in full then exposed a second and larger
+defect: it stands on two legs, and only one holds. The agent cannot *push* to the base — guaranteed
+already by Section 10.8's scope guard, "push only to the run's work branch", with no configuration
+required. But the base is trusted because it is *review-gated*, and landing pull requests on the base
+branch is Symphony's entire purpose, so the trust root is a branch the service routinely merges into
+and the only thing between an agent-authored host-side hook and its execution with operator
+credentials is a reviewer noticing. Section 9.8 already worries about the adjacent case, requiring
+the actor differ from the approver so a pull request cannot be self-approved. Measured: all 32
+vectors in `vectors/policy-validation.json` supply `base.branch`, including every vector whose
+subject is something else, which is how both defects survived. The repair separates the two jobs the
+one value was doing — trust root, needed *before* the policy is read, and pull-request target, needed
+*after* — since only the first is circular. The operator names a **policy branch**, REQUIRED with no
+default, and no pull request Symphony creates or merges targets it; the guarantee is stated over what
+Symphony does rather than over a config file, so a consumer checks it through the operations. It MUST
+be unwritable by the agent, with the establishing mechanism `Implementation-defined` and MUST
+document, since the scope guard covers the push path but not the others. The **pull-request target**
+then becomes an ordinary configuration question with three sources in precedence order — the
+invocation, operator config, then `repo.policy.toml`, which keeps a legitimate say including its
+`by_prefix` mapping because reading it no longer depends on the value. An operator MAY bound what an
+invocation may name; the bound is deliberately weaker than the trust-root case because a badly chosen
+target reaches only the in-sandbox parts, which run without credentials. How a ticket carries one is
+`Implementation-defined` and MUST be documented. Where no source supplies one the refusal is a
+**precondition** scoped to the entries that need a target — `ship`, `integrate`, `create_pr` — which
+is what the reframing bought: under the original framing it was a configuration error and would have
+forced validation to take the entry point as a sixth input, the change that left this decision
+`Proposed` through two drafts. Refusing up front rather than at first use preserves 0084's guarantee,
+`ship` reading the target only at `create_pr`, after it has pushed. Options rejected: leaving the
+base in the policy and answering only the missing-value question (leaves both defects); moving the
+single value to the consumer (fixes the cycle, leaves the trust root a merge target — the smaller
+half of the repair). Cost accepted: two branch-shaped values where there was one, and a policy that
+cannot be reviewed alongside the code change needing it — which is the cost of the guarantee, since a
+trust root reviewable alongside a code change is one a code change can alter. Assumption recorded:
+the policy branch is REQUIRED with no default, the sheet's question on defaulting having gone
+unanswered while the primary answer chose "the trust root is never a merge target", which any default
+resolving to the main branch would void. Reconsider if operators report policy branches drifting far
+enough from the main line that host-side hooks no longer match the code they run against. Relates to
+0092, 0093, 0084, 0085 and 0002.
+
+## 0095 — A host-side hook's unit comes from the trusted source
+
+**State:** Accepted
+**Folder:** [decisions/0095-host-side-hook-unit-provenance/](decisions/0095-host-side-hook-unit-provenance/)
+
+Found reviewing what decision 0094 actually secured: it secures the hook's **declaration** and not
+the **program the declaration names**. Two sentences older than 0094 put the executable back in the
+agent's hands. `SPEC.md` Section 15.4 said "Hooks run with the workspace directory as their working
+directory" — all hooks, both contexts, so a host-side hook's working directory is the tree the agent
+edits. And `VCSX-SPEC.md` Section 8.6 said whether a `run` unit "exists and can be started is **a
+property of the worktree**". So the specification did not merely permit a host-side hook to execute
+repository content; it located the unit in the worktree and pointed the hook's working directory at
+it. The chain needs no cleverness: an operator writes `run = "./scripts/check.sh"` on the policy
+branch, the agent writes that file, and it executes on the host in the operator's context — no branch
+manipulated, no pull request merged, no reviewer fooled, and a relative path into the repository is
+the obvious way to write a host-side hook. This outranks the other open findings because they need a
+misconfiguration or a particular checkout arrangement to bite, while this needs only that a
+deployment use a host-side hook, and it defeats the trust argument rather than weakening it. Repair
+in four parts, because the hole has two halves and each needs a rule and a way to check it: the unit
+resolves from the trusted source and never from the working tree; a host-side hook's working
+directory is not the workspace; the workspace path is supplied to it as an argument or environment
+value; and an implementation MUST document how it resolves a host-side unit. The third is what keeps
+the category useful — a host-side hook MAY **read** the workspace and MUST NOT **execute** from it,
+so a scan or a build check still inspects agent-written content as data. The second is what stops the
+first being defeated by accident, since a lifecycle hook's body is an inline script and a relative
+command inside it would otherwise reach the tree. Options rejected: forbidding a host-side hook the
+repository entirely (cannot express read-as-data, and removes the reason to have the category);
+leaving it to Section 15.5's hardening guidance (SHOULD-level advice about a deployment's own risk
+appetite, where Section 15.4's "Way-of-Working trust equals policy-branch trust" is a conclusion this
+property is load-bearing for). The context keeps its names: `policy_branch` was considered and
+rejected because `VCSX-SPEC.md` Section 3.2 deliberately keeps branches out of the engine — the engine
+labels context, the consumer sources by trust — and the name means nothing in `engine-direct`, which
+has no sandbox. So the engine states the rule branch-free (a host-side unit resolves from the same
+source the host-side policy came from) and `SPEC.md` names that source. Recorded as considered and
+**not** done, with the measurement that defeated it: a rule forbidding a `[policy]` edge from
+conditioning credentialed work on an in-sandbox gate's outcome. Section 10.8's broker verb set —
+`push`, `back-merge`, `pr`, `request-merge` — already exposes every credentialed operation such an
+edge could dispatch bar `pull`, so an agent steering a gate obtains almost nothing asking would not,
+while the rule would forbid the ordinary `commit:ok → run_op push`. What survives is that neutering
+an in-sandbox gate defeats a hygiene control rather than reaching credentialed work, which Section
+15.4 already characterizes correctly. Reconsider if an engine defines a credentialed operation beyond
+Section 4.1 that no broker verb covers, or if a deployment narrows its verb set below Section 10.8's
+floor. Relates to 0094, 0093 and 0002.
+
+## 0096 — The three repairs decision 0094 needed
+
+**State:** Accepted
+**Folder:** [decisions/0096-policy-branch-repairs/](decisions/0096-policy-branch-repairs/)
+
+Three defects in decision 0094's applied text, grouped because they are one omission at three levels:
+0094 stated a guarantee and left the ways of establishing it unstated. **First**, Section 9.10's
+"Symphony MUST NOT create or merge a pull request whose base is the policy branch" had no refusal
+behind it, so an operator setting `vcs.policy_branch = "main"` with the target resolving to `main` —
+the obvious first configuration — got `commit` ok, `push` ok, `create_pr` refused: the work branch on
+the remote and no pull request. That is the publish-then-die shape 0084 moved a check to validation to
+prevent and which 0094's own reasoning cites 0084 to avoid, appearing a third time on this branch and
+a second time introduced by a repair. The conflict is visible in the consumer's configuration with no
+checkout and no network, so `policy_branch_is_target` joins Section 6.10's table and the refusal lands
+ahead of `commit`. **Second**, nothing said which copy of the policy branch is read. Section 6.4 gives
+the base ref that discipline because a checkout may hold a local branch and a remote-tracking copy;
+for the base the wrong one is a stale number, for the trust root it is host-side hooks chosen by
+whoever can write the checkout — latent in `daemon`, real in `interactive-agent`, immediate in
+`engine-direct`. The policy branch now resolves to the copy the resolved remote holds, never a local
+branch of that name, which collapses the `engine-direct` exposure to `daemon`'s. **Third**,
+`policy_branch` was REQUIRED with no failure mode while its five siblings all have one; that is the
+fourth recurrence of the pattern 0092's review finding named, and the second committed after naming
+it, so the count is recorded rather than the token alone — adding a REQUIRED argument and adding its
+refusal are two edits and nothing couples them. `policy_branch_missing` joins Section 8.6, established
+before validation as the third of three, because the policy document is the first of Section 6.10's
+inputs and this argument says where to read it. Plus the runtime half of the first: 0094's
+`base_branch_allowed` and `base_branch_not_permitted` already cover a target an issue supplies, so the
+policy branch is excluded from permitted targets **implicitly**, whatever the bound lists and whether
+or not it is configured — a bound an operator must remember to set is a guarantee that fails by
+omission. A refused issue is logged on every occurrence, and where the tracker adapter supports the
+capability commented once per (issue, target) and transitioned to a configured blocked state; the MUST
+sits on the log because `add_comment` and `set_state` are OPTIONAL (Section 11.7) and a `none`-mode
+adapter may have neither, and the comment is bounded per (issue, target) because the daemon
+re-evaluates every candidate every 30 seconds by default. Deliberately not done here: scoping the
+first refusal to a strict mode. As the specification stands there is one mode; the tunable model makes
+`policy_branch == target` legitimate under an operator opt-out, and that scoping is its work, since
+repairing applied text and introducing design in one record buries the first. Relates to 0094, 0084,
+0092 and 0002.
+
+## 0097 — Where the policy comes from, when it is read, and what happens when it cannot be
+
+**State:** Accepted
+**Folder:** [decisions/0097-policy-loading-and-unusability/](decisions/0097-policy-loading-and-unusability/)
+
+Three consequences decision 0094 left unhandled once the host-side Way of Working moved to a remote
+branch. **The reload machinery stopped being implementable.** Section 6.2 requires detecting changes
+to all three configuration artifacts, written when `repo.policy.toml` was read from a revision the
+checkout held; from a remote branch, "detect changes" means polling a remote ref on a cadence nothing
+specifies. **The policy is read far more often than anyone intended** — validation runs per
+invocation and every brokered verb is an invocation, so 3 at minimum and roughly 23 at the default
+`agent.max_turns` ceiling, per issue. The cost is not the count, since every operation Symphony
+invokes the engine for is remote-touching anyway; it is 23 places a load can fail mid-run, each
+needing a disposition. **And four ways a policy can be unusable had four dispositions**, two of them
+undefined: the source unreadable (a case that did not exist before 0094), no file discovered (the
+original scope of 0094 before it was reframed, never closed), a file that does not parse
+(`malformed_policy`), and one that parses invalidly (Section 6.10's reasons). So: `policy_source`
+names where host-side policy is read from, `policy_branch` by default or `target_branch` as the
+operator's opt-out — a named mode rather than a flag, because the trust guarantee is conditional on
+it and a conditional guarantee is worth stating only where a consumer can tell which state holds; what
+the opt-out gives up is stated rather than derived, the merge path to the trust root reopening and
+per-branch sections becoming authorable by whoever lands a pull request. Policy and workflow load
+**once at work start** through `load_policy`, an operation returning the merged surface that the
+consumer holds and supplies onward, which resolves Section 3.2's "the consumer sources config by
+trust" against Section 6.1's "the engine discovers and reads" in the former's favour and dissolves the
+recorded finding that no Section 9.1 capability reads a file at a revision — one operation does it
+once rather than a capability per read. `WORKFLOW.md` changes timing only and stays worktree-sourced,
+since everything in it runs in-sandbox without credentials. Section 6.2 is restated: `repo.policy.toml`
+is not watched, the policy in force for a run is the one read at its start, and a change takes effect
+for work started after it. The four unusable conditions get **one resolution and four diagnoses** —
+each refuses with `usage_or_config` and its own reason, `policy_source_unreadable` and
+`policy_not_found` joining the two that existed, because a consumer's response is one ("I cannot run
+this repository's policy") while the repair differs (make the source readable, commit the file, fix
+the syntax, fix the value). `policy_source_unreadable` does not distinguish an absent branch from an
+unreachable remote from a refused credential, on `provision:unreachable`'s reasoning that a reason per
+cause is a registry of the ways a network fails. Symphony classifies all four as `Engine Invocation
+Failures`, repo-scoped, and retries them with a **documented per-repository backoff** rather than every
+`polling.interval_ms` — none of the four clears without a person acting — which is not the per-worker
+backoff Section 14.2 forbids, the unit being the repository. Each is logged with its reason so the four
+stay distinguishable in the record, at transitions rather than every evaluation. Last-known-good is
+scoped to work in flight: a policy that was loaded and can no longer be read stays in force for runs
+under way while new work is refused, and one never loaded has no fallback — the one axis on which the
+shared disposition splits, and it splits on history rather than cause. Deferred as too complicated for
+now: routing that report through `[policy]` edges, which would work via the last-known-good policy but
+buys a repository a say in a response already fixed. Reconsider the cadence if an operator needs to
+revoke a host-side hook and finds runs in flight keep it; reconsider the unified resolution if
+`policy_not_found` turns out to deserve parking rather than retry, nothing about it being transient.
+Relates to 0094, 0093, 0092 and 0002.
+
+## 0098 — The `repo.policy.toml` hook namespace, and per-branch sections
+
+**State:** Accepted
+**Folder:** [decisions/0098-policy-schema-shape/](decisions/0098-policy-schema-shape/)
+
+Two changes to one schema, taken together because each would otherwise rewrite the other's work.
+**The `hooks` namespace had two owners and no stated rule**: `SPEC.md` Section 5.3.4 wrote scalars
+(`hooks.after_create`) and `VCSX-SPEC.md` Section 6.6 wrote subtables (`[hooks.scan-content]`), both
+into `repo.policy.toml`. TOML permits both, so nothing broke — but a repository wanting an engine
+hook named `after_create` could not have one, two timeout concepts sat adjacent with different
+defaults (`60000` against a floor of 600 seconds), and Section 6.11's `malformed_policy` for "a
+declared hook that names no unit to run" would refuse a valid Symphony config under any engine
+reading every key under `hooks` as a hook. The disambiguation that saves it — scalars are the
+consumer's, tables are the engine's — was real, load-bearing and written nowhere. **And context was
+declared for one hook family and derived for the other**: Section 5.3.4 already lets the artifact fix
+it ("when both define it, the `repo.policy.toml` hook runs on the host and the `WORKFLOW.md` hook
+runs inside the sandbox"), while the engine's named hooks carried a `context` key — which admitted a
+combination the derived form cannot express, a hook marked `host_side` whose unit the working tree
+supplies, which 0095 had to forbid in prose. So hooks are prefixed **symmetrically**,
+`[hooks.engine.<name>]` beside `[hooks.workspace]`, on the criterion that a fresh reader should see
+the two-owners fact where it is declared rather than infer it from an entry's type; asymmetric
+prefixing was the smaller diff, `[hooks.<name>]` being shared contract surface across four artifacts,
+and lost on that criterion with nothing implemented yet to migrate. `context` is removed from hook
+declarations and derived from the artifact — the engine still receives one per hook, since it is
+handed one merged surface and never sees two artifacts, but the consumer tags it while assembling
+that surface, which 0097's `load_policy` already has it doing. That makes 0095's unit rule structural
+rather than stated, and collapses a genuine oddity: `repo.policy.toml` was read from **two
+revisions**, host-side sections from the policy source and the in-sandbox `before:commit` gate from
+the worktree. The gate's declaration moves to `WORKFLOW.md` and each artifact is now read from one
+revision; the edge invoking the gate stays in `repo.policy.toml`, so the agent can change what the
+gate does and not whether it runs. Edge `context` is untouched, participating in matching where a
+hook's did not. **`[[branch]]` sections** restore what 0094 traded away without naming: before, the
+policy came from the resolved base revision, so a release track could carry stricter host-side hooks;
+afterwards one source governed every target and `by_prefix` did not replace it, mapping a work-branch
+prefix to a base branch rather than to hooks. A section carries a `match` table naming exactly one
+matcher, `prefix` being the one defined, and merges over the top level key by key as the `vcsx.toml`
+merge already does. Longest prefix wins and exactly one section applies, which settles determinism by
+construction rather than by a precedence rule — Section 5.4 refuses two edges matching one trigger,
+and two sections both contributing an edge would reintroduce that one level up. No empty-prefix
+default is needed, unlike `by_prefix`, because the top level is the default. Two sections with the
+same `match` are `duplicate_branch_section`; a `match` naming no matcher or several is
+`malformed_policy`. The matcher is named inside `match` rather than being a bare string so a later
+glob adds a key beside `prefix` instead of changing every section written. Options rejected: glob now
+(a precedence rule for two matching globs, and dialects differing across implementations) and filter
+expressions (a grammar, an evaluation order and a failure mode). Under `policy_source =
+"target_branch"` these sections come from the target, so whoever lands a pull request can author one
+— a property of that mode, stated where the mode is chosen. Reconsider the matcher if a repository
+must rename branches to be served by it, which would be the specification dictating naming rather
+than describing it; reconsider derived context if a repository needs a host-side and an in-sandbox
+hook of the same name in one artifact, the one capability this removes. Relates to 0095, 0097, 0094
+and 0002.
+
+## 0099 — The edge is the binding, and a unit at a position that says nothing
+
+**State:** Accepted
+**Folder:** [decisions/0099-scan-binding-and-unanswered-units/](decisions/0099-scan-binding-and-unanswered-units/)
+
+Issue #49 reported two gaps in Section 10.4 — a commit diff that can be scanned with no key naming a
+profile for it, and no disposition for a `scan-content` check or a `pr_to_squash` transform that gives
+no usable answer. Tracing both produced three findings that do not line up with the two. **A scan was
+bound to a unit two ways and reconciled nowhere**: Section 6.5's own worked edge example is
+`on = "before:commit"`, `do = "run"`, `hook = "scan-content"` and Section 10.1 calls the scan a hook,
+while Section 6.8 declares `title_scan`/`body_scan` and nothing says how `strict` resolves to a unit or
+who dispatches it. Adding `diff_scan` would have closed the asymmetry without closing the hole. **The
+scan half of the second gap was already covered** — the issue's premise, that Section 10.4 positions
+title/body scanning "during `create_pr`" rather than at a `before:` hook, does not survive the next
+paragraph of the same section, which says "at `before:create_pr`"; a scan is a `before:<op>` hook, so
+the bound, `hook_unanswered` and `unanswered_gates` all reached it already, and the defect was one
+loose sentence. **The transform was genuinely uncovered, and worse than filed**: it is named by
+`[messages.squash]` `transform`, is never called a hook, and Section 6.6's bound is stated over hooks,
+so nothing bounded it and an engine waiting forever was conforming. One supporting argument was also
+wrong: a fallback would not publish where "Section 11 says no operation rewrites afterwards", that
+guarantee being over the work branch, which Section 11 says a squash strategy is not an exception to
+because it writes to the base branch. So: **the edge is the binding**. `title_scan` and `body_scan` are
+removed, no key replaces them and none is added for the diff; a scan is declared as a hook and run by a
+`[policy]` edge, the three contents bound alike, a position no edge binds running nothing as Section
+5.4 already has it. What the engine supplies at each position is stated for the first time — the commit
+message and the diff at `before:commit`, the composed title and body at `before:create_pr` — mirroring
+Section 10.3's sentence for the transform. Rejected: completing the table, which keeps the per-field
+declaration readable in configuration but gives one unit family two dispatch mechanisms and puts a
+carve-out into Section 5.4; and passing the profile as an argument, which costs an argument-passing
+surface Section 6.6 does not have. The capability survives the removal either way, in the unit rather
+than the schema, which is where Section 10.4 already puts every scan rule. **The transform is a unit at
+a position**: Section 6.6's bound is restated to reach every unit the engine runs at a lifecycle
+position and waits on, `hook_unanswered`'s gloss widens from a hook to such a unit, and a transform
+that gives no usable answer yields `merge:hook_unanswered` and the operation does not act. That is
+stated as the effect a consumer can check — the pull request is not merged — rather than as "the forge
+is never asked", which the `spec-guarantee` test rejects as a claim about a call readable only from the
+engine's own trace, and which both the issue and the reporting implementation use. No separate MUST NOT
+on falling back to the pull request's own body: an operation that does not act publishes nothing.
+Minting `merge:transform_unanswered` was rejected on Section 4.3's own argument for spending one reason
+where the repair is the same shape. **`transform_unbound` joins `template_unbound`** at validation,
+judged from the fifth input that already exists; a `[messages.squash]` naming no transform is not the
+condition, since it names no unit. Generalizing both to `unit_unbound` was rejected on cost across
+three artifacts and because the token would stop saying which unit is missing. **Left open and verified
+rather than assumed:** Section 9.2's `request_merge(pr, strategy, expected_head)` takes no message, and
+nothing carries the transform's output to the forge, so the seam Section 10.3 describes has no route to
+the operation that would use it — a plugin-API defect predating this issue, out of its scope, and not
+affecting the disposition above. Reconsider the binding if an operator must read a repository program
+to learn which content is guarded in a deployment where reading it is what the trust boundary avoids;
+reconsider the single reason if a repository needs to route a broken transform differently from a
+broken gate. Relates to 0081, 0086, 0098, 0057 and 0002.

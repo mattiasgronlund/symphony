@@ -153,7 +153,7 @@ Two interpretation notes apply:
 | `vectors/match-edge.json` | `match_edge` | Sections 5.3, 5.4, 6.5, 12.1 |
 | `vectors/base-resolution.json` | `resolve_base` | Sections 6.4, 12.4 |
 | `vectors/exit-codes.json` | `exit_code_for_status` | Sections 8.2, 8.3, 8.5 |
-| `vectors/policy-validation.json` | `validate_policy` | Sections 4.1, 5.4, 5.6, 6.1, 6.4, 6.6, 6.7, 6.10, 8.5, 10.2 |
+| `vectors/policy-validation.json` | `validate_policy` | Sections 4.1, 5.4, 5.6, 6.1, 6.4, 6.6, 6.7, 6.11, 8.5, 10.2 |
 | `vectors/identity-precondition.json` | `requires_commit_identity` | Sections 8.1, 8.6, 12.2, 12.3 |
 | `vectors/compose-envelope.json` | `compose_envelope` | Sections 4.3, 5.2, 5.4, 8.2, 8.4 |
 
@@ -192,7 +192,7 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   no vector file supplies (Section 9.3). The tokens are in `vocabulary.json` under `reasons`. The
   operation's exemptions are on the same side for a different reason: that a `provision` is
   validated against no policy document and establishes no checkout-reading precondition (Sections
-  6.1, 6.10, 8.6) is an absence of refusals, and a vector corpus asserts the reason a refusal
+  6.1, 6.11, 8.6) is an absence of refusals, and a vector corpus asserts the reason a refusal
   carries rather than that none was carried.
 - **Plugin behavior** — checkout-mode detection, the pinned push refspec whose push never drops,
   rewrites or re-parents a commit already on the remote work branch (decision 0083), the
@@ -201,10 +201,19 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   (Sections 3.3, 9.1–9.3). The last two need a capability descriptor as input, which no vector file
   supplies — so a `[messages.squash] strategy` refused against a forge's declared strategies has no
   vector either, whether the policy states the strategy or takes the Section 6.8 default. The forge
-  repository coordinate, the backend selection, the access parameters and `provision`'s store
-  location are on the same side: whether one was supplied is determined by the invocation
-  (`forge_coordinate_missing`, `local_vcs_missing`, `git_access_missing`, `forge_access_missing` and
-  `store_location_missing`, Section 8.6), which no vector file models.
+  repository coordinate, the backend selection, the access parameters, `provision`'s store location
+  and the base branch are on the same side: whether one was supplied is determined by the invocation
+  (`forge_coordinate_missing`, `local_vcs_missing`, `policy_branch_missing`, `git_access_missing`,
+  `forge_access_missing`, `store_location_missing`, `base_branch_missing` and
+  `base_branch_not_permitted`, Section 8.6),
+  which no vector file models. `base_branch_missing` is the near miss: `[base] branch` is one of its
+  three sources and vectors do model policies, but the other two sources and the invoked entry point
+  are not vector inputs, so the condition is not determined by a policy document alone.
+- **Two of the four unusable-policy conditions** (Section 6.1) — `policy_source_unreadable` needs a
+  source that cannot be read and `policy_not_found` needs a source that carries no file, and a
+  vector file supplies a policy document rather than the place one was read from. Their two
+  siblings, `malformed_policy` and the consistency reasons, are modelled here. The tokens are in
+  `vocabulary.json` under `config_reasons`.
 - **Invocation preconditions** (Section 8.6) — whether the work branch derives and whether a commit
   identity is well formed are judged against a real checkout by a real backend, through
   `accepts_branch_name` and `accepts_identity` (Section 9.1), so no vector file can supply the input.
@@ -265,9 +274,9 @@ All three findings from the first slice are now resolved.
   signal has none. Signals are matched exactly, the `#class` fallback is scoped to typed results, and
   the `#` in `task:#needs_help` is documented as naming a condition across tasks.
   `hash_shaped_task_event_is_an_ordinary_token` and `signal_takes_no_class_fallback` cover both halves.
-- **Configuration errors carry no reason token — resolved (decision 0056).** Section 6.10 enumerated
+- **Configuration errors carry no reason token — resolved (decision 0056).** Section 6.11 enumerated
   five conditions and Section 8.3 mapped them to exit `2`, but named no token, so a caller could tell
-  *that* a policy was refused but not *why* without parsing `message`. Section 6.10 now carries a
+  *that* a policy was refused but not *why* without parsing `message`. Section 6.11 now carries a
   nine-token registry. Resolving it exposed a second defect fixed in the same decision: Section 8.2
   defined `status` as three proto-class values with none corresponding to Section 8.3's exit `2`, so
   the two sections could not both be satisfied — `usage_or_config` is now a fourth invocation status.

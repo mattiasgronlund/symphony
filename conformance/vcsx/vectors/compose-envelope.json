@@ -11,7 +11,7 @@
   "given": "how the run ended (`ending`), the decisive operation result where the run has one (`decisive`), the entry point the invocation read (`entry`), and the ending's own arguments where it has them",
   "expect": "the envelope's `status`, `entry`, `op`, `reason`, `class`, the `need` where an escalation is present, and the `outputs` keys the ending requires",
   "notes": [
-    "`ending` names what disposed of the run, not an action the policy necessarily wrote: `fail` and `park` are Section 5.2 actions, `flow_bound` is the executor's (Section 5.6), `undisposed` is a traversal that ran out with a result no action disposed of (Section 5.4), `clean` is a run that reached the entry's effect, and `precondition` is a refusal before the policy ran (Sections 6.10, 8.6).",
+    "`ending` names what disposed of the run, not an action the policy necessarily wrote: `fail` and `park` are Section 5.2 actions, `flow_bound` is the executor's (Section 5.6), `undisposed` is a traversal that ran out with a result no action disposed of (Section 5.4), `clean` is a run that reached the entry's effect, and `precondition` is a refusal before the policy ran (Sections 6.11, 8.6).",
     "The `need` under `undisposed` is the decisive reason's `Default need` (Section 4.3), which the implementation reads from the registry rather than from the vector — as `match_edge` derives a proto class rather than being told one.",
     "Keys absent from `expect` are unconstrained, so a vector pins the envelope's specified part without pinning entry-specific `outputs`.",
     "`escalation_present` is asserted rather than the whole payload: the `op` field is Section 8.4's and the `detail` field is `Implementation-defined`."

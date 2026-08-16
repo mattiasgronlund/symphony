@@ -38,7 +38,7 @@ every listed reason.
 - Lowest `version_floor` this build satisfies (Sections 6.2, 8.5): `<floor>`
 - Below-floor behavior is fail-closed with a usage/config result (REQUIRED; not a choice): [ ] yes
 - A `version_floor` that is not a `MAJOR.MINOR` version is refused as `malformed_policy` rather than
-  compared (Sections 6.2, 6.10; REQUIRED, not a choice): [ ] yes
+  compared (Sections 6.2, 6.11; REQUIRED, not a choice): [ ] yes
 
 ## 2. Required Surface Implemented
 
@@ -51,7 +51,7 @@ claim. Mark each complete.
       outcome, no-op on an unmatched signal, determinism (Section 5)
 - [ ] The required operation set and the four required lifecycle positions (Section 4.1), including
       `provision` — which has none, is validated against no policy document, and establishes no
-      precondition that reads a checkout (Sections 6.1, 6.10, 8.6)
+      precondition that reads a checkout (Sections 6.1, 6.11, 8.6)
 - [ ] The reason-token registry with its stable proto classes (Sections 4.2, 4.3)
 - [ ] `repo.policy.toml` loader and validation, with the `vcsx.toml` merge, the refusal of a policy
       that is not well formed, base resolution, and execution-context labeling (Sections 3.2, 6)
@@ -74,11 +74,13 @@ concrete choice; do not leave a row blank.
 | Flow bound: the `run_op` count (at least 64), and any further bound imposed | 5.6 | `<count, plus any wall-clock or other bound>` |
 | `repo.policy.toml` discovery precedence (explicit override, then repository default) | 6.1 | `<...>` |
 | Consumer-configuration discovery precedence (Section 4's second input) | 8.1 | `<...>` |
+| How a front-end lets a caller name a `base_branch`, where it does | 8.1 | `<flag / per-task field / not offered, always from config>` |
 | The backend's default remote where the consumer supplies no `remote`, per backend | 8.1 | `<name each backend uses>` |
 | The `forge_parameters` keys each forge backend reads | 8.1 | `<per backend: the keys read, and what each does>` |
 | Form of a hook's engine-invoked `run` unit | 6.6 | `<executable path / shell string / named task / …>` |
+| How a `host_side` unit is resolved from the host-side policy's source, and what working directory it is given | 6.6 | `<how the trusted source is addressed; where the working tree's location is supplied>` |
 | Hook bound: how long the engine waits for a hook to answer (at least 600 s admitted) | 6.6 | `<duration, and whether a deployment may configure it>` |
-| Which reason is reported when several configuration conditions hold | 6.10 | `<first found / a documented precedence / all of them>` |
+| Which reason is reported when several configuration conditions hold | 6.11 | `<first found / a documented precedence / all of them>` |
 | Entry-point argument encodings (argument *names* for shared concepts are fixed) | 8.1 | `<CLI flags / JSON on stdin / in-process struct / …>` |
 | How a front-end derives the forge repository coordinate where it defaults one | 8.1 | `<from the resolved remote's URL / not defaulted, always supplied>` |
 | `detail` field of an `outputs.unanswered_gates` entry | 8.2 | `<what the engine places there for a gate that gave no usable answer>` |
@@ -87,7 +89,7 @@ concrete choice; do not leave a row blank.
 
 ## 4. Reason Tokens Beyond the Registries
 
-Sections 4.3, 6.10 and 8.6 permit an engine to add reason tokens and require it to document them;
+Sections 4.3, 6.11 and 8.6 permit an engine to add reason tokens and require it to document them;
 Section 8.5 permits new tokens in a `MINOR` release. Leave any table empty if the engine adds none.
 
 ### 4.1 Operation Reasons (Section 4.3)
@@ -98,7 +100,7 @@ A consumer absorbs these through the `#class` fallback, so the proto class is th
 |-----------|--------|-------------|---------|
 | `<op>` | `<reason>` | `done` / `needs_caller` / `error` | `<...>` |
 
-### 4.2 Configuration Reasons (Section 6.10)
+### 4.2 Configuration Reasons (Section 6.11)
 
 These carry no proto class and are reported under the `usage_or_config` status, which absorbs new
 tokens without a class edge.
@@ -151,7 +153,7 @@ the registry.
 ## 6. Plugin Capability Descriptors
 
 Section 9.3 requires the executor to read a descriptor before invoking a capability and forbids
-invoking an undeclared one; Section 6.10 makes a policy requiring an unsupported capability a
+invoking an undeclared one; Section 6.11 makes a policy requiring an unsupported capability a
 configuration error. Declare what each shipped backend advertises.
 
 ### 6.1 VCS Backends (Section 9.1)
@@ -162,7 +164,7 @@ configuration error. Declare what each shipped backend advertises.
 
 A backend that does not declare the last column is refused at validation with
 `capability_unsupported` where a consumer derives more than one working tree from one store
-(Sections 4.3, 6.10, 9.3) — the other half of Section 9.3's split, and determinable because the
+(Sections 4.3, 6.11, 9.3) — the other half of Section 9.3's split, and determinable because the
 consumer's selection fixes whose descriptor is read.
 
 Section 9.1's required capabilities are a minimum. If this engine defines operations beyond Section
@@ -197,7 +199,7 @@ realizes each, and note any divergence in Section 8.
 | Action | Behavior with no consumer that can effect it | As realized |
 |--------|---------------------------------------------|-------------|
 | `create_task` | benign no-op, surfaced in `outputs.unperformed_intents` (Sections 5.2, 8.2) | `<...>` |
-| `set_state` | configuration error at validation (Section 6.10) | `<...>` |
+| `set_state` | configuration error at validation (Section 6.11) | `<...>` |
 | `notify` | benign no-op, surfaced in `outputs.unperformed_intents` (Sections 5.2, 8.2) | `<...>` |
 
 ## 8. Conformance Evidence and Known Deviations

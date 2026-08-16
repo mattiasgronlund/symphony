@@ -34,7 +34,7 @@
     },
     {
       "id": "usage_or_config_is_two",
-      "description": "A usage or configuration error (Section 6.10); the policy did not run.",
+      "description": "A usage or configuration error (Section 6.11); the policy did not run.",
       "given": { "status": "usage_or_config" },
       "expect": { "exit_code": 2 }
     },

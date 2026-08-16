@@ -8,7 +8,7 @@
   "given": "a work-branch name and a [base] configuration",
   "expect": "the resolved base branch name",
   "notes": [
-    "Only valid configurations appear here. A `by_prefix` map with no empty-prefix default is a configuration error caught before the policy runs (Section 6.10), so it is a `validate_policy` vector, not a resolution vector.",
+    "Only valid configurations appear here. A `by_prefix` map with no empty-prefix default is a configuration error caught before the policy runs (Section 6.11), so it is a `validate_policy` vector, not a resolution vector.",
     "The empty prefix is a prefix of every branch name, so longest-prefix-wins makes it the fallback without a separate rule."
   ],
   "vectors": [

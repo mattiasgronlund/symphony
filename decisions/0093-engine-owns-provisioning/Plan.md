@@ -167,3 +167,8 @@ The second review finding adds three post-conditions, applied to `VCSX-SPEC.md` 
 Open and deliberately not closed here: `SPEC.md` Section 9.12 still enumerates the machine's
 operations as `commit`, `integrate`, `push`, `create_pr` and `merge`. That is arguably correct now
 that `provision` is outside the machine, but it is correct by consequence rather than by decision.
+
+Also opened rather than closed: making `provision` the one entry point that runs with no
+`repo.policy.toml` discovered states nothing about what any *other* entry point does in that state,
+and `VCSX-SPEC.md` Section 6.1 covers only a file that does not parse. Decision 0094 carries that
+question, together with the `[base] branch` absence it turns out to share a disposition with.
