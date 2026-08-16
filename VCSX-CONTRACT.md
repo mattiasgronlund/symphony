@@ -313,6 +313,11 @@ Sourcing (which revision each part of `repo.policy.toml` is read from):
   consumer merges into is one the work it lands could rewrite.
 - **In-sandbox** parts — the `before:commit` gate/scan — are read from the **worktree**, where an
   agent's edit is harmless and where a pull request's own gate change is correctly exercised.
+- A hook's **unit** — the program its declaration names — is sourced as its declaration is: from the
+  trusted revision for a host-side hook, from the worktree for an in-sandbox one. A host-side
+  declaration sourced from a revision the agent cannot write, naming a program the agent can, would
+  carry no trust at all. A host-side hook does not run with the worktree as its working directory;
+  it is given the worktree's location, so it can read the tree without executing from it.
 
 The consumer configuration (Section 4) is sourced from no revision of the repository. The selections
 and access values it carries are the consumer's, so which backend receives a credential and which

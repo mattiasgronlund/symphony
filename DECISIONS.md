@@ -3336,3 +3336,47 @@ unanswered while the primary answer chose "the trust root is never a merge targe
 resolving to the main branch would void. Reconsider if operators report policy branches drifting far
 enough from the main line that host-side hooks no longer match the code they run against. Relates to
 0092, 0093, 0084, 0085 and 0002.
+
+## 0095 — A host-side hook's unit comes from the trusted source
+
+**State:** Accepted
+**Folder:** [decisions/0095-host-side-hook-unit-provenance/](decisions/0095-host-side-hook-unit-provenance/)
+
+Found reviewing what decision 0094 actually secured: it secures the hook's **declaration** and not
+the **program the declaration names**. Two sentences older than 0094 put the executable back in the
+agent's hands. `SPEC.md` Section 15.4 said "Hooks run with the workspace directory as their working
+directory" — all hooks, both contexts, so a host-side hook's working directory is the tree the agent
+edits. And `VCSX-SPEC.md` Section 8.6 said whether a `run` unit "exists and can be started is **a
+property of the worktree**". So the specification did not merely permit a host-side hook to execute
+repository content; it located the unit in the worktree and pointed the hook's working directory at
+it. The chain needs no cleverness: an operator writes `run = "./scripts/check.sh"` on the policy
+branch, the agent writes that file, and it executes on the host in the operator's context — no branch
+manipulated, no pull request merged, no reviewer fooled, and a relative path into the repository is
+the obvious way to write a host-side hook. This outranks the other open findings because they need a
+misconfiguration or a particular checkout arrangement to bite, while this needs only that a
+deployment use a host-side hook, and it defeats the trust argument rather than weakening it. Repair
+in four parts, because the hole has two halves and each needs a rule and a way to check it: the unit
+resolves from the trusted source and never from the working tree; a host-side hook's working
+directory is not the workspace; the workspace path is supplied to it as an argument or environment
+value; and an implementation MUST document how it resolves a host-side unit. The third is what keeps
+the category useful — a host-side hook MAY **read** the workspace and MUST NOT **execute** from it,
+so a scan or a build check still inspects agent-written content as data. The second is what stops the
+first being defeated by accident, since a lifecycle hook's body is an inline script and a relative
+command inside it would otherwise reach the tree. Options rejected: forbidding a host-side hook the
+repository entirely (cannot express read-as-data, and removes the reason to have the category);
+leaving it to Section 15.5's hardening guidance (SHOULD-level advice about a deployment's own risk
+appetite, where Section 15.4's "Way-of-Working trust equals policy-branch trust" is a conclusion this
+property is load-bearing for). The context keeps its names: `policy_branch` was considered and
+rejected because `VCSX-SPEC.md` Section 3.2 deliberately keeps branches out of the engine — the engine
+labels context, the consumer sources by trust — and the name means nothing in `engine-direct`, which
+has no sandbox. So the engine states the rule branch-free (a host-side unit resolves from the same
+source the host-side policy came from) and `SPEC.md` names that source. Recorded as considered and
+**not** done, with the measurement that defeated it: a rule forbidding a `[policy]` edge from
+conditioning credentialed work on an in-sandbox gate's outcome. Section 10.8's broker verb set —
+`push`, `back-merge`, `pr`, `request-merge` — already exposes every credentialed operation such an
+edge could dispatch bar `pull`, so an agent steering a gate obtains almost nothing asking would not,
+while the rule would forbid the ordinary `commit:ok → run_op push`. What survives is that neutering
+an in-sandbox gate defeats a hygiene control rather than reaching credentialed work, which Section
+15.4 already characterizes correctly. Reconsider if an engine defines a credentialed operation beyond
+Section 4.1 that no broker verb covers, or if a deployment narrows its verb set below Section 10.8's
+floor. Relates to 0094, 0093 and 0002.

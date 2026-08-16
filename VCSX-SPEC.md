@@ -817,6 +817,24 @@ The table's keys:
   no `run` is a configuration error (Section 6.10).
 - `context` (string) — `host_side` or `in_sandbox` (Section 3.2).
 
+Where the unit is resolved from follows the context, and follows it for the same reason the
+declaration does:
+
+- An `in_sandbox` unit resolves from the **working tree**, which is where it runs and where the
+  consumer sources in-sandbox policy from (Section 3.2).
+- A `host_side` unit resolves from the **same source the host-side policy was read from**, and MUST
+  NOT resolve from the working tree. A consumer that sources host-side policy from a trusted
+  revision so an untrusted working tree cannot alter it gains nothing if the program that policy
+  names is one the working tree supplies. The engine MUST NOT run a `host_side` unit with the
+  working tree as its working directory; it supplies the working tree's location to the unit
+  instead, so a host-side hook can still inspect the tree — reading it as data is what a scan or a
+  build check is for — without executing anything the tree carries.
+
+This specification names no branch here, because the engine has none: which revision counts as
+trusted is the consumer's (Section 3.2), and this rule says only that the unit and the declaration
+come from the same one. How an engine resolves a `host_side` unit is `Implementation-defined` and
+MUST be documented (Section 13.3).
+
 How the engine treats a hook:
 
 - A `before:*` (host-side or in-sandbox) hook MAY block by returning a `needs_caller` or `error` result
@@ -1054,10 +1072,13 @@ a repository cannot bind the step that obtains the repository. The refusal still
 and before any policy runs (Section 8.5), and what precedes it wrote no branch and published
 nothing.
 
-What is *not* judged here is what only a checkout or a run can answer. Whether the unit a `run` names
-exists and can be started is a property of the worktree rather than of the document, so a hook the
-engine could not start is `hook_unanswered` at first use (Sections 4.3, 6.6) and not a configuration
-error; a `[hooks.<name>]` that names no unit at all is the document's own defect and is refused here.
+What is *not* judged here is what only a checkout or a run can answer. Whether the unit a `run`
+names exists and can be started is a property of wherever that unit resolves from — the working tree
+for an `in_sandbox` hook, the host-side policy's own source for a `host_side` one (Section 6.6) —
+rather than of the document, so a hook the engine could not start is `hook_unanswered` at first use
+(Sections 4.3, 6.6) and not a configuration error; a `[hooks.<name>]` that names no unit at all is
+the document's own defect and is refused here. The disposition is the same for both contexts; only
+where the engine looked differs.
 
 Two boundaries against neighbouring reasons follow. `version_floor_unmet` names a floor the engine
 read and does not satisfy; a floor it cannot read is `malformed_policy`. The engine refuses either
@@ -2248,6 +2269,13 @@ A conforming engine SHOULD include tests covering:
   not at all (Sections 8.1, 8.6); a `capability_unsupported` turning on the selected VCS backend's
   descriptor is still reported at validation for a `provision`, the selection being an input the
   consumer supplied rather than one read from the repository (Sections 6.10, 9.3).
+- Hook unit resolution: a `host_side` hook whose `run` names a unit present both in the host-side
+  policy's source and in the working tree runs the former, and a working-tree unit of that name with
+  no counterpart in the policy source is not started at all; a `host_side` hook does not run with
+  the working tree as its working directory and is given the tree's location instead, so a host-side
+  scan over working-tree content still completes; an `in_sandbox` hook resolves its unit from the
+  working tree and runs there; a unit the engine could not start yields `hook_unanswered` in either
+  context, so only where the engine looked differs (Sections 6.6, 8.6).
 - Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
   `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6);
   a gated operation dispatched by a `[policy]` `run_op` edge rather than by a front-end sequence — a
@@ -2392,7 +2420,9 @@ A conforming engine SHOULD include tests covering:
   second and disjoint input, including the refusal of a
   policy that is not well formed, of one declaring a hook with no unit to run, of one binding a
   template body source with no template unit bound, and of one whose lifecycle positions dispatch one
-  another in a cycle, base resolution to a branch and a base ref, and the execution-context labeling.
+  another in a cycle, base resolution to a branch and a base ref, and the execution-context labeling
+  — including that a hook's unit resolves by its context, a `host_side` one from the host-side
+  policy's own source rather than from the working tree.
 - The invocation contract: result envelope with every field described and `entry` nullable only where
   no entry point was read, the `outputs` keys that report what the engine emitted and nobody
   performed, what a hook left unanswered on either side of the division, and what the policy failed
@@ -2430,7 +2460,8 @@ The Statement MUST record:
 - A resolution for every `Implementation-defined` behavior in this specification: checkout-mode
   detection (Section 3.3), the flow bound's value and any further bound the engine imposes
   (Section 5.6), `repo.policy.toml` discovery precedence (Section 6.1), the form of a hook's
-  engine-invoked `run` unit and
+  engine-invoked `run` unit, how a `host_side` unit is resolved from the host-side policy's source
+  and what working directory it is given, and
   the bound the engine waits for one under (Section 6.6), which reason is reported when several
   configuration conditions hold (Section 6.10), the consumer configuration's discovery precedence, the
   backend's default remote where the consumer supplies none, the entry-point argument encodings and

@@ -1,0 +1,10 @@
+# Sessions — 0095 A host-side hook's unit comes from the trusted source
+
+<!--
+Every Claude Code session that worked on this decision. The session id is the transcript filename
+(without .jsonl) under ~/.claude/projects/<project>/. Give each a short human-readable name.
+-->
+
+| Date | Session name | Session id |
+|------|--------------|------------|
+| 2026-08-16 | branch review before merge | 69881daf-c801-49fe-830a-0b51b0251d2d |

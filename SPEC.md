@@ -3264,11 +3264,31 @@ Hook implications:
 - Host-side hooks (`repo.policy.toml`, policy-branch-sourced) are trusted and run on the host
   outside the sandbox; they MAY receive repo-internal integrity values (Section 15.3) but never
   place outward credentials in the agent's reach.
-- `WORKFLOW.md` and in-sandbox hooks (worktree-sourced) are untrusted, MUST NOT be granted
-  credentials or host access, and run inside the sandbox (Section 9.6).
-- Hooks run with the workspace directory as their working directory.
+- The **unit** a host-side hook runs — the program the hook's declaration names — is resolved from
+  the policy branch and MUST NOT be resolved from the working tree. Sourcing the declaration from a
+  branch the agent cannot reach establishes nothing if the program it names is one the agent writes,
+  so the trust the declaration carries extends to the unit or it does not exist. How an
+  implementation resolves a host-side unit is `Implementation-defined` and MUST be documented.
+- A host-side hook MAY **read** the workspace and MUST NOT **execute** from it. The distinction is
+  what keeps the category useful: a content scan or a build check exists to inspect the working
+  tree, and it can do so on content the agent controls precisely because it is being read as data
+  rather than run as code.
+- Working directories differ by execution context, which is what keeps the rule above from being
+  defeated by accident:
+  - An in-sandbox hook runs with the workspace directory as its working directory.
+  - A host-side hook does not. It receives the workspace path as an argument or environment value,
+    so a relative invocation inside it resolves against the policy branch rather than against
+    agent-written content. This matters for a workspace lifecycle hook (Section 5.3.4) as much as
+    for a `[hooks]` unit: the body is an inline script, trusted when policy-branch-sourced, but a
+    relative command inside it would otherwise reach the working tree.
 - Hook output SHOULD be truncated in logs.
 - Hook timeouts are REQUIRED to avoid hanging the orchestrator.
+
+Important boundary: the two rules above are about the *host-side* half only. An in-sandbox hook's
+unit is worktree-sourced and remains so, because it runs where the agent already has full control
+and holds no credentials. What an agent gains by rewriting one is the defeat of a hygiene control,
+not reach into credentialed work — the broker already exposes the credentialed operations a policy
+edge could dispatch (Section 10.8), so steering a gate obtains nothing asking would not.
 
 ### 15.5 Harness Hardening Guidance
 
@@ -3726,6 +3746,11 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - Configuration trust sourcing (Section 15.4): an agent worktree edit to a host-side hook does not
   change host-side behavior (it is read from `vcs.policy_branch`), an in-sandbox `before:commit`
   change is honored, and a repo-internal integrity value never enters the sandbox
+- A host-side hook declaring a unit at a path the agent can also write runs the policy branch's copy
+  and not the working tree's, and does so with a working directory outside the workspace; it still
+  reads the workspace it is given, so a host-side scan over agent-written content works. An
+  in-sandbox hook continues to resolve its unit from the working tree and to run with the workspace
+  as its working directory (Section 15.4)
 - The policy branch is not reachable by the agent through either route (Section 15.4): a brokered
   push naming it is refused by the scope guard, and an issue's pull request merging to the resolved
   target leaves the host-side Way of Working unchanged, because the merge does not reach the policy
@@ -3987,7 +4012,8 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
 - Workspace manager with sanitized per-issue workspaces
 - Workspace lifecycle hooks at two trust levels sourced by trust (host-side hooks in
   `repo.policy.toml` from the policy branch; `WORKFLOW.md` hooks in the sandbox from the worktree,
-  Section 15.4)
+  Section 15.4), with a host-side hook's unit resolved from the policy branch and its working
+  directory outside the workspace, so the trust its declaration carries reaches the program it runs
 - Hook timeout config (`hooks.timeout_ms`, default `60000`)
 - Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
   app-server JSON line protocol as the worked example)

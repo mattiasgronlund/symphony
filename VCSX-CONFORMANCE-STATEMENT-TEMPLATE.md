@@ -78,6 +78,7 @@ concrete choice; do not leave a row blank.
 | The backend's default remote where the consumer supplies no `remote`, per backend | 8.1 | `<name each backend uses>` |
 | The `forge_parameters` keys each forge backend reads | 8.1 | `<per backend: the keys read, and what each does>` |
 | Form of a hook's engine-invoked `run` unit | 6.6 | `<executable path / shell string / named task / …>` |
+| How a `host_side` unit is resolved from the host-side policy's source, and what working directory it is given | 6.6 | `<how the trusted source is addressed; where the working tree's location is supplied>` |
 | Hook bound: how long the engine waits for a hook to answer (at least 600 s admitted) | 6.6 | `<duration, and whether a deployment may configure it>` |
 | Which reason is reported when several configuration conditions hold | 6.10 | `<first found / a documented precedence / all of them>` |
 | Entry-point argument encodings (argument *names* for shared concepts are fixed) | 8.1 | `<CLI flags / JSON on stdin / in-process struct / …>` |
