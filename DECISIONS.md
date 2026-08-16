@@ -3520,3 +3520,54 @@ must rename branches to be served by it, which would be the specification dictat
 than describing it; reconsider derived context if a repository needs a host-side and an in-sandbox
 hook of the same name in one artifact, the one capability this removes. Relates to 0095, 0097, 0094
 and 0002.
+
+## 0099 — The edge is the binding, and a unit at a position that says nothing
+
+**State:** Accepted
+**Folder:** [decisions/0099-scan-binding-and-unanswered-units/](decisions/0099-scan-binding-and-unanswered-units/)
+
+Issue #49 reported two gaps in Section 10.4 — a commit diff that can be scanned with no key naming a
+profile for it, and no disposition for a `scan-content` check or a `pr_to_squash` transform that gives
+no usable answer. Tracing both produced three findings that do not line up with the two. **A scan was
+bound to a unit two ways and reconciled nowhere**: Section 6.5's own worked edge example is
+`on = "before:commit"`, `do = "run"`, `hook = "scan-content"` and Section 10.1 calls the scan a hook,
+while Section 6.8 declares `title_scan`/`body_scan` and nothing says how `strict` resolves to a unit or
+who dispatches it. Adding `diff_scan` would have closed the asymmetry without closing the hole. **The
+scan half of the second gap was already covered** — the issue's premise, that Section 10.4 positions
+title/body scanning "during `create_pr`" rather than at a `before:` hook, does not survive the next
+paragraph of the same section, which says "at `before:create_pr`"; a scan is a `before:<op>` hook, so
+the bound, `hook_unanswered` and `unanswered_gates` all reached it already, and the defect was one
+loose sentence. **The transform was genuinely uncovered, and worse than filed**: it is named by
+`[messages.squash]` `transform`, is never called a hook, and Section 6.6's bound is stated over hooks,
+so nothing bounded it and an engine waiting forever was conforming. One supporting argument was also
+wrong: a fallback would not publish where "Section 11 says no operation rewrites afterwards", that
+guarantee being over the work branch, which Section 11 says a squash strategy is not an exception to
+because it writes to the base branch. So: **the edge is the binding**. `title_scan` and `body_scan` are
+removed, no key replaces them and none is added for the diff; a scan is declared as a hook and run by a
+`[policy]` edge, the three contents bound alike, a position no edge binds running nothing as Section
+5.4 already has it. What the engine supplies at each position is stated for the first time — the commit
+message and the diff at `before:commit`, the composed title and body at `before:create_pr` — mirroring
+Section 10.3's sentence for the transform. Rejected: completing the table, which keeps the per-field
+declaration readable in configuration but gives one unit family two dispatch mechanisms and puts a
+carve-out into Section 5.4; and passing the profile as an argument, which costs an argument-passing
+surface Section 6.6 does not have. The capability survives the removal either way, in the unit rather
+than the schema, which is where Section 10.4 already puts every scan rule. **The transform is a unit at
+a position**: Section 6.6's bound is restated to reach every unit the engine runs at a lifecycle
+position and waits on, `hook_unanswered`'s gloss widens from a hook to such a unit, and a transform
+that gives no usable answer yields `merge:hook_unanswered` and the operation does not act. That is
+stated as the effect a consumer can check — the pull request is not merged — rather than as "the forge
+is never asked", which the `spec-guarantee` test rejects as a claim about a call readable only from the
+engine's own trace, and which both the issue and the reporting implementation use. No separate MUST NOT
+on falling back to the pull request's own body: an operation that does not act publishes nothing.
+Minting `merge:transform_unanswered` was rejected on Section 4.3's own argument for spending one reason
+where the repair is the same shape. **`transform_unbound` joins `template_unbound`** at validation,
+judged from the fifth input that already exists; a `[messages.squash]` naming no transform is not the
+condition, since it names no unit. Generalizing both to `unit_unbound` was rejected on cost across
+three artifacts and because the token would stop saying which unit is missing. **Left open and verified
+rather than assumed:** Section 9.2's `request_merge(pr, strategy, expected_head)` takes no message, and
+nothing carries the transform's output to the forge, so the seam Section 10.3 describes has no route to
+the operation that would use it — a plugin-API defect predating this issue, out of its scope, and not
+affecting the disposition above. Reconsider the binding if an operator must read a repository program
+to learn which content is guarded in a deployment where reading it is what the trust boundary avoids;
+reconsider the single reason if a repository needs to route a broken transform differently from a
+broken gate. Relates to 0081, 0086, 0098, 0057 and 0002.

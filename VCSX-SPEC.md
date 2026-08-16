@@ -117,8 +117,8 @@ itself:
      execution context the consumer provides (Section 3.2).
 
 6. `Scanner` and `Message Formulator` (Section 10)
-   - The content-scan seam (`scan-content` at `before:commit`) and the composition/transform seams for
-     commit, pull-request, and squash messages.
+   - The content-scan seam (`scan-content`, at the lifecycle position a policy edge binds it to) and
+     the composition/transform seams for commit, pull-request, and squash messages.
 
 ### 3.2 Execution Contexts (Trust)
 
@@ -320,7 +320,7 @@ and `blocked` and `hook_unanswered` for every operation gated at a lifecycle pos
 |-----------|--------|-------|--------------|---------|
 | `(any)` | `failed` | `error` | — | The operation failed, including when a `before:<op>` hook blocked it with an `error` result (Section 6.6). |
 | `(any gated)` | `blocked` | `needs_caller` | `human_review` | A `before:<op>` gate or scan blocked the operation (Section 6.6). |
-| `(any gated)` | `hook_unanswered` | `error` | — | A `before:<op>` hook gave the engine no usable answer: `bound_elapsed`, `not_started` or `answer_unreadable` (Section 6.6). |
+| `(any gated)` | `hook_unanswered` | `error` | — | A unit the engine ran at a `before:<op>` position — a hook, or the `pr_to_squash` transform (Section 10.3) — gave the engine no usable answer: `bound_elapsed`, `not_started` or `answer_unreadable` (Section 6.6). |
 | `(any)` | `unsupported` | `error` | — | The operation requires a plugin capability the backend does not declare (Section 9.3). |
 | `provision` | `ok` | `done` | — | The checkout is present and current. |
 | `provision` | `unreachable` | `needs_caller` | `human_review` | The remote could not be reached at `git_access` (Sections 8.1, 9.1). |
@@ -451,6 +451,13 @@ rather than routing, and is reported in `outputs` under `unanswered_gates` (Sect
 in a reason of its own, because the repair is the same shape in each case. The condition is a token
 rather than prose (Section 6.6), so what routes and what diagnoses are both spellings a consumer can
 branch on.
+
+The reason is spelled for the hook because that is the unit at almost every position, and it covers
+the `pr_to_squash` transform at `before:merge` on the same terms (Section 10.3). What the token
+names is the engine getting no usable answer from a unit it ran at a position, and the two cases
+carry the same disposition — the operation does not act — so one reason serves both rather than a
+second token carrying an identical repair. Which unit it was is what `unanswered_gates` names
+(Section 8.2), alongside the condition.
 
 Every operation therefore has at least one `done` reason and at least one `error` reason, so an
 `error`-class result is expressible for every operation including the read-only ones; every gated
@@ -892,6 +899,12 @@ the same floor. The floor's exact value is arbitrary in the way Section 5.6's is
 not, because a repository whose `before:commit` gate is its own test suite otherwise runs on one
 engine and not on another.
 
+The bound is stated over the hook because that is the unit at almost every position, and it holds
+for every unit the engine runs at a lifecycle position and waits on. The `pr_to_squash` transform
+(Section 10.3) is the one such unit no `[hooks.engine]` table declares, and it is bounded on the
+same terms and reports the same reason: what makes the bound necessary is that the program is one
+this specification does not describe, not which key named it.
+
 What exceeding the bound produces divides with the division the bullets above already draw, by whether
 anything waits on the answer:
 
@@ -988,13 +1001,16 @@ Message formulation is repository configuration; the engine bakes in no format (
 
 [messages.pr]
 body_source = "auto"           # "auto" (compose) | "agent" (caller prose) | "template"
-title_scan  = "strict"         # scan profile for the title
-body_scan   = "relaxed"        # scan profile for the body (Section 10.4)
 
 [messages.squash]
 strategy   = "squash"          # merge strategy: "squash" | "merge" | "rebase"
 transform  = "pr_to_squash"    # a repo-owned transform applied at before:merge (Section 10.3)
 ```
+
+No table here binds a content scan. A scan is declared as a hook and run by a `[policy]` edge at a
+lifecycle position (Sections 6.5, 6.6, 10.4), which is the binding a repository writes for every
+other unit the engine hands control to at a position; a second surface for one unit family would
+also make a position no edge binds run something, where Section 5.4 has such a position run nothing.
 
 - `strategy` (string, OPTIONAL) — the merge strategy the `merge` operation requests of the forge
   (Sections 9.2, 10.3). One of `squash`, `merge` or `rebase`. A value the schema does not admit is a
@@ -1019,6 +1035,14 @@ Note: Section 11's statement that a `rebase` or `squash` strategy "is not an exc
 work-branch guarantee — such a strategy writes to the base branch, which is a different branch — and
 does not rank the three against one another. The default above rests on what each strategy does to the
 commits, not on that sentence.
+
+- `transform` (string, OPTIONAL) — names the repository unit run at `before:merge` under a `squash`
+  strategy, which derives the squash subject and body from the pull request (Section 10.3). The unit
+  is the consumer's to bind, as a `template` body source's unit is (Sections 6.11, 10.2); a
+  `transform` naming a unit the consumer bound nothing to is a configuration error
+  (`transform_unbound`, Section 6.11).
+  - Default: none. Where no transform is named nothing is unbound and none runs; the code host
+    composes the squash message it writes (Section 9.2).
 
 ### 6.9 `[tasks]` and `[driver]`
 
@@ -1112,6 +1136,7 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map (Section 6.4) | `base_unresolvable` |
 | A `set_state`/transition binding without a consumer that can apply it (Section 5.2) | `set_state_unbound` |
 | A `[messages.pr]` `body_source = "template"` with no template unit bound (Sections 5.2, 10.2) | `template_unbound` |
+| A `[messages.squash]` `transform` naming a unit the consumer bound nothing to (Sections 6.8, 10.3) | `transform_unbound` |
 | A policy, or the consumer configuration, requiring a capability no selected backend declares (Section 9.3) | `capability_unsupported` |
 | A `policy_branch` equal to the branch the resolved base names (Sections 6.4, 8.1) | `policy_branch_is_target` |
 | A `version_floor` above the running engine version (Section 8.5) | `version_floor_unmet` |
@@ -1137,13 +1162,17 @@ before the policy runs" a question with an answer (Sections 8.6, 9.3):
   of the selected backends, together with the defaults above, are what `capability_unsupported` turns
   on;
 - the actions the consumer can effect (Section 5.2), which is what `set_state_unbound` turns on;
-- the repository units the consumer bound, which is what `template_unbound` turns on.
+- the repository units the consumer bound, which is what `template_unbound` and `transform_unbound`
+  turn on.
 
-The last is stated rather than left to inference because a template is a Section 10.2 repository unit
-and not a Section 5.2 action, so an engine judging only the document and the action set would find the
-condition undeterminable and defer it to first use — and first use of a `template` body source is a
-`create_pr`, which a `ship` reaches only after it has pushed (Section 12.2). A policy that cannot
-compose a body would then publish a work branch before saying so.
+The last is stated rather than left to inference because a template is a Section 10.2 repository
+unit and not a Section 5.2 action, so an engine judging only the document and the action set would
+find the condition undeterminable and defer it to first use — and first use of a `template` body
+source is a `create_pr`, which a `ship` reaches only after it has pushed (Section 12.2). A policy
+that cannot compose a body would then publish a work branch before saying so. A `pr_to_squash`
+transform is the same kind of unit and is refused here for the same reason, with more of the flow
+behind it: its first use is the `merge` a `land` reaches only once the pull request is open
+(Sections 10.3, 12.3).
 
 The third is an input rather than something the engine holds because the consumer supplies it with the
 invocation (Section 6.2), and nothing about the ordering changes to admit it: Section 8.6 establishes
@@ -1498,13 +1527,17 @@ Every invocation returns one structured result:
   `bound_elapsed`, `not_started` or `answer_unreadable` — absent or empty where every such hook
   answered. It is the non-gating half's mirror of `hook_unanswered`, which is why the two cover the
   same three conditions.
-- `outputs` carries `unanswered_gates` for the gating half: the `before:*` hooks that gave the engine
-  no usable answer, each naming the `hook`, the `position` that ran it, the `condition` — the same
-  three tokens — and an `Implementation-defined` `detail`; absent or empty where every gate answered.
-  A gate is not reported in `unfinished_hooks`, because the gated operation reports it as
+- `outputs` carries `unanswered_gates` for the gating half: the `before:*` units that gave the
+  engine no usable answer, each naming the `hook`, the `position` that ran it, the `condition` — the
+  same three tokens — and an `Implementation-defined` `detail`; absent or empty where every such
+  unit answered. The key is named for the gate that is almost always the unit at a position, and the
+  `pr_to_squash` transform (Section 10.3) is reported here too rather than in a key of its own,
+  because it reaches the consumer through the same reason and carries the same three conditions; the
+  `hook` field carries the unit's name in either case. A gate is not reported in `unfinished_hooks`,
+  because the gated operation reports it as
   `hook_unanswered` (Section 4.3): the reason routes and the condition diagnoses, and both halves
-  spell the condition the same way, so one consumer branch reads both. It is an array rather than one
-  entry because the result re-enters the machine: a repository binding `<op>:hook_unanswered` to
+  spell the condition the same way, so one consumer branch reads both. It is an array rather than
+  one entry because the result re-enters the machine: a repository binding `<op>:hook_unanswered` to
   anything that does not end the flow can reach a second position on the same traversal, which
   Section 5.6 bounds rather than refuses.
 - `outputs` carries `failed_by_policy` where the policy ended the flow with `fail` (Section 5.2):
@@ -2056,8 +2089,8 @@ The pull-request title and body are **composed** per `[messages.pr]` (Section 6.
 - `body_source = "agent"` — use caller-supplied prose only.
 - `body_source = "template"` — use a repository template over the durable inputs.
 
-The title is scanned with the `title_scan` profile and the body with the `body_scan` profile (Section
-10.4). One pull request is maintained per work branch (created, then updated).
+The composed title and body are what a scan at `before:create_pr` inspects (Section 10.4). One pull
+request is maintained per work branch (created, then updated).
 
 ### 10.3 Squash (`pr_to_squash`)
 
@@ -2068,14 +2101,40 @@ durable history can be stricter than the live pull-request surface. `land` runs 
 authors a message. The transform is a repository unit; the engine supplies only the position and the
 pull-request content.
 
+The unit is named by `[messages.squash]` `transform` and bound by the consumer, as a `template` body
+source's unit is (Sections 6.8, 10.2); a `transform` naming a unit the consumer bound nothing to is
+refused at validation (`transform_unbound`, Section 6.11). It is a unit the engine runs at a
+lifecycle position and waits on, so Section 6.6's bound applies to it. A transform that gives the
+engine no usable answer — it did not start, it was still running when the bound elapsed, or it
+answered in a shape the engine could not read — yields `merge:hook_unanswered` (Section 4.3) and the
+operation does not act: the pull request is not merged, and a caller reading its state finds the one
+it had before (Section 9.2). No separate prohibition on merging with the pull request's own title
+and body is needed — an operation that does not act publishes nothing, so a transform is not stepped
+around by an engine that could not run it.
+
 ### 10.4 Content Scanning
 
-A scan profile is a repository-owned check (`scan-content`) that inspects content — a commit diff, a
-title, a body — and blocks by returning a `needs_caller`/`error` result with a stable reason, which
-the engine surfaces as the scanned operation's `blocked` or `failed` reason (Section 6.6). The
-engine ships no scan rules; profiles such as `strict` and `relaxed` are names a repository binds to its
-own checks. Scanning at `before:commit` runs in-sandbox; scanning title/body during `create_pr` runs in
-the consumer's context.
+A scan is a repository-owned check (`scan-content`) that inspects content — a commit diff, a title,
+a body — and blocks by returning a `needs_caller`/`error` result with a stable reason, which the
+engine surfaces as the scanned operation's `blocked` or `failed` reason (Section 6.6). The engine
+ships no scan rules; a profile such as `strict` or `relaxed` is a repository's own name for one of
+its checks, and which rules a profile applies — to a title as against a body — is the repository's
+on the same terms.
+
+A scan is bound the way every other unit the engine hands control to at a position is: it is
+declared as a hook and a `[policy]` edge runs it at a lifecycle position (Sections 5.2, 6.5, 6.6).
+No `[messages]` key binds one (Section 6.8), so the three contents are bound alike and a position no
+edge binds runs no scan, which is what Section 5.4 has such a position do. An edge naming a hook the
+document does not declare is `unknown_hook` and a hook the engine could not start is
+`hook_unanswered` at first use, so a scan needs no configuration reason of its own (Section 6.11).
+
+What the engine supplies at the position is the content and nothing else, as Section 10.3 supplies
+the pull-request content to the transform: the commit message and the diff the commit would record
+at `before:commit`, the composed title and body at `before:create_pr` (Sections 10.1, 10.2). A
+scan's execution context follows the artifact that declares it, as every hook's does (Sections 3.2,
+6.6): the `before:commit` scan is the in-sandbox one — the message was authored there and the tree
+it inspects is there — where a scan the host-side policy declares over the composed title and body
+runs in the consumer's context.
 
 The title and body scanned at `before:create_pr` are the values the operation writes: the engine
 composes them once (Section 10.2) and recomposes nothing between the scan and the write, so that
@@ -2486,7 +2545,9 @@ A conforming engine SHOULD include tests covering:
   than a precondition reason, while a malformed identity supplied to that same entry is refused
   before the policy runs (Sections 4.3, 8.6); a policy binding `body_source = "template"` with no
   template unit bound is refused at validation with `template_unbound` and publishes nothing, rather
-  than reaching `create_pr` after a `push` has already run (Sections 6.11, 12.2); an invocation
+  than reaching `create_pr` after a `push` has already run, and one naming a `[messages.squash]`
+  `transform` with no unit bound is refused with `transform_unbound` on the same terms, rather than
+  reaching `merge` after a pull request is open (Sections 6.11, 12.2, 12.3); an invocation
   whose arguments cannot be decoded yields `usage_or_config` with `arguments_unreadable`, exit `2`,
   and an envelope on stdout whose `entry` is null, while an invocation decoded far enough to name an
   entry point reports that entry point whatever failed after it and `entry` is non-null on every
@@ -2515,6 +2576,20 @@ A conforming engine SHOULD include tests covering:
   writes carries the supplied commit identity — the mechanical merge commit an `integrate` or a
   `pull` writes included — on a host whose environment supplies no usable identity of its own
   (Section 10.1).
+- Content scanning: a scan is reached through a `[policy]` edge at a lifecycle position and through
+  no `[messages]` key, so a `before:create_pr` scan blocking with a `needs_caller` result yields
+  `create_pr:blocked` while the same repository with no edge at that position publishes the composed
+  title and body unscanned, the position running nothing (Sections 5.4, 6.5, 10.4); the same policy
+  scans a commit diff at `before:commit` with no key naming a profile for it; a scan is handed the
+  content of its position and a `run` edge naming a hook the document does not declare is refused at
+  validation with `unknown_hook` (Sections 6.6, 6.11).
+- The squash transform: a `pr_to_squash` that gives the engine no usable answer yields
+  `merge:hook_unanswered` and leaves the pull request unmerged at the head it had, rather than
+  merging it under its own title and body, with `outputs.unanswered_gates` naming which of
+  `bound_elapsed`, `not_started` and `answer_unreadable` occurred as it does for a gate; a
+  `[messages.squash]` `transform` naming a unit the consumer bound nothing to is refused at
+  validation with `transform_unbound` before any operation runs, while a `[messages.squash]` naming
+  no transform is valid and merges (Sections 4.3, 6.6, 6.8, 6.11, 10.3).
 - Configuration ownership: a `repo.policy.toml` carrying a key this specification no longer declares —
   a `vcs`, `forge` or `remote` left over from the table `[requires]` replaced — is ignored under
   Section 6.1's forward-compatibility rule rather than refused, so a policy written against an earlier
@@ -2597,7 +2672,9 @@ A conforming engine SHOULD include tests covering:
   `git_access` and `git_credential` — and every value-answering capability able to report that it
   could not determine its answer.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
-  format, and every commit the engine writes attributed to the supplied commit identity.
+  format, every commit the engine writes attributed to the supplied commit identity, a scan reached
+  through a policy edge at a lifecycle position rather than through a key of its own, and a
+  transform that gives no usable answer leaving the pull request unmerged.
 - Checkout-mode handling (git, jj, jj secondary workspace), a pinned push refspec whose push never
   drops, rewrites or re-parents a commit already on the remote work branch, a history-preserving
   work-branch update, and the two operations conditioned on the state their position inspected — the

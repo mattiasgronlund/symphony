@@ -16,7 +16,7 @@
   "notes": [
     "Each failing vector holds exactly one condition, so the reported reason is determined. Which reason is reported when several conditions hold is Implementation-defined (Section 6.11) and is deliberately not exercised here.",
     "`consumer_capabilities` lists the consumer-effected actions (Section 5.2) this consumer can perform. An empty list models a human at an interactive prompt (Section 1.3).",
-    "`bound_units` lists the repository units the consumer bound (Section 6.11), which is the input `template_unbound` is judged from — a template is a Section 10.2 repository unit rather than a Section 5.2 action, so `consumer_capabilities` does not reach it. A vector omitting the key is read as an empty list.",
+    "`bound_units` lists the repository units the consumer bound (Section 6.11), which is the input `template_unbound` and `transform_unbound` are judged from — a template and a `pr_to_squash` transform are Section 10 repository units rather than Section 5.2 actions, so `consumer_capabilities` does not reach either. A vector omitting the key is read as an empty list.",
     "`capability_unsupported` (Sections 6.11, 9.3) is not exercised here: it is determined against a plugin capability descriptor, which this slice defers with the rest of plugin behavior. Its absence is a coverage gap, not a statement that the condition is unvalidated.",
     "`malformed_policy` for a policy file that does not parse (Sections 6.1, 6.11) is not exercised here either: `given.policy` is a document, not file text, so the input this condition is judged from cannot be expressed in this file. The other two well-formedness conditions are judged from a parsed document and are exercised. Its absence is likewise a coverage gap, not a statement that the condition is unvalidated."
   ],
@@ -363,6 +363,50 @@
         "policy": {
           "base": { "branch": "main" },
           "messages": { "pr": { "body_source": "auto" } },
+          "edges": []
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": [],
+        "bound_units": []
+      },
+      "expect": { "valid": true }
+    },
+    {
+      "id": "squash_transform_without_a_bound_unit",
+      "description": "A named `pr_to_squash` transform is a repository unit the consumer must have bound, judged from the same input as the template's; refusing here is what stops a `land` finding out at the `merge` it reaches only once the pull request is open (Sections 6.8, 6.11, 10.3, 12.3).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "messages": { "squash": { "strategy": "squash", "transform": "pr_to_squash" } },
+          "edges": []
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": [],
+        "bound_units": []
+      },
+      "expect": { "error": "transform_unbound" }
+    },
+    {
+      "id": "squash_transform_with_a_bound_unit",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "messages": { "squash": { "strategy": "squash", "transform": "pr_to_squash" } },
+          "edges": []
+        },
+        "engine_version": "1.3",
+        "consumer_capabilities": [],
+        "bound_units": ["pr_to_squash"]
+      },
+      "expect": { "valid": true }
+    },
+    {
+      "id": "squash_strategy_naming_no_transform_is_valid",
+      "description": "The key is OPTIONAL and names no unit when absent, so nothing is unbound; the code host composes the squash message (Sections 6.8, 9.2).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "messages": { "squash": { "strategy": "squash" } },
           "edges": []
         },
         "engine_version": "1.3",

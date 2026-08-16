@@ -301,14 +301,18 @@ three surfaces have distinct origins:
   and carries that same configured identity; the engine attributes no commit to an identity it
   derives from the host it runs on.
 - **Pull-request message — composed.** Title and body are composed from agent-supplied prose and/or
-  durable inputs (the ticket, the closed task list from Section 8, commit subjects). The title is
-  scanned strictly; the body is scanned with the tracker-key relaxation the code host's integration
-  needs. One pull request is maintained per issue (created, then updated). The default body is
-  auto-composed from the durable inputs; agent-supplied prose, when present, overrides (replaces) it.
+  durable inputs (the ticket, the closed task list from Section 8, commit subjects), and are what a
+  `scan-content` check at the `before:create_pr` position inspects — strictly for the title, with
+  the tracker-key relaxation the code host's integration needs for the body. Which rules apply to
+  which is the repository's, as every scan rule is: the check is reached through a policy edge at
+  the position, and no configuration key names a profile per field. One pull request is maintained
+  per issue (created, then updated). The default body is auto-composed from the durable inputs;
+  agent-supplied prose, when present, overrides (replaces) it.
 - **Squash message — transformed.** The squash subject/body are mechanically derived from the pull
-  request by a repo-owned `pr_to_squash` transform at the `before:merge` position (title verbatim, body
-  laundered — for example stripping tracker keys). `land` runs this transform; it never authors a
-  message.
+  request by a repo-owned `pr_to_squash` transform at the `before:merge` position (title verbatim,
+  body laundered — for example stripping tracker keys). `land` runs this transform; it never authors
+  a message. A transform that gives the engine no usable answer leaves the pull request unmerged
+  rather than merging it under its own title and body.
 
 A credential-free content seam on the broker CLI lets the agent supply pull-request text across the
 sandbox boundary without holding credentials.

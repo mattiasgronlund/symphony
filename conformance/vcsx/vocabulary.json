@@ -117,7 +117,7 @@
 
   "hook_conditions": {
     "spec_refs": ["VCSX-SPEC.md Section 6.6 \"`[hooks]`\"", "VCSX-SPEC.md Section 8.2 \"Result Envelope\""],
-    "note": "The three ways a hook gives the engine no usable answer. Reported for a gate in `unanswered_gates` and for a result-triggered hook in `unfinished_hooks`, spelled the same way in both, so one consumer branch reads both halves. The condition diagnoses; the reason routes (Section 4.3).",
+    "note": "The three ways a unit the engine hands control to gives it no usable answer. Reported for a unit at a `before:*` position in `unanswered_gates` — a hook, or the `pr_to_squash` transform (Section 10.3) — and for a result-triggered hook in `unfinished_hooks`, spelled the same way in both, so one consumer branch reads both halves. The condition diagnoses; the reason routes (Section 4.3).",
     "entries": [
       { "token": "bound_elapsed", "meaning": "The unit was still running when the bound elapsed, and was stopped." },
       { "token": "not_started", "meaning": "The engine could not start the unit." },
@@ -143,6 +143,7 @@
       { "token": "base_unresolvable", "meaning": "A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map." },
       { "token": "set_state_unbound", "meaning": "A `set_state`/transition binding without a consumer that can apply it." },
       { "token": "template_unbound", "meaning": "A `[messages.pr]` `body_source = \"template\"` with no template unit bound (Sections 5.2, 10.2). Judged from the repository units the consumer bound, which is why Section 6.11 names them among validation's inputs; a template is a repository unit rather than a Section 5.2 action, so `set_state_unbound`'s input does not reach it." },
+      { "token": "transform_unbound", "meaning": "A `[messages.squash]` `transform` naming a unit the consumer bound nothing to (Sections 6.8, 10.3). Judged from the same input as `template_unbound` and refused for the same reason, with more of the flow behind it: a transform's first use is the `merge` a `land` reaches only once the pull request is open. A `[messages.squash]` naming no transform is not this condition — it names no unit, so nothing is unbound." },
       { "token": "capability_unsupported", "meaning": "A policy requiring a capability no selected backend declares (Section 9.3). Determinable because a statically declared capability follows from the consumer's selection alone; a descriptor field only the checkout answers is not, and keeps Section 9.3's first-use disposition." },
       { "token": "policy_branch_is_target", "meaning": "The `policy_branch` names the same branch as the resolved base (Sections 6.4, 8.1). Judged from the consumer's configuration and the policy together and from no checkout, which places it here rather than among the preconditions. A trusted revision that is also the pull-request target is one the work being landed can rewrite; refusing at validation keeps the refusal ahead of `commit`, so nothing is published by an invocation that cannot open a pull request." },
       { "token": "version_floor_unmet", "meaning": "A `version_floor` above the running engine version." }
@@ -253,7 +254,7 @@
     "entries": [
       { "token": "unperformed_intents", "fields": ["action", "arguments"], "meaning": "The consumer-effected intents the engine emitted and no consumer performed (Section 5.2)." },
       { "token": "unfinished_hooks", "fields": ["hook", "trigger", "condition"], "meaning": "The result-triggered hooks that gave the engine no usable answer (Section 6.6). `condition` is a `hook_conditions` token." },
-      { "token": "unanswered_gates", "fields": ["hook", "position", "condition", "detail"], "meaning": "The `before:*` hooks that gave the engine no usable answer, whose operations reported `hook_unanswered` (Sections 4.3, 6.6). `condition` is a `hook_conditions` token; `detail` is Implementation-defined. An array, because one traversal can pass more than one unanswered gate." },
+      { "token": "unanswered_gates", "fields": ["hook", "position", "condition", "detail"], "meaning": "The `before:*` units that gave the engine no usable answer, whose operations reported `hook_unanswered` (Sections 4.3, 6.6). The key is named for the gate that is almost always the unit at a position; the `pr_to_squash` transform is reported here too (Section 10.3). `condition` is a `hook_conditions` token; `detail` is Implementation-defined. An array, because one traversal can pass more than one unanswered unit." },
       { "token": "failed_by_policy", "fields": ["trigger", "reason"], "meaning": "Present where the policy ended the flow with `fail` (Section 5.2). `reason` is the repository-authored token the edge wrote and is absent where the edge wrote none; it belongs to no registry in this file." }
     ]
   },
@@ -323,12 +324,10 @@
 
   "message_formulation": {
     "spec_refs": ["VCSX-SPEC.md Section 10 \"Message Formulation\"", "VCSX-CONTRACT.md Section 9 \"Message Formulation\""],
-    "note": "The engine supplies the seams; the repository supplies the format. Scan profile names such as `strict` and `relaxed` are repository-bound, not engine tokens.",
+    "note": "The engine supplies the seams; the repository supplies the format. Scan profile names such as `strict` and `relaxed` are repository-bound, not engine tokens, and no configuration key binds one: a scan is declared as a hook and reached through a `[policy]` edge at a lifecycle position (Sections 6.5, 6.8, 10.4).",
     "entries": [
-      { "token": "scan-content", "kind": "hook", "spec_ref": "Section 10.4" },
-      { "token": "pr_to_squash", "kind": "transform", "position": "before:merge", "spec_ref": "Section 10.3" },
-      { "token": "title_scan", "kind": "scan_profile_binding", "spec_ref": "Section 10.2" },
-      { "token": "body_scan", "kind": "scan_profile_binding", "spec_ref": "Section 10.2" },
+      { "token": "scan-content", "kind": "hook", "bound_by": "a `[policy]` edge at a lifecycle position", "positions": ["before:commit", "before:create_pr"], "spec_ref": "Section 10.4" },
+      { "token": "pr_to_squash", "kind": "transform", "bound_by": "`[messages.squash]` `transform`, whose unit the consumer binds", "position": "before:merge", "spec_ref": "Section 10.3" },
       { "token": "body_source", "kind": "config_key", "values": ["auto", "agent", "template"], "spec_ref": "Section 10.2" },
       { "token": "strategy", "kind": "config_key", "values": ["squash", "merge", "rebase"], "default": "merge", "spec_ref": "Section 6.8" }
     ]
