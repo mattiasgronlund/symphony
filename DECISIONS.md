@@ -3419,3 +3419,52 @@ first refusal to a strict mode. As the specification stands there is one mode; t
 `policy_branch == target` legitimate under an operator opt-out, and that scoping is its work, since
 repairing applied text and introducing design in one record buries the first. Relates to 0094, 0084,
 0092 and 0002.
+
+## 0097 — Where the policy comes from, when it is read, and what happens when it cannot be
+
+**State:** Accepted
+**Folder:** [decisions/0097-policy-loading-and-unusability/](decisions/0097-policy-loading-and-unusability/)
+
+Three consequences decision 0094 left unhandled once the host-side Way of Working moved to a remote
+branch. **The reload machinery stopped being implementable.** Section 6.2 requires detecting changes
+to all three configuration artifacts, written when `repo.policy.toml` was read from a revision the
+checkout held; from a remote branch, "detect changes" means polling a remote ref on a cadence nothing
+specifies. **The policy is read far more often than anyone intended** — validation runs per
+invocation and every brokered verb is an invocation, so 3 at minimum and roughly 23 at the default
+`agent.max_turns` ceiling, per issue. The cost is not the count, since every operation Symphony
+invokes the engine for is remote-touching anyway; it is 23 places a load can fail mid-run, each
+needing a disposition. **And four ways a policy can be unusable had four dispositions**, two of them
+undefined: the source unreadable (a case that did not exist before 0094), no file discovered (the
+original scope of 0094 before it was reframed, never closed), a file that does not parse
+(`malformed_policy`), and one that parses invalidly (Section 6.10's reasons). So: `policy_source`
+names where host-side policy is read from, `policy_branch` by default or `target_branch` as the
+operator's opt-out — a named mode rather than a flag, because the trust guarantee is conditional on
+it and a conditional guarantee is worth stating only where a consumer can tell which state holds; what
+the opt-out gives up is stated rather than derived, the merge path to the trust root reopening and
+per-branch sections becoming authorable by whoever lands a pull request. Policy and workflow load
+**once at work start** through `load_policy`, an operation returning the merged surface that the
+consumer holds and supplies onward, which resolves Section 3.2's "the consumer sources config by
+trust" against Section 6.1's "the engine discovers and reads" in the former's favour and dissolves the
+recorded finding that no Section 9.1 capability reads a file at a revision — one operation does it
+once rather than a capability per read. `WORKFLOW.md` changes timing only and stays worktree-sourced,
+since everything in it runs in-sandbox without credentials. Section 6.2 is restated: `repo.policy.toml`
+is not watched, the policy in force for a run is the one read at its start, and a change takes effect
+for work started after it. The four unusable conditions get **one resolution and four diagnoses** —
+each refuses with `usage_or_config` and its own reason, `policy_source_unreadable` and
+`policy_not_found` joining the two that existed, because a consumer's response is one ("I cannot run
+this repository's policy") while the repair differs (make the source readable, commit the file, fix
+the syntax, fix the value). `policy_source_unreadable` does not distinguish an absent branch from an
+unreachable remote from a refused credential, on `provision:unreachable`'s reasoning that a reason per
+cause is a registry of the ways a network fails. Symphony classifies all four as `Engine Invocation
+Failures`, repo-scoped, and retries them with a **documented per-repository backoff** rather than every
+`polling.interval_ms` — none of the four clears without a person acting — which is not the per-worker
+backoff Section 14.2 forbids, the unit being the repository. Each is logged with its reason so the four
+stay distinguishable in the record, at transitions rather than every evaluation. Last-known-good is
+scoped to work in flight: a policy that was loaded and can no longer be read stays in force for runs
+under way while new work is refused, and one never loaded has no fallback — the one axis on which the
+shared disposition splits, and it splits on history rather than cause. Deferred as too complicated for
+now: routing that report through `[policy]` edges, which would work via the last-known-good policy but
+buys a repository a say in a response already fixed. Reconsider the cadence if an operator needs to
+revoke a host-side hook and finds runs in flight keep it; reconsider the unified resolution if
+`policy_not_found` turns out to deserve parking rather than retry, nothing about it being transient.
+Relates to 0094, 0093, 0092 and 0002.

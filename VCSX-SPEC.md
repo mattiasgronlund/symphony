@@ -190,6 +190,15 @@ checkout mode that records the working tree as a commit of its own before it can
 of the three — which is why Section 9.1 requires such a backend to keep that commit outside what the
 work branch reaches, rather than leaving the arrangement to each backend.
 
+- `load_policy` — obtain the merged host-side policy surface, once, for a unit of work. It reads
+  `repo.policy.toml` from the policy source (Sections 6.1, 8.1), merges any `vcsx.toml`, and returns
+  the surface; the consumer holds it and supplies it to every subsequent invocation, which therefore
+  read no repository. This is the operation that makes Section 3.2's "the consumer sources config by
+  trust" literally true, and it is why no capability of Section 9.1 reads a file at a revision — one
+  operation does it once, rather than a capability doing it per read. Like `provision`, it has no
+  lifecycle position and raises no `<op>:<reason>` trigger, for the same reason: the edges that
+  would gate or route it are in the document it exists to obtain. Its failures are the four
+  Section 6.1 names, reported as configuration errors.
 - `provision` — ensure the repository is present and current: create the store where
   `store_location` holds none, refresh it where it holds one, and, where the invocation names a
   `tree_location`, derive the working tree there from that store (Section 8.1). An invocation naming
@@ -684,11 +693,27 @@ two facts a caller acts on — which position, and which unit.
   `Implementation-defined` and MUST be documented.
 - An engine-native `vcsx.toml`, when present, is merged into the same surface; `repo.policy.toml` keys
   take precedence on conflict. A consumer MAY present the merged surface as one document.
-- A discovered file that does not parse yields no policy to validate. The engine reads no policy
-  from it and refuses to run, reporting a configuration error (Section 6.10).
-- `provision` is the one entry point that runs where no file has been discovered, because it is the
-  operation that obtains the repository the file is in (Sections 4.1, 6.10). Its dispatch reads no
-  policy and is validated from the Section 6.10 inputs that are not the document.
+- **A policy that cannot be used yields one disposition and four diagnoses.** Four conditions leave
+  the engine without a policy it can run:
+  - the source it is read from could not be read — `policy_source_unreadable`;
+  - no `repo.policy.toml` was discovered there — `policy_not_found`;
+  - a discovered file, or a `vcsx.toml` merged into it, does not parse — `malformed_policy`;
+  - a discovered file parses and is invalid — one of the remaining Section 6.10 reasons.
+
+  In every one of the four the engine reads no policy, refuses to run, and reports
+  `usage_or_config` with the reason naming the cause (Section 6.10). The disposition is one because
+  a consumer's response is one — it cannot run this repository's policy — while the reasons stay
+  four because the **repair** differs: make the source readable, commit the file, fix the syntax,
+  fix the value. Diagnosis belongs in the reason and the log; it does not belong in the disposition.
+
+  `policy_source_unreadable` names no cause beyond that. Whether the branch is absent, the remote
+  unreachable, or the credential refused is not something the engine can establish from the far side
+  of a transport, and a reason per cause would be a registry of the ways a network fails — which is
+  the reading `provision:unreachable` already takes (Section 4.3).
+- `provision` is the one entry point that runs where no policy could be read, whichever of the four
+  conditions holds, because it is the operation that obtains the repository the file is in
+  (Sections 4.1, 6.10). Its dispatch reads no policy and is validated from the Section 6.10 inputs
+  that are not the document.
 - Unknown keys SHOULD be ignored for forward compatibility.
 - The consumer configuration (Section 8.1) is the loader's second input and carries no key this
   surface carries. What a clone inherits unchanged is `repo.policy.toml`'s and what is needed to
@@ -1007,6 +1032,8 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 
 | Condition | Reason |
 |-----------|--------|
+| The source host-side policy is read from could not be read — the branch absent, the remote unreachable, or the credential refused alike (Sections 6.1, 8.1) | `policy_source_unreadable` |
+| No `repo.policy.toml` was discovered at the source (Section 6.1) | `policy_not_found` |
 | A discovered `repo.policy.toml`, or a `vcsx.toml` merged into it, that does not parse (Section 6.1) | `malformed_policy` |
 | A key whose value does not satisfy the constraints its section states — a `[requires] version_floor` that is not a `MAJOR.MINOR` version (Sections 6.2, 8.5), for example | `malformed_policy` |
 | An edge whose action cannot be dispatched from the arguments it carries — a `run_op` with no `op`, a `run` with no `hook` (Sections 5.2, 6.5) | `malformed_policy` |
@@ -1025,13 +1052,15 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | A `policy_branch` equal to the branch the resolved base names (Sections 6.4, 8.1) | `policy_branch_is_target` |
 | A `version_floor` above the running engine version (Section 8.5) | `version_floor_unmet` |
 
-The first four conditions are well-formedness failures and the rest are consistency failures, and
-the order is not incidental: validation takes a document, and a policy that does not parse yields
-none for the checks below it to run against. `malformed_policy` covers a well-formedness failure no
-other condition in the table names; where another names the state — a missing or malformed
-`prefixes` map is `base_unresolvable` (Section 6.4) — that condition's reason is reported.
-Section 6.1's rule that an unknown key SHOULD be ignored for forward compatibility covers a key the
-schema does not declare, not a declared key whose value the schema does not admit.
+The first two conditions leave the engine without a document at all, the next four are
+well-formedness failures, and the rest are consistency failures. The order is not incidental:
+validation takes a document, a policy that could not be obtained yields none for the well-formedness
+checks to run against, and one that does not parse yields none for the consistency checks below it.
+`malformed_policy` covers a well-formedness failure no other condition in the table names; where
+another names the state — a missing or malformed `prefixes` map is `base_unresolvable` (Section 6.4)
+— that condition's reason is reported. Section 6.1's rule that an unknown key SHOULD be ignored for
+forward compatibility covers a key the schema does not declare, not a declared key whose value the
+schema does not admit.
 
 Validation is judged from five inputs and no others, and naming them is what makes "determinable
 before the policy runs" a question with an answer (Sections 8.6, 9.3):
@@ -1227,13 +1256,27 @@ that needs none runs (Section 8.6). The engine holds a base branch opaque as it 
 opaque: it resolves which of the three sources applies, supplies the result to the capabilities that
 take one, and interprets nothing about the name.
 
-The **policy branch** is the revision the engine reads the host-side parts of `repo.policy.toml`
-from (Sections 3.2, 6.1):
+The **policy source** names where host-side policy is read from:
 
-- `policy_branch` — REQUIRED; its absence is refused before the policy runs (Section 8.6). The
-  engine discovers and reads the policy (Section 6.1), but *which revision* it reads the host-side
-  parts from is the consumer's decision, because Section 3.2 makes sourcing by trust the consumer's.
-  This argument is that decision, made explicit.
+- `policy_source` — `policy_branch` or `target_branch`.
+  - Default: `policy_branch`. The revision is named separately from the pull-request target, so
+    nothing the consumer merges reaches what it trusts.
+  - `target_branch` reads host-side policy from the pull-request target itself. `policy_branch` is
+    then neither required nor meaningful, and a `policy_branch` equal to the target is the
+    configuration rather than an error in it, so `policy_branch_is_target` does not arise
+    (Section 6.10).
+
+It is a named mode rather than a flag because the trust properties Section 11 states are conditional
+on it, and a conditional guarantee is worth stating only where a consumer can tell which state
+holds. What `target_branch` gives up is stated where the guarantee is, not left to be derived.
+
+The **policy branch** is the revision the engine reads the host-side parts of `repo.policy.toml`
+from under the default mode (Sections 3.2, 6.1):
+
+- `policy_branch` — REQUIRED under `policy_source = "policy_branch"`; its absence is then refused
+  before the policy runs (Section 8.6). Which revision host-side policy is read from is the
+  consumer's decision, because Section 3.2 makes sourcing by trust the consumer's, and this argument
+  is that decision made explicit.
   - It resolves to the copy belonging to the resolved `remote`, and never to a local branch of the
     same name. This is Section 6.4's rule for the base ref applied to the trust root, and it carries
     more weight here: a checkout MAY hold several copies of one branch, and for the base the wrong
@@ -2294,6 +2337,14 @@ A conforming engine SHOULD include tests covering:
   not at all (Sections 8.1, 8.6); a `capability_unsupported` turning on the selected VCS backend's
   descriptor is still reported at validation for a `provision`, the selection being an input the
   consumer supplied rather than one read from the repository (Sections 6.10, 9.3).
+- Policy loading and unusability: the policy is obtained once per unit of work through
+  `load_policy`, and a change to the policy source after that does not take effect until the next
+  unit of work; each of the four unusable conditions — source unreadable, file absent, unparseable,
+  invalid — refuses with `usage_or_config` and its own reason, so a consumer branching on the status
+  handles all four alike while the reason distinguishes the repair; `policy_source_unreadable`
+  covers an absent branch, an unreachable remote and a refused credential without distinguishing
+  them; under `policy_source = "target_branch"` a `policy_branch` equal to the target is not an
+  error and `policy_branch` is not required (Sections 6.1, 6.10, 8.1).
 - The policy branch: a `policy_branch` naming the same branch as the resolved base is refused with
   `policy_branch_is_target` and runs no operation, in particular no `commit` and no `push`; an
   invocation supplying no `policy_branch` yields `policy_branch_missing`, and yields it in

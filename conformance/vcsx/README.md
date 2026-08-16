@@ -209,6 +209,11 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   which no vector file models. `base_branch_missing` is the near miss: `[base] branch` is one of its
   three sources and vectors do model policies, but the other two sources and the invoked entry point
   are not vector inputs, so the condition is not determined by a policy document alone.
+- **Two of the four unusable-policy conditions** (Section 6.1) — `policy_source_unreadable` needs a
+  source that cannot be read and `policy_not_found` needs a source that carries no file, and a
+  vector file supplies a policy document rather than the place one was read from. Their two
+  siblings, `malformed_policy` and the consistency reasons, are modelled here. The tokens are in
+  `vocabulary.json` under `config_reasons`.
 - **Invocation preconditions** (Section 8.6) — whether the work branch derives and whether a commit
   identity is well formed are judged against a real checkout by a real backend, through
   `accepts_branch_name` and `accepts_identity` (Section 9.1), so no vector file can supply the input.

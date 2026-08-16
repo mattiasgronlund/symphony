@@ -840,10 +840,15 @@ Value coercion semantics:
 
 Dynamic reload is REQUIRED:
 
-- The software MUST detect changes to all three configuration artifacts: `WORKFLOW.md`,
-  `repo.policy.toml`, and the operator policy config (Section 5). A `repo.policy.toml` host-side
-  section is re-read from the policy branch, its in-sandbox `before:commit` gate from the worktree
-  (Section 15.4).
+- The software MUST detect changes to the two configuration artifacts it holds locally:
+  `WORKFLOW.md` and the operator policy config (Section 5).
+- `repo.policy.toml` is **not watched**. Its host-side sections are read from the policy source
+  (Section 9.7), which is a revision on a remote rather than a file on disk, so there is nothing to
+  watch that does not amount to polling a remote ref on an unstated cadence. It is instead read once
+  at the start of each unit of work, together with `WORKFLOW.md`. The policy in force for a run is
+  therefore the one read when that run started, and a change to the policy source takes effect for
+  work started after it rather than for work already under way. The in-sandbox `before:commit` gate
+  continues to be read from the worktree (Section 15.4).
 - On change, it MUST re-read and re-apply the affected configuration and prompt template without
   restart. Live operator-config reload includes credentials and scope, and live `repo.policy.toml`
   reload includes the action-policy machine and transitions; implementations SHOULD apply such
@@ -918,7 +923,8 @@ Operator policy config:
 - `vcs.forge_parameters`: OPTIONAL per-backend extension bag, carried to the selected backend uninterpreted
 - `vcs.git_credential` / `vcs.forge_credential`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; `vcs.forge_credential` defaults to `vcs.git_credential`
 - `vcs.remote`: the remote the repository is provisioned from and the operations that touch one act against
-- `vcs.policy_branch`: REQUIRED, no default; the branch `repo.policy.toml`'s host-side parts are read from. Never a pull-request target (Sections 9.7, 9.10, 15.4)
+- `vcs.policy_source`: string, `policy_branch` | `target_branch`, default `policy_branch`; where host-side Way of Working is read from (Sections 9.7, 15.4)
+- `vcs.policy_branch`: REQUIRED under `policy_source = "policy_branch"`, no default; the branch `repo.policy.toml`'s host-side parts are read from. Never a pull-request target (Sections 9.7, 9.10, 15.4)
 - `vcs.base_branch`: the operator's default pull-request target; middle of three sources (issue, then this, then `repo.policy.toml`), default unset
 - `vcs.base_branch_allowed`: OPTIONAL bound on the targets a per-issue source may name, default unset (unbounded)
 - `vcs.local_vcs`: REQUIRED; the VCS backend the engine loads, and the checkout mode for one it creates. For a checkout it did not create the backend detects the mode (Section 9.7)
@@ -1606,11 +1612,18 @@ Configuration:
     - Default: `git_credential`.
   - `remote` (string) — the remote the repository is provisioned from, and the one the operations
     that touch a remote act against.
+  - `policy_source` (string) — `policy_branch` | `target_branch`, naming where host-side Way of
+    Working is read from.
+    - Default: `policy_branch`.
+    - `target_branch` reads it from the pull-request target itself, so no separate branch is
+      needed. What that gives up is stated in Section 15.4; it is an operator's choice to make
+      knowingly, not a convenience.
   - `policy_branch` (string) — the branch `repo.policy.toml`'s host-side-executed parts are read
-    from (Section 15.4). REQUIRED; it has no default, because every default that resolves to the
-    pull-request target would make the trust root a branch Symphony merges into. It MUST NOT be the
-    target of a pull request Symphony creates or merges (Section 9.10), and MUST be a branch the
-    agent cannot write to by any route (Section 15.4).
+    from (Section 15.4). REQUIRED under `policy_source = "policy_branch"`, and it has no default
+    there, because every default that resolves to the pull-request target would make the trust root
+    a branch Symphony merges into. It is neither required nor consulted under `target_branch`. It
+    MUST NOT be the target of a pull request Symphony creates or merges (Section 9.10), and MUST be
+    a branch the agent cannot write to by any route (Section 15.4).
     - It resolves to the copy the configured `remote` holds, never to a local branch of the same
       name. A checkout MAY carry both, and for the trust root the difference is which host-side
       hooks run: a local copy is writable by whoever controls the checkout, which for a checkout
@@ -3000,8 +3013,12 @@ API design notes:
    - The engine does not conform to the invocation contract (an unreadable or malformed result
      envelope)
    - The engine refuses because it is below the repository's declared `version_floor`
-   - The engine returns a usage or configuration result in which the policy did not run — for
-     example an invalid `repo.policy.toml`
+   - The engine returns a usage or configuration result in which the policy did not run. Four
+     conditions leave it without a usable policy and all four land here: the policy source could not
+     be read, no `repo.policy.toml` was found there, one was found and does not parse, or one parses
+     and is invalid. They share a disposition (Section 14.2) and differ in the reason token they
+     carry, because what differs between them is the repair rather than the response
+     (`VCSX-CONTRACT.md`)
 
    Important boundary: this class covers only failures in which the policy never ran. The outcome of
    an operation that *did* run is owned by the action-policy machine (Section 9.12), which matches
@@ -3046,6 +3063,21 @@ node-scheduler extension (Section 9.11).
     worker's. Other repositories are unaffected.
   - An unavailable or non-conforming engine skips dispatch for every repository that requires one,
     because no repository's policy can be executed.
+  - Where the policy could not be used at all — the source unreadable, the file absent, unparseable,
+    or invalid — retry is **backed off per repository** rather than attempted every tick. None of
+    the four clears without a person acting, so retrying each `polling.interval_ms` produces load
+    and log volume against a condition nothing is changing. The backoff schedule is
+    `Implementation-defined` and MUST be documented, as the adjacent park-versus-retry choice
+    already is. This is not the per-worker backoff the bullet below forbids: the unit here is the
+    repository.
+  - Each failure MUST be logged with the reason token naming its cause, so the four remain
+    distinguishable in the record even though their disposition is not. Implementations SHOULD log
+    transitions — the first failure, each backed-off retry, and recovery — rather than every
+    evaluation, since logging each evaluation would defeat the backoff's purpose.
+  - A policy that was loaded successfully and can no longer be read stays in force for runs already
+    under way; new work for that repository is refused until it can be read again. A policy that was
+    never loaded has no last-known-good and the refusal is immediate. That is the one axis on which
+    the four causes' shared disposition splits, and it splits on history rather than on cause.
   - Keep the service alive and retry on a later tick. Do not convert to a per-worker backoff retry:
     a below-floor engine, a missing engine, and an invalid policy are configuration defects rather
     than transients, and backoff does not converge on them.
@@ -3284,6 +3316,15 @@ Working from the revision that makes it safe:
   that were also the trust root would be a branch the service writes to on every issue it completes,
   leaving Way-of-Working trust resting on each reviewer noticing a host-side hook change in a diff
   otherwise about product code.
+
+  An operator MAY set `vcs.policy_source = "target_branch"` and accept exactly that, which suits a
+  deployment with no second party — a solo developer, or a repository nobody outside the operator
+  can open a pull request against. Two things are given up and neither is recoverable by other
+  configuration: the merge path to the trust root reopens, so a host-side hook change that survives
+  review executes with the operator's credentials on the next run; and any per-branch policy section
+  becomes authorable by whoever can land a pull request. Both are consequences of the mode rather
+  than defects in it, which is why the specification states them here rather than warning against
+  the choice.
 - In-sandbox parts — the `WORKFLOW.md` prompt and in-sandbox hooks, and the `before:commit`
   gate/scan — are read from the **worktree**. An agent edit there is harmless: these run inside the
   sandbox without credentials or host access, and running a pull request's own gate change against
@@ -3776,6 +3817,13 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - Configuration trust sourcing (Section 15.4): an agent worktree edit to a host-side hook does not
   change host-side behavior (it is read from `vcs.policy_branch`), an in-sandbox `before:commit`
   change is honored, and a repo-internal integrity value never enters the sandbox
+- `repo.policy.toml` is read once at the start of a unit of work and not watched; a change to the
+  policy source mid-run does not alter that run, and takes effect for the next (Section 6.2)
+- All four unusable-policy conditions are classified as `Engine Invocation Failures`, skip that
+  repository's dispatches, and are retried with a documented per-repository backoff rather than
+  every tick; each is logged with the reason naming its cause; a policy that was loaded and can no
+  longer be read stays in force for runs already under way while new work is refused, and one never
+  loaded has no fallback (Sections 14.1, 14.2)
 - An operator config whose `vcs.policy_branch` equals the resolved pull-request target is refused
   before any operation runs, not at `create_pr` after a work branch has been published; an issue
   naming the policy branch as its target is refused before the run starts whether or not
@@ -4128,11 +4176,13 @@ engine's checklist.
   5, 9.7); `repo.policy.toml` carries none of them. The store and working-tree locations are
   supplied the same way, per invocation, since Symphony owns the host layout and the engine
   materializes it
-- `vcs.policy_branch` is operator config with no default, is the revision host-side Way of Working is
-  read from, resolves to the copy the configured remote holds, and is never a pull-request target —
-  enforced by refusing a configuration in which it equals the resolved target, and by excluding it
-  from permitted per-issue targets whatever `vcs.base_branch_allowed` lists; the pull-request
-  target resolves from the issue, then `vcs.base_branch`, then `repo.policy.toml`
+- `vcs.policy_source` selects where host-side Way of Working is read from, defaulting to
+  `policy_branch`. Under that mode `vcs.policy_branch` is operator config with no default, resolves
+  to the copy the configured remote holds, and is never a pull-request target — enforced by refusing
+  a configuration in which it equals the resolved target, and by excluding it from permitted
+  per-issue targets whatever `vcs.base_branch_allowed` lists. Under `target_branch` neither the
+  requirement nor those two refusals apply, and Section 15.4 states what the mode gives up; the
+  pull-request target resolves from the issue, then `vcs.base_branch`, then `repo.policy.toml`
   (Sections 9.7, 9.10, 15.4)
 - The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
   writes (post/reply/resolve), advertising a static forge-capability descriptor

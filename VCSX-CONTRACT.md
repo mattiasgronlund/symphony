@@ -203,6 +203,13 @@ one place the two front-ends legitimately differ.
 against the selected backends — the VCS backend, and a code host such as GitHub or Forgejo; the
 operation set and its result classing are host-neutral. Named operations include:
 
+- `load_policy` — obtain the merged host-side policy surface once for a unit of work, from the
+  policy source the consumer names. The consumer holds the result and supplies it to subsequent
+  invocations, so no other operation reads the repository's configuration. Like `provision` it has
+  no lifecycle position and raises no trigger, the edges that would gate it being in the document it
+  obtains. Four conditions leave it without a usable policy — the source unreadable, the file
+  absent, unparseable, or invalid — and all four are configuration errors differing in reason
+  rather than in disposition.
 - `provision` — ensure the repository is present and current: create the store where absent, refresh
   it where present, and, where the invocation names a place for one, derive a working tree from it.
   The store and the tree are named by the consumer, as a store location and an OPTIONAL tree
