@@ -1022,6 +1022,7 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | A `set_state`/transition binding without a consumer that can apply it (Section 5.2) | `set_state_unbound` |
 | A `[messages.pr]` `body_source = "template"` with no template unit bound (Sections 5.2, 10.2) | `template_unbound` |
 | A policy, or the consumer configuration, requiring a capability no selected backend declares (Section 9.3) | `capability_unsupported` |
+| A `policy_branch` equal to the branch the resolved base names (Sections 6.4, 8.1) | `policy_branch_is_target` |
 | A `version_floor` above the running engine version (Section 8.5) | `version_floor_unmet` |
 
 The first four conditions are well-formedness failures and the rest are consistency failures, and
@@ -1055,6 +1056,14 @@ The third is an input rather than something the engine holds because the consume
 invocation (Section 6.2), and nothing about the ordering changes to admit it: Section 8.6 establishes
 `arguments_unreadable` and `local_vcs_missing` before validation, so the invocation's arguments are
 decoded and its backend selection is known by the time the checks above run.
+
+`policy_branch_is_target` is judged from the consumer's configuration and the policy together, and
+from no checkout, which is what places it here rather than among the preconditions. A trusted
+revision that is also the branch pull requests target is one the work being landed can rewrite, so
+the two values naming the same branch is a defect in the configuration rather than a state the
+engine can work around. Refusing it at validation is what keeps the refusal ahead of `commit`: a
+consumer that discovered the conflict when `create_pr` ran would already have published a work
+branch, which is the disposition Section 6.10 exists to avoid.
 
 `provision` is validated from those inputs **less the first**. The policy document is not among
 them, because the operation exists to obtain the repository the document is in (Sections 4.1, 6.1),
@@ -1209,7 +1218,9 @@ supply it two ways:
 - `base_branch_allowed` (OPTIONAL) — the set of bases an invocation may name, as names or patterns.
   A `base_branch` outside it is refused before the policy runs (Section 8.6). It belongs to the
   consumer configuration rather than to a single invocation, so the party bounding the choice is not
-  the party making it.
+  the party making it. The `policy_branch` is excluded whatever this lists, and whether or not it is
+  configured at all: a bound an operator must remember to set is a guarantee that fails by omission,
+  and this one is the specification's rather than the operator's.
 
 Where no source supplies a base, an entry that needs one is refused before the policy runs; an entry
 that needs none runs (Section 8.6). The engine holds a base branch opaque as it holds the coordinate
@@ -1219,9 +1230,16 @@ take one, and interprets nothing about the name.
 The **policy branch** is the revision the engine reads the host-side parts of `repo.policy.toml`
 from (Sections 3.2, 6.1):
 
-- `policy_branch` — REQUIRED. The engine discovers and reads the policy (Section 6.1), but *which
-  revision* it reads the host-side parts from is the consumer's decision, because Section 3.2 makes
-  sourcing by trust the consumer's. This argument is that decision, made explicit.
+- `policy_branch` — REQUIRED; its absence is refused before the policy runs (Section 8.6). The
+  engine discovers and reads the policy (Section 6.1), but *which revision* it reads the host-side
+  parts from is the consumer's decision, because Section 3.2 makes sourcing by trust the consumer's.
+  This argument is that decision, made explicit.
+  - It resolves to the copy belonging to the resolved `remote`, and never to a local branch of the
+    same name. This is Section 6.4's rule for the base ref applied to the trust root, and it carries
+    more weight here: a checkout MAY hold several copies of one branch, and for the base the wrong
+    one yields a stale number, while for the policy branch it yields host-side hooks chosen by
+    whoever can write that checkout. A consumer running the engine against a checkout it did not
+    create is exactly where that matters.
 
 It is REQUIRED with no default, and specifically no default derived from `[base] branch`: a branch
 named inside the policy cannot select the revision the policy is read from. Two properties are
@@ -1495,13 +1513,19 @@ registry to report. A capability consulted here that answers neither yes nor no 
 could not read the checkout it was pointed at — establishes no precondition either way, and is
 `checkout_unreadable` rather than the refusal its negative answer would have produced (Section 9).
 
-Two preconditions are established **before** validation rather than after it. An engine that cannot
-decode the invocation's arguments cannot locate the policy it would validate, so
-`arguments_unreadable` is judged first of everything. `local_vcs_missing` follows it and still
-precedes validation, because the selection is what fixes whose descriptor the engine reads
-(Section 6.10): a validation that reports `capability_unsupported` has already loaded a backend, and
-loading one is what this argument names. The ordering rule this section states below holds for every
-other reason in this registry.
+Three preconditions are established **before** validation rather than after it, and each for the
+same shape of reason — validation cannot proceed without what the argument names.
+
+- `arguments_unreadable` is judged first of everything: an engine that cannot decode the
+  invocation's arguments cannot locate the policy it would validate.
+- `local_vcs_missing` follows, because the selection is what fixes whose descriptor the engine reads
+  (Section 6.10): a validation that reports `capability_unsupported` has already loaded a backend,
+  and loading one is what this argument names.
+- `policy_branch_missing` follows, because the policy document is the first of Section 6.10's five
+  inputs and this argument is what says where to read it from. There is nothing to validate until it
+  is known.
+
+The ordering rule this section states below holds for every other reason in this registry.
 
 The entry point alone fixes that scope: a front-end sequence that dispatches one means the
 sequence's own dispatches (Sections 12.2, 12.3), so `ship` requires an identity and `land` does not,
@@ -1559,6 +1583,7 @@ run in which the policy did not run.
 |-----------|--------|
 | The invocation's arguments could not be decoded in the encoding the engine published (Section 8.1) | `arguments_unreadable` |
 | No `local_vcs` was supplied, so no VCS backend is selected (Section 8.1) | `local_vcs_missing` |
+| No `policy_branch` was supplied, so the policy cannot be located (Section 8.1) | `policy_branch_missing` |
 | A forge is configured and no forge repository coordinate was supplied (Section 8.1) | `forge_coordinate_missing` |
 | A forge is configured and no `forge_access` was supplied (Section 8.1) | `forge_access_missing` |
 | An entry that can reach a remote was invoked and no `git_access` was supplied (Section 8.1) | `git_access_missing` |
@@ -1586,9 +1611,9 @@ policy document, what the engine holds independently of the invocation, the cons
 access configuration, the actions a consumer can effect and the repository units it bound. The
 converse does not hold and is not claimed: a precondition MAY need the checkout and MAY be judged
 from the invocation's arguments alone, as `arguments_unreadable`, `local_vcs_missing`,
-`forge_coordinate_missing`, `git_access_missing`, `forge_access_missing`, `store_location_missing`,
-`base_branch_missing` and `base_branch_not_permitted` are. Each row above says what it is judged
-from.
+`policy_branch_missing`, `forge_coordinate_missing`, `git_access_missing`, `forge_access_missing`,
+`store_location_missing`, `base_branch_missing` and `base_branch_not_permitted` are. Each row above
+says what it is judged from.
 
 `base_branch_missing` is the one row judged partly from the policy document, since `[base] branch`
 is its lowest source (Section 6.4), and it is still a precondition rather than a configuration
@@ -1603,7 +1628,7 @@ order in which an engine establishes either.
 
 Both refuse to run the policy and both report `usage_or_config`, which is why that status names usage
 and configuration together. Validation precedes precondition establishment, so where a configuration
-error and a precondition failure both hold, the configuration reason is reported — the two
+error and a precondition failure both hold, the configuration reason is reported — the three
 established before validation excepted, for the reason above.
 
 Two boundaries follow from stating it that way. A descriptor field a backend can answer only once it
@@ -1613,11 +1638,11 @@ statically is one the engine holds from the consumer's selection alone (Section 
 before it validates, so `capability_unsupported` is inside this definition rather than a
 counterexample to it — which is what Section 9.3's "where determinable" refers to.
 
-The five rows naming a missing argument — the VCS backend selection, the forge repository
-coordinate, the two access parameters and `provision`'s store location — are judged with no
-capability consulted and no checkout opened, and are preconditions rather than configuration errors
-because an argument is not a document: the policy is well formed and what is absent is what the
-invocation was to supply.
+The six rows naming a missing argument — the VCS backend selection, the policy branch, the forge
+repository coordinate, the two access parameters and `provision`'s store location — are judged with
+no capability consulted and no checkout opened, and are preconditions rather than configuration
+errors because an argument is not a document: the policy is well formed and what is absent is what
+the invocation was to supply.
 
 ## 9. Plugin API
 
@@ -2269,6 +2294,14 @@ A conforming engine SHOULD include tests covering:
   not at all (Sections 8.1, 8.6); a `capability_unsupported` turning on the selected VCS backend's
   descriptor is still reported at validation for a `provision`, the selection being an input the
   consumer supplied rather than one read from the repository (Sections 6.10, 9.3).
+- The policy branch: a `policy_branch` naming the same branch as the resolved base is refused with
+  `policy_branch_is_target` and runs no operation, in particular no `commit` and no `push`; an
+  invocation supplying no `policy_branch` yields `policy_branch_missing`, and yields it in
+  preference to any configuration reason, since the policy cannot be located to validate; a checkout
+  holding a local branch named as the policy branch reads the copy the resolved remote holds and not
+  the local one; a supplied `base_branch` naming the policy branch yields
+  `base_branch_not_permitted` whatever `base_branch_allowed` lists and whether or not it is
+  configured (Sections 6.10, 8.1, 8.6).
 - Hook unit resolution: a `host_side` hook whose `run` names a unit present both in the host-side
   policy's source and in the working tree runs the former, and a working-tree unit of that name with
   no counterpart in the policy source is not started at all; a `host_side` hook does not run with

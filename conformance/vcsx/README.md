@@ -203,8 +203,9 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   vector either, whether the policy states the strategy or takes the Section 6.8 default. The forge
   repository coordinate, the backend selection, the access parameters, `provision`'s store location
   and the base branch are on the same side: whether one was supplied is determined by the invocation
-  (`forge_coordinate_missing`, `local_vcs_missing`, `git_access_missing`, `forge_access_missing`,
-  `store_location_missing`, `base_branch_missing` and `base_branch_not_permitted`, Section 8.6),
+  (`forge_coordinate_missing`, `local_vcs_missing`, `policy_branch_missing`, `git_access_missing`,
+  `forge_access_missing`, `store_location_missing`, `base_branch_missing` and
+  `base_branch_not_permitted`, Section 8.6),
   which no vector file models. `base_branch_missing` is the near miss: `[base] branch` is one of its
   three sources and vectors do model policies, but the other two sources and the invoked entry point
   are not vector inputs, so the condition is not determined by a policy document alone.

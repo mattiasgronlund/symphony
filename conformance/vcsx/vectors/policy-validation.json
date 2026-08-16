@@ -11,7 +11,7 @@
     "VCSX-SPEC.md Section 8.5 \"Versioning and the Version Grammar\""
   ],
   "description": "Validate a repository policy before use. On a configuration error the engine refuses to run and does not run a partial policy.",
-  "given": "the five inputs Section 6.10 names: the policy, what the engine holds independently of the invocation (here its running version), the consumer's selection and access configuration (not modelled; the selected backends' descriptors are read from it, see notes), the actions the consumer can effect, and the repository units it bound",
+  "given": "the five inputs Section 6.10 names: the policy, what the engine holds independently of the invocation (here its running version), the consumer's selection and access configuration (modelled only where a vector needs it, as `policy_branch`; the selected backends' descriptors are not, see notes), the actions the consumer can effect, and the repository units it bound",
   "expect": "`{ valid: true }`, or `{ error: <config reason> }` naming the Section 6.10 reason the refusal carries",
   "notes": [
     "Each failing vector holds exactly one condition, so the reported reason is determined. Which reason is reported when several conditions hold is Implementation-defined (Section 6.10) and is deliberately not exercised here.",
@@ -44,6 +44,27 @@
       "description": "`[base] branch` is OPTIONAL and the lowest of three sources (Section 6.4). A policy omitting it is well formed; whether any source supplies a base is an invocation-time question (`base_branch_missing`, Section 8.6), which no vector models.",
       "given": {
         "policy": { "requires": { "version_floor": "1.0" }, "edges": [] },
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "valid": true }
+    },
+    {
+      "id": "policy_branch_equal_to_the_resolved_base_is_refused",
+      "description": "A trusted revision that is also the pull-request target is one the work being landed can rewrite (Sections 6.4, 8.1). Refused at validation so the refusal precedes `commit`, rather than at `create_pr` after a work branch is published.",
+      "given": {
+        "policy": { "requires": { "version_floor": "1.0" }, "base": { "branch": "main" }, "edges": [] },
+        "policy_branch": "main",
+        "engine_version": "1.3",
+        "consumer_capabilities": []
+      },
+      "expect": { "error": "policy_branch_is_target" }
+    },
+    {
+      "id": "policy_branch_distinct_from_the_resolved_base_is_valid",
+      "given": {
+        "policy": { "requires": { "version_floor": "1.0" }, "base": { "branch": "main" }, "edges": [] },
+        "policy_branch": "symphony-policy",
         "engine_version": "1.3",
         "consumer_capabilities": []
       },

@@ -1611,13 +1611,24 @@ Configuration:
     pull-request target would make the trust root a branch Symphony merges into. It MUST NOT be the
     target of a pull request Symphony creates or merges (Section 9.10), and MUST be a branch the
     agent cannot write to by any route (Section 15.4).
+    - It resolves to the copy the configured `remote` holds, never to a local branch of the same
+      name. A checkout MAY carry both, and for the trust root the difference is which host-side
+      hooks run: a local copy is writable by whoever controls the checkout, which for a checkout
+      Symphony did not create is not the operator (`VCSX-CONTRACT.md`).
+    - A configuration in which it equals the resolved pull-request target is refused before any
+      operation runs, so a deployment never discovers the conflict after a work branch has been
+      published. It is also never a permitted target for a per-issue source, whatever
+      `vcs.base_branch_allowed` lists (below).
   - `base_branch` (string) — the default pull-request target and back-merge source for the
     repository. The middle of three sources (below).
     - Default: unset — the repository's `repo.policy.toml` supplies one, or the invocation does.
   - `base_branch_allowed` (list of strings) — OPTIONAL bound on the targets a per-issue source may
     name, as branch names or patterns. An issue naming a target outside it is refused
     (`VCSX-CONTRACT.md`).
-    - Default: unset — a per-issue target is unbounded.
+    - Default: unset — a per-issue target is otherwise unbounded.
+    - `vcs.policy_branch` is excluded whatever this lists and whether or not it is configured. A
+      bound an operator must remember to set is a guarantee that fails by omission, and this one is
+      the specification's rather than the operator's.
   - `local_vcs` (string) — the VCS backend the engine loads, and the checkout mode for a checkout it
     creates. REQUIRED. For a checkout the engine did not create, the backend detects the *mode*
     instead and this value names only which backend detects it (`VCSX-CONTRACT.md`).
@@ -1644,7 +1655,22 @@ A deployment MAY let an issue name its target. Which carrier does so — a label
 tracker field, or something tracker-specific — is `Implementation-defined` and MUST be documented,
 as the `branch_name` hint's treatment is (Section 9.8). Where `vcs.base_branch_allowed` is
 configured, a per-issue target outside it is refused before the run starts and no work branch is
-created for the issue.
+created for the issue. A per-issue target naming `vcs.policy_branch` is refused the same way whether
+or not that bound is configured.
+
+Where an issue is refused for either reason, Symphony:
+
+- MUST log the event, on every occurrence. The log is the only part that depends on nothing an
+  adapter may decline, so it is where the requirement sits.
+- SHOULD comment on the issue where the tracker adapter supports `add_comment` (Section 11.7),
+  naming the target it refused and why. The comment is written once per (issue, target) rather than
+  once per evaluation: the daemon re-evaluates every candidate each `polling.interval_ms` (Section
+  8.2), so an unbounded write here would repeat indefinitely on a ticket nobody has changed.
+- SHOULD transition the issue to a configured blocked state where the adapter supports `set_state`,
+  so a refused issue leaves the dispatch queue rather than being re-evaluated forever.
+
+The issue is not dispatched and no work branch is created. Correcting the issue's target makes it
+dispatchable again with no other action, which is why the refusal changes nothing else about it.
 
 Important boundary: the pull-request target is not the policy branch and carries none of its trust
 weight (Section 15.4). A target reaches the working tree — through the back-merge — and therefore
@@ -1735,7 +1761,11 @@ Pull requests:
   title and body are composed (below); the base is the resolved pull-request target (Section 9.7)
   and the head is the work branch. Symphony MUST NOT create or merge a pull request whose base is
   the policy branch (`vcs.policy_branch`), so no work the service lands can reach the revision its
-  host-side Way of Working is read from (Section 15.4).
+  host-side Way of Working is read from (Section 15.4). The guarantee is enforced ahead of the
+  operation rather than at it: a configuration whose policy branch equals the resolved target is
+  refused before anything runs, and a per-issue target naming it is refused before the run starts
+  (Section 9.7). Reaching `create_pr` with such a base is therefore unreachable rather than merely
+  forbidden.
 - Issue link: when the tracker is the same platform as the forge, the forge establishes the
   pull-request-to-issue link natively (for example a reference in the pull-request body). When the
   tracker is a separate system (for example Linear), the pull-request reference is written onto the
@@ -3746,6 +3776,14 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - Configuration trust sourcing (Section 15.4): an agent worktree edit to a host-side hook does not
   change host-side behavior (it is read from `vcs.policy_branch`), an in-sandbox `before:commit`
   change is honored, and a repo-internal integrity value never enters the sandbox
+- An operator config whose `vcs.policy_branch` equals the resolved pull-request target is refused
+  before any operation runs, not at `create_pr` after a work branch has been published; an issue
+  naming the policy branch as its target is refused before the run starts whether or not
+  `vcs.base_branch_allowed` is configured, logged on every occurrence, and — where the tracker
+  adapter supports the capability — commented once per (issue, target) and transitioned to the
+  configured blocked state (Sections 9.7, 9.10)
+- The policy branch resolves to the copy the configured remote holds; a local branch of the same
+  name in the checkout does not change which host-side Way of Working runs (Section 9.7)
 - A host-side hook declaring a unit at a path the agent can also write runs the policy branch's copy
   and not the working tree's, and does so with a working directory outside the workspace; it still
   reads the workspace it is given, so a host-side scan over agent-written content works. An
@@ -4091,9 +4129,11 @@ engine's checklist.
   supplied the same way, per invocation, since Symphony owns the host layout and the engine
   materializes it
 - `vcs.policy_branch` is operator config with no default, is the revision host-side Way of Working is
-  read from, and is never a pull-request target; the pull-request target resolves from the issue,
-  then `vcs.base_branch`, then `repo.policy.toml`, bounded by `vcs.base_branch_allowed` where an
-  issue supplies one (Sections 9.7, 9.10, 15.4)
+  read from, resolves to the copy the configured remote holds, and is never a pull-request target —
+  enforced by refusing a configuration in which it equals the resolved target, and by excluding it
+  from permitted per-issue targets whatever `vcs.base_branch_allowed` lists; the pull-request
+  target resolves from the issue, then `vcs.base_branch`, then `repo.policy.toml`
+  (Sections 9.7, 9.10, 15.4)
 - The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
   writes (post/reply/resolve), advertising a static forge-capability descriptor
 - The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback, an

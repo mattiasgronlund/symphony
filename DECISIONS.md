@@ -3380,3 +3380,42 @@ an in-sandbox gate defeats a hygiene control rather than reaching credentialed w
 15.4 already characterizes correctly. Reconsider if an engine defines a credentialed operation beyond
 Section 4.1 that no broker verb covers, or if a deployment narrows its verb set below Section 10.8's
 floor. Relates to 0094, 0093 and 0002.
+
+## 0096 — The three repairs decision 0094 needed
+
+**State:** Accepted
+**Folder:** [decisions/0096-policy-branch-repairs/](decisions/0096-policy-branch-repairs/)
+
+Three defects in decision 0094's applied text, grouped because they are one omission at three levels:
+0094 stated a guarantee and left the ways of establishing it unstated. **First**, Section 9.10's
+"Symphony MUST NOT create or merge a pull request whose base is the policy branch" had no refusal
+behind it, so an operator setting `vcs.policy_branch = "main"` with the target resolving to `main` —
+the obvious first configuration — got `commit` ok, `push` ok, `create_pr` refused: the work branch on
+the remote and no pull request. That is the publish-then-die shape 0084 moved a check to validation to
+prevent and which 0094's own reasoning cites 0084 to avoid, appearing a third time on this branch and
+a second time introduced by a repair. The conflict is visible in the consumer's configuration with no
+checkout and no network, so `policy_branch_is_target` joins Section 6.10's table and the refusal lands
+ahead of `commit`. **Second**, nothing said which copy of the policy branch is read. Section 6.4 gives
+the base ref that discipline because a checkout may hold a local branch and a remote-tracking copy;
+for the base the wrong one is a stale number, for the trust root it is host-side hooks chosen by
+whoever can write the checkout — latent in `daemon`, real in `interactive-agent`, immediate in
+`engine-direct`. The policy branch now resolves to the copy the resolved remote holds, never a local
+branch of that name, which collapses the `engine-direct` exposure to `daemon`'s. **Third**,
+`policy_branch` was REQUIRED with no failure mode while its five siblings all have one; that is the
+fourth recurrence of the pattern 0092's review finding named, and the second committed after naming
+it, so the count is recorded rather than the token alone — adding a REQUIRED argument and adding its
+refusal are two edits and nothing couples them. `policy_branch_missing` joins Section 8.6, established
+before validation as the third of three, because the policy document is the first of Section 6.10's
+inputs and this argument says where to read it. Plus the runtime half of the first: 0094's
+`base_branch_allowed` and `base_branch_not_permitted` already cover a target an issue supplies, so the
+policy branch is excluded from permitted targets **implicitly**, whatever the bound lists and whether
+or not it is configured — a bound an operator must remember to set is a guarantee that fails by
+omission. A refused issue is logged on every occurrence, and where the tracker adapter supports the
+capability commented once per (issue, target) and transitioned to a configured blocked state; the MUST
+sits on the log because `add_comment` and `set_state` are OPTIONAL (Section 11.7) and a `none`-mode
+adapter may have neither, and the comment is bounded per (issue, target) because the daemon
+re-evaluates every candidate every 30 seconds by default. Deliberately not done here: scoping the
+first refusal to a strict mode. As the specification stands there is one mode; the tunable model makes
+`policy_branch == target` legitimate under an operator opt-out, and that scoping is its work, since
+repairing applied text and introducing design in one record buries the first. Relates to 0094, 0084,
+0092 and 0002.
