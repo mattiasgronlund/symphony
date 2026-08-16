@@ -2,7 +2,7 @@
   "function": "validate_policy",
   "spec_refs": [
     "VCSX-SPEC.md Section 6.1 \"File Discovery and `vcsx.toml` Merge\"",
-    "VCSX-SPEC.md Section 6.10 \"Validation\"",
+    "VCSX-SPEC.md Section 6.11 \"Validation\"",
     "VCSX-SPEC.md Section 4.1 \"Operation Set\"",
     "VCSX-SPEC.md Section 5.4 \"Unmatched Policy and Determinism\"",
     "VCSX-SPEC.md Section 5.6 \"Flow Bound and Termination\"",
@@ -11,14 +11,14 @@
     "VCSX-SPEC.md Section 8.5 \"Versioning and the Version Grammar\""
   ],
   "description": "Validate a repository policy before use. On a configuration error the engine refuses to run and does not run a partial policy.",
-  "given": "the five inputs Section 6.10 names: the policy, what the engine holds independently of the invocation (here its running version), the consumer's selection and access configuration (modelled only where a vector needs it, as `policy_branch`; the selected backends' descriptors are not, see notes), the actions the consumer can effect, and the repository units it bound",
-  "expect": "`{ valid: true }`, or `{ error: <config reason> }` naming the Section 6.10 reason the refusal carries",
+  "given": "the five inputs Section 6.11 names: the policy, what the engine holds independently of the invocation (here its running version), the consumer's selection and access configuration (modelled only where a vector needs it, as `policy_branch`; the selected backends' descriptors are not, see notes), the actions the consumer can effect, and the repository units it bound",
+  "expect": "`{ valid: true }`, or `{ error: <config reason> }` naming the Section 6.11 reason the refusal carries",
   "notes": [
-    "Each failing vector holds exactly one condition, so the reported reason is determined. Which reason is reported when several conditions hold is Implementation-defined (Section 6.10) and is deliberately not exercised here.",
+    "Each failing vector holds exactly one condition, so the reported reason is determined. Which reason is reported when several conditions hold is Implementation-defined (Section 6.11) and is deliberately not exercised here.",
     "`consumer_capabilities` lists the consumer-effected actions (Section 5.2) this consumer can perform. An empty list models a human at an interactive prompt (Section 1.3).",
-    "`bound_units` lists the repository units the consumer bound (Section 6.10), which is the input `template_unbound` is judged from — a template is a Section 10.2 repository unit rather than a Section 5.2 action, so `consumer_capabilities` does not reach it. A vector omitting the key is read as an empty list.",
-    "`capability_unsupported` (Sections 6.10, 9.3) is not exercised here: it is determined against a plugin capability descriptor, which this slice defers with the rest of plugin behavior. Its absence is a coverage gap, not a statement that the condition is unvalidated.",
-    "`malformed_policy` for a policy file that does not parse (Sections 6.1, 6.10) is not exercised here either: `given.policy` is a document, not file text, so the input this condition is judged from cannot be expressed in this file. The other two well-formedness conditions are judged from a parsed document and are exercised. Its absence is likewise a coverage gap, not a statement that the condition is unvalidated."
+    "`bound_units` lists the repository units the consumer bound (Section 6.11), which is the input `template_unbound` is judged from — a template is a Section 10.2 repository unit rather than a Section 5.2 action, so `consumer_capabilities` does not reach it. A vector omitting the key is read as an empty list.",
+    "`capability_unsupported` (Sections 6.11, 9.3) is not exercised here: it is determined against a plugin capability descriptor, which this slice defers with the rest of plugin behavior. Its absence is a coverage gap, not a statement that the condition is unvalidated.",
+    "`malformed_policy` for a policy file that does not parse (Sections 6.1, 6.11) is not exercised here either: `given.policy` is a document, not file text, so the input this condition is judged from cannot be expressed in this file. The other two well-formedness conditions are judged from a parsed document and are exercised. Its absence is likewise a coverage gap, not a statement that the condition is unvalidated."
   ],
   "vectors": [
     {
@@ -27,7 +27,7 @@
         "policy": {
           "requires": { "version_floor": "1.0" },
           "base": { "branch": "main" },
-          "hooks": { "scan-content": { "context": "in_sandbox", "run": "./scan" } },
+          "hooks": { "engine": { "scan-content": { "run": "./scan" } } },
           "edges": [
             { "on": "before:commit", "do": "run", "hook": "scan-content" },
             { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" },
@@ -121,7 +121,7 @@
     },
     {
       "id": "position_dispatching_its_own_operation_is_a_position_cycle",
-      "description": "The dispatch runs the position (Section 4.1) and the position's only edge dispatches the operation, so no `commit` is ever reached. Refused at validation rather than left to the flow bound (Sections 5.6, 6.10).",
+      "description": "The dispatch runs the position (Section 4.1) and the position's only edge dispatches the operation, so no `commit` is ever reached. Refused at validation rather than left to the flow bound (Sections 5.6, 6.11).",
       "given": {
         "policy": {
           "base": { "branch": "main" },
@@ -136,7 +136,7 @@
     },
     {
       "id": "position_cycle_across_two_positions",
-      "description": "No edge names the operation its own position gates, and neither operation can run: the condition is a cycle over the positions, not an edge naming itself (Sections 4.1, 6.10).",
+      "description": "No edge names the operation its own position gates, and neither operation can run: the condition is a cycle over the positions, not an edge naming itself (Sections 4.1, 6.11).",
       "given": {
         "policy": {
           "base": { "branch": "main" },
@@ -152,7 +152,7 @@
     },
     {
       "id": "position_dispatching_another_operation_is_valid",
-      "description": "A position's `run_op` edge is refused only where the positions form a cycle; one that dispatches an operation the cycle does not return from is ordinary (Section 6.10).",
+      "description": "A position's `run_op` edge is refused only where the positions form a cycle; one that dispatches an operation the cycle does not return from is ordinary (Section 6.11).",
       "given": {
         "policy": {
           "base": { "branch": "main" },
@@ -167,7 +167,7 @@
     },
     {
       "id": "cycle_through_a_typed_result_is_valid",
-      "description": "`before:push` dispatches `integrate` and `integrate:ok` dispatches `push`, which re-enters the position: a cycle, but one that runs operations and whose next traversal may differ, so the flow bound holds it rather than validation refusing it (Sections 5.6, 6.10).",
+      "description": "`before:push` dispatches `integrate` and `integrate:ok` dispatches `push`, which re-enters the position: a cycle, but one that runs operations and whose next traversal may differ, so the flow bound holds it rather than validation refusing it (Sections 5.6, 6.11).",
       "given": {
         "policy": {
           "base": { "branch": "main" },
@@ -220,7 +220,7 @@
     },
     {
       "id": "unknown_operation_named_by_run_op",
-      "description": "`unknown_operation` is the `run_op` argument case, distinct from an unrecognized trigger (Section 6.10).",
+      "description": "`unknown_operation` is the `run_op` argument case, distinct from an unrecognized trigger (Section 6.11).",
       "given": {
         "policy": {
           "base": { "branch": "main" },
@@ -233,7 +233,7 @@
     },
     {
       "id": "run_op_without_an_op_argument",
-      "description": "An absent argument is a well-formedness failure, not an unrecognized name: `unknown_operation` names an operation the engine resolved and does not define (Section 6.10).",
+      "description": "An absent argument is a well-formedness failure, not an unrecognized name: `unknown_operation` names an operation the engine resolved and does not define (Section 6.11).",
       "given": {
         "policy": {
           "base": { "branch": "main" },
@@ -250,7 +250,7 @@
       "given": {
         "policy": {
           "base": { "branch": "main" },
-          "hooks": { "scan-content": { "context": "in_sandbox", "run": "./scan" } },
+          "hooks": { "engine": { "scan-content": { "run": "./scan" } } },
           "edges": [{ "on": "before:commit", "do": "run", "hook": "nonexistent" }]
         },
         "engine_version": "1.3",
@@ -264,7 +264,7 @@
       "given": {
         "policy": {
           "base": { "branch": "main" },
-          "hooks": { "scan-content": { "context": "in_sandbox", "run": "./scan" } },
+          "hooks": { "engine": { "scan-content": { "run": "./scan" } } },
           "edges": [{ "on": "before:commit", "do": "run" }]
         },
         "engine_version": "1.3",
@@ -274,7 +274,7 @@
     },
     {
       "id": "by_prefix_without_empty_prefix_default",
-      "description": "`by_prefix` requires an empty-prefix default (Sections 6.4, 6.10).",
+      "description": "`by_prefix` requires an empty-prefix default (Sections 6.4, 6.11).",
       "given": {
         "policy": {
           "base": { "branch": "main", "resolve": "by_prefix", "prefixes": { "exp/": "experiment" } },
@@ -299,11 +299,11 @@
     },
     {
       "id": "hook_declaring_no_run_unit",
-      "description": "A `[hooks.<name>]` table that declares a hook and gives it nothing to run is the document's own defect, judged from the document alone (Sections 6.6, 6.10).",
+      "description": "A `[hooks.<name>]` table that declares a hook and gives it nothing to run is the document's own defect, judged from the document alone (Sections 6.6, 6.11).",
       "given": {
         "policy": {
           "base": { "branch": "main" },
-          "hooks": { "scan-content": { "context": "in_sandbox" } },
+          "hooks": { "engine": { "scan-content": {} } },
           "edges": [{ "on": "before:commit", "do": "run", "hook": "scan-content" }]
         },
         "engine_version": "1.3",
@@ -318,7 +318,7 @@
       "given": {
         "policy": {
           "base": { "branch": "main" },
-          "hooks": { "scan-content": { "context": "in_sandbox", "run": "./not-present-on-this-host" } },
+          "hooks": { "engine": { "scan-content": { "run": "./not-present-on-this-host" } } },
           "edges": [{ "on": "before:commit", "do": "run", "hook": "scan-content" }]
         },
         "engine_version": "1.3",
@@ -329,7 +329,7 @@
     },
     {
       "id": "template_body_source_without_a_bound_unit",
-      "description": "A `template` body source names a repository unit the consumer must have bound; with none bound the policy cannot compose a body, and refusing here is what stops a `ship` publishing a work branch before it finds out (Sections 6.10, 10.2, 12.2).",
+      "description": "A `template` body source names a repository unit the consumer must have bound; with none bound the policy cannot compose a body, and refusing here is what stops a `ship` publishing a work branch before it finds out (Sections 6.11, 10.2, 12.2).",
       "given": {
         "policy": {
           "base": { "branch": "main" },
@@ -373,7 +373,7 @@
     },
     {
       "id": "set_state_edge_without_a_capable_consumer",
-      "description": "A set_state binding without a consumer that can apply it is a configuration error (Section 6.10).",
+      "description": "A set_state binding without a consumer that can apply it is a configuration error (Section 6.11).",
       "given": {
         "policy": {
           "base": { "branch": "main" },
@@ -414,7 +414,7 @@
     },
     {
       "id": "notify_edge_without_a_capable_consumer_is_valid",
-      "description": "Only set_state binds a capable consumer at validation; notify degrades to a surfaced no-op instead (Sections 5.2, 6.10).",
+      "description": "Only set_state binds a capable consumer at validation; notify degrades to a surfaced no-op instead (Sections 5.2, 6.11).",
       "given": {
         "policy": {
           "base": { "branch": "main" },
@@ -465,7 +465,7 @@
     },
     {
       "id": "version_floor_is_not_a_version",
-      "description": "A floor the engine cannot read is `malformed_policy`; `version_floor_unmet` names a floor it read and does not satisfy (Sections 6.2, 6.10, 8.5). The refusal is the same either way.",
+      "description": "A floor the engine cannot read is `malformed_policy`; `version_floor_unmet` names a floor it read and does not satisfy (Sections 6.2, 6.11, 8.5). The refusal is the same either way.",
       "given": {
         "policy": { "requires": { "version_floor": "latest" }, "base": { "branch": "main" }, "edges": [] },
         "engine_version": "1.3",

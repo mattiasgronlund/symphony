@@ -3468,3 +3468,55 @@ buys a repository a say in a response already fixed. Reconsider the cadence if a
 revoke a host-side hook and finds runs in flight keep it; reconsider the unified resolution if
 `policy_not_found` turns out to deserve parking rather than retry, nothing about it being transient.
 Relates to 0094, 0093, 0092 and 0002.
+
+## 0098 — The `repo.policy.toml` hook namespace, and per-branch sections
+
+**State:** Accepted
+**Folder:** [decisions/0098-policy-schema-shape/](decisions/0098-policy-schema-shape/)
+
+Two changes to one schema, taken together because each would otherwise rewrite the other's work.
+**The `hooks` namespace had two owners and no stated rule**: `SPEC.md` Section 5.3.4 wrote scalars
+(`hooks.after_create`) and `VCSX-SPEC.md` Section 6.6 wrote subtables (`[hooks.scan-content]`), both
+into `repo.policy.toml`. TOML permits both, so nothing broke — but a repository wanting an engine
+hook named `after_create` could not have one, two timeout concepts sat adjacent with different
+defaults (`60000` against a floor of 600 seconds), and Section 6.11's `malformed_policy` for "a
+declared hook that names no unit to run" would refuse a valid Symphony config under any engine
+reading every key under `hooks` as a hook. The disambiguation that saves it — scalars are the
+consumer's, tables are the engine's — was real, load-bearing and written nowhere. **And context was
+declared for one hook family and derived for the other**: Section 5.3.4 already lets the artifact fix
+it ("when both define it, the `repo.policy.toml` hook runs on the host and the `WORKFLOW.md` hook
+runs inside the sandbox"), while the engine's named hooks carried a `context` key — which admitted a
+combination the derived form cannot express, a hook marked `host_side` whose unit the working tree
+supplies, which 0095 had to forbid in prose. So hooks are prefixed **symmetrically**,
+`[hooks.engine.<name>]` beside `[hooks.workspace]`, on the criterion that a fresh reader should see
+the two-owners fact where it is declared rather than infer it from an entry's type; asymmetric
+prefixing was the smaller diff, `[hooks.<name>]` being shared contract surface across four artifacts,
+and lost on that criterion with nothing implemented yet to migrate. `context` is removed from hook
+declarations and derived from the artifact — the engine still receives one per hook, since it is
+handed one merged surface and never sees two artifacts, but the consumer tags it while assembling
+that surface, which 0097's `load_policy` already has it doing. That makes 0095's unit rule structural
+rather than stated, and collapses a genuine oddity: `repo.policy.toml` was read from **two
+revisions**, host-side sections from the policy source and the in-sandbox `before:commit` gate from
+the worktree. The gate's declaration moves to `WORKFLOW.md` and each artifact is now read from one
+revision; the edge invoking the gate stays in `repo.policy.toml`, so the agent can change what the
+gate does and not whether it runs. Edge `context` is untouched, participating in matching where a
+hook's did not. **`[[branch]]` sections** restore what 0094 traded away without naming: before, the
+policy came from the resolved base revision, so a release track could carry stricter host-side hooks;
+afterwards one source governed every target and `by_prefix` did not replace it, mapping a work-branch
+prefix to a base branch rather than to hooks. A section carries a `match` table naming exactly one
+matcher, `prefix` being the one defined, and merges over the top level key by key as the `vcsx.toml`
+merge already does. Longest prefix wins and exactly one section applies, which settles determinism by
+construction rather than by a precedence rule — Section 5.4 refuses two edges matching one trigger,
+and two sections both contributing an edge would reintroduce that one level up. No empty-prefix
+default is needed, unlike `by_prefix`, because the top level is the default. Two sections with the
+same `match` are `duplicate_branch_section`; a `match` naming no matcher or several is
+`malformed_policy`. The matcher is named inside `match` rather than being a bare string so a later
+glob adds a key beside `prefix` instead of changing every section written. Options rejected: glob now
+(a precedence rule for two matching globs, and dialects differing across implementations) and filter
+expressions (a grammar, an evaluation order and a failure mode). Under `policy_source =
+"target_branch"` these sections come from the target, so whoever lands a pull request can author one
+— a property of that mode, stated where the mode is chosen. Reconsider the matcher if a repository
+must rename branches to be served by it, which would be the specification dictating naming rather
+than describing it; reconsider derived context if a repository needs a host-side and an in-sandbox
+hook of the same name in one artifact, the one capability this removes. Relates to 0095, 0097, 0094
+and 0002.

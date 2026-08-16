@@ -608,7 +608,18 @@ Fields:
   - Relative paths are resolved relative to the directory containing the policy config.
   - The effective workspace root is normalized to an absolute path before use.
 
-#### 5.3.4 `hooks` (object)
+#### 5.3.4 `hooks.workspace` (object)
+
+Important boundary: this is a repository-owned surface rather than an operator one, so unlike the
+rest of Section 5.3 it documents keys that live in `repo.policy.toml` and `WORKFLOW.md`. It is
+described here because the workspace lifecycle is Symphony's, not the engine's — the engine has no
+notion of a workspace being created or removed — and the two artifacts it lives in are covered in
+Sections 5.2 and 5.6.
+
+The namespace is `hooks.workspace` rather than `hooks`, and the engine's named units are
+`hooks.engine.<name>` (`VCSX-CONTRACT.md`). Both artifacts carry both namespaces. Prefixing them is
+what keeps a lifecycle point and a named unit of the same name from colliding, and what stops a
+loader having to infer which schema owns an entry from whether it is a scalar or a table.
 
 Hooks exist at two trust levels, distinguished by where they run and which revision they are sourced
 from (Section 15.4):
@@ -945,11 +956,13 @@ Repository Way of Working (`repo.policy.toml`, Section 5.6):
 
 Workspace hooks (repository-owned; in-sandbox in `WORKFLOW.md`, host-side in `repo.policy.toml`, Sections 5.3.4, 15.4):
 
-- `hooks.after_create`: shell script or null
-- `hooks.before_run`: shell script or null
-- `hooks.after_run`: shell script or null
-- `hooks.before_remove`: shell script or null
-- `hooks.timeout_ms`: integer, default `60000`
+- `hooks.workspace.after_create`: shell script or null
+- `hooks.workspace.before_run`: shell script or null
+- `hooks.workspace.after_run`: shell script or null
+- `hooks.workspace.before_remove`: shell script or null
+- `hooks.workspace.timeout_ms`: integer, default `60000`
+- `hooks.engine.<name>`: a named unit a `[policy]` `run` edge invokes; its context follows the
+  artifact (`VCSX-CONTRACT.md`)
 
 Operator policy config (agent selection, adapter settings, and execution placement):
 
@@ -3325,10 +3338,20 @@ Working from the revision that makes it safe:
   becomes authorable by whoever can land a pull request. Both are consequences of the mode rather
   than defects in it, which is why the specification states them here rather than warning against
   the choice.
-- In-sandbox parts — the `WORKFLOW.md` prompt and in-sandbox hooks, and the `before:commit`
-  gate/scan — are read from the **worktree**. An agent edit there is harmless: these run inside the
-  sandbox without credentials or host access, and running a pull request's own gate change against
-  that pull request is correct.
+- In-sandbox parts — the `WORKFLOW.md` prompt, its `hooks.workspace` lifecycle hooks, and the
+  `hooks.engine` units the `before:commit` gate/scan runs — are read from the **worktree**. An agent
+  edit there is harmless: these run inside the sandbox without credentials or host access, and
+  running a pull request's own gate change against that pull request is correct.
+
+Each artifact is read from exactly one revision, which is what makes "sourced by trust" checkable
+rather than a rule about parts of a file. A hook's execution context follows the artifact that
+declares it — `repo.policy.toml` host-side, `WORKFLOW.md` in-sandbox — so nothing declares a context
+that could disagree with where it was read from (`VCSX-CONTRACT.md`).
+
+The gate's *declaration* being in `WORKFLOW.md` does not put the gate in the agent's gift. The
+`[policy]` edge that invokes it stays in `repo.policy.toml` and is read from the policy branch, so
+the agent can change what the gate does and not whether it runs. That is the division the trust
+model wants: control flow trusted, in-sandbox bodies not.
 
 Hook implications:
 
@@ -3832,6 +3855,11 @@ deployment satisfies by using a conforming engine rather than by implementing th
   configured blocked state (Sections 9.7, 9.10)
 - The policy branch resolves to the copy the configured remote holds; a local branch of the same
   name in the checkout does not change which host-side Way of Working runs (Section 9.7)
+- Each configuration artifact is read from exactly one revision: `repo.policy.toml` from the policy
+  source, `WORKFLOW.md` from the worktree. A hook's execution context follows the artifact declaring
+  it, and no hook declares one. An agent edit to the `before:commit` gate's unit in `WORKFLOW.md`
+  changes what the gate does; the `[policy]` edge invoking it is read from the policy source, so the
+  agent cannot change whether it runs (Section 15.4)
 - A host-side hook declaring a unit at a path the agent can also write runs the policy branch's copy
   and not the working tree's, and does so with a working directory outside the workspace; it still
   reads the workspace it is given, so a host-side scan over agent-written content works. An

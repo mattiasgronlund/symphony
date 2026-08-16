@@ -126,8 +126,8 @@
   },
 
   "config_reasons": {
-    "spec_refs": ["VCSX-SPEC.md Section 6.1 \"File Discovery and `vcsx.toml` Merge\"", "VCSX-SPEC.md Section 6.10 \"Validation\"", "VCSX-SPEC.md Section 5.6 \"Flow Bound and Termination\"", "VCSX-SPEC.md Section 9.3 \"Capability Descriptors\""],
-    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — a refused policy has no operation result to classify. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds. The first entry is a well-formedness failure and the rest are consistency failures: validation takes a document, so a policy that does not parse yields none for the other conditions to be judged against. Validation is judged from five inputs (Section 6.10): the policy document with `vcsx.toml` merged in, what the engine holds independently of the invocation (its own defaults), the consumer's selection and access configuration (the selected backends' descriptors among them), the actions the consumer can effect, and the repository units it bound. `policy_branch_is_target` turns on the consumer's configuration and the policy together rather than on any descriptor. `provision` is judged from those inputs less the policy document, since it is the operation that obtains the repository the document is in, so no reason here but `capability_unsupported` can be reported for it.",
+    "spec_refs": ["VCSX-SPEC.md Section 6.1 \"File Discovery and `vcsx.toml` Merge\"", "VCSX-SPEC.md Section 6.11 \"Validation\"", "VCSX-SPEC.md Section 5.6 \"Flow Bound and Termination\"", "VCSX-SPEC.md Section 9.3 \"Capability Descriptors\""],
+    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — a refused policy has no operation result to classify. Part of the major-stable surface (Section 8.5). An engine MUST document any it adds. The first entry is a well-formedness failure and the rest are consistency failures: validation takes a document, so a policy that does not parse yields none for the other conditions to be judged against. Validation is judged from five inputs (Section 6.11): the policy document with `vcsx.toml` merged in, what the engine holds independently of the invocation (its own defaults), the consumer's selection and access configuration (the selected backends' descriptors among them), the actions the consumer can effect, and the repository units it bound. `policy_branch_is_target` turns on the consumer's configuration and the policy together rather than on any descriptor. `provision` is judged from those inputs less the policy document, since it is the operation that obtains the repository the document is in, so no reason here but `capability_unsupported` can be reported for it.",
     "entries": [
       { "token": "policy_source_unreadable", "meaning": "The source host-side policy is read from could not be read (Sections 6.1, 8.1). Names no cause beyond that: whether the branch is absent, the remote unreachable or the credential refused is not establishable from the far side of a transport, and a reason per cause would be a registry of the ways a network fails — the reading `provision:unreachable` already takes. One of four conditions that leave the engine without a usable policy; all four share a disposition and differ in reason, because what differs is the repair rather than the response." },
       { "token": "policy_not_found", "meaning": "The policy source was read and carries no `repo.policy.toml` at the discovered path (Section 6.1). One of the four unusable-policy conditions." },
@@ -138,10 +138,11 @@
       { "token": "unknown_hook", "meaning": "A `run` names a hook the `[hooks]` table does not declare." },
       { "token": "duplicate_edge", "meaning": "A duplicate `(from, on)` policy edge — non-determinism." },
       { "token": "duplicate_transition", "meaning": "A duplicate `(from, on)` transition." },
+      { "token": "duplicate_branch_section", "meaning": "Two `[[branch]]` sections with the same `match` (Section 6.10). Refused rather than merged in file order, on Section 5.4's reasoning one level up: a scheme in which two sections could both contribute an edge for one trigger reintroduces the non-determinism the one-edge-per-trigger rule refuses." },
       { "token": "position_cycle", "meaning": "A cycle of lifecycle positions, each position's `run_op` edge dispatching the operation the next position gates, so no operation on the cycle can run (Sections 4.1, 5.6). A position is matched exactly and binds at most one edge, so such a cycle reaches no operation on any traversal; a cycle through a typed operation result is not this condition and is bounded rather than refused." },
       { "token": "base_unresolvable", "meaning": "A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map." },
       { "token": "set_state_unbound", "meaning": "A `set_state`/transition binding without a consumer that can apply it." },
-      { "token": "template_unbound", "meaning": "A `[messages.pr]` `body_source = \"template\"` with no template unit bound (Sections 5.2, 10.2). Judged from the repository units the consumer bound, which is why Section 6.10 names them among validation's inputs; a template is a repository unit rather than a Section 5.2 action, so `set_state_unbound`'s input does not reach it." },
+      { "token": "template_unbound", "meaning": "A `[messages.pr]` `body_source = \"template\"` with no template unit bound (Sections 5.2, 10.2). Judged from the repository units the consumer bound, which is why Section 6.11 names them among validation's inputs; a template is a repository unit rather than a Section 5.2 action, so `set_state_unbound`'s input does not reach it." },
       { "token": "capability_unsupported", "meaning": "A policy requiring a capability no selected backend declares (Section 9.3). Determinable because a statically declared capability follows from the consumer's selection alone; a descriptor field only the checkout answers is not, and keeps Section 9.3's first-use disposition." },
       { "token": "policy_branch_is_target", "meaning": "The `policy_branch` names the same branch as the resolved base (Sections 6.4, 8.1). Judged from the consumer's configuration and the policy together and from no checkout, which places it here rather than among the preconditions. A trusted revision that is also the pull-request target is one the work being landed can rewrite; refusing at validation keeps the refusal ahead of `commit`, so nothing is published by an invocation that cannot open a pull request." },
       { "token": "version_floor_unmet", "meaning": "A `version_floor` above the running engine version." }
@@ -150,11 +151,11 @@
 
   "precondition_reasons": {
     "spec_refs": ["VCSX-SPEC.md Section 8.6 \"Invocation Preconditions\""],
-    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — no operation ran, so there is no result to classify. Distinct from `config_reasons` in one direction only: a configuration error is judged from the five inputs Section 6.10 names, none of which reads the checkout. The converse is not claimed — a precondition MAY need the checkout and MAY be judged from the invocation's arguments alone, as `arguments_unreadable`, `local_vcs_missing`, `forge_coordinate_missing`, `git_access_missing`, `forge_access_missing` and `store_location_missing` are. Where both sides are checkout-free, what separates them is the artifact at fault: a configuration error is repaired by editing a document, a precondition failure by changing the invocation. Validation precedes precondition establishment, so where both hold the configuration reason is reported — with three exceptions established before validation: `arguments_unreadable`, because an engine that cannot decode its arguments cannot locate the policy it would validate; `local_vcs_missing`, because the selection is what fixes whose descriptor validation reads; and `policy_branch_missing`, because it is what says where the policy document is read from. `provision` establishes only the reasons judged from the invocation's arguments and none that read a checkout, being the operation that produces one (Section 8.6). Part of the major-stable surface (Section 8.5). An engine MUST document any it adds.",
+    "note": "Carried in the envelope under the `usage_or_config` status, with null `op` and `class` — no operation ran, so there is no result to classify. Distinct from `config_reasons` in one direction only: a configuration error is judged from the five inputs Section 6.11 names, none of which reads the checkout. The converse is not claimed — a precondition MAY need the checkout and MAY be judged from the invocation's arguments alone, as `arguments_unreadable`, `local_vcs_missing`, `forge_coordinate_missing`, `git_access_missing`, `forge_access_missing` and `store_location_missing` are. Where both sides are checkout-free, what separates them is the artifact at fault: a configuration error is repaired by editing a document, a precondition failure by changing the invocation. Validation precedes precondition establishment, so where both hold the configuration reason is reported — with three exceptions established before validation: `arguments_unreadable`, because an engine that cannot decode its arguments cannot locate the policy it would validate; `local_vcs_missing`, because the selection is what fixes whose descriptor validation reads; and `policy_branch_missing`, because it is what says where the policy document is read from. `provision` establishes only the reasons judged from the invocation's arguments and none that read a checkout, being the operation that produces one (Section 8.6). Part of the major-stable surface (Section 8.5). An engine MUST document any it adds.",
     "entries": [
       { "token": "arguments_unreadable", "meaning": "The invocation's arguments could not be decoded in the encoding the engine published (Section 8.1). Established before validation rather than after it." },
       { "token": "local_vcs_missing", "meaning": "No `local_vcs` was supplied, so no VCS backend is selected (Section 8.1). Established before validation, and after `arguments_unreadable`: the selection is what fixes whose descriptor validation reads, so a `capability_unsupported` presupposes a backend this argument names." },
-      { "token": "policy_branch_missing", "meaning": "No `policy_branch` was supplied, so the policy cannot be located (Section 8.1). Established before validation, being the third of the three that are: the policy document is the first of Section 6.10's five inputs, and this argument is what says where to read it from, so there is nothing to validate until it is known." },
+      { "token": "policy_branch_missing", "meaning": "No `policy_branch` was supplied, so the policy cannot be located (Section 8.1). Established before validation, being the third of the three that are: the policy document is the first of Section 6.11's five inputs, and this argument is what says where to read it from, so there is nothing to validate until it is known." },
       { "token": "forge_coordinate_missing", "meaning": "A forge is configured and no forge repository coordinate was supplied (Section 8.1). A coordinate the backend cannot use is that backend's own `failed` at first use instead, because the engine holds the coordinate opaque and judges no shape." },
       { "token": "git_access_missing", "meaning": "An entry that can reach a remote was invoked and no `git_access` was supplied (Section 8.1). A `git_access` the backend cannot use is that backend's own `failed` at first use instead, because the engine holds the parameter opaque and judges no shape." },
       { "token": "forge_access_missing", "meaning": "A forge is configured and no `forge_access` was supplied (Section 8.1). A `forge_access` the backend cannot use is that backend's own `failed` at first use instead, on the same reading." },
@@ -170,7 +171,7 @@
 
   "invocation_statuses": {
     "spec_refs": ["VCSX-SPEC.md Sections 8.2 \"Result Envelope\", 8.3 \"Exit Codes\""],
-    "note": "Part of the major-stable surface (Section 8.5). The first three are the overall proto class of a run that executed the policy; `usage_or_config` covers a run in which it did not — a refused policy (Section 6.10) or an unestablished precondition (Section 8.6).",
+    "note": "Part of the major-stable surface (Section 8.5). The first three are the overall proto class of a run that executed the policy; `usage_or_config` covers a run in which it did not — a refused policy (Section 6.11) or an unestablished precondition (Section 8.6).",
     "entries": [
       { "token": "ok", "exit_code": 0 },
       { "token": "needs_caller", "exit_code": 10 },
@@ -269,7 +270,7 @@
       { "code": 0, "status": "ok" },
       { "code": 10, "status": "needs_caller" },
       { "code": 20, "status": "error" },
-      { "code": 2, "status": "usage_or_config", "note": "The policy did not run (Sections 6.10, 8.6)." },
+      { "code": 2, "status": "usage_or_config", "note": "The policy did not run (Sections 6.11, 8.6)." },
       { "code": 1, "status": null, "note": "The invocation produced no Section 8.2 result: stdout carries nothing and the diagnostic goes to stderr. Not an invocation status." }
     ]
   },
@@ -305,17 +306,18 @@
 
   "repo_policy_sections": {
     "spec_refs": ["VCSX-SPEC.md Section 6 \"`repo.policy.toml` Schema\""],
-    "note": "`vcsx.toml` is merged in per Section 6.1.",
+    "note": "`vcsx.toml` is merged in per Section 6.1. Entries are in section order. The engine's hooks are `[hooks.engine]`; a consumer MAY carry its own under a disjoint prefix within `hooks`, which this specification does not define and which therefore has no entry here.",
     "entries": [
       { "token": "[requires]", "spec_ref": "Section 6.2" },
       { "token": "[scope]", "spec_ref": "Section 6.3" },
       { "token": "[base]", "spec_ref": "Section 6.4" },
       { "token": "[policy]", "spec_ref": "Section 6.5" },
-      { "token": "[hooks]", "spec_ref": "Section 6.6" },
+      { "token": "[hooks.engine]", "spec_ref": "Section 6.6" },
       { "token": "tracker.transitions", "spec_ref": "Section 6.7" },
       { "token": "[messages]", "spec_ref": "Section 6.8" },
       { "token": "[tasks]", "spec_ref": "Section 6.9" },
-      { "token": "[driver]", "spec_ref": "Section 6.9" }
+      { "token": "[driver]", "spec_ref": "Section 6.9" },
+      { "token": "[[branch]]", "spec_ref": "Section 6.10" }
     ]
   },
 

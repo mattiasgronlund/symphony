@@ -153,7 +153,7 @@ Two interpretation notes apply:
 | `vectors/match-edge.json` | `match_edge` | Sections 5.3, 5.4, 6.5, 12.1 |
 | `vectors/base-resolution.json` | `resolve_base` | Sections 6.4, 12.4 |
 | `vectors/exit-codes.json` | `exit_code_for_status` | Sections 8.2, 8.3, 8.5 |
-| `vectors/policy-validation.json` | `validate_policy` | Sections 4.1, 5.4, 5.6, 6.1, 6.4, 6.6, 6.7, 6.10, 8.5, 10.2 |
+| `vectors/policy-validation.json` | `validate_policy` | Sections 4.1, 5.4, 5.6, 6.1, 6.4, 6.6, 6.7, 6.11, 8.5, 10.2 |
 | `vectors/identity-precondition.json` | `requires_commit_identity` | Sections 8.1, 8.6, 12.2, 12.3 |
 | `vectors/compose-envelope.json` | `compose_envelope` | Sections 4.3, 5.2, 5.4, 8.2, 8.4 |
 
@@ -192,7 +192,7 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   no vector file supplies (Section 9.3). The tokens are in `vocabulary.json` under `reasons`. The
   operation's exemptions are on the same side for a different reason: that a `provision` is
   validated against no policy document and establishes no checkout-reading precondition (Sections
-  6.1, 6.10, 8.6) is an absence of refusals, and a vector corpus asserts the reason a refusal
+  6.1, 6.11, 8.6) is an absence of refusals, and a vector corpus asserts the reason a refusal
   carries rather than that none was carried.
 - **Plugin behavior** — checkout-mode detection, the pinned push refspec whose push never drops,
   rewrites or re-parents a commit already on the remote work branch (decision 0083), the
@@ -274,9 +274,9 @@ All three findings from the first slice are now resolved.
   signal has none. Signals are matched exactly, the `#class` fallback is scoped to typed results, and
   the `#` in `task:#needs_help` is documented as naming a condition across tasks.
   `hash_shaped_task_event_is_an_ordinary_token` and `signal_takes_no_class_fallback` cover both halves.
-- **Configuration errors carry no reason token — resolved (decision 0056).** Section 6.10 enumerated
+- **Configuration errors carry no reason token — resolved (decision 0056).** Section 6.11 enumerated
   five conditions and Section 8.3 mapped them to exit `2`, but named no token, so a caller could tell
-  *that* a policy was refused but not *why* without parsing `message`. Section 6.10 now carries a
+  *that* a policy was refused but not *why* without parsing `message`. Section 6.11 now carries a
   nine-token registry. Resolving it exposed a second defect fixed in the same decision: Section 8.2
   defined `status` as three proto-class values with none corresponding to Section 8.3's exit `2`, so
   the two sections could not both be satisfied — `usage_or_config` is now a fourth invocation status.
