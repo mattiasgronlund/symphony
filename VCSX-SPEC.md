@@ -1631,6 +1631,20 @@ Every invocation returns one structured result:
   one entry because the result re-enters the machine: a repository binding `<op>:hook_unanswered` to
   anything that does not end the flow can reach a second position on the same traversal, which
   Section 5.6 bounds rather than refuses.
+- `outputs` carries `forge_budget`: the most recent budget snapshot a forge capability observed
+  during the invocation (Section 9.2), reported whether or not any limit was reached. The key is
+  absent where the invocation reached no forge capability, and equally where it reached one and the
+  forge reported no budget. Those are different events sharing one spelling, deliberately: in both
+  the consumer learned nothing new and keeps whatever figure it last held, which is the disposition
+  Section 4.3 gives three conditions carrying one repair. It is the one value in this contract not
+  held to Section 9's rule that a non-answer be distinguishable from an absence, and the departure
+  is stated rather than left to be noticed: that rule governs a value the engine composes an
+  operation from, and no operation, reason or precondition branches on this one — it is observed
+  and carried through untouched. The engine reports the snapshot and acts on none of it: nothing
+  here paces a call, defers a dispatch or refuses an operation because a bucket is low, retry,
+  back-off and budget being the consumer's (Section 2.2). What a low bucket is worth spending on
+  depends on what else the consumer intends to spend it on and how many other holders of the same
+  credential are spending concurrently, neither of which is visible from inside one invocation.
 - `outputs` carries `failed_by_policy` where the policy ended the flow with `fail` (Section 5.2):
   the `trigger` the edge fired on, and the `reason` the edge wrote where it wrote one (Section 6.5).
   The key is absent where no `fail` ran. The token is reported here rather than in the envelope's
@@ -2160,6 +2174,32 @@ Every capability above reaches the code host, needs a credential, and realizes a
 separate. What a consumer mediates is therefore Section 9.1's four network-touching capabilities
 together with every capability of this section (Section 11).
 
+Every capability above additionally answers, alongside its own result or value, the **budget
+snapshot** the forge reported on the call it made, or that the forge reported none. The obligation
+is stated over the list rather than on each capability, as Section 9.1 states its bookkeeping-write
+allowance over its own list, so a capability added to this section carries it without further text.
+It is answered on a call that succeeded exactly as on one that did not: a budget visible only at
+exhaustion is visible only after the decision it should have informed, which is the condition
+reported as a merge that could not proceed rather than as a figure that fell.
+
+A snapshot is one or more named **buckets**, each carrying a `limit`, a `remaining` and an OPTIONAL
+`resets_at`, together with the time the observation was made. It is several buckets and not one
+number because one credential may hold several independent budgets — a forge accounting its
+request-based and its query-based interfaces separately gives the same credential two, in two
+different units — and a consumer pacing one kind of work against the other's balance is not
+approximating conservatively but reading an unrelated figure. Bucket identity is opaque: the engine
+carries the name the forge used, normalizes nothing, and compares nothing. A normalized bucket set
+would be a mapping from each forge's accounting model into one the engine invented, and the engine
+holds no basis for it — whether a forge's second bucket is a narrower window on the first or an
+unrelated pool is not something a plugin boundary can establish. `limit` and `remaining` are
+therefore counts in the bucket's **own** unit, which is the forge's, and this specification names
+none; a consumer compares a bucket against itself over time, which is the only comparison the data
+supports.
+
+The version-control network capabilities (Section 9.1) answer no snapshot and are outside this: a
+git transport publishes no quota, so there is nothing for a backend to observe and a counterpart
+key there would be permanently absent.
+
 OPTIONAL:
 
 - Review-thread writes: `post_review`, `reply_review`, `resolve_thread`.
@@ -2577,6 +2617,12 @@ A conforming engine SHOULD include tests covering:
   `before:commit` read it creates no commit and yields `worktree_moved` rather than `ok` or
   `nothing_to_commit`, while a `worktree_revision()` that could not determine an identity yields
   `commit:failed` rather than a commit conditioned on nothing (Sections 4.3, 6.6, 9.1).
+- Budget visibility: a forge-touching operation that **succeeded** carries a `forge_budget` output,
+  so the figure is available before the decision it informs rather than only at exhaustion; a forge
+  reporting several buckets yields several, each under the name the forge used and none normalized
+  or summed (Sections 8.2, 9.2); an invocation reaching no forge capability carries no
+  `forge_budget` key; and no engine behavior differs between a low bucket and a full one
+  (Section 2.2).
 - Conditional reads: a `status` supplying a `pr_state_validator` the forge reports unmoved yields
   `ok` with null pull-request fields and a `pr_state_unchanged` output, and is distinguishable from
   both a branch with no pull request and a state that could not be determined (Sections 4.1, 8.1,
@@ -2857,6 +2903,9 @@ A conforming engine SHOULD include tests covering:
   presented back as `pr_state_validator`, and an unmoved pull request reported as
   `pr_state_unchanged` rather than as an absent or an undetermined one — with no validator presented
   on the reads `push` and `merge` condition a write on.
+- The forge budget snapshot on every forge-touching operation, reported on success as on failure,
+  carrying each bucket under the forge's own name and in the forge's own unit, with no engine
+  behavior conditioned on it.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, every commit the engine writes attributed to the supplied commit identity, a scan reached
   through a policy edge at a lifecycle position rather than through a key of its own, and a
@@ -2897,9 +2946,10 @@ The Statement MUST record:
   keys each forge backend reads, which are `Implementation-defined` per backend (Section 8.1), any
   bound a forge
   backend imposes on its search for a work branch's pull request (Section 9.2), where a backend
-  writes its own bookkeeping state to answer a capability (Section 9.1), and — where a forge backend
-  declares conditional-read support — the mechanism it realizes the `pr_state` validator with
-  (Section 9.2).
+  writes its own bookkeeping state to answer a capability (Section 9.1), — where a forge backend
+  declares conditional-read support — the mechanism it realizes the `pr_state` validator with, and
+  which budget buckets each forge backend observes and where it reads them from, both
+  `Implementation-defined` per backend (Section 9.2).
 
 The Statement is a published declaration, not a precondition for running the engine: Section 13.1 and
 Section 13.2 keep their roles as the test matrix and the definition of done. Its format is

@@ -3929,3 +3929,45 @@ Reconsider on a forge whose conditional read is keyed to a *query* rather than a
 would make the per-`work_branch` granularity wrong, or on a `304` observed to cost budget, which
 would leave 0107's cadence carrying the whole load. Relates to 0076, 0077, 0107 and 0108. Accepted
 and applied to `VCSX-SPEC.md` (Sections 4.1, 8.1, 8.2, 9, 9.1, 9.2, 13.1, 13.2, 13.3).
+
+## 0107 — The budget the call already saw
+
+**State:** Accepted
+**Folder:** [decisions/0107-forge-budget-snapshot/](decisions/0107-forge-budget-snapshot/)
+
+Issue #58's second primitive, and the one that carries the load 0106 cannot. Exhaustion was
+**discovered as a mid-`land` failure** — not as a warning or a threshold crossing, but as the
+operation meant to merge the work reporting it could not. Today a consumer can learn nothing about
+its own headroom except by failing: every Section 9.2 capability reaches the code host, every forge
+reports what the credential has left on that call, and the engine discards it, so a
+`create_pr:created` is a call that observed the budget and reported everything except the budget.
+Every forge capability now answers the snapshot it observed, or that the forge reported none, and
+the most recent lands in `outputs.forge_budget` — reported on a call that succeeded exactly as on
+one that did not, since a budget visible only at exhaustion is visible only after the decision it
+should have informed. Stated over the capability list rather than per capability, the shape Section
+9.1 uses for its bookkeeping-write allowance, so a capability added later inherits it. Rejected: a
+`budget()` probe of its own, which loses twice mechanically — it **costs the thing it measures**, so
+a consumer polling headroom has built a second drain to monitor the first (GitHub exempts its
+rate-limit endpoint, but a specification cannot rest a primitive on one forge's exemption), and its
+answer is **stale before it is used**, the real question being what the last call left rather than
+what was true a moment ago, with every concurrent holder of the credential spending in between.
+Verified rather than assumed: GitHub GraphQL is accounted in **points** ("5,000 points per hour per
+user"), and its own documentation states "The REST API also has a separate primary rate limit" — two
+budgets, two units, one credential. So the snapshot carries **buckets**, not a number: pacing
+request-based work against a query-based balance is not a conservative approximation but an
+unrelated figure, and the observed drain emptied one while the other was untouched. Bucket identity
+is opaque and the counts carry no unit this specification names, because a normalized bucket set
+would be a mapping into a model the engine invented — whether a forge's second bucket is a narrower
+window on the first or an unrelated pool is not establishable at a plugin boundary. The engine
+reports and acts on nothing (Section 2.2): what a low bucket is worth spending on depends on what
+else the consumer means to spend it on and how many other holders are spending concurrently, neither
+visible from inside one invocation. One departure is stated rather than left to be noticed: the key
+is absent both where no forge capability was reached and where one was and the forge reported
+nothing, which Section 9's answer discipline would normally forbid — that rule governs a value the
+engine composes an operation from, and no operation, reason or precondition branches on this one.
+The Section 9.1 network capabilities are out of scope, a git transport publishing no quota.
+Reconsider on a forge reporting budget **only** on a dedicated endpoint, which would force either
+the rejected probe or a permanently absent key, or on a consumer pacing correctly and still
+exhausting — which would mean the reported figure is not the enforced one and the snapshot is
+advisory in a way this record does not claim. Relates to 0106, 0108 and 0112. Accepted and applied
+to `VCSX-SPEC.md` (Sections 8.2, 9.2, 13.1, 13.2, 13.3).
