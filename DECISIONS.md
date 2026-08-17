@@ -4258,3 +4258,50 @@ does not describe — the boundary 0111 drew for the engine's fault-injection ve
 for the same reason. Reconsider if refusals appear in normal operation with no competing writer,
 which would mean the check is pinned to fields that legitimately change. Relates to 0077 and 0106.
 Accepted and applied to `SPEC.md` (Sections 9.10, 17, 17.9, 18, 18.1).
+
+## 0115 — Observing the budget is free; spending on it is not
+
+**State:** Accepted
+**Folder:** [decisions/0115-forge-budget-and-checks-wait/](decisions/0115-forge-budget-and-checks-wait/)
+
+Issue #60's SY-1 and issue #62's SY-2, together because one is the other's input. Most of SY-1 is no
+longer Symphony's: 0112 made the wait an engine operation, so what remains here is **when** to
+dispatch it, **which bounds** to hand it, and **what to do** with each outcome — and explicitly not a
+loop, since a second loop around one that already loops is two bounds with no defined relationship.
+Two of the issue's four requirements were answered by the engine work (conditional reads by 0106, the
+budget-respecting cadence by `await_budget_floor`), and one asked-for thing turns out to be
+**unnecessary**: because 0112 made awaiting an *operation* rather than a front-end sequence, its
+outcomes are already `<op>:<reason>` results the action-policy machine routes with the `#class`
+fallback, so the `checks:*` trigger vocabulary the issue requests would be a second spelling for
+outcomes already carried. SY-2 asks for a promotion to Core and gets neither a yes nor a no, because
+the filed item bundles two things with very different costs — which is the conformance stance doing
+work rather than being restated. **Recording** the snapshot is Core: after 0107 it arrives unbidden
+in the envelope of a call Symphony already made, nothing is polled or configured to get it, and a
+deployment that discards it has thrown away the only evidence that would afterwards explain where a
+budget went, having paid nothing for it. **Acting** on it — a pre-emptive check before a mutating
+call, a warn threshold, a floor — needs operator-chosen numbers and can wrongly withhold work, so it
+stays an OPTIONAL extension under `forge_budget.*`, the shape Section 8.9's gate already has. It is a
+**sibling section** rather than an extension of 8.9: that section governs the coding-agent provider's
+account — different account, credential, operations and units — and states the rule this inherits,
+that one account's quota is never summed into another's. The steelman for folding them is real
+(8.9's snapshot is proven and general) and loses on the staleness machinery: half of 8.9's structure
+exists because a provider quota is fetched out of band and can be old, while a forge budget arrives
+attached to the call that just spent it, so reusing the shape would carry `fetched_at`,
+`stale_after_ms` and an `UNKNOWN` that cannot occur — and an implementer reading it would build a
+poller for a figure needing none. The guard checks before a **mutating** call rather than only
+gating dispatch, because the expensive moment for this budget is the write: a run that has already
+provisioned a workspace and spent an agent session fails differently from one never dispatched. The
+one wholly-Symphony piece is the terminal disposition: `still_pending` and `budget_floor` **park**,
+not retry and not fail — Section 8.4's backoff is for transient failures and a check run still
+running is not failing, so a retry re-enters a wait that exhausts the same bound while holding a
+worker slot, and a budget floor would be spent against by the retry meant to get past it. That is
+`token_budget_exceeded`'s disposition, for the same reason: an operator bound, reached. Finally, a
+successful await is **not** authority to merge — it reports checks passing for the head *it* read,
+and a push into the gap between awaiting and merging is exactly `merge:head_moved`, so the merge
+still conditions on its own read (0077) and re-verifies identity (0114); treating it otherwise would
+undo that guarantee by way of a feature added to serve it. Reconsider if one set of await bounds is
+wrong for every repository, which would put them in `repo.policy.toml` where a repository knows its
+own CI, or if the Core-recorded snapshot turns out never to be read — which would mean the
+justification was cost rather than value. Relates to 0077, 0106, 0107, 0112 and 0114. Accepted and
+applied to `SPEC.md` (Sections 6.4, 8.11, 9.10, 13.5, 14.2, 17.4, 18.1, 18.2) and
+`conformance/vocabulary.json`.

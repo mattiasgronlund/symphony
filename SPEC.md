@@ -976,6 +976,9 @@ Operator policy config:
 - `vcs.base_branch_allowed`: OPTIONAL bound on the targets a per-issue source may name, default unset (unbounded)
 - `vcs.local_vcs`: REQUIRED; the VCS backend the engine loads, and the checkout mode for one it creates. For a checkout it did not create the backend detects the mode (Section 9.7)
 - `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
+- `vcs.await_bound_ms` / `vcs.await_max_reads` / `vcs.await_interval_ms`: the bounds Symphony hands the engine's `await_checks` on `merge:checks_pending` (Sections 8.11, 9.10); defaults `Implementation-defined` and documented. Reaching either bound parks the issue
+- `vcs.await_budget_floor`: OPTIONAL bucket name and minimum remaining below which the wait stops and the issue parks, default unset
+- `forge_budget.enabled` / `forge_budget.warn_percent` / `forge_budget.<bucket>_floor`: the OPTIONAL forge budget guard (Section 8.11); defaults `false` and `80`. Recording the snapshot is Core and needs none of these
 - a `repo.policy.toml` pointer per managed repository (Section 5.6)
 - `observability.*`: namespace for OPTIONAL observability settings, no core fields (Section 18.2)
 - `observability.ledger.*`: usage-ledger settings, no core fields (Section 13.6)
@@ -1471,6 +1474,54 @@ Configuration:
 - The extension owns `[tasks]` and `[driver]` in `repo.policy.toml` (Section 5.6). Core conformance
   does not require these fields.
 
+### 8.11 Forge API Budget
+
+The code host meters the credential Symphony reaches it with, and the engine reports what each call
+observed: every forge-touching operation carries a budget snapshot in its result envelope, on a call
+that succeeded exactly as on one that did not (Section 9.7, `VCSX-CONTRACT.md`). The snapshot is one
+or more named buckets, each with a limit, a remaining count and an OPTIONAL reset time, under the
+names and in the units the forge used.
+
+This section has two halves with different requirement levels, because they have different costs.
+
+Recording (`Core Conformance`):
+
+- Symphony MUST record the snapshot each engine invocation reported, against the run and repository
+  that produced it (Section 13.5).
+- It is Core because it is free. The figure arrives unbidden, attached to a call Symphony already
+  made for another purpose; nothing is polled, configured or spent to obtain it. A deployment that
+  discards it has thrown away the only evidence that would afterwards explain where a budget went,
+  and it paid nothing for that evidence.
+- Recording is not acting. Nothing in this half paces a call, defers a dispatch, or withholds work.
+
+Budget guard (OPTIONAL):
+
+- An OPTIONAL extension of `Daemon Conformance` that acts on the recorded snapshot. It performs a
+  pre-emptive check **before a mutating forge call** — not only a gate on taking new work — because
+  the expensive moment for this budget is the write: a run that has already provisioned a workspace
+  and spent an agent session fails differently from one that was never dispatched.
+- It MAY emit a one-shot warning when a bucket crosses a warn threshold, and MUST NOT make a
+  mutating call while a bucket the operator named is below its configured floor; a run stopped that
+  way is parked (below), not failed.
+- Bucket identity is the forge's and is opaque here as it is in the envelope: the operator names the
+  bucket a threshold applies to, and Symphony compares that bucket against itself. Buckets are never
+  summed, averaged, or normalized into a single headroom figure — a credential may hold several
+  independent budgets in different units, and one bucket's percentage is not the deployment's
+  headroom.
+- The extension owns its configuration under the `forge_budget.*` namespace: `enabled`
+  (Default: `false`), `warn_percent` (Default: `80`), and a per-bucket floor. Core conformance
+  requires none of these fields.
+
+Important boundary: this is not Section 8.9. That section governs the **coding-agent provider's**
+account headroom — a different account, reached with a different credential, spent by different
+operations, and metered in different units. Section 8.9 states the rule this section inherits rather
+than repeats: one account's quota is never summed into another's totals or budgets. The two are also
+shaped differently for a reason a reader should not have to infer. Section 8.9's snapshot carries
+`fetched_at`, `stale_after_ms` and an `UNKNOWN` state because a provider quota is fetched out of band
+and can be old. A forge budget cannot be old: it arrives attached to the call that just spent it. So
+this section carries no staleness machinery and no `UNKNOWN`, and an implementation building a poller
+for it has built one for a figure that needs none.
+
 ## 9. Workspace, VCS, and Safety
 
 ### 9.1 Workspace Layout
@@ -1899,6 +1950,37 @@ Squash message:
   request by a repository-owned `pr_to_squash` transform at the `before:merge` position (Section
   9.12): title verbatim, body laundered (for example stripping tracker keys) so history is stricter
   than the live pull-request surface. `land` runs this transform; it never authors a message.
+
+Awaiting required checks:
+
+- A `merge` that reports `checks_pending` has exited without merging. Symphony responds by
+  dispatching the engine's `await_checks` operation with the bounds it supplies — `vcs.await_*`
+  (Section 6.4) — and does **not** write a poll loop of its own. The engine's operation is already
+  bounded, already reads conditionally where the forge supports it, and already stops on a budget
+  floor (Section 9.7, `VCSX-CONTRACT.md`); a second loop around it would be two bounds with no
+  defined relationship, and the one that fired first would decide behavior no one specified.
+- The operation's four outcomes are disposed of as follows. `await_checks:ok` continues the flow.
+  `await_checks:checks_failed` fails the run attempt, the checks having completed and not passed.
+  `await_checks:still_pending` and `await_checks:budget_floor` **park** the issue (Sections 11.6,
+  14.2).
+- Parking is the disposition rather than retry or failure, and the reasoning is worth stating.
+  Retrying is wrong because Section 8.4's backoff schedule exists for transient failures and a check
+  run that is still running is not failing — a retry re-enters a wait that exhausts the same bound
+  again while holding a worker slot each time. Failing is wrong because nothing failed. An operator
+  bound that was reached is the condition `token_budget_exceeded` is already parked for (Section
+  8.8), and this is the same shape. `budget_floor` parks for an additional reason: the work is fine
+  and the budget is not, so waking it on a schedule would spend the budget the floor was protecting.
+- No `checks:*` trigger vocabulary is defined. The engine's outcomes are `<op>:<reason>` results, so
+  the action-policy machine (Section 9.12) already routes them through the same matching and
+  `#class` fallback it applies to every other operation result, and a repository binds
+  `await_checks:*` as it binds `merge:*`.
+
+Important nuance: a successful `await_checks` is **not** authority to merge. It reports that the
+required checks passed for the head **it** read, and awaiting and merging are two operations with a
+gap between them — a push into that gap is exactly the condition `merge:head_moved` names. The merge
+still conditions on the head it reads itself (Section 9.7) and still re-verifies the pull-request
+identity (above). Treating an await's success as a token that licenses an unconditioned merge would
+undo that guarantee by way of a feature added to serve it.
 
 Review writes (OPTIONAL):
 
@@ -2833,6 +2915,17 @@ Token accounting rules:
   way.
 - Accumulate aggregate totals in orchestrator state.
 
+Forge budget accounting:
+
+- The forge budget snapshot each engine invocation reported (Section 8.11) is recorded against the
+  run and repository that produced it. It is kept **separate** from the token-usage record above and
+  from any provider quota snapshot (Section 8.9): the three meter different accounts in different
+  units, and none is summed into another.
+- Buckets are recorded under the names the forge used, with no normalization and no derived headroom
+  figure. A snapshot is a reading, not a running total: what is recorded is what a call observed,
+  and the difference between two readings is not Symphony's spend where a credential has other
+  holders.
+
 Runtime accounting:
 
 - Runtime SHOULD be reported as a live aggregate at snapshot/render time.
@@ -3209,6 +3302,15 @@ workers it already has.
 
 - Worker failures (`workspace_failures`, `agent_session_failures`):
   - Convert to retries with exponential backoff.
+
+- An exhausted wait for required checks (`await_checks:still_pending`, `await_checks:budget_floor`;
+  Sections 8.11, 9.10) is **parked**, not retried and not failed. It is not a failure class, being
+  an operation result the action-policy machine routes (Section 9.12), and it is listed here because
+  its disposition is the one this section governs. Neither condition clears by being attempted
+  again: a check run that is still running is not failing, so a retry re-enters a wait that exhausts
+  the same operator bound while holding a worker slot, and a budget floor reached would be spent
+  against by the very retry meant to get past it. This is the disposition `token_budget_exceeded`
+  already takes (Section 8.8), and for the same reason — an operator bound, reached.
 
 - Repository provisioning failures (`repository_provisioning_failures`):
   - Skip new dispatches for the affected repository; the object store is shared across all of its
@@ -4111,6 +4213,14 @@ These checks are `Daemon Conformance`.
 - Reconciliation with no running issues is a no-op
 - Normal worker exit schedules a short continuation retry (attempt 1)
 - Abnormal worker exit increments retries with 10s-based exponential backoff
+- A `merge:checks_pending` dispatches the engine's `await_checks` with the configured bounds rather
+  than a Symphony-side poll loop; `await_checks:still_pending` and `await_checks:budget_floor` park
+  the issue rather than entering the Section 8.4 backoff or failing the run; and `await_checks:ok`
+  does not bypass the merge's own head condition or the pull-request identity re-verification
+  (Sections 8.11, 9.10)
+- The forge budget snapshot each engine invocation reported is recorded against the run and
+  repository, under the forge's own bucket names, and is not summed into the token-usage record or a
+  provider quota snapshot (Sections 8.11, 13.5)
 - Retry backoff cap uses configured `agent.max_retry_backoff_ms`
 - Retry queue entries include attempt, due time, identifier, and error
 - Stall detection kills stalled sessions and schedules retry
@@ -4421,6 +4531,11 @@ engine's checklist.
   work branch, re-verifies it immediately before writing — the pull request exists, carries this
   run's work branch as its head, targets the resolved base — and refuses on a mismatch with
   `pr_identity_mismatch` rather than retrying into a second overwrite (Section 9.10)
+- A `merge:checks_pending` is met by dispatching the engine's bounded `await_checks` rather than a
+  poll loop of Symphony's own, its exhausted and budget-floored outcomes park the issue, and its
+  success does not license an unconditioned merge; the forge budget snapshot each engine invocation
+  reports is recorded per run and repository under the forge's own bucket names, summed into nothing
+  (Sections 8.11, 9.10, 13.5)
 - The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback, an
   unmatched operation outcome fail-safe, an unmatched signal a no-op, and abstract `escalate` bound
   per front-end
@@ -4434,8 +4549,9 @@ engine's checklist.
 ### 18.2 RECOMMENDED Extensions (Not REQUIRED for Conformance)
 
 Each extension below extends the layer profile named in its own section: the HTTP server, token
-budget guards, provider quota backpressure, the node-scheduler, and autonomous task management
-extend `Daemon Conformance`; the per-execution usage ledger extends `Broker Core Conformance`.
+budget guards, provider quota backpressure, the forge budget guard, the node-scheduler, and
+autonomous task management extend `Daemon Conformance`; the per-execution usage ledger extends
+`Broker Core Conformance`.
 
 - HTTP server extension honors CLI `--port` over `server.port`, uses a safe default bind host, and
   exposes the baseline endpoints/error semantics in Section 13.8 if shipped.
@@ -4452,6 +4568,10 @@ extend `Daemon Conformance`; the per-execution usage ledger extends `Broker Core
 - Provider quota backpressure extension (Section 8.9): a normalized provider-quota snapshot (class
   `Cached external signal`) fed in-band or by an OPTIONAL poller, with a dispatch-only pause above a
   threshold, implicit resume, and a configurable fail-open/closed policy on `UNKNOWN`.
+- Forge budget guard extension (Section 8.11): a pre-emptive check before a **mutating** forge call
+  against an operator-named bucket floor, plus a one-shot warn threshold, with a stopped run parked
+  rather than failed. Only the guard is OPTIONAL — **recording** the snapshot the engine already
+  reports is Core, and needs none of the extension's configuration.
 - Node-scheduler / remote-execution extension (Section 9.11): a remote executor carries the
   secret-isolation boundary (sandbox, per-run broker socket, credential-less agent) to its node,
   receives secrets over a directly mutually-authenticated channel with the node-scheduler off the
