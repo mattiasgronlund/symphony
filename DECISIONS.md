@@ -4381,3 +4381,78 @@ inherits the environment; a knob nobody is told to turn for a property never cla
 location outside the workspace" covers, where the repair is a per-ecosystem baseline published beside
 the specification as the token registry already is. Relates to 0113 and 0114. Accepted and applied to
 `SPEC.md` (Sections 9.6, 17.2, 18.1, 19).
+
+## 0118 — A tool that is not there yet is a tool the workspace cannot use
+
+**State:** Accepted
+**Folder:** [decisions/0118-provisioning-survivability/](decisions/0118-provisioning-survivability/)
+
+Issue #62's provisioning item and the cross-cutting distribution item. One finding reframed it: the
+issue's root cause — `after_create = git clone --depth 1` with no `--recurse-submodules` — is a
+configuration **the current specification has already moved away from**. Section 9.3 makes repository
+population "first-class Symphony behavior … not an implementation-defined hook concern", and Section
+16.5 dispatches the engine's `provision`, so clone depth and submodule recursion are the engine's
+(`VCSX-SPEC.md` Section 9.1 `ensure_store`), not a Symphony hook's. What Symphony owes is therefore
+not a flag but a statement of **what a workspace is guaranteed to contain** when an agent starts in
+it: a tool the workspace depends on MUST be usable from a workspace Symphony provisioned, with no
+step the agent takes first. Stated over contents rather than mechanism, it is checkable the way a
+repository author would check it — provision from scratch, run the tool — and it survives a backend
+or checkout mode changing how acquisition works. The submodule answer then follows as a consequence
+rather than a preference: a tool distributed as a submodule does not satisfy the guarantee, because
+whether provisioning populates one is the engine's determination and not something a repository can
+rely on, so a deployment needing one uses a pinned release the workspace resolves or vendors it into
+the tree. Symphony owns exactly one part the engine cannot state, being the party that starts the
+agent: no agent session begins against a workspace whose **working-tree derivation** has not
+completed — provisioning has two halves (Section 16.5) and a repository's own tools exist only after
+the second, so a current store is not a workspace an agent can be started against. Disk-full
+introduces no class and no disposition: it is `repository_provisioning_failures` taking that class's
+repo-scoped retry, with two additions that are the ways an implementation gets it wrong while looking
+correct — a partially written store or tree MUST NOT be presented as usable (a directory that exists,
+looks plausible, and is not what the next step expects), and the retry MUST NOT be converted to a
+per-worker backoff, since a full filesystem is not a condition one issue's retry clears. Not an
+extension: it adds no configuration and no mechanism, so there is nothing to enable and the cost test
+does not arise. Steelmanned: clone depth and submodule recursion are the engine's and Symphony
+restating them would duplicate a contract it defers to — right about the mechanism and wrong about
+the guarantee, since the engine cannot know what a repository depends on, and stating the guarantee
+while naming no flag is what keeps the deferral intact. Reconsider if the guarantee is satisfiable
+only by vendoring large binaries into every repository, which would mean it is forcing a bad
+distribution choice rather than describing a reachable one. Relates to 0093 and 0104. Accepted and
+applied to `SPEC.md` (Sections 9.7, 16.5, 17.2, 18.1).
+
+## 0119 — A drain was found by catching it live, which is the defect
+
+**State:** Accepted
+**Folder:** [decisions/0119-correlation-and-budget-record/](decisions/0119-correlation-and-budget-record/)
+
+Issue #62's observability item, whose finding is its last clause: the GraphQL drain "was only found
+by catching a live poll process". Everything needed to explain it afterwards was absent, so the
+investigation depended on someone being present while it was still happening. The record answers
+"what did this session do" and neither of the questions an after-the-fact investigation asks. **Which
+run caused this one**: each retry attempt gets its own `session_id` and nothing links attempt 3 to
+the attempt that produced it, so a retry sequence is a set of unrelated sessions against one issue —
+the shape a retry storm and a coincidence share. **Who spent the budget**: after 0115 each session
+records what its calls observed, but a shared credential (0116) means the question is answered by
+comparing readings across sessions that each saw a different moment, and the aggregate that would
+answer it does not exist. `origin_run_id` names the **origin** of a retry sequence rather than the
+immediate predecessor, deliberately: every attempt then carries one value, so the sequence is a group
+rather than a linked list, a record missing from the middle loses one member instead of severing the
+tail, and "everything that came from this run" is a filter rather than a traversal. It is never null,
+the first attempt being its own origin — a nullable field would invite branching on an absence naming
+no condition. The cross-session aggregate is keyed by **credential scope** rather than by repository,
+argued from what the forge meters: repositories sharing a credential exhaust one bucket, and a
+per-repository view shows several small numbers where an operator needs one large one. Two
+prohibitions are stated because both are the obvious mistake — buckets are never summed across
+scopes, two credentials' remaining counts adding to a figure describing nothing; and a difference
+between readings is never attributed as Symphony's consumption where the credential has other
+holders, since the forge reports what the credential has left rather than what Symphony took, so a
+person running a command-line tool against the same token appears as Symphony's spend. Requirement
+levels split as 0115's did: the identifier is **Core**, being a value the orchestrator already holds
+when it schedules a retry and a single-issue deployment still retries; the aggregate is an
+**extension**, needing a store, a sink and a retention policy for a benefit that exists only where
+sessions are concurrent. Steelmanned: `issue_identifier` plus timestamps already groups a retry
+sequence — true for the simple case, and broken exactly where investigation matters, since an issue
+that failed, retried, succeeded, then reopened and retried again yields two sequences under one
+identifier separable only by inferring where the first ended, and inference is what fails at 2 a.m.
+Reconsider if operators correlate across *repositories*, which nothing in the current model produces
+and which would mean the identifier is scoped too narrowly. Relates to 0115 and 0116. Accepted and
+applied to `SPEC.md` (Sections 13.1, 13.5, 17.6, 18.1, 18.2) and `conformance/vocabulary.json`.

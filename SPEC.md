@@ -1732,6 +1732,36 @@ Repository provisioning:
 - Provisioning runs host-side under the operator's `vcs.git_credential`, which the agent never sees,
   and is never performed by the agent: the broker exposes no provisioning verb (Section 9.9). Local
   VCS operations inside the working tree remain available to the agent.
+
+What a provisioned workspace contains:
+
+- A tool the workspace depends on MUST be usable from a workspace Symphony provisioned, with no step
+  the agent has to take first. The guarantee is stated over what the workspace **contains** rather
+  than over clone depth, submodule recursion, or how a store is shared — all of which are the
+  engine's determinations and vary by backend and checkout mode (`VCSX-CONTRACT.md`). It is
+  checkable the way a repository author would check it: provision a workspace from scratch, run the
+  tool.
+- It follows that a tool distributed as a **submodule** does not satisfy the guarantee. Whether
+  provisioning populates one is the engine's determination rather than something a repository can
+  rely on, so a workspace-dependency tool arrives empty exactly when the engine's acquisition did
+  not fetch it. A deployment needing such a tool distributes it as a pinned release the workspace
+  resolves, or vendors it into the tree.
+- Symphony owns the part the engine cannot state, because it is the party that starts the agent: an
+  implementation MUST NOT start an agent session against a workspace whose working-tree derivation
+  has not completed. Provisioning has two halves (Section 16.5) — maintaining the store, and
+  deriving the tree — and a repository's own tools are present only after the second.
+
+Degradation when the host cannot store more:
+
+- A provisioning run the host's storage cannot complete — a full filesystem, an exhausted quota — is
+  a `repository_provisioning_failures` condition and takes that class's existing disposition
+  (Sections 14.1, 14.2): repo-scoped, new dispatches for the repository skipped, the service kept
+  alive, retried on a later tick. It introduces no class and no disposition of its own.
+- A partially written store or working tree MUST NOT be presented as a usable one. This is the case
+  Section 9.3's allowance to remove a partially prepared workspace exists for, and the one where a
+  directory exists, looks plausible, and is not what the next step expects.
+- The retry is that class's repo-scoped one and MUST NOT be converted into a per-worker backoff
+  (Section 14.2): a filesystem that is full is not a condition one issue's retry clears.
 - The reference algorithm is `ensure_object_store` (Section 16.5); it invokes the engine once per
   repository ahead of `provision_for_issue`. A provisioning failure is classified from the engine's
   typed result as `repository_provisioning_failures` (Section 14.1) and recovered per Section 14.2.
@@ -2877,6 +2907,18 @@ REQUIRED context fields for issue-related logs:
 REQUIRED context for coding-agent session lifecycle logs:
 
 - `session_id`
+- `origin_run_id` — the run attempt whose failure produced this one (Sections 7.2, 8.4). It names
+  the **origin** of a retry sequence rather than the immediate predecessor, so every attempt in the
+  sequence carries one value and the sequence is a group rather than a linked list: a record missing
+  from the middle loses one member instead of severing the tail, and "everything that came from this
+  run" is a filter on one field rather than a traversal. The first attempt of a run is its own
+  origin, so the field is always present — a nullable one would invite a consumer to branch on an
+  absence that names no condition.
+  - Without it a retry sequence is, in the record, a sequence of unrelated sessions against one
+    issue, which is the shape a retry storm and a coincidence share. `issue_identifier` and
+    timestamps do not close the gap: an issue that failed, retried, succeeded, and was later
+    reopened and retried again yields two sequences under one identifier, separable only by
+    inferring where the first ended.
 
 REQUIRED context for a log record describing a call that reached the code host:
 
@@ -2967,6 +3009,24 @@ Forge budget accounting:
   figure. A snapshot is a reading, not a running total: what is recorded is what a call observed,
   and the difference between two readings is not Symphony's spend where a credential has other
   holders.
+
+Cross-session budget aggregation (OPTIONAL):
+
+- An OPTIONAL extension of `Daemon Conformance` that aggregates the recorded snapshots across
+  concurrent sessions, per bucket and keyed by **credential scope** (Sections 13.1, 15.3) rather
+  than by repository. The key is what the forge meters: repositories sharing one credential are
+  exhausting one bucket, and a per-repository view shows several small numbers where an operator
+  needs to see one large one.
+- Buckets MUST NOT be summed across scopes. Two credentials' remaining counts add to a figure that
+  describes nothing, being counts against separate limits.
+- A difference between two readings MUST NOT be attributed as Symphony's consumption where the
+  credential has other holders. The forge reports what the credential has left, not what Symphony
+  took, so a person running a command-line tool against the same token appears in the reading as
+  Symphony's spend.
+- The sink and retention are `Implementation-defined` and MUST be documented where the extension is
+  shipped (Section 19). Recording the per-run snapshot above is Core and needs none of this: what is
+  optional is the aggregation, which requires somewhere to aggregate into for a benefit that exists
+  only where sessions are concurrent.
 
 Runtime accounting:
 
@@ -3899,6 +3959,11 @@ of `provision_for_issue` (Section 16.4), so a provisioning failure is recovered 
 (Section 14.2) and no worker is spawned. Whether the engine creates the store or refreshes an
 existing one is the engine's determination, not a branch Symphony takes.
 
+The two halves guarantee different things, not only different work: this function maintains the
+store, and a repository's own contents — including any tool the workspace depends on (Section 9.7) —
+are present in a tree only after `provision_for_issue` derives one. A store that is current is not a
+workspace an agent can be started against.
+
 `provision_for_issue` dispatches the same operation naming both locations, so the per-issue tree is
 derived from the store this function maintained. That re-runs the store half, which refreshes rather
 than re-obtains (`VCSX-CONTRACT.md`) — a redundant acquisition per issue and never a second copy.
@@ -4162,6 +4227,11 @@ deployment satisfies by using a conforming engine rather than by implementing th
   provisioning of a repository already present refreshes it rather than obtaining it again
 - The broker's verb set contains no provisioning verb, so the agent cannot reach provisioning
   (Sections 9.7, 9.9)
+- A tool the workspace depends on is usable from a freshly provisioned workspace with no step the
+  agent takes first; no agent session starts against a workspace whose working-tree derivation did
+  not complete; and a provisioning run the host's storage could not complete leaves no partially
+  written store or tree presented as usable, is classified `repository_provisioning_failures`, and
+  is retried repo-scoped rather than per worker (Sections 9.7, 14.2, 16.5)
 - A backend that cannot share storage across working trees reports it when the invocation is
   validated rather than at first use (`VCS Engine`)
 - The agent does local git including commit; Symphony obtains repositories and realizes
@@ -4399,6 +4469,14 @@ These checks are `Core Conformance`: structured logging and its sinks serve both
 - Structured logging includes issue/session context fields
 - Logging sink failures do not crash orchestration
 - Token/rate-limit aggregation remains correct across repeated agent updates
+- A retried attempt carries the `origin_run_id` of the attempt whose failure produced it, and a
+  first attempt carries its own, so a retry sequence groups on one value and the field is never null
+  (Sections 8.4, 13.1)
+- A call that reached the code host carries `credential_scope`, naming the scope and no part of the
+  credential (Sections 13.1, 15.3)
+- If cross-session budget aggregation is implemented, it is keyed by credential scope, sums no
+  buckets across scopes, and attributes no difference between readings as Symphony's consumption
+  (Section 13.5)
 - A secret value echoed back in agent free text appears in no observability surface — log sinks,
   snapshot or status surface, or the OPTIONAL HTTP API — having been redacted where it was captured
 - The documented redaction mechanism is not weaker than the known-value floor: pattern matching
@@ -4484,7 +4562,9 @@ Required of every conforming implementation, whichever profiles its topology cla
   all three with last-known-good on invalid reload; the workflow validation error classes
   (Section 5.5) are REQUIRED spellings, and any class defined beyond them is documented and assigned
   a dispatch gating behavior
-- Structured logs with `issue_id`, `issue_identifier`, and `session_id`
+- Structured logs with `issue_id`, `issue_identifier`, `session_id`, `origin_run_id` (a retry
+  carries its origin's; a first attempt carries its own), and `credential_scope` on any call that
+  reached the code host
 - Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)
 - A published Conformance Statement (Section 19) recording the claimed profiles and topology, the
   OPTIONAL extensions shipped, the engine and agent-runner floors, every `Implementation-defined`
@@ -4512,6 +4592,10 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   adapter observed the protocol's terminal success signal, a process's exit status is never read as
   a turn outcome, an adapter never reports success because a backgrounded process did not report a
   failure, and a workspace hook terminated by a signal is failed (Sections 9.4, 10.6, 10.7)
+- A tool the workspace depends on is usable from a provisioned workspace with no step the agent
+  takes first — so a workspace-dependency tool is not distributed as a submodule — and no agent
+  session starts against a workspace whose working-tree derivation has not completed (Sections 9.7,
+  16.5)
 - Repository provisioning runs through the VCS engine (Section 9.7), host-side and credentialed,
   before any per-issue working tree is derived from the store, and exposes no provisioning verb to
   the agent; a provisioning failure is classified from the engine's typed result as
@@ -4620,9 +4704,9 @@ engine's checklist.
 ### 18.2 RECOMMENDED Extensions (Not REQUIRED for Conformance)
 
 Each extension below extends the layer profile named in its own section: the HTTP server, token
-budget guards, provider quota backpressure, the forge budget guard, the node-scheduler, and
-autonomous task management extend `Daemon Conformance`; the per-execution usage ledger extends
-`Broker Core Conformance`.
+budget guards, provider quota backpressure, the forge budget guard, cross-session budget
+aggregation, the node-scheduler, and autonomous task management extend `Daemon Conformance`; the
+per-execution usage ledger extends `Broker Core Conformance`.
 
 - HTTP server extension honors CLI `--port` over `server.port`, uses a safe default bind host, and
   exposes the baseline endpoints/error semantics in Section 13.8 if shipped.
@@ -4639,6 +4723,10 @@ autonomous task management extend `Daemon Conformance`; the per-execution usage 
 - Provider quota backpressure extension (Section 8.9): a normalized provider-quota snapshot (class
   `Cached external signal`) fed in-band or by an OPTIONAL poller, with a dispatch-only pause above a
   threshold, implicit resume, and a configurable fail-open/closed policy on `UNKNOWN`.
+- Cross-session budget aggregation extension (Section 13.5): the recorded per-run snapshots
+  aggregated per bucket and keyed by credential scope, with no summing across scopes and no
+  difference between readings attributed as Symphony's consumption. Recording the per-run snapshot
+  is Core; only the aggregation is optional.
 - Forge budget guard extension (Section 8.11): a pre-emptive check before a **mutating** forge call
   against an operator-named bucket floor, plus a one-shot warn threshold, with a stopped run parked
   rather than failed. Only the guard is OPTIONAL — **recording** the snapshot the engine already
