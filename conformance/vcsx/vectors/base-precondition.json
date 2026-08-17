@@ -1,0 +1,96 @@
+{
+  "function": "requires_base_branch",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 8.6 \"Invocation Preconditions\"",
+    "VCSX-SPEC.md Section 8.1 \"Entry Points and Arguments\"",
+    "VCSX-SPEC.md Section 6.4 \"`[base]` and Base Resolution\"",
+    "VCSX-SPEC.md Section 12.3 \"`land` Sequence\""
+  ],
+  "description": "Whether the invocation-precondition step requires a base from the invocation or the consumer configuration, whose absence refuses the run with `base_branch_missing` before the policy runs.",
+  "given": "an entry point, the policy source, and the policy the invocation would run",
+  "expect": "whether a base is required as a precondition, and where required under `target_branch`, that it is established before validation",
+  "notes": [
+    "Under `policy_source = \"policy_branch\"` the entry point alone fixes the set, as it does for the commit identity and for `git_access` (Section 8.6): `integrate`, `create_pr` and a front-end sequence that dispatches one need a base, and the rest run without one. A policy's `run_op` edges do not widen the set; `policy` is supplied in every vector so that independence is asserted rather than assumed.",
+    "Under `target_branch` the entry point does not fix the set. The base is what says where host-side policy is read from (Sections 6.4, 8.1), so every entry needs one — `provision` excepted, being the operation that obtains the repository the policy file is in and so performing no policy read to locate (Section 6.1). It is established before validation there, in the place `policy_branch_missing` occupies under the default mode.",
+    "Under the default mode this function answers whether a base is required, not whether one was supplied: `[base] branch` is the lowest of the three sources, so an `integrate` against a policy that states its own base is not refused. Under `target_branch` `[base]` supplies nothing, so the two remaining sources are the whole set. Which value results is `resolve_base`'s question and is covered by `base-resolution.json`.",
+    "A `true` answer does not mean the invocation reaches an operation that uses a base, and a `false` one does not mean it does not. An entry outside the default mode's set MAY reach `integrate` or `create_pr` through a `run_op` edge, because a policy is a graph (Section 5.2); that dispatch reports the operation's own reason rather than a precondition (Sections 4.3, 8.6). That is behavior against a real backend and is not exercised here."
+  ],
+  "vectors": [
+    {
+      "id": "integrate_entry_requires_base_under_policy_branch",
+      "description": "An entry that needs a base to do its work (Sections 6.4, 8.6).",
+      "given": { "entry": "integrate", "policy_source": "policy_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": true, "before_validation": false }
+    },
+    {
+      "id": "create_pr_entry_requires_base_under_policy_branch",
+      "description": "The other entry in the default mode's set (Section 8.6).",
+      "given": { "entry": "create_pr", "policy_source": "policy_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": true, "before_validation": false }
+    },
+    {
+      "id": "ship_requires_base_under_policy_branch",
+      "description": "A front-end sequence that dispatches `create_pr` (Sections 8.6, 12.2).",
+      "given": { "entry": "ship", "policy_source": "policy_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": true, "before_validation": false }
+    },
+    {
+      "id": "status_does_not_require_base_under_policy_branch",
+      "description": "An entry that needs no base runs without one under the default mode (Section 8.6).",
+      "given": { "entry": "status", "policy_source": "policy_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": false, "before_validation": false }
+    },
+    {
+      "id": "push_does_not_require_base_under_policy_branch",
+      "description": "Named among the entries that need none and run without one (Section 8.6).",
+      "given": { "entry": "push", "policy_source": "policy_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": false, "before_validation": false }
+    },
+    {
+      "id": "land_does_not_require_base_under_policy_branch",
+      "description": "`land` takes its base from the pull request it merges (Sections 8.6, 12.3).",
+      "given": { "entry": "land", "policy_source": "policy_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": false, "before_validation": false }
+    },
+    {
+      "id": "run_op_edge_to_integrate_does_not_widen_the_scope",
+      "description": "The entry point alone fixes the set; a policy that routes to a base-needing operation does not make the base a precondition (Sections 5.2, 8.6).",
+      "given": {
+        "entry": "status",
+        "policy_source": "policy_branch",
+        "policy": { "edges": [{ "on": "status:ok", "do": "run_op", "op": "integrate" }] }
+      },
+      "expect": { "requires_base_branch": false, "before_validation": false }
+    },
+    {
+      "id": "status_requires_base_under_target_branch",
+      "description": "Under `target_branch` an entry that needs no base for its work still needs one to locate the policy that governs it, and the requirement is established before validation (Sections 6.4, 8.1, 8.6).",
+      "given": { "entry": "status", "policy_source": "target_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": true, "before_validation": true }
+    },
+    {
+      "id": "push_requires_base_under_target_branch",
+      "description": "The same holds for every entry the default mode leaves outside the set (Section 8.6).",
+      "given": { "entry": "push", "policy_source": "target_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": true, "before_validation": true }
+    },
+    {
+      "id": "land_requires_base_under_target_branch",
+      "description": "`land` takes its operational base from the pull request, but the policy governing it is still read from the target (Sections 8.1, 12.3).",
+      "given": { "entry": "land", "policy_source": "target_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": true, "before_validation": true }
+    },
+    {
+      "id": "provision_does_not_require_base_under_target_branch",
+      "description": "The one exemption: `provision` obtains the repository the policy file is in, so it performs no policy read to locate and the mode adds no base requirement for it (Sections 6.1, 8.6).",
+      "given": { "entry": "provision", "policy_source": "target_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": false, "before_validation": false }
+    },
+    {
+      "id": "provision_does_not_require_base_under_policy_branch",
+      "description": "The exemption is not the mode's: `provision` needs no base under either (Section 8.6).",
+      "given": { "entry": "provision", "policy_source": "policy_branch", "policy": { "edges": [] } },
+      "expect": { "requires_base_branch": false, "before_validation": false }
+    }
+  ]
+}

@@ -134,9 +134,19 @@ split one policy across the boundary:
 - **In-sandbox** — operations and hooks that run in the working tree without credentials (the
   `before:commit` gate/scan, in-sandbox hooks). A consumer sources these from the worktree.
 
+The two lists above say which **operations** reach the remote or hold credentials. An **edge's** or
+a **hook's** context is a different question with a different answer: it is fixed by the artifact
+the edge or hook was declared in (Sections 6.5, 6.6), never by the operation an edge names. The
+consumer tags each while assembling the one merged surface it hands the engine, which is the same
+act as sourcing it by trust.
+
+The two meet at a dispatch. An in-sandbox edge whose `run_op` names an operation from the host-side
+list receives no credential and reports that operation's own reason at the dispatch (Sections 4.3,
+8.6) — the operation states what it needs, and the edge's context states what it may hold.
+
 `vcsx` labels each policy edge and hook with its context (Section 6) but does not itself enforce the
 sourcing rule; the consumer sources config by trust and mediates host-side operations. The engine
-guarantees only that an edge declared in-sandbox never receives credentials.
+guarantees only that an in-sandbox edge never receives credentials.
 
 ### 3.3 Checkout Modes
 
@@ -758,8 +768,10 @@ which is consulted before the repository exists.
 - `branch` (string, OPTIONAL) — the base branch the pull request targets and `integrate` pulls from.
   It is the repository's own contribution to a value the invocation and the consumer configuration
   may also supply, and the lowest of the three in precedence: the invocation's `base_branch` wins,
-  then the consumer configuration's, then this (Section 8.1). Where none of the three supplies one,
-  an entry that needs a base is refused before the policy runs (Section 8.6).
+  then the consumer configuration's, then this (Section 8.1). That precedence holds under
+  `policy_source = "policy_branch"`; under `target_branch` this section supplies nothing, for the
+  reason stated below. Where no applicable source supplies one, the invocation is refused before the
+  policy runs, in the scope Section 8.6 states for the mode.
   - Default: unset — the consumer supplies the base, or the entry does not need one.
 - `resolve` (string, OPTIONAL) — a base-resolution strategy when a single `branch` is insufficient:
   - `fixed` (Default) — `branch` is the base.
@@ -769,6 +781,19 @@ which is consulted before the repository exists.
 - `prefixes` (table, OPTIONAL) — the prefix→base map used when `resolve = by_prefix`. A missing or
   malformed map is a configuration error (Section 6.11); the engine surfaces
   `integrate:base_unresolved` / `create_pr:base_mismatch` rather than guessing.
+
+Under `policy_source = "target_branch"` (Section 8.1) this section contributes nothing to the base.
+The base then resolves from the invocation's `base_branch`, then the consumer configuration's, and
+from nothing else: the mode reads host-side policy from the pull-request target, so every key here —
+`branch`, `resolve` and `prefixes` alike — sits in the document the base is what locates. That is
+Section 8.1's rule for the policy branch applied to the argument playing its role under this mode,
+and it holds for the same reason: a branch named inside the policy cannot select the revision the
+policy is read from. Where neither source supplies one the invocation is refused before the policy
+runs, whatever the entry (Section 8.6).
+
+One invocation resolves one base. Under `target_branch` the base is fixed before the policy is read
+and this section cannot move it afterwards; under the default mode the policy is read first and this
+section is the lowest of the three sources, as above.
 
 Resolving the base produces two values, because the two plugin layers need different things from it:
 
@@ -794,11 +819,10 @@ base from untrusted content.
 
 ### 6.5 `[policy]` Edges
 
-The action-policy machine (Section 5) is expressed as a table of edges. Each edge binds a trigger to an
-action, with an OPTIONAL `context` (`host_side` or `in_sandbox`, Section 3.2; defaulted per the
-action) and OPTIONAL `from` (a workflow-state name, used only by transition edges, Section 6.7). An
-edge omitting `from` is unscoped: it is a candidate in every from-context, and an edge scoped to the
-current context takes precedence over it for the same trigger (Section 5.4).
+The action-policy machine (Section 5) is expressed as a table of edges. Each edge binds a trigger to
+an action, with an OPTIONAL `from` (a workflow-state name, used only by transition edges,
+Section 6.7). An edge omitting `from` is unscoped: it is a candidate in every from-context, and an
+edge scoped to the current context takes precedence over it for the same trigger (Section 5.4).
 
 ```toml
 [[policy.edge]]
@@ -827,6 +851,31 @@ is a configuration error (Section 6.11).
 `reason` is OPTIONAL on an `escalate` or a `fail` edge, and an edge omitting it is well formed:
 neither action needs it to be dispatched. An `escalate` without one raises the trigger's default need
 (Sections 4.3, 5.2), and a `fail` without one is reported by its trigger alone (Section 8.2).
+
+**An edge does not declare its execution context.** Which context an edge carries is fixed by the
+artifact it is declared in, as a hook's is (Section 6.6): one declared in `repo.policy.toml` is
+host-side, one declared in the consumer's in-sandbox artifact is in-sandbox. The engine still
+receives a context for every edge, because it is handed one merged surface and never sees two
+artifacts (Section 3.2) — the consumer tags each edge while assembling that surface, which is the
+same act as sourcing it by trust.
+
+Deriving it rather than declaring it removes a combination the declared form admitted: an edge the
+working tree supplied, declaring itself `host_side`, dispatching a credentialed operation. Under
+derivation that is not a rule to enforce but a thing that cannot be written, because a host-side
+edge is one the working tree did not declare.
+
+What the context decides is the dispatch, and it decides it for one action. An edge's context is
+what Section 11's credential guarantee is stated over, so an in-sandbox edge's `run_op` naming an
+operation that reaches the remote receives no credential and reports that operation's own reason at
+the dispatch (Sections 4.3, 8.6). For the other actions it decides nothing: a `run` edge's hook
+carries its own context and resolves its unit by it (Section 6.6), and the remaining five receive
+neither the working tree nor a credential. No context is derived from the operation an edge names —
+what Section 3.2 says about which operations reach the remote states what a dispatch needs, not
+where an edge came from.
+
+A `context` key on an edge is ignored rather than refused, under Section 6.1's rule for unknown
+keys: a policy written against the declared form stays valid, and the context it names is not
+consulted.
 
 ### 6.6 `[hooks.engine]`
 
@@ -1345,7 +1394,9 @@ supply it two ways:
   and this one is the specification's rather than the operator's.
 
 Where no source supplies a base, an entry that needs one is refused before the policy runs; an entry
-that needs none runs (Section 8.6). The engine holds a base branch opaque as it holds the coordinate
+that needs none runs (Section 8.6). That scoping is the default mode's: under `target_branch` the
+base is what locates the policy, so every entry needs one and Section 8.6 states the refusal over
+all of them. The engine holds a base branch opaque as it holds the coordinate
 opaque: it resolves which of the three sources applies, supplies the result to the capabilities that
 take one, and interprets nothing about the name.
 
@@ -1358,6 +1409,11 @@ The **policy source** names where host-side policy is read from:
     then neither required nor meaningful, and a `policy_branch` equal to the target is the
     configuration rather than an error in it, so `policy_branch_is_target` does not arise
     (Section 6.11).
+  - Under `target_branch` a base is REQUIRED, from the invocation or from the consumer
+    configuration, and its absence is refused before the policy runs whatever the entry
+    (Section 8.6). The target is what the policy is read from, so the base is this mode's
+    counterpart to `policy_branch` and cannot come from `[base]`, which sits in the document being
+    located (Section 6.4). What the mode saves is naming a second branch, not naming a base.
 
 It is a named mode rather than a flag because the trust properties Section 11 states are conditional
 on it, and a conditional guarantee is worth stating only where a consumer can tell which state
@@ -1632,9 +1688,9 @@ unresolvable, and neither is reachable through that default: `intervention` is r
 ### 8.6 Invocation Preconditions
 
 Between validating the policy (Section 6.11) and running it, the engine establishes the
-preconditions the invoked entry point depends on, in order, reporting the first that fails — with one
-exception, `arguments_unreadable`, which this section establishes before validation for the reason
-stated below. Where a
+preconditions the invoked entry point depends on, in order, reporting the first that fails — with
+three exceptions, which this section establishes before validation for the reasons stated below.
+Where a
 forge is configured it requires the forge repository coordinate and the forge-API access parameter
 `forge_access` (Section 8.1), whose absence it judges itself in each case, because the argument is
 either present or is not. It
@@ -1661,11 +1717,16 @@ same shape of reason — validation cannot proceed without what the argument nam
 - `local_vcs_missing` follows, because the selection is what fixes whose descriptor the engine reads
   (Section 6.11): a validation that reports `capability_unsupported` has already loaded a backend,
   and loading one is what this argument names.
-- `policy_branch_missing` follows, because the policy document is the first of Section 6.11's five
-  inputs and this argument is what says where to read it from. There is nothing to validate until it
-  is known.
+- The argument that says where the policy is read from follows, because the policy document is the
+  first of Section 6.11's five inputs. There is nothing to validate until it is known. Which
+  argument that is depends on the policy source (Section 8.1): `policy_branch_missing` under the
+  default mode, and `base_branch_missing` under `target_branch`, which reads the policy from the
+  pull-request target and so is located by the base.
 
-The ordering rule this section states below holds for every other reason in this registry.
+The third is therefore mode-dependent while the first two are not, and exactly one of the two
+applies to any invocation: `policy_branch` is neither required nor consulted under `target_branch`,
+and `[base]` supplies no base under it (Section 6.4). The ordering rule this section states below
+holds for every other reason in this registry.
 
 The entry point alone fixes that scope: a front-end sequence that dispatches one means the
 sequence's own dispatches (Sections 12.2, 12.3), so `ship` requires an identity and `land` does not,
@@ -1689,18 +1750,33 @@ shape, because the engine interprets neither (Section 8.1): a parameter a backen
 backend's first-use `failed` rather than a precondition this registry names, exactly as a coordinate
 it cannot use is.
 
-The base is scoped by the same rule as `git_access`. For an entry that needs one — `integrate`,
-`create_pr`, and a front-end sequence that dispatches one — a base is REQUIRED and its absence from
-all three sources is refused here as `base_branch_missing`; `commit`, `push`, `pull`, `merge`,
-`land` and `provision` need none and run without one, `land` taking its base from the pull request
-it merges (Section 12.3). An entry outside the set that reaches a base-needing operation through a
-`run_op` edge reports that operation's own reason at the dispatch (Section 4.3), which is the
-disposition this section already gives an identity the precondition does not cover.
+Under `policy_source = "policy_branch"` the base is scoped by the same rule as `git_access`. For an
+entry that needs one — `integrate`, `create_pr`, and a front-end sequence that dispatches one — a
+base is REQUIRED and its absence from all three sources is refused here as `base_branch_missing`;
+`commit`, `push`, `pull`, `merge`, `land` and `provision` need none and run without one, `land`
+taking its base from the pull request it merges (Section 12.3). An entry outside the set that
+reaches a base-needing operation through a `run_op` edge reports that operation's own reason at the
+dispatch (Section 4.3), which is the disposition this section already gives an identity the
+precondition does not cover.
+
+Under `target_branch` the entry point does not fix that set, and the base is REQUIRED whatever the
+entry — `provision` excepted, below. The scoping rule above is about what an entry needs to *do its
+work*; under this mode the base is also what says where the policy governing it is read from
+(Sections 6.4, 8.1), and an entry that needs no base for its work still needs one for that. So a
+`status` or a `push` invocation supplying no base from either remaining source is refused with
+`base_branch_missing`, and is refused before validation rather than after it, which is the placement
+`policy_branch_missing` has under the default mode and for the same reason.
 
 `base_branch_not_permitted` is judged wherever a `base_branch` was supplied, whatever the entry,
 because the bound is about what the invocation may name rather than about what the entry needs — the
 same shape as the commit identity, whose *malformedness* is judged whatever the entry while its
 *absence* is judged only where one is required.
+
+`provision` needs no base under either mode, and the list below is exhaustive for it. It is the one
+entry point that runs where no policy could be read, being the operation that obtains the repository
+the policy file is in (Section 6.1), so the argument that says where the policy is read from is one
+it establishes under neither mode: it performs no policy read to locate. That is the same sentence
+the Section 6.1 exemption rests on, applied to this mode's argument rather than to the document.
 
 `provision` establishes only the preconditions judged from the invocation's arguments. It resolves
 no work branch, consults no `detect_mode()`, and accepts no commit identity, because each of those
@@ -1728,7 +1804,7 @@ run in which the policy did not run.
 | A forge is configured and no `forge_access` was supplied (Section 8.1) | `forge_access_missing` |
 | An entry that can reach a remote was invoked and no `git_access` was supplied (Section 8.1) | `git_access_missing` |
 | `provision` was invoked and no `store_location` was supplied (Section 8.1) | `store_location_missing` |
-| An entry that needs a base was invoked and no source supplied one (Sections 6.4, 8.1) | `base_branch_missing` |
+| Under `policy_source = "policy_branch"`, an entry that needs a base was invoked and no source supplied one; under `target_branch`, any entry but `provision` was invoked and neither the invocation nor the consumer configuration supplied one (Sections 6.4, 8.1) | `base_branch_missing` |
 | A supplied `base_branch` is outside the consumer's `base_branch_allowed` (Section 8.1) | `base_branch_not_permitted` |
 | The work branch is the checkout's current branch (Section 6.3) and the checkout has none | `no_current_branch` |
 | The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
@@ -1756,10 +1832,13 @@ from the invocation's arguments alone, as `arguments_unreadable`, `local_vcs_mis
 says what it is judged from.
 
 `base_branch_missing` is the one row judged partly from the policy document, since `[base] branch`
-is its lowest source (Section 6.4), and it is still a precondition rather than a configuration
-error. The policy is well formed either way: a document that omits an OPTIONAL key carries no defect
-to repair, and what is absent is a value the invocation or the consumer configuration was free to
-supply. That is the invocation's side of the line below.
+is its lowest source under the default mode (Section 6.4), and it is still a precondition rather
+than a configuration error. The policy is well formed either way: a document that omits an OPTIONAL
+key carries no defect to repair, and what is absent is a value the invocation or the consumer
+configuration was free to supply. That is the invocation's side of the line below. Under
+`target_branch` the qualification falls away and the row is judged from the invocation's arguments
+alone, the policy document contributing no base — which is also what lets it be established before
+the document is read.
 
 Where both sides are checkout-free, what separates them is the artifact at fault: **a configuration
 error names a defect a consumer repairs by editing a document; a precondition failure names one it
@@ -2151,9 +2230,13 @@ one:
 - The engine labels every policy edge and hook with its execution context (Section 3.2) so a
   consumer can source host-side policy from a trusted revision and in-sandbox policy from the
   worktree, and can mediate the credentialed operations. An in-sandbox edge or hook MUST NOT receive
-  credentials. The capabilities that touch the network are named and enumerable — four of the VCS
-  backend's and every required capability of the forge backend (Sections 9.1, 9.2) — so what a
-  consumer mediates is a fixed list rather than something inferred from an operation's description.
+  credentials. Neither declares that context: it is fixed by the artifact each was declared in
+  (Sections 6.5, 6.6), so an edge or hook the working tree supplied cannot claim the credentialed
+  side by saying so, and the guarantee rests on where the text was sourced from rather than on what
+  it asserts about itself. The capabilities that touch the network are named and enumerable — four
+  of the VCS backend's and every required capability of the forge backend (Sections 9.1, 9.2) — so
+  what a consumer mediates is a fixed list rather than something inferred from an operation's
+  description.
 - Provisioning is host-side (Sections 3.2, 4.1). `provision` reaches the remote at `git_access` under
   `git_credential`, so it sits with `integrate`, `push`, `pull` and every forge operation on the side
   of the boundary the consumer mediates; the in-sandbox half of a split policy receives no credentials
@@ -2330,7 +2413,13 @@ point, where the built-in default escalates it (Section 5.4), so the condition c
 ### 12.4 Resolve Base
 
 ```text
-function resolve_base(work_branch, base_config, remote):
+function resolve_base(work_branch, base_config, remote, policy_source):
+  if policy_source == "target_branch":
+    return { branch: supplied_base,          # the invocation's, else the consumer
+                                             # configuration's; base_config is not read,
+                                             # because the policy it belongs to was located
+                                             # by this value (Sections 6.4, 8.1)
+             ref:    resolve_base_ref(remote, supplied_base) }
   if base_config.resolve == "fixed" or unset:
     branch = base_config.branch
   else if base_config.resolve == "by_prefix":
@@ -2433,8 +2522,8 @@ A conforming engine SHOULD include tests covering:
   `provision:store_unsupported` (Sections 4.3, 9.3); a remote the engine could not reach yields
   `provision:unreachable` rather than the universal `failed`; `provision` has no lifecycle position
   and no `[policy]` edge can gate it or route its result, so a policy that names one is refused with
-  `unknown_trigger`; an edge declared `in_sandbox` receives no credential whatever it dispatches,
-  `provision` included, so the operation set gains no in-sandbox path to a credentialed acquisition
+  `unknown_trigger`; an in-sandbox edge receives no credential whatever it dispatches, `provision`
+  included, so the operation set gains no in-sandbox path to a credentialed acquisition
   (Sections 3.2, 11); no front-end sequence dispatches `provision`, so a `ship` in a location
   holding no repository refuses on the checkout rather than acquiring one as a side effect (Sections
   4.1, 8.6, 12.2).
@@ -2448,6 +2537,14 @@ A conforming engine SHOULD include tests covering:
   that need no base; an entry outside the base-needing set that routes to `integrate` through a
   `run_op` edge reports that operation's own reason rather than a precondition (Sections 6.4, 8.1,
   8.6).
+- The base under `target_branch`: a `status` invocation supplying no `base_branch`, against a
+  consumer configuration supplying none, yields `base_branch_missing` and reads no policy —
+  reported before any configuration reason the document would also have yielded, since the document
+  is what the missing value locates; the same invocation with a base supplied runs, and a
+  `[base] branch` present in the located document does not become the base, `status` reporting
+  against the supplied one; a `[base] resolve = "by_prefix"` in that document likewise does not
+  re-resolve it; and a `provision` with no base from any source runs, being the entry that performs
+  no policy read (Sections 6.1, 6.4, 8.1, 8.6).
 - Provisioning precedes the policy and the checkout: a `provision` into a `store_location` holding
   no repository, with no `repo.policy.toml` anywhere to discover, runs and reports `provision:ok`
   rather than any configuration reason, while the same invocation of any other entry point is not
@@ -2481,6 +2578,13 @@ A conforming engine SHOULD include tests covering:
   `[hooks.engine.<name>]` and a consumer lifecycle key of the same name coexist without collision;
   a `[hooks.engine.<name>]` declaring no `run` is refused with `malformed_policy` while a
   consumer-namespaced key is not read as a hook at all (Sections 3.2, 6.6, 6.11).
+- Derived edge context: a `[policy]` edge takes its context from the artifact it is declared in on
+  the same rule as a hook, so an edge in `repo.policy.toml` is host-side and one in the consumer's
+  in-sandbox artifact is in-sandbox whatever operation its `run_op` names; an edge carrying a
+  `context` key is matched and dispatched with the key ignored rather than refused, so a policy
+  written against the declared form stays valid and the context it names is not consulted; and the
+  same policy assembled from a different artifact split yields a different context for the same edge
+  (Sections 3.2, 6.1, 6.5).
 - Per-branch sections: the longest matching `prefix` applies and merges over the top level key by
   key, a key the section does not mention keeping the top level's value; where no section matches,
   the top level applies alone; two sections with the same `match` are refused with
@@ -2648,13 +2752,15 @@ A conforming engine SHOULD include tests covering:
   operation that obtains both.
 - Base resolution from three sources — the invocation, the consumer configuration, then
   `[base] branch` — with the bound on what an invocation may name, and the refusal scoped to the
-  entries that need a base.
+  entries that need a base. Under `target_branch` the third source drops out and the refusal reaches
+  every entry but `provision`, before validation, the base being what locates the policy there.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), the consumer configuration as a
   second and disjoint input, including the refusal of a
   policy that is not well formed, of one declaring a hook with no unit to run, of one binding a
   template body source with no template unit bound, and of one whose lifecycle positions dispatch one
   another in a cycle, base resolution to a branch and a base ref, and the execution-context labeling
-  — including that a hook's unit resolves by its context, a `host_side` one from the host-side
+  — an edge's and a hook's alike taken from the artifact each was declared in rather than from a
+  key, including that a hook's unit resolves by its context, a `host_side` one from the host-side
   policy's own source rather than from the working tree.
 - The invocation contract: result envelope with every field described and `entry` nullable only where
   no entry point was read, the `outputs` keys that report what the engine emitted and nobody

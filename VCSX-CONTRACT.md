@@ -88,8 +88,9 @@ Entry points:
 - `scope.branch_pattern` — the branch-*name* pattern for the work branch (the scope invariant itself
   is not configurable; Section 10),
 - the action-policy edges, and the named hook units `[hooks.engine.<name>]` a `run` edge invokes
-  (Section 5). A hook declares no execution context: the artifact it is declared in fixes that, so
-  a hook in `repo.policy.toml` is host-side and one in the consumer's in-sandbox artifact is not.
+  (Section 5). Neither an edge nor a hook declares an execution context: the artifact it is declared
+  in fixes that, so one in `repo.policy.toml` is host-side and one in the consumer's in-sandbox
+  artifact is not.
   The `hooks` namespace is shared with the consumer, whose own hooks sit under a disjoint prefix,
 - `[[branch]]` sections, each matching a base-branch prefix and merging its keys over the top level
   so one policy document can differ by the branch a unit of work targets,

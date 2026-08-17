@@ -164,12 +164,24 @@
       "description": "A lifecycle position is matched exactly (Section 5.3).",
       "given": {
         "edges": [
-          { "on": "before:commit", "do": "run", "hook": "scan-content", "context": "in_sandbox" }
+          { "on": "before:commit", "do": "run", "hook": "scan-content" }
         ],
         "trigger": "before:commit",
         "from_context": null
       },
       "expect": { "matched": "before:commit", "action": "run" }
+    },
+    {
+      "id": "a_context_key_on_an_edge_is_ignored_not_refused",
+      "description": "An edge does not declare its execution context; the artifact it was declared in fixes it (Sections 3.2, 6.5). A policy written against the declared form is still valid and the key is ignored under Section 6.1's unknown-key rule, so the edge matches and dispatches as if it carried none — the context it names is not consulted and does not affect selection (Sections 5.3, 6.1).",
+      "given": {
+        "edges": [
+          { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate", "context": "in_sandbox" }
+        ],
+        "trigger": "push:non_fast_forward",
+        "from_context": null
+      },
+      "expect": { "matched": "push:non_fast_forward", "action": "run_op" }
     },
     {
       "id": "lifecycle_position_has_no_class_fallback",
@@ -189,7 +201,7 @@
       "description": "A policy that binds only some of the required positions leaves the rest unbound; the operation proceeds (Section 5.4).",
       "given": {
         "edges": [
-          { "on": "before:commit", "do": "run", "hook": "scan-content", "context": "in_sandbox" }
+          { "on": "before:commit", "do": "run", "hook": "scan-content" }
         ],
         "trigger": "before:merge",
         "from_context": null
