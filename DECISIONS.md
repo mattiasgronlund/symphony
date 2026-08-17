@@ -4305,3 +4305,79 @@ own CI, or if the Core-recorded snapshot turns out never to be read — which wo
 justification was cost rather than value. Relates to 0077, 0106, 0107, 0112 and 0114. Accepted and
 applied to `SPEC.md` (Sections 6.4, 8.11, 9.10, 13.5, 14.2, 17.4, 18.1, 18.2) and
 `conformance/vocabulary.json`.
+
+## 0116 — One credential is a scope decision nobody made
+
+**State:** Accepted
+**Folder:** [decisions/0116-credential-partitioning/](decisions/0116-credential-partitioning/)
+
+Issue #62's credential item. Read carefully, the specification never chose a shared token and was
+wrong: it never asked the question. `vcs.git_credential` and `vcs.forge_credential` are flat keys,
+Section 8.7 routes many repositories through one orchestrator, and nothing states how the two
+compose — which in practice means one, because a flat key has one value. So the fix is not to change
+a policy but to make the scope an explicit decision. Two distinct failures motivate it and only one
+is about security. **Budget contention**: a forge meters a *credential*, not a repository, so
+repositories sharing one are a single spender to the code host and a runaway loop in one exhausts
+every other's budget — 0107 makes that observable and 0115's guard can pause on it, but neither can
+*separate* budgets that are not separate, and a guard pausing on a low bucket pauses the repositories
+spending nothing too. **Blast radius**: a credential reaching every repository the orchestrator
+serves is one whose compromise reaches every repository it serves. That second point is explicitly
+orthogonal to the secret-isolation invariant (Sections 9.6, 15.3), which governs **where** a
+credential goes and says nothing about **how much** one is worth; the invariant holding perfectly
+does not bound what a leaked value unlocks. The rule: an operator MAY configure the pair per
+repository, an implementation **MUST support** that configuration, the orchestrator-level value
+applies where a repository configures none — so nothing that works today stops working — and a
+deployment serving repositories under different ownership SHOULD partition. A `credential_scope` log
+field records which scope a call was made under, naming the scope and never the credential. Pitched
+as an extension rather than Core on this slice's cost test: an operator provisioning one token now
+provisions several, each with its own creation, storage, rotation and revocation, and for a
+single-repository deployment the partition is a partition of one. The split that makes the
+recommendation usable is that **supporting** it is required of an implementation while **using** it
+is the operator's — otherwise a multi-tenant operator would hold a `SHOULD` unsatisfiable on a
+conforming implementation. Steelmanned: a bounded blast radius is a security property and security
+properties are poor candidates for optionality — defeated because Core here would have to mean
+*mandating* separate credentials, making a single-repository deployment provision per-repository
+tokens it does not have and putting this specification into credential lifecycle. **The per-agent
+half of the filed item is declined**, explicitly rather than by omission: the forge meters a
+credential, the observed unit of contention is the repository, and minting one per run needs an
+issuance/rotation/revocation mechanism this specification does not define. Reconsider if contention
+is observed *within* one repository, which pacing rather than a finer partition would answer.
+Relates to 0107 and 0115. Accepted and applied to `SPEC.md` (Sections 6.4, 8.7, 13.1, 15.3, 18.1, 19)
+and `conformance/vocabulary.json`.
+
+## 0117 — The sandbox is stated over secrets, and the damage came from something else
+
+**State:** Accepted
+**Folder:** [decisions/0117-env-isolation-guarantee/](decisions/0117-env-isolation-guarantee/)
+
+Issue #62's environment item. Section 9.6 guarantees a great deal about secrets — "every
+secret-bearing environment variable MUST be scrubbed before the sandbox starts" — and nothing about
+anything else, so every other variable is inherited by default because nothing says otherwise. The
+assumption does real work: a reader who believes the sandbox isolates the agent reasonably believes
+it isolates the agent's environment, where what is required is isolation from credentials and the
+host filesystem. The observed failures — an inherited `CARGO_TARGET_DIR` building into a sibling
+worktree, a `.venv` shebang running another checkout's interpreter — are **not containment
+failures**, which is what decides where the fix goes: the variable was legitimately inherited, the
+path legitimately reachable, the agent legitimately used it, every component behaved as configured,
+and the outcome was a session acting on a sibling's configuration. A stronger sandbox profile
+addresses none of it. So the requirement is that the run's environment is **constructed** rather than
+**inherited**: composed from what the run needs, with a variable naming a **location outside the
+run's own workspace** — build output directory, cache root, toolchain or interpreter path, temporary
+directory — kept out unless the deployment named it, and such a location resolving inside the run's
+workspace where one is needed. The prohibition is stated over what a variable *names* rather than
+over a list of names, because a list is per-ecosystem and would be incomplete before it was written;
+what an implementer gets instead is a writable test — poison one such variable, assert the agent does
+not see it. The composed set is `Implementation-defined` and documented, the disposition the sandbox
+profile and egress policy already have. **Core**, and free: a deployment already filters the
+environment to scrub secrets, so this changes the filter from a denylist to an explicit set. It is
+also not concurrency-specific — a single-session deployment with an inherited build-output directory
+writes somewhere it did not intend too and merely lacks a sibling to collide with, which is the
+property this shares with 0113 and 0114: concurrency reveals these rather than causing them.
+Steelmanned: the sandbox profile is already `Implementation-defined` with a documentation obligation,
+so a deployment wanting this configures it — defeated because that delegation covers the *profile*,
+implies nothing about environment construction, and a conforming implementation on the named baseline
+inherits the environment; a knob nobody is told to turn for a property never claimed is a gap with an
+`Implementation-defined` label nearby. Reconsider if implementations diverge on what "names a
+location outside the workspace" covers, where the repair is a per-ecosystem baseline published beside
+the specification as the token registry already is. Relates to 0113 and 0114. Accepted and applied to
+`SPEC.md` (Sections 9.6, 17.2, 18.1, 19).

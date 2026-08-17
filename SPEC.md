@@ -968,7 +968,7 @@ Operator policy config:
 - `vcs.forge`: string, `github` | `forgejo`, the code host the repository is published on (operator-owned, Section 9.7)
 - `vcs.git_access` / `vcs.forge_access`: where the version-control operations reach the remote, and where the forge operations reach the code host
 - `vcs.forge_parameters`: OPTIONAL per-backend extension bag, carried to the selected backend uninterpreted
-- `vcs.git_credential` / `vcs.forge_credential`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; `vcs.forge_credential` defaults to `vcs.git_credential`
+- `vcs.git_credential` / `vcs.forge_credential`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; `vcs.forge_credential` defaults to `vcs.git_credential`. Both MAY be configured **per repository**, in which case that value applies to the repository's calls and the orchestrator-level value applies to repositories configuring none (Sections 8.7, 15.3). An implementation MUST support the per-repository form; using it is the operator's choice
 - `vcs.remote`: the remote the repository is provisioned from and the operations that touch one act against
 - `vcs.policy_source`: string, `policy_branch` | `target_branch`, default `policy_branch`; where host-side Way of Working is read from (Sections 9.7, 15.4)
 - `vcs.policy_branch`: REQUIRED under `policy_source = "policy_branch"`, no default; the branch `repo.policy.toml`'s host-side parts are read from. Never a pull-request target (Sections 9.7, 9.10, 15.4)
@@ -1311,6 +1311,16 @@ Keying:
 
 - Workspace identity, the per-repository object store (Section 9.7), and concurrency accounting are
   keyed by `(repository, issue)`.
+
+Credential scope:
+
+- The outward credentials are **not** keyed that way by default: a code host meters a credential
+  rather than a repository, so repositories sharing one are a single spender as far as the forge is
+  concerned. A runaway loop in one repository therefore exhausts the budget of every repository
+  beside it, and the budget guard (Section 8.11) can observe and pause on that but cannot separate
+  it — a guard that pauses on a low bucket pauses every repository, including the ones spending
+  nothing. Configuring the credentials per repository (Section 15.3) is what turns a shared failure
+  into a local one; nothing else here does.
 
 ### 8.8 Token Budget Guards (OPTIONAL)
 
@@ -1656,6 +1666,30 @@ Privileged channel:
   that run's repository, issue, and work branch.
 - No credentials are present inside the sandbox. Every secret-bearing environment variable MUST be
   scrubbed before the sandbox starts (Section 15.3).
+
+Constructed environment:
+
+- The agent's environment is **composed** from what the run needs, not inherited wholesale from the
+  orchestrator's process. Variables the deployment intends are passed explicitly.
+- A variable naming a **location outside the run's own workspace** — a build output directory, a
+  cache root, a toolchain or interpreter path, a temporary directory — MUST NOT reach the run unless
+  the deployment named it deliberately. The prohibition is stated over what a variable *names*
+  rather than over a list of variable names, because such a list is per-ecosystem and would be
+  incomplete before it was written.
+- Where a run needs such a location, it resolves inside the run's workspace (Section 9.1), so two
+  concurrent runs cannot name the same one.
+- The composed set is `Implementation-defined` and MUST be documented in the Conformance Statement
+  (Section 19), the disposition the sandbox profile and the egress policy already have. This
+  specification cannot enumerate every ecosystem's variables; what it fixes is that a deployment can
+  say what its agents get.
+
+Important nuance: an inherited build-output or interpreter path is **not** a containment failure, and
+a stronger sandbox profile does not address it. The variable was legitimately inherited, the location
+it names legitimately reachable, and the agent legitimately used it — every component behaved as
+configured, and the outcome was a session acting on a sibling's configuration. What this clause fixes
+is how the environment is constructed, not how strongly the sandbox contains. Nor is it specific to
+concurrency: a single-session deployment with an inherited build-output directory writes somewhere it
+did not intend too, and only lacks a sibling for the mistake to collide with.
 
 Working tree:
 
@@ -2844,6 +2878,14 @@ REQUIRED context for coding-agent session lifecycle logs:
 
 - `session_id`
 
+REQUIRED context for a log record describing a call that reached the code host:
+
+- `credential_scope` — which credential the call was made under: the repository whose configured
+  credential applied, or the orchestrator-level scope where the repository configured none
+  (Sections 8.7, 15.3). It names the scope, never the credential or any part of its value. Without
+  it an operator reading a budget record afterwards has to reconstruct the scope from the
+  configuration as it was at the time, which is the one thing a record exists to avoid.
+
 Message formatting requirements:
 
 - Use stable `key=value` phrasing.
@@ -3503,6 +3545,26 @@ RECOMMENDED additional hardening for ports:
   broker channel. Symphony MAY consume standard credential mechanisms (including environment
   variables and tool-native credential files) in its own process, but MUST scrub every
   secret-bearing environment variable before starting the agent sandbox.
+- The outward credentials have a **scope**, and it is configured rather than implied. An operator MAY
+  configure `vcs.git_credential` and `vcs.forge_credential` per repository (Section 6.4); where a
+  repository configures none, the orchestrator-level value applies, which is the behavior a
+  deployment configuring nothing already has. An implementation MUST support the per-repository
+  configuration even though an operator need not use it — otherwise the recommendation below is one
+  a multi-tenant operator cannot satisfy on a conforming implementation. A deployment whose
+  orchestrator serves repositories under different ownership SHOULD partition.
+  - Two distinct failures motivate it. A forge meters a **credential**, not a repository, so
+    repositories sharing one are one spender to the code host and a runaway loop in one exhausts the
+    budget of every other; the budget guard (Section 8.11) can observe and pause on that but cannot
+    separate it, because the budgets are not separate. And a credential reaching every repository the
+    orchestrator serves is one whose compromise reaches every repository the orchestrator serves.
+  - This is orthogonal to the secret-isolation invariant below, which governs **where** a credential
+    goes — never into the agent sandbox, only into the executor's broker context. That invariant
+    holding perfectly does not bound **how much** a single leaked value unlocks; the two properties
+    are independent and this clause addresses the second.
+  - Per-agent and per-session credentials are **not** required. The forge meters a credential and the
+    observed unit of contention is the repository; minting one per run would require an issuance,
+    rotation and revocation lifecycle this specification does not define and should not acquire as a
+    side effect of a budget-isolation requirement.
 - `$VAR` indirection is retained only for non-secret path values, not for secrets.
 - Do not log API tokens or secret values.
 - Validate presence of secrets without printing them.
@@ -4086,6 +4148,10 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - Workspace path sanitization and root containment invariants are enforced before agent launch
 - Agent launch uses the per-issue workspace path as cwd and rejects out-of-root paths
 - Agent launch wraps the session in the configured sandbox (strict profile by default)
+- The agent's environment is composed rather than inherited: a variable naming a location outside the
+  run's workspace — a build output directory, a cache root, an interpreter path — present in the
+  orchestrator's environment does not reach the agent unless the deployment named it, and a run
+  needing such a location gets one inside its own workspace (Sections 9.1, 9.6)
 - The per-run broker socket is mounted into the sandbox and bound to one run; without it the broker
   is unreachable
 - Secret-bearing environment variables are scrubbed before the sandbox starts
@@ -4455,6 +4521,11 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   structured results (`scope_denied` fails the run)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
   before start, and the broker socket as the only privileged channel
+- The agent's environment is composed rather than inherited: no variable naming a location outside
+  the run's workspace reaches it undeclared, and such a location resolves inside the workspace
+  (Section 9.6)
+- Outward credentials MAY be scoped per repository, an implementation supports that configuration,
+  and a call's `credential_scope` is in the record (Sections 8.7, 13.1, 15.3)
 - The secret model splits outward credentials (broker-mediated, never in the sandbox) from
   repo-internal integrity values (repo-owned host-side hook environment; Section 15.3)
 - Text captured from a subprocess (agent messages, host-side hook output) is redacted of the run's
@@ -4621,8 +4692,11 @@ The Statement MUST record:
 - The engine `version_floor` the deployment declares (Section 18.1.4) and the agent-runner protocol
   floor the implementation advertises at bring-up (Section 10).
 - A resolution for every `Implementation-defined` behavior and every other "MUST document" obligation
-  in this specification, including: the agent sandbox profile and effective egress policy
-  (Section 9.6); the approval, sandbox, operator-confirmation, and user-input-required policy
+  in this specification, including: the agent sandbox profile, the effective egress policy, and the
+  composed environment set an agent receives
+  (Section 9.6); whether the deployment scopes outward credentials per repository (Section 15.3);
+  the bounds handed to the engine's bounded check wait and the forge budget guard's enablement
+  (Sections 8.11, 9.10); the approval, sandbox, operator-confirmation, and user-input-required policy
   (Section 10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the log
   sink or sinks and what happens when one of them fails (Section 13.2); the human-readable status
   surface, if any, and the presentation of rate-limit data (Sections 13.4, 13.5); the park-vs-retry
