@@ -90,6 +90,18 @@ itself:
 - Prescribing a commit convention, message format, content-hygiene rule, or branch-protection policy —
   repository-owned Way of Working.
 - A general-purpose workflow engine beyond the VCS/forge operation domain.
+- **Deciding when to retry, how long to back off, or what a budget is worth** — the consumer's. The
+  engine reports what it observed and stops: an operation that failed is reported rather than
+  re-attempted (Section 4.3), a network call that reached its bound is reported rather than re-made
+  (Section 9), and a forge budget is reported rather than paced against (Section 9.2). Which of
+  those to act on, and how, is a decision that depends on what else the consumer intends to spend
+  its budget on and how many other holders of the same credential are spending concurrently —
+  neither visible from inside one invocation.
+  - The `await_checks` operation (Section 4.1) is the one bounded exception, and it is an exception
+    to *waiting* rather than to *deciding*. It executes a wait the consumer parameterizes — the
+    bound, the interval and the budget floor are all invocation arguments (Section 8.1) — and
+    answers none of the three questions above for itself. Supplied no arguments it makes a single
+    read and cannot loop.
 
 ## 3. Architecture
 
@@ -239,7 +251,14 @@ work branch reaches, rather than leaving the arrangement to each backend.
   configured forge could not be asked (Section 9.2). `base_absent` states what the checkout holds
   and `<field>_unavailable` states that the read did not establish it, which is the distinction
   Section 4.3 draws between a thing that is absent and a thing that is unavailable; a read reports
-  no determinate value it did not establish. Read-only.
+  no determinate value it did not establish. Where the invocation supplied a `pr_state_validator`
+  (Section 8.1) and the forge answered that the pull request has not moved since that validator was
+  issued, the pull-request fields are null and a `pr_state_unchanged` output reports it; the
+  operation still completes, and the caller reads the state it already holds. That is a third
+  distinguishable pull-request condition, stated separately from the other two because the three
+  carry different meanings: `pr_state_unavailable` is a read that established nothing,
+  `pr_state_unchanged` is a read that established the caller's copy is current, and a reported
+  state is a read that established a new one. Read-only.
 - `diff` — the branch delta against the resolved base. Read-only.
 - `commit` — create a commit from the working tree, gated at `before:commit` (Section 10.1). The
   operation captures the working tree in full: every change the VCS does not ignore, including
@@ -258,6 +277,17 @@ work branch reaches, rather than leaving the arrangement to each backend.
   composing its title and body (Section 10.2). Gated at `before:create_pr`.
 - `merge` — merge the pull request using the configured strategy (Section 6.8). Gated at
   `before:merge`; a squash strategy applies the `pr_to_squash` transform (Section 10.3).
+- `await_checks` — read the pull request's required-check state (Section 9.2 `checks_state`) until
+  one of four conditions holds: the checks completed successfully, they completed and did not pass,
+  a bound the invocation supplied was reached, or a budget floor the invocation supplied was
+  reached (Sections 4.3, 8.1). Gated at no fixed position. Read-only: it changes none of the three
+  things that term quantifies over, and in particular it does not merge — the state it reports is
+  the state a subsequent `merge` would act on, not an action on it. Each read is conditional where
+  the consumer carried a validator forward and the backend supports one (Sections 8.1, 9.2), so a
+  loop that finds nothing changed costs a loop's worth of unchanged answers rather than of full
+  reads. It exists because the alternative way to poll is to re-dispatch `merge` until it stops
+  reporting `checks_pending`, which asks a cheap question with a mutating request — charged at a
+  mutation's cost, and carrying whatever a refused merge request costs on a given forge.
 - `pull` — update the local work branch from its remote counterpart, preserving the commits already on
   the branch: the counterpart is merged in, and no commit on the branch is rewritten, dropped, or
   re-parented (Section 11). `pull:conflict` is therefore a merge conflict, which the caller resolves and
@@ -271,6 +301,9 @@ An engine MAY define additional operations and their `before:<op>` positions; th
 the required set and the four positions `before:commit`, `before:push`, `before:create_pr`,
 `before:merge` are the required lifecycle positions. `provision` has none, for the reason its entry
 states: the policy that would carry the gate is not readable when the operation must first run.
+`await_checks` has none for a different reason: a gate before a wait would run a unit that inspects
+nothing and blocks nothing worth blocking, the operation acting on nothing and reading a state the
+repository's own units cannot influence.
 
 A gated operation's position runs as part of dispatching it. The engine runs `before:<op>` whenever
 `<op>` is dispatched — by a front-end sequence (Sections 12.2, 12.3), by a `[policy]` `run_op` edge
@@ -326,12 +359,19 @@ Four reasons are **universal**, carried in the table with `(any)` in place of an
 once rather than repeated per operation: `failed` and `unsupported` are defined for every operation,
 and `blocked` and `hook_unanswered` for every operation gated at a lifecycle position (Section 4.1).
 
+Two further reasons are carried with `(any forge)` in place of an operation: `rate_limited` and
+`forge_unavailable` are defined for every operation whose forge call the condition prevented —
+`push`, whose `pr_state` read a forge answers (Section 4.1), `create_pr`, `merge`, and
+`await_checks`, whose every read is one.
+
 | Operation | Reason | Class | Default need | Meaning |
 |-----------|--------|-------|--------------|---------|
 | `(any)` | `failed` | `error` | — | The operation failed, including when a `before:<op>` hook blocked it with an `error` result (Section 6.6). |
 | `(any gated)` | `blocked` | `needs_caller` | `human_review` | A `before:<op>` gate or scan blocked the operation (Section 6.6). |
 | `(any gated)` | `hook_unanswered` | `error` | — | A unit the engine ran at a `before:<op>` position — a hook, or the `pr_to_squash` transform (Section 10.3) — gave the engine no usable answer: `bound_elapsed`, `not_started` or `answer_unreadable` (Section 6.6). |
 | `(any)` | `unsupported` | `error` | — | The operation requires a plugin capability the backend does not declare (Section 9.3). |
+| `(any forge)` | `rate_limited` | `needs_caller` | `retry_after` | The forge refused because a budget was exhausted. The bucket and its `resets_at` are in `outputs.forge_budget` (Sections 8.2, 9.2). |
+| `(any forge)` | `forge_unavailable` | `needs_caller` | `retry_after` | The forge did not answer, or answered that it is temporarily unable. The condition is in `outputs` (Section 8.2). |
 | `provision` | `ok` | `done` | — | The checkout is present and current. |
 | `provision` | `unreachable` | `needs_caller` | `human_review` | The remote could not be reached at `git_access` (Sections 8.1, 9.1). |
 | `provision` | `store_unsupported` | `error` | — | A working tree was to be derived from a store the backend cannot share (Sections 4.1, 9.3). |
@@ -361,6 +401,10 @@ and `blocked` and `hook_unanswered` for every operation gated at a lifecycle pos
 | `merge` | `conflict` | `needs_caller` | `resolve_conflicts` | The merge would conflict. |
 | `merge` | `head_moved` | `needs_caller` | `reread_then_retry` | The pull request's head advanced after it was read; re-read then retry. |
 | `merge` | `rejected` | `error` | — | Branch protection or forge policy refused the merge. |
+| `await_checks` | `ok` | `done` | — | The required checks completed successfully. |
+| `await_checks` | `checks_failed` | `error` | — | The required checks completed and did not pass. |
+| `await_checks` | `still_pending` | `needs_caller` | `await_checks` | A supplied bound was reached with checks still pending (Section 8.1). |
+| `await_checks` | `budget_floor` | `needs_caller` | `retry_after` | A supplied budget floor was reached with checks still pending (Sections 8.1, 9.2). |
 | `pull` | `ok` | `done` | — | The local branch was updated. |
 | `pull` | `conflict` | `needs_caller` | `resolve_conflicts` | The merge of the remote counterpart stopped on conflicts. |
 | `pull` | `identity_missing` | `needs_caller` | `supply_identity` | No caller-supplied commit identity is available for the merge commit (Sections 8.6, 10.1). |
@@ -449,6 +493,55 @@ anything is fetched (Section 6.11). What the declaration does not settle is what
 already holds: a store arranged in a way the selected backend cannot extend is a fact about that
 location rather than about the descriptor, and `provision` reports `store_unsupported` for it, as
 `integrate` reports `base_unavailable` for a base the checkout does not hold.
+
+`rate_limited` and `forge_unavailable` are `needs_caller` where a forge refusal would otherwise be
+the universal `failed`, and the class is chosen for the disposition it produces rather than for how
+the condition reads. An `error`-class result no edge disposes of reaches the built-in default, which
+**fails the flow** (Section 5.4). Carrying a throttle under `failed` therefore ends a unit of work
+for a condition that clears on its own, through the same path and with the same finality as a
+validation error that never will — and a repository that wrote `#error → fail`, which is what the
+built-in default already does, gets a run failed by throttling. `needs_caller` is what Section 4.2
+defines for an operation that cannot proceed without an action from the caller, and waiting is one.
+The converse defect is the same axis read the other way: a consumer that retries `error`-class
+results because some of them clear also retries a malformed pull-request title, which does not
+become well formed on the ninth attempt.
+
+The two divide the transient conditions **by repair** rather than by cause, which is why a 429 takes
+one token and a server error, an expired bound (Section 8.1) and a transport failure share the
+other. `rate_limited`'s repair is informed: the bucket that ran out and the time it refills are
+already in `outputs.forge_budget` (Sections 8.2, 9.2), so a caller knows how long to wait and which
+kind of work to hold back. `forge_unavailable`'s repair is uninformed — back off and try again, with
+no reset time to aim at. Which of its three conditions occurred is diagnosis rather than routing and
+is reported in `outputs` (Section 8.2), on the same reasoning `hook_unanswered` is reported that way:
+the repair is the same shape in each case, and the condition is spelled as a token so what routes and
+what diagnoses are both branchable. A backend MUST NOT report a permanent refusal under either
+reason; a forge that refuses a request it will refuse identically on every retry is that operation's
+own `error`-class result.
+
+`await_checks:still_pending` and `await_checks:budget_floor` both end a wait that found the checks
+still running, and they are two reasons because the repairs differ: one is met by waiting longer and
+the other by waiting for a bucket to refill, and a consumer that could not tell them apart would
+raise the wrong bound — extending a deadline that was never the constraint, or conserving a budget
+that was never short. Neither is `rate_limited`: nothing refused anything, and the loop did what it
+was told for as long as it was told to. `checks_failed` is `error` and mirrors `merge:checks_failed`
+because there is nothing left to wait for, which is the one outcome of the four that no further
+waiting changes.
+
+The `await_checks` **need** and the `await_checks` **operation** share a spelling deliberately.
+`merge:checks_pending` has carried that need since this registry was written, and the operation is
+now the thing that meets it: a consumer reading `need: await_checks` previously had to build a loop
+and can now dispatch the operation the need is named after. Needs and operations are separate
+vocabularies (Sections 4.1, 8.4), so nothing is ambiguous, and the shared name is the contract
+describing its own remedy at the one point where it used to send a caller away to write machinery.
+
+The version-control transport gains no transient reason here. A git remote publishes no budget and
+no reset time, so `rate_limited`'s informed repair would have nothing to be informed by, and
+`provision:unreachable` already routes the caller-repairable condition on that side away from
+`failed` — its gloss names the endpoint, the credential and the network between them, which are the
+invocation's own arguments. A `push`, `integrate` or `pull` whose git remote times out therefore
+reports the reason it reports today. That is a decided scope rather than an omission, and the
+narrowness is the point: a second token one word from `unreachable` is the hazard
+`base_unresolved` and `base_unavailable` already show costs care to keep straight.
 
 `blocked`, `failed` and `hook_unanswered` divide a `before:<op>` position's outcomes by what the hook
 did. A gate that answered and refused with a `needs_caller` result is `blocked`; one that answered
@@ -667,6 +760,14 @@ re-entries (Section 5.5). The bound's value is `Implementation-defined` and MUST
 MUST hold the configured value to the same floor. The floor's exact value is arbitrary; that it is
 fixed is not, because it is what keeps two engines with different bounds in agreement on every policy
 that terminates within it.
+
+An `await_checks` dispatch counts **once**, however many reads it makes (Sections 4.1, 8.1). Its
+reads are bounded by the await parameters the invocation supplied, so the two bounds measure
+different things and neither substitutes for the other: this one counts how many operations a policy
+traversal runs, and that one counts how long one operation waits. Counting each read here would make
+a policy's flow budget depend on how long a CI run happened to take, so a policy that terminates on
+a fast build and exhausts the bound on a slow one — which is the one thing this bound exists to keep
+two engines agreeing about.
 
 The bound is a count, not a cycle detector. A repeated `(trigger, edge)` pair is ordinary rather
 than pathological: `push:non_fast_forward → integrate → push` is the built-in routing (Section
@@ -1310,6 +1411,13 @@ is not open or whose required checks have not passed, surfacing the correspondin
 It merges the head it read: where the pull request's head advances between the read and the merge,
 nothing is merged, and `land` re-reads and retries within the flow bound (Sections 5.6, 12.3).
 
+`land` MAY be invoked to await first. Under `--await` — or whatever the front-end's encoding for it
+is (Section 8.1) — it dispatches `await_checks` and then the `merge` it already runs, ending on the
+await's own result where that result is not `ok`. It is a composition of two operations this
+specification already defines and introduces no sequencing rule of its own: a `land` that awaits and
+a `land` preceded by a separate `await_checks` invocation reach `merge` in the same state, the
+difference being how many invocations the consumer made.
+
 ### 7.3 The Embedded-Driver Contract
 
 An embedded driver invokes the same executor programmatically. It:
@@ -1339,8 +1447,8 @@ structured input and output. The contract is the same either way; only the encod
 The entry points are the front-end sequences and the individual operations:
 
 - `ship`, `land` — the front-end sequences (Section 7).
-- `provision`, `status`, `diff`, `commit`, `integrate`, `push`, `create_pr`, `merge`, `pull` —
-  individual operations (Section 4.1), for a driver that composes its own sequence.
+- `provision`, `status`, `diff`, `commit`, `integrate`, `push`, `create_pr`, `merge`, `pull`,
+  `await_checks` — individual operations (Section 4.1), for a driver that composes its own sequence.
 
 Common arguments: the identity the work branch is derived from (Section 6.3), the commit identity
 the commits an entry writes are attributed to (Section 10.1), a message input for
@@ -1486,6 +1594,79 @@ Sections 9.1 and 9.2 are separate to prevent. A parameter a backend cannot use i
 backend's own `failed` at first use rather than a shape the engine judged, as a coordinate it cannot
 use is.
 
+Four **await parameters** bound the `await_checks` operation (Section 4.1). All are OPTIONAL, and an
+invocation supplying none makes a single read and cannot loop:
+
+- `await_bound_ms` (OPTIONAL) — the overall wall-clock bound on the wait.
+- `await_max_reads` (OPTIONAL) — the greatest number of reads the operation makes.
+- `await_interval_ms` (OPTIONAL) — the least time between two reads.
+- `await_budget_floor` (OPTIONAL) — a bucket name and a `min_remaining`, compared against the
+  snapshot each read observes (Section 9.2). The bucket is named by the consumer because bucket
+  identity is the forge's and the engine normalizes none.
+
+Reaching either of the first two ends the wait with `await_checks:still_pending`; reaching the
+fourth ends it with `await_checks:budget_floor` (Section 4.3).
+
+These are the consumer's on the same footing as the access parameters and the credential pair, and
+for the same reason Section 2.2 states: the engine compares against numbers it was handed and
+chooses none of them. How long a wait is worth, how often to ask, and how much remaining budget is
+too little are decisions that depend on what else the consumer intends to spend and how many other
+holders of the same credential are spending concurrently — neither of which is visible from inside
+one invocation. Remove the arguments and there is no loop; supply different ones and the same engine
+waits differently.
+
+A **network bound** names how long the engine waits for one network call (Section 9):
+
+- `network_bound_ms` (OPTIONAL) — the bound applied to each network call an invocation makes. It
+  bounds **one call**, not the sum of an operation's calls: an operation realized through two
+  capabilities is not held to one deadline across both, since the second may be local and a bound
+  covering it would be bounding something other than a wait on a server (Section 9.1).
+  - Default: `Implementation-defined` and MUST be documented (Section 13.3). An engine MUST admit a
+    configured value of at least 600 seconds, and an engine that lets a deployment configure it MUST
+    hold the configured value to the same floor. An engine MAY apply different values to different
+    capabilities and MUST document them where it does.
+
+The floor accommodates the slowest network unit in the capability set rather than the typical one:
+`ensure_store` fetches an entire repository, and a first provision of a large one over an ordinary
+link takes minutes, so an engine capping the configurable value below that would make this
+specification's own provisioning operation unusable at scale while remaining conformant. The exact
+value is arbitrary in the way Sections 5.6 and 6.6 say theirs are; that it is fixed is not.
+
+The bound is the consumer's and `repo.policy.toml` carries no key for it. The endpoint each call
+reaches and the credential it presents are already the consumer's — `git_access`, `forge_access` and
+the credential pair, above — and how long to wait for an endpoint is a fact about that endpoint and
+the network to it, which is the consumer's environment rather than the repository's Way of Working.
+A repository cannot know whether its policy is being run against a forge on a local network or
+across a saturated link. This is the placement Section 6.6 gives the hook bound, reached from this
+section's own reasoning rather than by analogy: the repository owns which unit runs, and the
+consumer owns how long the machine will wait for it.
+
+A consumer MAY supply `pr_state_validator`, an OPTIONAL **read validator** naming the pull-request
+state the consumer already holds, so a read answers only where the state has moved (Sections 4.1,
+9.2):
+
+- `pr_state_validator` (OPTIONAL) — the validator a previous invocation returned in `outputs`
+  (Section 8.2). Supplied, the engine presents it on the `status` read and on each `await_checks`
+  read (Sections 4.1, 9.2), and the forge MAY answer `unchanged`; absent, the read is unconditional.
+  Within one `await_checks` the engine carries the validator forward from each read to the next, so
+  a loop presents one after its first read whether or not the invocation supplied one.
+  - Default: unset — an unconditional first read.
+
+The engine holds it opaque, as it holds the forge repository coordinate and the two access
+parameters opaque: it takes one, supplies it to the forge backend, and interprets nothing about it.
+Parsing one would put a forge's cache-validation grammar back in the engine, which is the mixing
+Sections 9.1 and 9.2 are separate to prevent. Its absence is no precondition failure and adds no
+row to Section 8.6: an invocation supplying none makes the read every invocation made before this
+argument existed.
+
+The validator round-trips through the consumer because the engine holds nothing between
+invocations. Credentials reach the plugins for the duration of an invocation and the engine
+persists none beyond it (Section 1.3), and each invocation is a bounded run that exits, so there is
+no engine-side cache for a validator to live in: it leaves in the result envelope and comes back as
+this argument. It is therefore also the one consumer-supplied value below that is **not** readable
+from the consumer configuration — it changes with each read, and a configured one would be stale by
+construction.
+
 A consumer MAY supply `forge_parameters`, an OPTIONAL per-backend parameter set the engine carries to
 the selected forge backend uninterpreted. A backend MUST document the keys it reads, which are
 `Implementation-defined` per backend (Section 13.3). A key the backend does not recognize is that
@@ -1505,7 +1686,9 @@ neither beyond it.
 
 The consumer-supplied values this section names — `local_vcs` and `forge`, the forge repository
 coordinate, the `remote`, `policy_branch`, `base_branch` and `base_branch_allowed`, `provision`'s
-two locations, the two access parameters, `forge_parameters` and the credential pair — MAY be read
+two locations, the two access parameters, `network_bound_ms`, the four await parameters,
+`forge_parameters` and the credential
+pair — `pr_state_validator` excepted, for the reason its entry states — MAY be read
 by the engine from a **consumer configuration**: a consumer-owned file, distinct from
 `repo.policy.toml` and never sourced from the repository. Its discovery precedence is
 `Implementation-defined` and MUST be documented (Section 13.3). It carries no key `repo.policy.toml`
@@ -1575,7 +1758,10 @@ Every invocation returns one structured result:
 - `escalation` is present exactly when `status == "needs_caller"` (Section 8.4), a parked flow and an
   exhausted one included.
 - `outputs` carries entry-specific structured data (for example `status` fields, the pull-request
-  number/state). It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
+  number/state). Where a forge read answered, the pull-request data carries the `validator` a later
+  invocation presents as `pr_state_validator` (Sections 8.1, 9.2), which is what makes the round
+  trip readable from this section and Section 8.1 alone: the value this invocation returned is the
+  value the next one supplies. It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
   the engine emitted and no consumer performed, each naming its `action` and that action's arguments.
   The key is absent or empty when every emitted intent was performed. It likewise carries
   `unfinished_hooks`: the result-triggered hooks that gave the engine no usable answer (Section 6.6),
@@ -1596,6 +1782,26 @@ Every invocation returns one structured result:
   one entry because the result re-enters the machine: a repository binding `<op>:hook_unanswered` to
   anything that does not end the flow can reach a second position on the same traversal, which
   Section 5.6 bounds rather than refuses.
+- `outputs` carries `forge_unavailable_condition` where the decisive result is `forge_unavailable`
+  (Section 4.3): the condition that occurred — `server_error`, `bound_elapsed` (Section 8.1) or
+  `transport_failure` — absent for every other reason. It is the same arrangement
+  `unanswered_gates` makes for its own three conditions, and for the same reason: the reason routes,
+  the condition diagnoses, and both spell the condition as a token so one consumer branch reads
+  both.
+- `outputs` carries `forge_budget`: the most recent budget snapshot a forge capability observed
+  during the invocation (Section 9.2), reported whether or not any limit was reached. The key is
+  absent where the invocation reached no forge capability, and equally where it reached one and the
+  forge reported no budget. Those are different events sharing one spelling, deliberately: in both
+  the consumer learned nothing new and keeps whatever figure it last held, which is the disposition
+  Section 4.3 gives three conditions carrying one repair. It is the one value in this contract not
+  held to Section 9's rule that a non-answer be distinguishable from an absence, and the departure
+  is stated rather than left to be noticed: that rule governs a value the engine composes an
+  operation from, and no operation, reason or precondition branches on this one — it is observed
+  and carried through untouched. The engine reports the snapshot and acts on none of it: nothing
+  here paces a call, defers a dispatch or refuses an operation because a bucket is low, retry,
+  back-off and budget being the consumer's (Section 2.2). What a low bucket is worth spending on
+  depends on what else the consumer intends to spend it on and how many other holders of the same
+  credential are spending concurrently, neither of which is visible from inside one invocation.
 - `outputs` carries `failed_by_policy` where the policy ended the flow with `fail` (Section 5.2):
   the `trigger` the edge fired on, and the `reason` the edge wrote where it wrote one (Section 6.5).
   The key is absent where no `fail` ran. The token is reported here rather than in the envelope's
@@ -1639,12 +1845,36 @@ otherwise.
 
 When `status == "needs_caller"`, `escalation` carries: the `need` (a stable token naming what is
 required, for example `integrate_then_retry`, `reread_then_retry`, `resolve_conflicts`,
-`supply_identity`, `await_checks`, `human_review`, `intervention`, `flow_exhausted`), the `op` that
+`supply_identity`, `await_checks`, `retry_after`, `human_review`, `intervention`, `flow_exhausted`),
+whether the need is `retryable` (below), the `op` that
 produced it, and an `Implementation-defined` `detail`. The `op` is null where no operation produced
 the escalation — at a signal, at a lifecycle position where the gated operation has not run
 (Section 5.1), and at a bound the executor reached (Section 5.6). A front-end binds the resolver by
 the `need` token (Section 5.5); the `need` vocabulary is part of the public contract and MUST be
 documented and stable within a major version.
+
+`retry_after` is the need a transient forge condition raises (Section 4.3). It names a wait, and the
+length of that wait is not carried here: where the forge reported one, the exhausted bucket's
+`resets_at` is in `outputs.forge_budget` (Sections 8.2, 9.2), and duplicating it into the escalation
+would give a consumer two places to read one figure from and two ways for them to disagree.
+
+`retryable` is a property of the **need**: a need is retryable exactly when re-invoking the same
+entry point with the same arguments, after a delay and with no further action by the caller, MAY
+succeed. It is fixed per need and therefore follows from a reason's default need (Section 4.3),
+which is REQUIRED for every `needs_caller` reason — so the two cannot disagree, as they could if
+retryability were a column on the reason registry. The values:
+
+- Retryable: `reread_then_retry` (the re-read is what a re-invocation does), `await_checks`, and
+  `retry_after`.
+- Not retryable: `integrate_then_retry` (an `integrate` must run first, so re-invoking unchanged
+  reproduces the same result), `resolve_conflicts`, `supply_identity`, `human_review`, and both
+  holds below, which are not resolvable at all.
+
+The field is carried rather than left for a consumer to derive from the need, because Section 8.5
+permits new `need` tokens in a `MINOR` release: a consumer holding its own need-to-retryability
+mapping is correct until the release that adds one and then silently wrong in whichever direction
+its default guessed. Carrying the bit makes a new need absorbable, which is the job the `#class`
+fallback does for a new reason (Section 5.3).
 
 Two needs name a **hold** rather than a request, and neither is resolvable: a front-end MUST NOT bind a
 resolver to either and MUST NOT resume the flow on either. Each hold is released out of band, by a new
@@ -1668,7 +1898,8 @@ unresolvable, and neither is reachable through that default: `intervention` is r
 ### 8.5 Versioning and the Version Grammar
 
 - The engine version is `MAJOR.MINOR`. The invocation envelope, the invocation status values, the
-  proto classes, the exit-code mapping, the `need` vocabulary, the class of every listed reason
+  proto classes, the exit-code mapping, the `need` vocabulary with each need's `retryable` value
+  (Section 8.4), the class of every listed reason
   (Section 4.3), the configuration reasons (Section 6.11), and the precondition reasons
   (Section 8.6) are the **major-stable surface**: they do not change within a `MAJOR`.
 - New reason tokens, new `need` tokens, new configuration reasons, new precondition reasons, new
@@ -1874,12 +2105,23 @@ the engine composes an operation from. A capability that answers a typed result 
 it could not resolve through the result itself. A capability that answers a value MUST be able to
 answer that it could not determine one, and that answer MUST NOT be spelled as the value's absent or
 negative case. An absent counterpart, a base the checkout does not hold, a checkout with no current
-branch, a working tree that is not dirty, and a work branch with no pull request are each a
+branch, a working tree that is not dirty, a work branch with no pull request, and a pull request
+that has not moved since a validator was issued for it (Section 9.2) are each a
 determinate fact about the remote or the checkout; none of them is "the backend could not find out".
+The last is worth naming beside the others because it is the cheapest answer a capability can give
+and is therefore the one most easily mistaken for having asked nothing: a capability answers
+`unchanged` because it asked and was told so, never because it declined to ask.
 Every such non-answer MUST map to a reason a caller can read — a Section 4.3 operation reason where
 an operation has been dispatched, a Section 8.6 precondition reason where none has, the first
 dispatch being the boundary between them (Section 8.6) — and the capability's own entry MUST state
 which.
+
+The obligation holds over how a capability **derives** its answer and not only over the answer it
+returns. That is worth stating separately because the way it is broken is not an answer anybody
+composed: a response field read as its type's default yields a well-formed value the backend never
+established, and the capability then returns something that satisfies every clause above to the
+letter. Where a capability's answer is derived from a response, a shape the derivation depended on
+and did not find is a value it could not determine.
 
 The rule is stated over the capability list rather than left to each capability because the failure
 it prevents is silent by construction. A value-answering capability that reports its failure as the
@@ -1889,6 +2131,34 @@ nothing — a `pull:ok` for a fetch that failed, a `push` over a merged pull req
 reports success with the work still uncommitted — rather than the `error`-class result Section 4.3
 defines for every operation. Where the two shapes are mixed without the rule, which capability can
 report a failure is a property of how its signature happened to be written.
+
+An engine MUST bound the time it waits for each network call, under `network_bound_ms`
+(Section 8.1). The capabilities this covers are Section 9.1's four network-touching ones and every
+capability of Section 9.2.
+
+Section 6.6 bounds a hook because "a hook is the one place the engine hands control to a program
+this specification does not describe". A network call is the second such place, and it has the same
+shape: the engine hands a request to a server this specification does not describe and waits for an
+answer it does not control. What an unbounded wait costs is not a slow operation but the property
+the contract rests on — the engine runs a bounded sequence and exits (Sections 1, 2.2, 5.6), and a
+connection a host accepts and never answers holds the invocation open indefinitely, so the exit a
+consumer's escalate-and-exit loop is waiting for never arrives. Without the bound, that sentence is
+conditional on every server the engine talks to answering.
+
+What an expiry reports divides by transport. A **forge** call that reaches the bound is
+`forge_unavailable`, carrying `bound_elapsed` in
+`outputs.forge_unavailable_condition` (Sections 4.3, 8.2) — the same spelling Section 6.6 fixes for
+a unit still running when its bound elapsed, reused deliberately, since one event on two kinds of
+unit should not diagnose differently by which program the engine happened to be waiting on. A
+**version-control** call that reaches it reports the reason that operation reports today:
+`provision:unreachable`, whose gloss already names the network between the caller and the endpoint,
+and the universal `failed` for `integrate`, `pull` and `push`. That asymmetry is the one Section 4.3
+states over the transient reasons — a git remote publishes no budget and no reset time — rather than
+a second one this bound introduces.
+
+The engine stops the call and reports it; it does not retry. Whether to call again is the consumer's
+(Section 2.2), and an engine retrying inside the bound would make the bound mean the total wait
+multiplied by an attempt count the engine chose rather than the consumer.
 
 ### 9.1 VCS Backend Plugin
 
@@ -2002,6 +2272,13 @@ at its position then `commit`, which is what makes the tree the gate inspected t
 two of them act on the answer instead of reporting it: `push` refuses over a CLOSED/MERGED pull
 request (Section 4.1) and `merge` takes the head it conditions on from the same read (Section 9.2),
 which is why the state it could not determine is refused at each rather than read as an absence.
+That split also fixes which reads carry a validator (Sections 8.1, 9.2): the engine presents a
+`known_validator` on the read whose answer it **reports** — `status`'s — and on neither of the two
+an operation **conditions a write on**. An `unchanged` answer carries no state and so no head, and
+a `merge` that resolved one against the head a consumer remembered would be conditioned on a value
+the engine did not read, which is the guarantee `merge:head_moved` exists to make (Sections 4.3,
+9.2). A conditional read makes a poll cheap; it does not make a write conditional on consumer-held
+state.
 Separating the two that acquire from the two that merge is what makes the enumeration above
 exhaustive, and it places the half that stops on conflicts — the outcome the caller resolves and
 `commit` finalizes (Section 4.1) — on the local side of the boundary, where the caller that resolves
@@ -2067,19 +2344,39 @@ Realizes the pull-request and review operations. Required:
   work branch and refusing a base mismatch (`create_pr:base_mismatch`). Maintaining one requires
   finding the one that exists, so a backend that could not determine whether the work branch already
   has a pull request MUST NOT create one; it reports `create_pr:failed`.
-- `pr_state(work_branch)` → the work branch's pull request — its number, its state
-  (open/closed/merged) and the head it currently carries — none where the forge carries no pull
-  request for the work branch, or that the state could not be determined. The last two are distinct
-  answers and a state the backend could not determine MUST NOT be answered as an absent pull
+- `pr_state(work_branch, known_validator)` → the work branch's pull request — its number, its state
+  (open/closed/merged), the head it currently carries, and a **validator** a later read presents to
+  ask for the state only if it has moved — none where the forge carries no pull
+  request for the work branch, `unchanged` where `known_validator` was presented and the pull
+  request has not moved since that validator was issued, or that the state could not be determined.
+  Three of the four are distinct answers and a state the backend could not determine MUST NOT be
+  answered as an absent pull
   request, because the two carry different results: an absent pull request lets `push` proceed and
   `create_or_update_pr` create, while an undetermined one refuses both (`push:failed`,
-  `create_pr:failed`) and is a `pr_state_unavailable` output for `status` (Sections 4.1, 4.3). The
+  `create_pr:failed`) and is a `pr_state_unavailable` output for `status` (Sections 4.1, 4.3).
+  `unchanged` is the fourth and is neither of those two: it is a determinate fact about the
+  resource — the state is the one the caller already holds — where an absent pull request is a
+  determinate fact that there is none and an undetermined one is the backend stating neither. A
+  backend MUST NOT answer `unchanged` where it presented no validator or made no conditional read,
+  which is the same prohibition this section states over an undetermined answer and is stated over
+  the backend's answer for the same reason: what the backend asked the forge is not something the
+  engine can observe. The
   lookup is keyed on the work branch as head **whatever base the pull request targets**, because
   `create_pr:base_mismatch` exists to find one opened against a different base (Section 13.1) and a
   caller's own base therefore MUST NOT be substituted for the key. A search the backend could not
   complete is a state it could not determine and not an absent pull request — including an
   enumeration that reached a bound the backend imposes, which it MUST document (Section 13.3),
   because an incomplete search answers nothing.
+- `checks_state(work_branch, known_validator)` → the aggregate state of the pull request's required
+  checks — pending, passed, or failed — none where the forge reports no required checks for it,
+  `unchanged` where `known_validator` was presented and the state has not moved since that validator
+  was issued, or that the state could not be determined. The four answers and the prohibition on
+  answering `unchanged` without having asked are `pr_state`'s, above, and hold here for the same
+  reasons; a state the backend could not determine MUST NOT be answered as no required checks,
+  because a pull request with no checks is mergeable and one whose checks could not be read is not.
+  It realizes `await_checks` (Section 4.1) and exists so that check state is readable without
+  dispatching a `merge`: before it, the only way to learn whether checks had passed was to ask a
+  question whose favourable answer merged the work.
 - `request_merge(pr, strategy, expected_head)` → `merge:*`, honoring required checks and branch
   protection (a forge refusal surfaces as `merge:rejected`). `expected_head` is the head `pr_state`
   answered when the pull request was read at `before:merge` (Sections 10.3, 12.3). The capability
@@ -2104,13 +2401,72 @@ Every capability above reaches the code host, needs a credential, and realizes a
 separate. What a consumer mediates is therefore Section 9.1's four network-touching capabilities
 together with every capability of this section (Section 11).
 
+Every capability above additionally answers, alongside its own result or value, the **budget
+snapshot** the forge reported on the call it made, or that the forge reported none. The obligation
+is stated over the list rather than on each capability, as Section 9.1 states its bookkeeping-write
+allowance over its own list, so a capability added to this section carries it without further text.
+It is answered on a call that succeeded exactly as on one that did not: a budget visible only at
+exhaustion is visible only after the decision it should have informed, which is the condition
+reported as a merge that could not proceed rather than as a figure that fell.
+
+A snapshot is one or more named **buckets**, each carrying a `limit`, a `remaining` and an OPTIONAL
+`resets_at`, together with the time the observation was made. It is several buckets and not one
+number because one credential may hold several independent budgets — a forge accounting its
+request-based and its query-based interfaces separately gives the same credential two, in two
+different units — and a consumer pacing one kind of work against the other's balance is not
+approximating conservatively but reading an unrelated figure. Bucket identity is opaque: the engine
+carries the name the forge used, normalizes nothing, and compares nothing. A normalized bucket set
+would be a mapping from each forge's accounting model into one the engine invented, and the engine
+holds no basis for it — whether a forge's second bucket is a narrower window on the first or an
+unrelated pool is not something a plugin boundary can establish. `limit` and `remaining` are
+therefore counts in the bucket's **own** unit, which is the forge's, and this specification names
+none; a consumer compares a bucket against itself over time, which is the only comparison the data
+supports.
+
+The version-control network capabilities (Section 9.1) answer no snapshot and are outside this: a
+git transport publishes no quota, so there is nothing for a backend to observe and a counterpart
+key there would be permanently absent.
+
+Where a forge response does not carry the shape a capability depends on, that capability MUST answer
+that it could not determine the value, and MUST NOT answer a default, an empty value, or the value's
+absent case. A value found in the right place whose content the backend cannot interpret — a
+pull-request state carrying a token it does not recognize — is the same condition one level in, and
+reading it as `closed` because an enum's fallback arm says so is the same defect with a different
+default. The consequences are the ones `pr_state`'s entry already states for an undetermined answer
+misspelled as an absent one, and drift is simply the likeliest way to produce that misspelling and
+the least visible in review: nothing in such a backend's source says it is assuming there is no pull
+request.
+
+A field the capability does not read is **not** this condition. A forge that adds a key, reorders an
+object, or returns a member the backend ignores MUST NOT be treated as a response the capability
+cannot answer from; forge payloads gain fields continuously, and a backend refusing every
+unrecognized one would break on the next upstream release with nothing wrong.
+
+Any capability above MAY answer `rate_limited` or `forge_unavailable` (Section 4.3), every one of
+them reaching the code host; the obligation is stated over the list for the same reason the snapshot
+is. A backend MUST NOT report a permanent refusal under either — a request the forge will refuse
+identically on every retry is that operation's own `error`-class result — and MUST NOT report a
+throttle under a reason naming an unrelated condition, a `merge` reporting `checks_pending` for a
+refused call being the case that sends a caller to poll a forge that just asked it to stop.
+
 OPTIONAL:
 
 - Review-thread writes: `post_review`, `reply_review`, `resolve_thread`.
 - `link_issue(pr, issue_ref)` where the forge does not link natively.
 
 Descriptor fields: PR create/update REQUIRED; the merge strategies supported; whether review-thread
-writes and native issue linking are supported.
+writes and native issue linking are supported; whether the backend supports **conditional reads**.
+
+A backend declaring no conditional-read support is supplied no `known_validator`, answers the full
+state, and yields no `pr_state_unchanged` output (Sections 4.1, 8.1). That is not the `unsupported`
+reason (Section 4.3), which names a capability an operation requires and cannot proceed without:
+here the operation proceeds exactly as it would have, and what is absent is a saving. One consumer
+loop is therefore correct against either backend and cheap against one of them, which is the
+property that lets a consumer write one loop rather than one per forge. Which mechanism a
+supporting backend realizes the validator with is `Implementation-defined` and MUST be documented
+(Section 13.3) — an entity tag presented as `If-None-Match` is one, a modification timestamp is
+another — as the form of `worktree_revision()` already is (Section 9.1). The engine holds the value
+opaque and requires only the distinction it MUST make.
 
 ### 9.3 Capability Descriptors
 
@@ -2457,6 +2813,15 @@ language-neutral vector corpus under `conformance/vcsx/` (RECOMMENDED); an engin
 own binary and records the result in its Conformance Statement (Section 13.3). The corpus does not
 restate or replace the checks below.
 
+The corpus additionally publishes the **shape** of a fault-injection vector without publishing its
+cases. Asserting what an engine produces when a forge refuses, stalls or answers a payload missing a
+field requires something to stand in for a forge and behave that way on demand, which is a harness
+in an implementation's language rather than data derived from this specification; the fixture also
+differs per backend, one condition reaching two forges as two different responses. The corpus
+therefore fixes what such a vector MUST assert and leaves the cases to the implementation that owns
+the harness. A runner that cannot execute one reports it as not run rather than as passed, so the
+host-independence claim above stays true of the vectors it is made about.
+
 A conforming engine SHOULD include tests covering:
 
 - Matching: an `op:#class` edge catches an unnamed reason of that class; a `#class` edge catches an
@@ -2510,6 +2875,52 @@ A conforming engine SHOULD include tests covering:
   `before:commit` read it creates no commit and yields `worktree_moved` rather than `ok` or
   `nothing_to_commit`, while a `worktree_revision()` that could not determine an identity yields
   `commit:failed` rather than a commit conditioned on nothing (Sections 4.3, 6.6, 9.1).
+- The bounded wait: an `await_checks` exits at each of its four terminal conditions and reports the
+  matching reason — checks passed, checks failed, a supplied bound reached (`still_pending`), a
+  supplied budget floor reached (`budget_floor`) — and the last two are distinguishable, so a
+  consumer can tell which bound to raise (Sections 4.1, 4.3, 8.1); an invocation supplying no await
+  parameter makes exactly one read and does not loop; reads honour `await_interval_ms`; each read
+  after the first presents the validator the previous read returned, whether or not the invocation
+  supplied one (Sections 8.1, 9.2); a `checks_state` that could not be determined is not answered as
+  no required checks, since a pull request with none is mergeable and one whose checks could not be
+  read is not (Section 9.2); and the whole dispatch counts once against the flow bound however many
+  reads it made (Section 5.6).
+- Response drift: a forge response missing a field a capability depends on yields an undetermined
+  answer and the refusing result, distinguishable from the response that legitimately carries no
+  pull request — so a renamed field does not let `create_or_update_pr` open a second pull request,
+  does not let `push` proceed over a CLOSED/MERGED one, and reaches `status` as
+  `pr_state_unavailable` rather than as an absent one; an unrecognized pull-request state is
+  likewise undetermined and not read as `closed`; and a response carrying an **extra** field the
+  capability does not read is answered normally (Sections 9, 9.2).
+- The network bound: a forge call that exceeds `network_bound_ms` yields `forge_unavailable` with
+  `bound_elapsed` in `outputs` rather than the universal `failed`, and the invocation ends rather
+  than waiting on a connection the far side never answers (Sections 8.1, 9); a configured value at
+  the 600-second floor is accepted; the bound applies to one call rather than across an operation's
+  capabilities, so an `integrate` is not held to one deadline over `fetch_base` and `merge_base`;
+  and no engine-internal retry occurs inside it (Sections 2.2, 9.1).
+- Transient forge conditions: a throttled forge call yields `rate_limited` and not `failed`, and the
+  run escalates rather than failing, so a condition that clears on its own does not end a unit of
+  work (Sections 4.3, 5.4); a permanent refusal — a validation error the forge will refuse
+  identically on retry — still yields an `error`-class result and is not reported under either
+  transient reason; a `forge_unavailable` result carries its condition in `outputs` and a result of
+  any other reason carries none (Section 8.2); every `needs_caller` escalation carries `retryable`,
+  and its value matches the need's — `retry_after`, `await_checks` and `reread_then_retry` true,
+  `integrate_then_retry` and both holds false (Section 8.4).
+- Budget visibility: a forge-touching operation that **succeeded** carries a `forge_budget` output,
+  so the figure is available before the decision it informs rather than only at exhaustion; a forge
+  reporting several buckets yields several, each under the name the forge used and none normalized
+  or summed (Sections 8.2, 9.2); an invocation reaching no forge capability carries no
+  `forge_budget` key; and no engine behavior differs between a low bucket and a full one
+  (Section 2.2).
+- Conditional reads: a `status` supplying a `pr_state_validator` the forge reports unmoved yields
+  `ok` with null pull-request fields and a `pr_state_unchanged` output, and is distinguishable from
+  both a branch with no pull request and a state that could not be determined (Sections 4.1, 8.1,
+  9.2); the `validator` a `status` returned in `outputs` is the value a later invocation presents,
+  so the round trip closes without engine-held state (Section 8.2); a forge backend declaring no
+  conditional-read support is presented no validator, answers the full state, and yields no
+  `pr_state_unchanged` output rather than an `unsupported` result (Sections 4.3, 9.2); and `push`
+  and `merge` read `pr_state` with no validator whatever the invocation supplied, so no write is
+  conditioned on a head the engine did not read (Sections 9.1, 9.2).
 - Provisioning: a `provision` naming a `store_location` holding no repository and a `tree_location`
   yields a checkout the remaining operations run against; a `provision` where one exists refreshes
   it and fetches no second copy, the store the first left being the one the second used; a
@@ -2776,7 +3187,23 @@ A conforming engine SHOULD include tests covering:
   engine supplying each plugin the parameter and credential it uses — the forge backend its
   repository coordinate, `forge_access` and `forge_credential`, the VCS backend its resolved remote,
   `git_access` and `git_credential` — and every value-answering capability able to report that it
-  could not determine its answer.
+  could not determine its answer, in how it derives that answer from a response as well as in what
+  it returns.
+- Conditional forge reads where the backend declares them: a validator returned in `outputs`,
+  presented back as `pr_state_validator`, and an unmoved pull request reported as
+  `pr_state_unchanged` rather than as an absent or an undetermined one — with no validator presented
+  on the reads `push` and `merge` condition a write on.
+- The forge budget snapshot on every forge-touching operation, reported on success as on failure,
+  carrying each bucket under the forge's own name and in the forge's own unit, with no engine
+  behavior conditioned on it.
+- The transient forge reasons `rate_limited` and `forge_unavailable`, both `needs_caller` so a
+  throttle escalates rather than failing the flow, with `forge_unavailable`'s condition in `outputs`
+  and `retryable` carried on every escalation.
+- A bound on every network call, configurable to at least 600 seconds, so no unit the engine waits
+  on is unbounded and the invocation exits whatever the far side does.
+- The `await_checks` operation and its `checks_state` capability, bounded entirely by
+  consumer-supplied parameters, counting once against the flow bound, and reading conditionally
+  where the backend supports it — with check state readable without dispatching a `merge`.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, every commit the engine writes attributed to the supplied commit identity, a scan reached
   through a policy edge at a lifecycle position rather than through a key of its own, and a
@@ -2806,7 +3233,8 @@ The Statement MUST record:
   reported when several configuration conditions hold (Section 6.11), the consumer configuration's
   discovery precedence, the backend's default remote where the consumer supplies none, the
   entry-point argument encodings and how a front-end derives the forge repository coordinate where
-  it does (Section 8.1), the `detail` field of an `unanswered_gates` entry (Section 8.2), and the
+  it does, the default `network_bound_ms` and any per-capability values the engine applies
+  (Sections 8.1, 9), the `detail` field of an `unanswered_gates` entry (Section 8.2), and the
   escalation `detail` field (Section 8.4).
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class and,
   where that class is `needs_caller`, its default `need` (Section 4.3), a configuration reason
@@ -2816,8 +3244,11 @@ The Statement MUST record:
   operation it defines beyond Section 4.1 requires of a backend (Section 9.1), the `forge_parameters`
   keys each forge backend reads, which are `Implementation-defined` per backend (Section 8.1), any
   bound a forge
-  backend imposes on its search for a work branch's pull request (Section 9.2), and where a backend
-  writes its own bookkeeping state to answer a capability (Section 9.1).
+  backend imposes on its search for a work branch's pull request (Section 9.2), where a backend
+  writes its own bookkeeping state to answer a capability (Section 9.1), — where a forge backend
+  declares conditional-read support — the mechanism it realizes the `pr_state` validator with, and
+  which budget buckets each forge backend observes and where it reads them from, both
+  `Implementation-defined` per backend (Section 9.2).
 
 The Statement is a published declaration, not a precondition for running the engine: Section 13.1 and
 Section 13.2 keep their roles as the test matrix and the definition of done. Its format is

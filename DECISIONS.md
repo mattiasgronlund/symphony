@@ -3887,3 +3887,292 @@ Accepted and applied to `SPEC.md` (Sections 4.1.1, 4.2, 5.3.1, 5.3.5, 8.2, 8.3, 
 17.1, 17.3), `conformance/vectors/state-normalization.json`,
 `conformance/vectors/per-state-concurrency.json`, `conformance/vectors/workspace-key.json` and
 `conformance/README.md`.
+
+## 0106 — A read that answers `unchanged`, and the validator that asks for it
+
+**State:** Accepted
+**Folder:** [decisions/0106-conditional-forge-reads/](decisions/0106-conditional-forge-reads/)
+
+Issue #58's first engine primitive. The engine already tells a consumer to poll —
+`merge:checks_pending` carries the default need `await_checks` (Section 4.3) — and provides no
+affordable way to come back: `pr_state` reads the pull request's number, state and head in full on
+every call, so a twenty-minute check run polled every thirty seconds is forty full reads per unit of
+work, linear in concurrent units and charged against a budget the same consumer cannot see (0107).
+No loop, cadence or budget policy moves into the engine, which Section 2.2 keeps outside it; what
+moves is the primitive a consumer cannot build for itself, because the engine owns the forge call.
+`pr_state(work_branch, known_validator)` gains a fourth answer, `unchanged`, and returns a
+**validator** the consumer presents on the next read. Verified against the upstream documentation
+rather than assumed: GitHub REST states that a conditional request "does not count against your
+primary rate limit if a `304` response is returned", and recommends it for polling — but **GitHub
+GraphQL documents no conditional request at all**, and the downstream `--watch` drain that prompted
+the issue ran on GraphQL, so this primitive does not retire the failure it is filed under; what
+protects a consumer there is the visible budget (0107) and a cadence paced against it. Forgejo's
+coverage could not be established, which is the argument for the descriptor field rather than an
+omission. `unchanged` is a **fourth** answer and not a spelling of the other three: read as `none` a
+`304` would let `create_or_update_pr` open a second pull request, and read as undetermined the
+cheapest answer would refuse what the expensive one permits — the failure Section 9's answer
+discipline exists to prevent. The engine presents a validator only on the read whose answer it
+**reports** (`status`) and on neither of the two an operation **conditions a write on**, because
+`unchanged` carries no head and a `merge` resolving one against a consumer-remembered head would
+defeat the `merge:head_moved` guarantee (0077). The validator round-trips through the consumer
+because the engine holds nothing between invocations (Section 1.3), which is also why it is the one
+consumer-supplied value not readable from the consumer configuration — a configured one is stale by
+construction. Reported as a `pr_state_unchanged` output beside `base_absent` and
+`pr_state_unavailable`, not as the `status:not_modified` reason the issue asks for: a reason token
+is a trigger (Section 5.1), and binding policy to the freshness of the consumer's own cache puts a
+condition the repository cannot see into the vocabulary a repository writes against — the argument
+against being that a consumer branching on `reason` learns the read was cheap without descending
+into `outputs`. A backend declaring no conditional-read support is presented no validator and
+answers in full; that is not `unsupported` (Section 4.3), since the operation proceeds and what is
+absent is a saving, which is what lets a consumer write one loop rather than one per forge.
+Reconsider on a forge whose conditional read is keyed to a *query* rather than a resource, which
+would make the per-`work_branch` granularity wrong, or on a `304` observed to cost budget, which
+would leave 0107's cadence carrying the whole load. Relates to 0076, 0077, 0107 and 0108. Accepted
+and applied to `VCSX-SPEC.md` (Sections 4.1, 8.1, 8.2, 9, 9.1, 9.2, 13.1, 13.2, 13.3).
+
+## 0107 — The budget the call already saw
+
+**State:** Accepted
+**Folder:** [decisions/0107-forge-budget-snapshot/](decisions/0107-forge-budget-snapshot/)
+
+Issue #58's second primitive, and the one that carries the load 0106 cannot. Exhaustion was
+**discovered as a mid-`land` failure** — not as a warning or a threshold crossing, but as the
+operation meant to merge the work reporting it could not. Today a consumer can learn nothing about
+its own headroom except by failing: every Section 9.2 capability reaches the code host, every forge
+reports what the credential has left on that call, and the engine discards it, so a
+`create_pr:created` is a call that observed the budget and reported everything except the budget.
+Every forge capability now answers the snapshot it observed, or that the forge reported none, and
+the most recent lands in `outputs.forge_budget` — reported on a call that succeeded exactly as on
+one that did not, since a budget visible only at exhaustion is visible only after the decision it
+should have informed. Stated over the capability list rather than per capability, the shape Section
+9.1 uses for its bookkeeping-write allowance, so a capability added later inherits it. Rejected: a
+`budget()` probe of its own, which loses twice mechanically — it **costs the thing it measures**, so
+a consumer polling headroom has built a second drain to monitor the first (GitHub exempts its
+rate-limit endpoint, but a specification cannot rest a primitive on one forge's exemption), and its
+answer is **stale before it is used**, the real question being what the last call left rather than
+what was true a moment ago, with every concurrent holder of the credential spending in between.
+Verified rather than assumed: GitHub GraphQL is accounted in **points** ("5,000 points per hour per
+user"), and its own documentation states "The REST API also has a separate primary rate limit" — two
+budgets, two units, one credential. So the snapshot carries **buckets**, not a number: pacing
+request-based work against a query-based balance is not a conservative approximation but an
+unrelated figure, and the observed drain emptied one while the other was untouched. Bucket identity
+is opaque and the counts carry no unit this specification names, because a normalized bucket set
+would be a mapping into a model the engine invented — whether a forge's second bucket is a narrower
+window on the first or an unrelated pool is not establishable at a plugin boundary. The engine
+reports and acts on nothing (Section 2.2): what a low bucket is worth spending on depends on what
+else the consumer means to spend it on and how many other holders are spending concurrently, neither
+visible from inside one invocation. One departure is stated rather than left to be noticed: the key
+is absent both where no forge capability was reached and where one was and the forge reported
+nothing, which Section 9's answer discipline would normally forbid — that rule governs a value the
+engine composes an operation from, and no operation, reason or precondition branches on this one.
+The Section 9.1 network capabilities are out of scope, a git transport publishing no quota.
+Reconsider on a forge reporting budget **only** on a dedicated endpoint, which would force either
+the rejected probe or a permanently absent key, or on a consumer pacing correctly and still
+exhausting — which would mean the reported figure is not the enforced one and the snapshot is
+advisory in a way this record does not claim. Relates to 0106, 0108 and 0112. Accepted and applied
+to `VCSX-SPEC.md` (Sections 8.2, 9.2, 13.1, 13.2, 13.3).
+
+## 0108 — A throttle is not a failure, and retryable is a property of the need
+
+**State:** Accepted
+**Folder:** [decisions/0108-transient-forge-reasons/](decisions/0108-transient-forge-reasons/)
+
+Issue #58's third primitive. The defect is not that a consumer cannot tell a 429 from a 422: it is
+that a throttled forge takes the universal `failed`, `failed` is class `error`, and an `error`-class
+result no edge disposes of reaches the built-in default, which **fails the flow** (Section 5.4) — so
+a condition that clears in sixty seconds **ends the unit of work**, through the same path and with
+the same finality as a validation error that never clears. The mirror defect is the same missing
+axis read the other way: a consumer that retries `error` because some of them clear also retries a
+malformed pull-request title forever. The issue's own report of a 429 "landing as an unrelated
+reason like `checks_pending`" is the sharpest form — `checks_pending` carries `await_checks`, so a
+throttle misreported that way sends a consumer to poll a forge that just asked it to stop.
+`rate_limited` and `forge_unavailable` join Section 4.3 as `(any forge)` rows over `push`,
+`create_pr` and `merge`, both class **`needs_caller`** — chosen for the disposition it produces, not
+for how the condition reads, since `needs_caller` escalates where `error` fails and Section 4.2
+defines it as an operation awaiting a caller action, waiting being one. **Two reasons, not the four
+the issue names**, split by repair rather than cause: `rate_limited`'s wait is informed, the
+exhausted bucket and its `resets_at` already in `outputs.forge_budget` (0107), while a 503, an
+expired bound and a TLS failure carry one uninformed repair and are therefore diagnosis rather than
+routing — reported as `outputs.forge_unavailable_condition`, which is the arrangement 0104 recorded
+for `hook_unanswered`'s three conditions and for the same stated reason. The argument for four is
+that a consumer may alarm differently on a handshake failure than on a hiccup; it is served by the
+diagnostic token without spending four registry entries a repository would bind with four identical
+edges. **`retryable` is a property of the `need`, not of the reason** — it means re-invoking the
+same entry with the same arguments, after a delay and with no further action, MAY succeed, which is
+decided entirely by what the need asks for: `integrate_then_retry` is false because an `integrate`
+must run first, `reread_then_retry` is true because the re-read is what a re-invocation does.
+Placing it on the need rather than as a registry column means it follows from the reason's
+`default_need`, already REQUIRED for every `needs_caller` reason, so the two cannot disagree. It is
+carried rather than derived because Section 8.5 permits new `need` tokens in a `MINOR`, and a
+consumer holding its own mapping is correct until that release and then silently wrong — the job the
+`#class` fallback does for a new reason. It joins the major-stable surface on the same footing as a
+reason's class. Scope limit recorded rather than left implied: **the version-control transport gains
+no transient reason**, a git remote publishing no budget or reset time and `provision:unreachable`
+already routing the caller-repairable git-side condition away from `failed`; so an `integrate` whose
+fetch times out still fails the flow, and a report of that is the reconsideration trigger. Reconsider
+also if `forge_unavailable`'s three conditions turn out to be routed on rather than logged, which
+would mean two reasons was one too few. Relates to 0104, 0107 and 0109. Accepted and applied to
+`VCSX-SPEC.md` (Sections 4.3, 8.2, 8.4, 8.5, 9.2, 13.1, 13.2), `conformance/vcsx/vocabulary.json`
+and `conformance/vcsx/README.md`.
+
+## 0109 — The other program the engine waits on
+
+**State:** Accepted
+**Folder:** [decisions/0109-network-call-bound/](decisions/0109-network-call-bound/)
+
+Issue #58's fourth primitive. Section 6.6 bounds a hook on the ground that it is "the one place the
+engine hands control to a program this specification does not describe" — and it is not the one
+place. A network call is the second, with the same shape: the engine hands a request to a server it
+does not describe and waits for an answer it does not control, and **nothing bounded that wait**.
+What that costs is not a slow operation but the property the contract rests on. The engine runs a
+bounded sequence and exits (Sections 1, 2.2, 5.6), which is the sentence a consumer's
+escalate-and-exit loop is built against, and a host that accepts a connection and never answers holds
+the invocation open indefinitely — so that sentence was conditional on every server the engine talks
+to answering. `network_bound_ms` is a consumer-supplied bound on **one** network call, not on an
+operation's total: an operation realized through two capabilities is not held to one deadline across
+both, since the second may be local (`integrate` is `fetch_base` then `merge_base`) and a bound
+covering it would be bounding something other than a wait on a server. Its value is
+`Implementation-defined` and MUST be documented, and an engine MUST admit a configured value of at
+least 600 seconds — the same floor Section 6.6 fixes, reached from this bound's own capability set
+rather than by copying: it covers `ensure_store`, which fetches an entire repository, so the floor
+accommodates the **slowest** network unit and an engine capping below it would make the
+specification's own provisioning operation unusable at scale while staying conformant. A hardcoded
+value settles nothing, for the reason Section 6.6 gives its floor — sixty seconds is generous for an
+API call and far too short for a clone, so an engine picking one number picks it wrong for one of
+the two. The bound is the consumer's and `repo.policy.toml` carries no key for it, argued from this
+section's own placement rather than only from Section 6.6's sourcing rule: the endpoint and the
+credential are already the consumer's, and how long to wait for an endpoint is a fact about the
+consumer's environment — a repository cannot know whether its policy runs against a forge on a LAN
+or across a saturated link. Expiry divides by transport, reusing what 0108 already built: a forge
+call is `forge_unavailable` carrying `bound_elapsed`, deliberately the same spelling Section 6.6
+fixes for a hook still running when its bound elapsed, since one event on two kinds of unit should
+not diagnose differently by which program the engine happened to be waiting on; a version-control
+call reports what it reports today, `provision:unreachable` or the universal `failed`. The engine
+stops the call and does not retry — an engine retrying inside the bound would make it mean the total
+wait multiplied by an attempt count the engine chose rather than the consumer (Section 2.2).
+Reconsider if every conforming engine documents a per-capability table, which would mean the
+per-call unit was wrong and the bound belongs per capability; or on an `ensure_store` reaching the
+600-second floor in ordinary use, which would mean provisioning needs a bound distinct from the API
+calls' rather than a shared one with a high ceiling. Relates to 0081, 0108 and 0112. Accepted and
+applied to `VCSX-SPEC.md` (Sections 8.1, 9, 13.1, 13.2, 13.3).
+
+## 0110 — A field that moved is not a field that is empty
+
+**State:** Accepted
+**Folder:** [decisions/0110-forge-parse-answer-domain/](decisions/0110-forge-parse-answer-domain/)
+
+Issue #59's first half. The obligation already existed — Section 9 requires a value-answering
+capability to be able to say it could not determine a value and forbids spelling that as the value's
+absent case, and Section 4.1 puts it in one line: a read reports no determinate value it did not
+establish. What this decision fixes is **where the rule is broken**, and the gap is that the rule is
+written over what a capability *answers* while the defect lives in how the answer is *derived*. No
+backend author decides to report a missing field as an empty one; a deserializer does it by default,
+a field absent from the payload taking the type's zero value, and the capability then returns a
+well-formed value that satisfies every existing clause to the letter. The failure path is fully
+specified by text already present: a renamed number field yields a default, `pr_state` answers
+**none**, and `create_or_update_pr` — required to maintain one pull request per work branch, which
+Section 9.2 says requires finding the one that exists — **creates a second**, while `push` stops
+refusing over a CLOSED/MERGED one and `status` reports no pull request where `pr_state_unavailable`
+is the truth. Section 9's preamble now states that the obligation reaches the derivation, and Section
+9.2 that a response not carrying a depended-on shape is a value the capability could not determine —
+never a default, an empty value, or the absent case — with an unrecognized pull-request state the
+same condition one level in, since reading it as `closed` off an enum's fallback arm is the same
+defect with a different default. The boundary is stated in the other direction too, because the
+conservative reading is unusable: a field the capability does **not** read is not drift, forge
+payloads gaining keys continuously, and a backend refusing every unrecognized response would break on
+the next upstream release with nothing wrong. This record does not overclaim: the clause adds no
+requirement and is a redundancy placed where the failure actually occurs, which is its whole
+justification — plus a Section 13.1 check, since a prose obligation on a parse step is verifiable
+only by reading a backend's source, and an injected-response check is verifiable against a binary.
+Reconsider if a backend is observed refusing on drift that did not matter, which would mean
+"depended-on shape" is being read as "the shape the forge documented". Relates to 0076 and 0111;
+adjacent to 0108, which covers a forge that did not answer where this covers one that answered
+something unreadable. Accepted and applied to `VCSX-SPEC.md` (Sections 9, 9.2, 13.1, 13.2).
+
+## 0111 — The corpus states the assertion; the harness holds the fixture
+
+**State:** Accepted
+**Folder:** [decisions/0111-fault-injection-vector-shape/](decisions/0111-fault-injection-vector-shape/)
+
+Issue #59's second half, driven by the sharpest observation in the study behind issues #58–#62: **the
+failures that bit us are exactly the ones with no test** — 99 vectors green, none of them in the
+transient family. A fault-injection case cannot be an ordinary vector here, and the reason is
+structural rather than a matter of effort: every file under `conformance/vcsx/vectors/` states a pure
+function checkable by reading JSON and comparing two values, which is what makes the corpus
+language-neutral, while asserting that a 429 yields `rate_limited` requires something to *be* a forge
+and return a 429 on demand. That is a harness — a program in one implementation's language — and this
+repository holds none and should not, the corpus deriving from a specification and being consumed by
+every implementation. So the halves split where each can be stated authoritatively: **this repository
+fixes the assertion**, read from `VCSX-SPEC.md` as every entry is, and **an implementation authors the
+cases** against the twin it owns, the fixture being a property of a forge and a backend that reaches
+two forges as two different responses. Six injected conditions are enumerated with the sections they
+derive from, and five assertions are REQUIRED of each: the reason and its proto class, the need and
+its `retryable` value, the `outputs` keys, undetermined-and-distinguishable for a drift case, and —
+called out separately — that the operation **did not act**, because the other four are readable off an
+envelope while that one is a statement about the forge afterwards, and a vector asserting only the
+envelope would pass for an engine that reported `create_pr:failed` and created a pull request anyway.
+A runner that cannot execute such a file MUST report it **not run**, never passed, so "the corpus is
+green" keeps meaning one thing. Rejected: authoring the data here with the harness obligation
+attached — it would make the first file in this tree that no reader here can execute, the same hazard
+0105 found in a vector that had degraded into a tautology, a corpus whose green is conditional on
+something the corpus does not state. The honest form of that alternative is that a specification
+repository should be able to demand a test rather than describe one; that demand is met normatively by
+the Section 13.1 checks the sibling decisions added, and what is not claimed is that this repository
+verifies them. Reconsider if two implementations' suites disagree about what one injected condition
+should yield, which would mean the schema underspecifies the assertion and the data must come back
+here — at which point the language-neutrality cost is worth paying, a corpus nobody can run beating
+two that disagree. The concurrency-stress tier is deliberately not covered: it asserts over N
+concurrent sessions rather than one injected response, and is deferred to the Symphony-side work.
+Relates to 0106–0110, 0053 and 0105. Accepted and applied to `conformance/vcsx/README.md` and
+`VCSX-SPEC.md` (Section 13.1).
+
+## 0112 — The wait becomes an operation, and the non-goal it tests gets written down
+
+**State:** Accepted
+**Folder:** [decisions/0112-bounded-await-checks/](decisions/0112-bounded-await-checks/)
+
+Issue #60's engine half. The issue states its own fork — a shared consumer library, or a bounded
+engine subcommand — and **(b)** was chosen by the maintainer. Applying it surfaced a finding that
+reordered the decision: the boundary the objection to (b) rests on **was never written down**.
+Section 2.2's Non-Goals are four — credential storage, agent-sandbox mechanism, commit conventions, a
+general-purpose workflow engine — and retry, back-off and budget appear in none of them; the claim is
+asserted only in text this slice itself added, since 0107 and 0109 were each drafted citing
+"(Section 2.2)" for it. The downstream study says the same thing with the same confidence. So the
+boundary everyone reasons from was folklore: substantively true of the design, never stated, never
+checkable, never decided. A bounded exception cannot be stated against a rule that does not exist, so
+Section 2.2 gains the non-goal first — deciding **when** to retry, **how long** to back off, and
+**what a budget is worth** are the consumer's — and `await_checks` is then a stated exception to it.
+The exception is to **waiting**, not to **deciding**: the bound, the read count, the interval and the
+budget floor are all invocation arguments, the engine compares against numbers it was handed and
+chooses none, and an invocation supplying none makes a single read and cannot loop. The usual
+objection to (b) is weaker than it looks — 0081 already settled that a bound is a bound on a unit,
+and the engine already waits on hooks and (since 0109) on network calls — and the real cost is that a
+budget-aware cadence needs a budget policy, which this containment is designed to keep outside.
+Building it required a read that did not exist: 0106 gave the conditional-read validator to
+`pr_state` because that was the only forge read, while issue #58's VX-1 names two, so `checks_state`
+joins Section 9.2 with the same four answers and reuses the validator machinery rather than
+rebuilding it. Polling by re-dispatching `merge` was rejected outright — it asks a cheap question
+with a **mutating** request, charged at a mutation's cost and carrying whatever a refused merge
+costs on a given forge — and the new read has a benefit past the loop: check state stops being
+reachable only by asking a question whose favourable answer merges the work. `await_checks` is an
+operation and an entry point rather than a front-end sequence, which buys three things: `<op>:<reason>`
+results a repository can bind, membership of the gated-at-no-position category (a gate before a wait
+inspects nothing), and **one** dispatch against the flow bound however many reads it makes — counting
+each read would make a policy's flow budget depend on how long a CI run took. Four reasons:
+`still_pending` and `budget_floor` are separate because one is met by waiting longer and the other by
+waiting for a bucket to refill, and a consumer that could not tell them apart would raise the wrong
+bound. The `await_checks` **need** and the `await_checks` **operation** share a spelling
+deliberately: needs and operations are separate vocabularies, and the need now names the operation
+that meets it. Steelmanned and rejected: **(a)** a shared library keeps cadence policy with the party
+owning the budget, but turns a skill's dependency-free shell invocation into a language-specific
+build dependency, and a library nobody links is a governance layer that governs nothing — which is
+how the drain happened; **(c)** stating the loop's obligations and leaving packaging
+`Implementation-defined` is this repository's idiom and was the recommended option, but specifies
+nothing a skill can *call*, so "written once" becomes written once per implementation — right if the
+two consumers needed different loops, and they need the same one. Reconsider if the argument surface
+grows: a fifth parameter — a back-off curve, a per-bucket policy, jitter — would mean the engine is
+accumulating the budget policy this decision claims it does not hold, one argument at a time, and
+that accumulation rather than the wait is what would make (b) the mistake its objectors expect. Also
+reconsider on a forge whose check state is not aggregable. Relates to 0081, 0106, 0107, 0108 and
+0109. Accepted and applied to `VCSX-SPEC.md` (Sections 2.2, 4.1, 4.3, 5.6, 7.2, 8.1, 9.2, 13.1,
+13.2), `VCSX-CONTRACT.md` (Sections 3, 6) and `conformance/vcsx/vocabulary.json`.

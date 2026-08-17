@@ -77,7 +77,11 @@ Entry points:
 - `ship` — drive the policy from the current change up to and including opening/updating the pull
   request; `ship` stops at the pull request and does not merge.
 - `land` — drive the merge of an already-open pull request. `land` transforms message content
-  (Section 9); it never authors a message.
+  (Section 9); it never authors a message. `land` MAY be invoked to await required checks first,
+  which composes the two operations below and introduces no sequencing of its own.
+- `await_checks` — wait for the pull request's required checks, bounded by parameters the consumer
+  supplies. It is an operation (Section 6) and an entry point; the engine executes the wait and
+  decides none of its bounds.
 
 ## 4. `repo.policy.toml` (Config Surface)
 
@@ -231,6 +235,12 @@ operation set and its result classing are host-neutral. Named operations include
 - `push`
 - `create_pr`
 - `merge` — merge/request-merge the pull request.
+- `await_checks` — read the pull request's required-check state until the checks pass, fail, a bound
+  the consumer supplied is reached, or a budget floor the consumer supplied is reached. Read-only,
+  gated at no lifecycle position, and bounded only by parameters the consumer supplies: the engine
+  does not decide how long to wait, how often to ask, or how much budget is too little to keep
+  asking. It exists so that check state is readable without dispatching a `merge`, which would ask a
+  cheap question with a mutating request.
 
 Each operation completes with a typed result `<op>:<reason>` whose `reason` carries a proto class
 (`done` / `needs_caller` / `error`, Section 5.3), which is itself a trigger (Section 5.1). For example,

@@ -73,11 +73,16 @@ entry list.
 The registry is a faithful view, not a byte-for-byte transcription. Three places it normalizes:
 
 - **`reasons`** is keyed one entry per `(operation, reason)`. Section 4.3's combined rows expand: the
-  `status` / `diff` row to `status:ok` and `diff:ok`, and the four universal rows to one entry per
+  `status` / `diff` row to `status:ok` and `diff:ok`, the four universal rows to one entry per
   operation they cover — `failed` and `unsupported` for every operation, `blocked` and
-  `hook_unanswered` for every gated one, each marked `universal: true`. So 38 table rows yield 61
+  `hook_unanswered` for every gated one, each marked `universal: true` — and the two `(any forge)`
+  rows to one entry per operation whose forge call the condition prevented (`push`, `create_pr`,
+  `merge`, `await_checks`), each marked `forge_universal: true`. So 44 table rows yield 75
   entries. Section 4.3's `Default need` column expands with them: `blocked`'s one row becomes four
-  entries carrying the same need, so 15 rows with a need yield 18 entries with one.
+  entries carrying the same need, so 19 rows with a need yield 28 entries with one. The two markers
+  are separate fields rather than one scope enum, because they answer different questions — whether
+  a reason is defined for every operation, and whether it is defined for the ones that reach a
+  forge — and a consumer generating a per-operation enum reads both.
 - **`operations`** carries `lifecycle_position: null` for the operations Section 4.1 gates at no fixed
   position (`integrate`, `pull`), for the read-only ones (`status`, `diff`), and for `provision`,
   which has no position at all (Section 4.1) and therefore carries neither `blocked` nor
@@ -175,6 +180,56 @@ fourteen more as decisions 0088–0090 gave the envelope an answer for a flow th
 result no action disposed of, and for an invocation whose arguments named no entry point — the
 enumeration that found them ran every Section 5.2 disposition against every Section 4.2 class and
 broke on three, so the file exists to keep those three asserted.)
+
+### Fault-injection vectors (schema only)
+
+A second **kind** of vector file is fixed here and carries no data in this repository. Where a
+pure-function file states a mapping any JSON reader can check, a fault-injection file states what a
+conforming engine produces when a forge behaves badly — and asserting that requires something to
+*be* a forge and return a chosen response at a chosen moment. That is a harness, and a harness is a
+program in an implementation's language, not data derived from a specification.
+
+So the halves are split where each can be stated authoritatively. **This repository fixes the
+assertion**, read from `VCSX-SPEC.md` as every entry here is. **An implementation authors the
+cases**, against the forge twin it owns; the fixture — the bytes a forge returns, which header
+carries a reset, what a drifted payload looks like — is a property of a forge and of the backend
+talking to it, and a GitHub twin and a Forgejo twin inject one condition through entirely different
+responses.
+
+A runner that cannot execute a fault-injection file MUST report it as **not run**, never as passed.
+Every file under `vectors/` today is runnable by anything that reads JSON, and that property is what
+makes "the corpus is green" mean one thing; a file whose execution needs a harness would otherwise
+make it mean two, depending on the runner.
+
+The injected conditions, each read from the section it is derived from:
+
+| Injected condition | Derived from |
+|--------------------|--------------|
+| A rate-limited refusal | Sections 4.3, 9.2 |
+| A server error | Sections 4.3, 8.2, 9.2 |
+| An expired network bound | Sections 8.1, 9 |
+| A transport failure | Sections 4.3, 8.2, 9 |
+| A conditional read the forge reports unmoved | Sections 4.1, 8.1, 8.2, 9.2 |
+| A response missing a field a capability depends on | Sections 9, 9.2 |
+
+Each vector MUST assert all of:
+
+- the **reason** the operation reports and its **proto class** — the difference between
+  `rate_limited` and `failed` being the difference between a run that escalates and a run that ends
+  (Sections 4.3, 5.4);
+- the **need** and its **`retryable`** value (Section 8.4);
+- the **`outputs` keys** that must be present — `forge_budget` on any forge-touching call,
+  `forge_unavailable_condition` where the reason is that one, `pr_state_unchanged` on a satisfied
+  conditional read (Section 8.2);
+- for a drift case, that the answer is **undetermined** and distinguishable from the legitimate
+  absent case (Sections 9, 9.2);
+- and that the operation **did not act** — no second pull request, no push over a closed one, no
+  merge on an unread head.
+
+The last is stated separately because the others are all readable off an envelope while it is a
+statement about the forge afterwards. A vector asserting only the envelope would pass for an engine
+that reported `create_pr:failed` and created a pull request anyway, which is the failure the drift
+case exists to catch.
 
 `proto_class` has no vector file of its own. It is a lookup over the Section 4.3 registry, and
 `vocabulary.json` already **is** that registry — a vector file would duplicate it with no added
@@ -301,3 +356,16 @@ rather than an author writing it — and is resolved the same way.
   selects among its edges. `unscoped_edge_matches_inside_a_from_context`,
   `scoped_edge_wins_over_unscoped_edge_in_its_context`, and `ladder_outranks_the_from_context` cover
   the three.
+
+A fifth arrived from a downstream consumer's failures rather than from the corpus or an engine, and
+is the reason the fault-injection kind exists at all.
+
+- **A green corpus over an untested family — resolved in shape, deferred in data.** Every vector in
+  this tree passed while the transient family — a rate-limited refusal, a server error, an expired
+  bound, a transport failure, a conditional read, a response missing a depended-on field — had no
+  coverage whatever. The failures that reached a downstream consumer were drawn entirely from that
+  family, which is what makes a green corpus weak evidence about it: the corpus was not failing to
+  assert these behaviors incorrectly, it was not addressing them. The shape of the assertion is now
+  fixed above and the cases are owed by whichever implementation owns a forge twin, so the gap is
+  recorded and assignable rather than invisible. Until those cases exist, nothing in this tree
+  exercises a forge that misbehaves.
