@@ -3971,3 +3971,46 @@ the rejected probe or a permanently absent key, or on a consumer pacing correctl
 exhausting — which would mean the reported figure is not the enforced one and the snapshot is
 advisory in a way this record does not claim. Relates to 0106, 0108 and 0112. Accepted and applied
 to `VCSX-SPEC.md` (Sections 8.2, 9.2, 13.1, 13.2, 13.3).
+
+## 0108 — A throttle is not a failure, and retryable is a property of the need
+
+**State:** Accepted
+**Folder:** [decisions/0108-transient-forge-reasons/](decisions/0108-transient-forge-reasons/)
+
+Issue #58's third primitive. The defect is not that a consumer cannot tell a 429 from a 422: it is
+that a throttled forge takes the universal `failed`, `failed` is class `error`, and an `error`-class
+result no edge disposes of reaches the built-in default, which **fails the flow** (Section 5.4) — so
+a condition that clears in sixty seconds **ends the unit of work**, through the same path and with
+the same finality as a validation error that never clears. The mirror defect is the same missing
+axis read the other way: a consumer that retries `error` because some of them clear also retries a
+malformed pull-request title forever. The issue's own report of a 429 "landing as an unrelated
+reason like `checks_pending`" is the sharpest form — `checks_pending` carries `await_checks`, so a
+throttle misreported that way sends a consumer to poll a forge that just asked it to stop.
+`rate_limited` and `forge_unavailable` join Section 4.3 as `(any forge)` rows over `push`,
+`create_pr` and `merge`, both class **`needs_caller`** — chosen for the disposition it produces, not
+for how the condition reads, since `needs_caller` escalates where `error` fails and Section 4.2
+defines it as an operation awaiting a caller action, waiting being one. **Two reasons, not the four
+the issue names**, split by repair rather than cause: `rate_limited`'s wait is informed, the
+exhausted bucket and its `resets_at` already in `outputs.forge_budget` (0107), while a 503, an
+expired bound and a TLS failure carry one uninformed repair and are therefore diagnosis rather than
+routing — reported as `outputs.forge_unavailable_condition`, which is the arrangement 0104 recorded
+for `hook_unanswered`'s three conditions and for the same stated reason. The argument for four is
+that a consumer may alarm differently on a handshake failure than on a hiccup; it is served by the
+diagnostic token without spending four registry entries a repository would bind with four identical
+edges. **`retryable` is a property of the `need`, not of the reason** — it means re-invoking the
+same entry with the same arguments, after a delay and with no further action, MAY succeed, which is
+decided entirely by what the need asks for: `integrate_then_retry` is false because an `integrate`
+must run first, `reread_then_retry` is true because the re-read is what a re-invocation does.
+Placing it on the need rather than as a registry column means it follows from the reason's
+`default_need`, already REQUIRED for every `needs_caller` reason, so the two cannot disagree. It is
+carried rather than derived because Section 8.5 permits new `need` tokens in a `MINOR`, and a
+consumer holding its own mapping is correct until that release and then silently wrong — the job the
+`#class` fallback does for a new reason. It joins the major-stable surface on the same footing as a
+reason's class. Scope limit recorded rather than left implied: **the version-control transport gains
+no transient reason**, a git remote publishing no budget or reset time and `provision:unreachable`
+already routing the caller-repairable git-side condition away from `failed`; so an `integrate` whose
+fetch times out still fails the flow, and a report of that is the reconsideration trigger. Reconsider
+also if `forge_unavailable`'s three conditions turn out to be routed on rather than logged, which
+would mean two reasons was one too few. Relates to 0104, 0107 and 0109. Accepted and applied to
+`VCSX-SPEC.md` (Sections 4.3, 8.2, 8.4, 8.5, 9.2, 13.1, 13.2), `conformance/vcsx/vocabulary.json`
+and `conformance/vcsx/README.md`.

@@ -73,11 +73,16 @@ entry list.
 The registry is a faithful view, not a byte-for-byte transcription. Three places it normalizes:
 
 - **`reasons`** is keyed one entry per `(operation, reason)`. Section 4.3's combined rows expand: the
-  `status` / `diff` row to `status:ok` and `diff:ok`, and the four universal rows to one entry per
+  `status` / `diff` row to `status:ok` and `diff:ok`, the four universal rows to one entry per
   operation they cover — `failed` and `unsupported` for every operation, `blocked` and
-  `hook_unanswered` for every gated one, each marked `universal: true`. So 38 table rows yield 61
+  `hook_unanswered` for every gated one, each marked `universal: true` — and the two `(any forge)`
+  rows to one entry per operation whose forge call the condition prevented (`push`, `create_pr`,
+  `merge`), each marked `forge_universal: true`. So 40 table rows yield 67
   entries. Section 4.3's `Default need` column expands with them: `blocked`'s one row becomes four
-  entries carrying the same need, so 15 rows with a need yield 18 entries with one.
+  entries carrying the same need, so 17 rows with a need yield 24 entries with one. The two markers
+  are separate fields rather than one scope enum, because they answer different questions — whether
+  a reason is defined for every operation, and whether it is defined for the ones that reach a
+  forge — and a consumer generating a per-operation enum reads both.
 - **`operations`** carries `lifecycle_position: null` for the operations Section 4.1 gates at no fixed
   position (`integrate`, `pull`), for the read-only ones (`status`, `diff`), and for `provision`,
   which has no position at all (Section 4.1) and therefore carries neither `blocked` nor

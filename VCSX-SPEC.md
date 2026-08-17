@@ -333,12 +333,18 @@ Four reasons are **universal**, carried in the table with `(any)` in place of an
 once rather than repeated per operation: `failed` and `unsupported` are defined for every operation,
 and `blocked` and `hook_unanswered` for every operation gated at a lifecycle position (Section 4.1).
 
+Two further reasons are carried with `(any forge)` in place of an operation: `rate_limited` and
+`forge_unavailable` are defined for every operation whose forge call the condition prevented —
+`push`, whose `pr_state` read a forge answers (Section 4.1), `create_pr` and `merge`.
+
 | Operation | Reason | Class | Default need | Meaning |
 |-----------|--------|-------|--------------|---------|
 | `(any)` | `failed` | `error` | — | The operation failed, including when a `before:<op>` hook blocked it with an `error` result (Section 6.6). |
 | `(any gated)` | `blocked` | `needs_caller` | `human_review` | A `before:<op>` gate or scan blocked the operation (Section 6.6). |
 | `(any gated)` | `hook_unanswered` | `error` | — | A unit the engine ran at a `before:<op>` position — a hook, or the `pr_to_squash` transform (Section 10.3) — gave the engine no usable answer: `bound_elapsed`, `not_started` or `answer_unreadable` (Section 6.6). |
 | `(any)` | `unsupported` | `error` | — | The operation requires a plugin capability the backend does not declare (Section 9.3). |
+| `(any forge)` | `rate_limited` | `needs_caller` | `retry_after` | The forge refused because a budget was exhausted. The bucket and its `resets_at` are in `outputs.forge_budget` (Sections 8.2, 9.2). |
+| `(any forge)` | `forge_unavailable` | `needs_caller` | `retry_after` | The forge did not answer, or answered that it is temporarily unable. The condition is in `outputs` (Section 8.2). |
 | `provision` | `ok` | `done` | — | The checkout is present and current. |
 | `provision` | `unreachable` | `needs_caller` | `human_review` | The remote could not be reached at `git_access` (Sections 8.1, 9.1). |
 | `provision` | `store_unsupported` | `error` | — | A working tree was to be derived from a store the backend cannot share (Sections 4.1, 9.3). |
@@ -456,6 +462,39 @@ anything is fetched (Section 6.11). What the declaration does not settle is what
 already holds: a store arranged in a way the selected backend cannot extend is a fact about that
 location rather than about the descriptor, and `provision` reports `store_unsupported` for it, as
 `integrate` reports `base_unavailable` for a base the checkout does not hold.
+
+`rate_limited` and `forge_unavailable` are `needs_caller` where a forge refusal would otherwise be
+the universal `failed`, and the class is chosen for the disposition it produces rather than for how
+the condition reads. An `error`-class result no edge disposes of reaches the built-in default, which
+**fails the flow** (Section 5.4). Carrying a throttle under `failed` therefore ends a unit of work
+for a condition that clears on its own, through the same path and with the same finality as a
+validation error that never will — and a repository that wrote `#error → fail`, which is what the
+built-in default already does, gets a run failed by throttling. `needs_caller` is what Section 4.2
+defines for an operation that cannot proceed without an action from the caller, and waiting is one.
+The converse defect is the same axis read the other way: a consumer that retries `error`-class
+results because some of them clear also retries a malformed pull-request title, which does not
+become well formed on the ninth attempt.
+
+The two divide the transient conditions **by repair** rather than by cause, which is why a 429 takes
+one token and a server error, an expired bound (Section 8.1) and a transport failure share the
+other. `rate_limited`'s repair is informed: the bucket that ran out and the time it refills are
+already in `outputs.forge_budget` (Sections 8.2, 9.2), so a caller knows how long to wait and which
+kind of work to hold back. `forge_unavailable`'s repair is uninformed — back off and try again, with
+no reset time to aim at. Which of its three conditions occurred is diagnosis rather than routing and
+is reported in `outputs` (Section 8.2), on the same reasoning `hook_unanswered` is reported that way:
+the repair is the same shape in each case, and the condition is spelled as a token so what routes and
+what diagnoses are both branchable. A backend MUST NOT report a permanent refusal under either
+reason; a forge that refuses a request it will refuse identically on every retry is that operation's
+own `error`-class result.
+
+The version-control transport gains no transient reason here. A git remote publishes no budget and
+no reset time, so `rate_limited`'s informed repair would have nothing to be informed by, and
+`provision:unreachable` already routes the caller-repairable condition on that side away from
+`failed` — its gloss names the endpoint, the credential and the network between them, which are the
+invocation's own arguments. A `push`, `integrate` or `pull` whose git remote times out therefore
+reports the reason it reports today. That is a decided scope rather than an omission, and the
+narrowness is the point: a second token one word from `unreachable` is the hazard
+`base_unresolved` and `base_unavailable` already show costs care to keep straight.
 
 `blocked`, `failed` and `hook_unanswered` divide a `before:<op>` position's outcomes by what the hook
 did. A gate that answered and refused with a `needs_caller` result is `blocked`; one that answered
@@ -1631,6 +1670,12 @@ Every invocation returns one structured result:
   one entry because the result re-enters the machine: a repository binding `<op>:hook_unanswered` to
   anything that does not end the flow can reach a second position on the same traversal, which
   Section 5.6 bounds rather than refuses.
+- `outputs` carries `forge_unavailable_condition` where the decisive result is `forge_unavailable`
+  (Section 4.3): the condition that occurred — `server_error`, `bound_elapsed` (Section 8.1) or
+  `transport_failure` — absent for every other reason. It is the same arrangement
+  `unanswered_gates` makes for its own three conditions, and for the same reason: the reason routes,
+  the condition diagnoses, and both spell the condition as a token so one consumer branch reads
+  both.
 - `outputs` carries `forge_budget`: the most recent budget snapshot a forge capability observed
   during the invocation (Section 9.2), reported whether or not any limit was reached. The key is
   absent where the invocation reached no forge capability, and equally where it reached one and the
@@ -1688,12 +1733,36 @@ otherwise.
 
 When `status == "needs_caller"`, `escalation` carries: the `need` (a stable token naming what is
 required, for example `integrate_then_retry`, `reread_then_retry`, `resolve_conflicts`,
-`supply_identity`, `await_checks`, `human_review`, `intervention`, `flow_exhausted`), the `op` that
+`supply_identity`, `await_checks`, `retry_after`, `human_review`, `intervention`, `flow_exhausted`),
+whether the need is `retryable` (below), the `op` that
 produced it, and an `Implementation-defined` `detail`. The `op` is null where no operation produced
 the escalation — at a signal, at a lifecycle position where the gated operation has not run
 (Section 5.1), and at a bound the executor reached (Section 5.6). A front-end binds the resolver by
 the `need` token (Section 5.5); the `need` vocabulary is part of the public contract and MUST be
 documented and stable within a major version.
+
+`retry_after` is the need a transient forge condition raises (Section 4.3). It names a wait, and the
+length of that wait is not carried here: where the forge reported one, the exhausted bucket's
+`resets_at` is in `outputs.forge_budget` (Sections 8.2, 9.2), and duplicating it into the escalation
+would give a consumer two places to read one figure from and two ways for them to disagree.
+
+`retryable` is a property of the **need**: a need is retryable exactly when re-invoking the same
+entry point with the same arguments, after a delay and with no further action by the caller, MAY
+succeed. It is fixed per need and therefore follows from a reason's default need (Section 4.3),
+which is REQUIRED for every `needs_caller` reason — so the two cannot disagree, as they could if
+retryability were a column on the reason registry. The values:
+
+- Retryable: `reread_then_retry` (the re-read is what a re-invocation does), `await_checks`, and
+  `retry_after`.
+- Not retryable: `integrate_then_retry` (an `integrate` must run first, so re-invoking unchanged
+  reproduces the same result), `resolve_conflicts`, `supply_identity`, `human_review`, and both
+  holds below, which are not resolvable at all.
+
+The field is carried rather than left for a consumer to derive from the need, because Section 8.5
+permits new `need` tokens in a `MINOR` release: a consumer holding its own need-to-retryability
+mapping is correct until the release that adds one and then silently wrong in whichever direction
+its default guessed. Carrying the bit makes a new need absorbable, which is the job the `#class`
+fallback does for a new reason (Section 5.3).
 
 Two needs name a **hold** rather than a request, and neither is resolvable: a front-end MUST NOT bind a
 resolver to either and MUST NOT resume the flow on either. Each hold is released out of band, by a new
@@ -1717,7 +1786,8 @@ unresolvable, and neither is reachable through that default: `intervention` is r
 ### 8.5 Versioning and the Version Grammar
 
 - The engine version is `MAJOR.MINOR`. The invocation envelope, the invocation status values, the
-  proto classes, the exit-code mapping, the `need` vocabulary, the class of every listed reason
+  proto classes, the exit-code mapping, the `need` vocabulary with each need's `retryable` value
+  (Section 8.4), the class of every listed reason
   (Section 4.3), the configuration reasons (Section 6.11), and the precondition reasons
   (Section 8.6) are the **major-stable surface**: they do not change within a `MAJOR`.
 - New reason tokens, new `need` tokens, new configuration reasons, new precondition reasons, new
@@ -2200,6 +2270,13 @@ The version-control network capabilities (Section 9.1) answer no snapshot and ar
 git transport publishes no quota, so there is nothing for a backend to observe and a counterpart
 key there would be permanently absent.
 
+Any capability above MAY answer `rate_limited` or `forge_unavailable` (Section 4.3), every one of
+them reaching the code host; the obligation is stated over the list for the same reason the snapshot
+is. A backend MUST NOT report a permanent refusal under either — a request the forge will refuse
+identically on every retry is that operation's own `error`-class result — and MUST NOT report a
+throttle under a reason naming an unrelated condition, a `merge` reporting `checks_pending` for a
+refused call being the case that sends a caller to poll a forge that just asked it to stop.
+
 OPTIONAL:
 
 - Review-thread writes: `post_review`, `reply_review`, `resolve_thread`.
@@ -2617,6 +2694,14 @@ A conforming engine SHOULD include tests covering:
   `before:commit` read it creates no commit and yields `worktree_moved` rather than `ok` or
   `nothing_to_commit`, while a `worktree_revision()` that could not determine an identity yields
   `commit:failed` rather than a commit conditioned on nothing (Sections 4.3, 6.6, 9.1).
+- Transient forge conditions: a throttled forge call yields `rate_limited` and not `failed`, and the
+  run escalates rather than failing, so a condition that clears on its own does not end a unit of
+  work (Sections 4.3, 5.4); a permanent refusal — a validation error the forge will refuse
+  identically on retry — still yields an `error`-class result and is not reported under either
+  transient reason; a `forge_unavailable` result carries its condition in `outputs` and a result of
+  any other reason carries none (Section 8.2); every `needs_caller` escalation carries `retryable`,
+  and its value matches the need's — `retry_after`, `await_checks` and `reread_then_retry` true,
+  `integrate_then_retry` and both holds false (Section 8.4).
 - Budget visibility: a forge-touching operation that **succeeded** carries a `forge_budget` output,
   so the figure is available before the decision it informs rather than only at exhaustion; a forge
   reporting several buckets yields several, each under the name the forge used and none normalized
@@ -2906,6 +2991,9 @@ A conforming engine SHOULD include tests covering:
 - The forge budget snapshot on every forge-touching operation, reported on success as on failure,
   carrying each bucket under the forge's own name and in the forge's own unit, with no engine
   behavior conditioned on it.
+- The transient forge reasons `rate_limited` and `forge_unavailable`, both `needs_caller` so a
+  throttle escalates rather than failing the flow, with `forge_unavailable`'s condition in `outputs`
+  and `retryable` carried on every escalation.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, every commit the engine writes attributed to the supplied commit identity, a scan reached
   through a policy edge at a lifecycle position rather than through a key of its own, and a

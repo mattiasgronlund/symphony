@@ -41,7 +41,7 @@
 
   "reasons": {
     "spec_refs": ["VCSX-SPEC.md Section 4.3 \"Reason-Token Registry\""],
-    "note": "The Section 4.3 table normalized to one entry per (operation, reason). Its combined rows expand: the `status` / `diff` row to two entries, and the four universal rows to one entry per operation they cover — `failed` and `unsupported` for every operation, `blocked` and `hook_unanswered` for every gated one — each marked `universal: true`. `blocked`, `failed` and `hook_unanswered` divide a gate's outcomes by what the hook did: refused with a `needs_caller` result, refused with an `error` result, and gave no usable answer at all. An engine MUST document any reason it adds beyond this set, with its class. Every entry carries `default_need`: for a `needs_caller` reason, the need an escalation on that result carries where nothing in the policy named one (Section 4.3's column); `null` for a `done` or `error` reason, whose class default continues or fails rather than escalates.",
+    "note": "The Section 4.3 table normalized to one entry per (operation, reason). Its combined rows expand: the `status` / `diff` row to two entries, and the four universal rows to one entry per operation they cover — `failed` and `unsupported` for every operation, `blocked` and `hook_unanswered` for every gated one — each marked `universal: true`. `blocked`, `failed` and `hook_unanswered` divide a gate's outcomes by what the hook did: refused with a `needs_caller` result, refused with an `error` result, and gave no usable answer at all. An engine MUST document any reason it adds beyond this set, with its class. Every entry carries `default_need`: for a `needs_caller` reason, the need an escalation on that result carries where nothing in the policy named one (Section 4.3's column); `null` for a `done` or `error` reason, whose class default continues or fails rather than escalates. Two further rows carry `(any forge)` in place of an operation and expand to one entry per operation whose forge call the condition prevented — `push`, `create_pr` and `merge` — each marked `forge_universal: true`. `rate_limited` and `forge_unavailable` are both `needs_caller`, so a throttle escalates rather than reaching the built-in `error` default that fails the flow, and both take the `retry_after` default need. They divide the transient conditions by repair rather than by cause: `rate_limited`'s wait is informed by the exhausted bucket's `resets_at` in `outputs.forge_budget`, `forge_unavailable`'s is not, and which of its three conditions occurred is reported in `outputs.forge_unavailable_condition` rather than in a reason of its own.",
     "entries": [
       { "token": "provision:ok", "operation": "provision", "reason": "ok", "class": "done", "default_need": null },
       { "token": "provision:unreachable", "operation": "provision", "reason": "unreachable", "class": "needs_caller", "default_need": "human_review" },
@@ -72,6 +72,8 @@
       { "token": "push:non_fast_forward", "operation": "push", "reason": "non_fast_forward", "class": "needs_caller", "default_need": "integrate_then_retry" },
       { "token": "push:pr_closed", "operation": "push", "reason": "pr_closed", "class": "needs_caller", "default_need": "human_review" },
       { "token": "push:rejected", "operation": "push", "reason": "rejected", "class": "error", "default_need": null },
+      { "token": "push:rate_limited", "operation": "push", "reason": "rate_limited", "class": "needs_caller", "default_need": "retry_after", "forge_universal": true },
+      { "token": "push:forge_unavailable", "operation": "push", "reason": "forge_unavailable", "class": "needs_caller", "default_need": "retry_after", "forge_universal": true },
       { "token": "push:blocked", "operation": "push", "reason": "blocked", "class": "needs_caller", "default_need": "human_review", "universal": true },
       { "token": "push:hook_unanswered", "operation": "push", "reason": "hook_unanswered", "class": "error", "default_need": null, "universal": true },
       { "token": "push:failed", "operation": "push", "reason": "failed", "class": "error", "default_need": null, "universal": true },
@@ -81,6 +83,8 @@
       { "token": "create_pr:updated", "operation": "create_pr", "reason": "updated", "class": "done", "default_need": null },
       { "token": "create_pr:base_mismatch", "operation": "create_pr", "reason": "base_mismatch", "class": "error", "default_need": null },
       { "token": "create_pr:conflict", "operation": "create_pr", "reason": "conflict", "class": "needs_caller", "default_need": "human_review" },
+      { "token": "create_pr:rate_limited", "operation": "create_pr", "reason": "rate_limited", "class": "needs_caller", "default_need": "retry_after", "forge_universal": true },
+      { "token": "create_pr:forge_unavailable", "operation": "create_pr", "reason": "forge_unavailable", "class": "needs_caller", "default_need": "retry_after", "forge_universal": true },
       { "token": "create_pr:blocked", "operation": "create_pr", "reason": "blocked", "class": "needs_caller", "default_need": "human_review", "universal": true },
       { "token": "create_pr:hook_unanswered", "operation": "create_pr", "reason": "hook_unanswered", "class": "error", "default_need": null, "universal": true },
       { "token": "create_pr:failed", "operation": "create_pr", "reason": "failed", "class": "error", "default_need": null, "universal": true },
@@ -93,6 +97,8 @@
       { "token": "merge:conflict", "operation": "merge", "reason": "conflict", "class": "needs_caller", "default_need": "resolve_conflicts" },
       { "token": "merge:head_moved", "operation": "merge", "reason": "head_moved", "class": "needs_caller", "default_need": "reread_then_retry" },
       { "token": "merge:rejected", "operation": "merge", "reason": "rejected", "class": "error", "default_need": null },
+      { "token": "merge:rate_limited", "operation": "merge", "reason": "rate_limited", "class": "needs_caller", "default_need": "retry_after", "forge_universal": true },
+      { "token": "merge:forge_unavailable", "operation": "merge", "reason": "forge_unavailable", "class": "needs_caller", "default_need": "retry_after", "forge_universal": true },
       { "token": "merge:blocked", "operation": "merge", "reason": "blocked", "class": "needs_caller", "default_need": "human_review", "universal": true },
       { "token": "merge:hook_unanswered", "operation": "merge", "reason": "hook_unanswered", "class": "error", "default_need": null, "universal": true },
       { "token": "merge:failed", "operation": "merge", "reason": "failed", "class": "error", "default_need": null, "universal": true },
@@ -219,16 +225,17 @@
 
   "needs": {
     "spec_refs": ["VCSX-SPEC.md Section 8.4 \"Escalation Payload\""],
-    "note": "Part of the public contract: documented and stable within a MAJOR. The set below is the specification's named vocabulary; an engine documents any it adds. `raised_by` records what raises the need — the action that raises it, or `executor` for one no policy can write — and `resolvable` whether a front-end binds a resolver to it.",
+    "note": "Part of the public contract: documented and stable within a MAJOR. The set below is the specification's named vocabulary; an engine documents any it adds. `raised_by` records what raises the need — the action that raises it, or `executor` for one no policy can write — and `resolvable` whether a front-end binds a resolver to it. `retryable` is fixed per need and means that re-invoking the same entry point with the same arguments, after a delay and with no further action by the caller, MAY succeed. It follows from a reason's `default_need` rather than being carried on the reason, so the two cannot disagree, and it is part of the major-stable surface (Section 8.5) — carried in the escalation rather than derived by a consumer, so a need added in a MINOR release is absorbable.",
     "entries": [
-      { "token": "integrate_then_retry", "raised_by": "escalate", "resolvable": true },
-      { "token": "reread_then_retry", "raised_by": "escalate", "resolvable": true, "note": "Met by reading the moved state again and retrying, which is the re-entry a resume performs (Section 5.5), rather than by supplying anything. The default need of `commit:worktree_moved` and `merge:head_moved`." },
-      { "token": "resolve_conflicts", "raised_by": "escalate", "resolvable": true },
-      { "token": "supply_identity", "raised_by": "escalate", "resolvable": true },
-      { "token": "await_checks", "raised_by": "escalate", "resolvable": true },
-      { "token": "human_review", "raised_by": "escalate", "resolvable": true },
-      { "token": "intervention", "raised_by": "park", "resolvable": false, "note": "Names a hold rather than a request: a front-end MUST NOT bind a resolver to it and MUST NOT resume the flow on it." },
-      { "token": "flow_exhausted", "raised_by": "executor", "resolvable": false, "note": "Names a hold rather than a request, imposed by the executor when a flow reaches a bound (Section 5.6) rather than asked for by the policy: a front-end MUST NOT bind a resolver to it and MUST NOT resume the flow on it." }
+      { "token": "integrate_then_retry", "raised_by": "escalate", "resolvable": true, "retryable": false, "note": "Not retryable: an `integrate` must run first, so re-invoking unchanged reproduces the same `push:non_fast_forward`." },
+      { "token": "reread_then_retry", "raised_by": "escalate", "resolvable": true, "retryable": true, "note": "Met by reading the moved state again and retrying, which is the re-entry a resume performs (Section 5.5), rather than by supplying anything. The default need of `commit:worktree_moved` and `merge:head_moved`. Retryable, the re-read being what a re-invocation does." },
+      { "token": "resolve_conflicts", "raised_by": "escalate", "resolvable": true, "retryable": false },
+      { "token": "supply_identity", "raised_by": "escalate", "resolvable": true, "retryable": false },
+      { "token": "await_checks", "raised_by": "escalate", "resolvable": true, "retryable": true },
+      { "token": "retry_after", "raised_by": "escalate", "resolvable": true, "retryable": true, "note": "The need a transient forge condition raises (Section 4.3). It names a wait whose length is not carried in the escalation: where the forge reported one, the exhausted bucket's `resets_at` is in `outputs.forge_budget`, and duplicating it would give a consumer two places to read one figure from and two ways for them to disagree." },
+      { "token": "human_review", "raised_by": "escalate", "resolvable": true, "retryable": false },
+      { "token": "intervention", "raised_by": "park", "resolvable": false, "retryable": false, "note": "Names a hold rather than a request: a front-end MUST NOT bind a resolver to it and MUST NOT resume the flow on it." },
+      { "token": "flow_exhausted", "raised_by": "executor", "resolvable": false, "retryable": false, "note": "Names a hold rather than a request, imposed by the executor when a flow reaches a bound (Section 5.6) rather than asked for by the policy: a front-end MUST NOT bind a resolver to it and MUST NOT resume the flow on it." }
     ]
   },
 
@@ -255,13 +262,17 @@
       { "token": "unperformed_intents", "fields": ["action", "arguments"], "meaning": "The consumer-effected intents the engine emitted and no consumer performed (Section 5.2)." },
       { "token": "unfinished_hooks", "fields": ["hook", "trigger", "condition"], "meaning": "The result-triggered hooks that gave the engine no usable answer (Section 6.6). `condition` is a `hook_conditions` token." },
       { "token": "unanswered_gates", "fields": ["hook", "position", "condition", "detail"], "meaning": "The `before:*` units that gave the engine no usable answer, whose operations reported `hook_unanswered` (Sections 4.3, 6.6). The key is named for the gate that is almost always the unit at a position; the `pr_to_squash` transform is reported here too (Section 10.3). `condition` is a `hook_conditions` token; `detail` is Implementation-defined. An array, because one traversal can pass more than one unanswered unit." },
-      { "token": "failed_by_policy", "fields": ["trigger", "reason"], "meaning": "Present where the policy ended the flow with `fail` (Section 5.2). `reason` is the repository-authored token the edge wrote and is absent where the edge wrote none; it belongs to no registry in this file." }
+      { "token": "failed_by_policy", "fields": ["trigger", "reason"], "meaning": "Present where the policy ended the flow with `fail` (Section 5.2). `reason` is the repository-authored token the edge wrote and is absent where the edge wrote none; it belongs to no registry in this file." },
+      { "token": "forge_budget", "fields": ["buckets", "observed_at"], "meaning": "The most recent budget snapshot a forge capability observed during the invocation (Sections 8.2, 9.2), reported whether or not any limit was reached. Each bucket carries `limit`, `remaining` and an OPTIONAL `resets_at` under the name the forge used; identity is opaque and the counts are in the bucket's own unit, so nothing here is normalized, summed or compared. Absent both where the invocation reached no forge capability and where it reached one and the forge reported no budget — one spelling for two events, because the consumer learned nothing new in either." },
+      { "token": "forge_unavailable_condition", "meaning": "The condition behind a `forge_unavailable` result (Sections 4.3, 8.2): `server_error`, `bound_elapsed` or `transport_failure`. Absent for every other reason. The reason routes and the condition diagnoses, as `hook_unanswered` and `unanswered_gates` already divide the work." },
+      { "token": "pr_state_unchanged", "meaning": "Present on a `status` whose invocation supplied a `pr_state_validator` the forge reported unmoved (Sections 4.1, 8.1, 9.2). Distinct from an absent pull request and from `pr_state_unavailable`: the read established that the caller's copy is current." },
+      { "token": "pr_state_unavailable", "meaning": "Present on a `status` whose configured forge could not be asked for the pull-request state (Sections 4.1, 9.2): the read established nothing, which is neither an absent pull request nor an unchanged one." }
     ]
   },
 
   "escalation_fields": {
     "spec_refs": ["VCSX-SPEC.md Section 8.4 \"Escalation Payload\""],
-    "entries": ["need", "op", "detail"]
+    "entries": ["need", "retryable", "op", "detail"]
   },
 
   "exit_codes": {
