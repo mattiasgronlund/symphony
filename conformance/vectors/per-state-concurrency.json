@@ -2,7 +2,7 @@
   "function": "per_state_concurrency_limit",
   "profile": "Daemon Conformance",
   "spec_refs": ["Section 8.3", "Section 4.2"],
-  "description": "Resolve the concurrency limit for a tracked state: max_concurrent_agents_by_state[state] if present (state key normalized by lowercase, Section 4.2), otherwise the global limit.",
+  "description": "Resolve the concurrency limit for a tracked state: max_concurrent_agents_by_state[state] if present (both the state and the map key normalized by Lowercase Normalization, Section 4.2), otherwise the global limit.",
   "given": "{ state: string, max_concurrent_agents_by_state: object, global_limit: integer }",
   "expect": "{ limit: integer }",
   "vectors": [
@@ -13,7 +13,7 @@
     },
     {
       "id": "override-matched-after-normalization",
-      "description": "Lookup state and map key match after lowercase normalization.",
+      "description": "Lookup state and map key match after Lowercase Normalization (Section 4.2).",
       "given": { "state": "in progress", "max_concurrent_agents_by_state": { "In Progress": 2 }, "global_limit": 10 },
       "expect": { "limit": 2 }
     },

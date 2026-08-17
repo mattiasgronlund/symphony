@@ -3839,3 +3839,51 @@ table. Depends on 0103 (whose reader test selects this set) and 0071 (whose orde
 follows). Relates to 0102 and 0002. Accepted and applied to `SPEC.md` (Sections 9.7, 14.1, 14.2, 17,
 17.2, 17.4, 18.1.2, 18.1.4, 18.2, 19), `conformance/vocabulary.json`, `conformance/README.md` and
 `CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0105 — One lowercase, named once and cited everywhere
+
+**State:** Accepted
+**Folder:** [decisions/0105-case-normalization/](decisions/0105-case-normalization/)
+
+Issue #56: Section 4.2 said "Compare states after `lowercase`" and did not say which lowercase, over
+a value that is a **comparison key, not a display string**. Three sites branch on it — dispatch
+eligibility against `active_states`/`terminal_states` (Sections 8.2, 16.3), the
+`max_concurrent_agents_by_state` lookup whose miss falls back to the global limit silently (Sections
+5.3.5, 8.3, a `Core Conformance` check in 17.1), and Section 11.6's duplicate `(from, on)` rule,
+where the reading decides whether a `repo.policy.toml` **loads at all**. Measured, `İ` (U+0130)
+separates the readings: unchanged under ASCII-only, `i` + U+0307 under the Unicode default mapping
+(identical in `rustc` 1.95.0, CPython 3.13.5 and Node v26.5.1), and bare `i` under a Turkish
+tailoring, which also maps `In Progress` to `ın progress` and so makes the **host's environment** an
+input to a conformance-checked comparison. Section 4.2 now names the rule once —
+`Lowercase Normalization`, the Unicode Default Case Conversion with the full mappings, no
+language-specific tailoring (MUST NOT), and no Unicode normalization form applied — and the state
+rule, the three differently-worded label rules (Sections 4.1.1, 5.3.1, 11.3), the state-keyed
+configuration sites and the Section 16.3 reference algorithm all cite it. Rejected: ASCII-only
+lowercase (0047's byte-level philosophy, no Unicode library, no version drift — but 0047 governs a
+*projection* into a directory name where any total function serves, while this is a *match* against
+an operator-typed string, and ASCII-only makes case-insensitivity a property of the tracker's
+alphabet, holding for `TODO` and silently not for `İNCELEME`); full case folding (what Unicode
+specifies for caseless matching and it folds `Straße`/`STRASSE`, but `rustc` 1.97.1 has no
+`to_casefold` at all and Go's `strings.EqualFold` is *simple* folding whose own package example
+asserts `EqualFold("ß", "ss") == false` — the primitive whose appeal is that every standard library
+has it, which folding is not); and requiring NFC (real — the tracker owns one side and
+`symphony.toml` the other — but **not an interoperability defect**, since every implementation that
+lowercases the code points as given agrees, so it is the operator's surprise and not the
+specification's silence, and it is stated as *not applied* rather than left unsaid). Three findings
+application turned up. The existing corpus does not merely fail to check the locale-sensitive
+reading, it checks it **conditionally on the runner's host** — `In Progress` → `in progress` does
+fail under a Turkish tailoring — so a green corpus on CI is not evidence about the deployment host.
+Section 16.3's pseudocode compared raw states, reading as if the rule did not reach it. And the new
+decomposed vector **arrived on disk composed**, silently normalized by the authoring tool: it still
+passed, because a composed input lowercasing to a composed output is a case every reading agrees on,
+so the vector had degraded into a tautology that two identical-looking spellings hid — caught by
+re-parsing and comparing code points, not by reading. Non-ASCII vector values are now `\uXXXX`
+escapes as a stated corpus convention, `workspace-key.json` (verified intact first) re-encoded to
+match. Three vectors were added and no `normalize_label` function, deliberately: it would add a
+harness entry point to re-check the same mapping. Reconsider on either of two reports — a state that
+renders identically and never matches (the NFC axis, its own decision) or a `ß`/`ss`-shaped
+near-miss (case folding, with the dependency cost then accepted). Relates to 0047, 0046 and 0002.
+Accepted and applied to `SPEC.md` (Sections 4.1.1, 4.2, 5.3.1, 5.3.5, 8.2, 8.3, 11.3, 11.6, 16.3,
+17.1, 17.3), `conformance/vectors/state-normalization.json`,
+`conformance/vectors/per-state-concurrency.json`, `conformance/vectors/workspace-key.json` and
+`conformance/README.md`.

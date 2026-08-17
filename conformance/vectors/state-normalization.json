@@ -2,12 +2,13 @@
   "function": "normalize_state",
   "profile": "Core Conformance",
   "spec_refs": ["Section 4.2"],
-  "description": "Normalize a tracker state for comparison by lowercasing. State comparisons (active/terminal membership, per-state concurrency keys) are performed on the normalized value.",
+  "description": "Normalize a tracker state for comparison with Lowercase Normalization (Section 4.2; decision 0105): the Unicode Default Case Conversion to lowercase, full mappings rather than simple ones, no language-specific tailoring, and no Unicode normalization form applied. State comparisons (active/terminal membership, per-state concurrency keys, transition (from, on) uniqueness) are performed on the normalized value, which is a comparison key and not a display string. Non-ASCII code points are written as \\u escapes so the property under test survives an authoring tool that would silently re-normalize a literal.",
   "given": "{ state: string }",
   "expect": "{ normalized: string }",
   "vectors": [
     {
       "id": "title-case-two-words",
+      "description": "Fails under a Turkish tailoring, where U+0049 lowercases to U+0131 - but only on a host whose locale is Turkish, which is why the non-ASCII vectors below separate the readings on any host.",
       "given": { "state": "In Progress" },
       "expect": { "normalized": "in progress" }
     },
@@ -25,6 +26,24 @@
       "id": "already-normalized",
       "given": { "state": "cancelled" },
       "expect": { "normalized": "cancelled" }
+    },
+    {
+      "id": "full-mapping-expands-to-two-code-points",
+      "description": "The Turkish state name 'Inceleme' whose first letter is U+0130, Latin capital I with dot above. Its full lowercase mapping is two code points, U+0069 U+0307. An ASCII-only implementation leaves U+0130 unchanged and a Turkish-tailored one yields U+0069 alone, so this vector separates all three readings irrespective of the host's locale.",
+      "given": { "state": "\u0130nceleme" },
+      "expect": { "normalized": "i\u0307nceleme" }
+    },
+    {
+      "id": "capital-sharp-s-is-lowercased-not-folded",
+      "description": "U+1E9E, capital sharp s, lowercases to U+00DF. An ASCII-only implementation leaves it unchanged; a case-folding implementation yields U+0073 U+0073 ('ss'). The rule is lowercasing, not folding.",
+      "given": { "state": "\u1E9E" },
+      "expect": { "normalized": "\u00DF" }
+    },
+    {
+      "id": "decomposed-input-is-not-recomposed",
+      "description": "The state name 'Under Review' whose first letter is decomposed, U+0055 U+0308. No Unicode normalization form is applied, so the combining mark survives and the result starts U+0075 U+0308 rather than the precomposed U+00FC; a state spelled this way does not compare equal to the same name spelled precomposed.",
+      "given": { "state": "U\u0308nder Review" },
+      "expect": { "normalized": "u\u0308nder review" }
     }
   ]
 }

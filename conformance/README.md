@@ -211,6 +211,13 @@ Each file is a JSON object:
   - `expect` (object) — the expected outputs: either the successful result, or `{ error: <class> }`
     naming the error class the behavior must raise for a failure vector.
 
+Non-ASCII code points inside `given` and `expect` are written as `\uXXXX` escapes, so the vector
+files are pure ASCII. Two behaviors are deliberately sensitive to Unicode normalization form —
+workspace-key sanitization (decision 0047) and state normalization (decision 0105) — and each has a
+pair of vectors that differ only in that form. Written as literals they look identical on screen, so
+an editor or authoring tool that re-composed one would turn it into a tautology that passes under
+every reading, silently. The escapes make that impossible to do by accident and readable in review.
+
 ## Harness contract (language-neutral)
 
 A conforming harness is small and written in each implementation's own language. For every file and
@@ -325,6 +332,22 @@ guessed-at vector or entry:
   before the bullet was written, and nothing re-derives a reason for *not* doing something, which is
   why it survived. This is the finding that motivated replacing per-bullet reasons with the reader
   test.
+- **Section 4.2 did not say which lowercase — resolved (decision 0105).** "Compare states after
+  `lowercase`" over a value that is a comparison key: `active_states`/`terminal_states` membership,
+  the `max_concurrent_agents_by_state` lookup whose miss falls back to the global limit silently,
+  and Section 11.6's duplicate `(from, on)` rule, where the reading decides whether a
+  `repo.policy.toml` loads at all. `İ` (U+0130) separates the readings — unchanged under an
+  ASCII-only lowercasing, `i` + U+0307 under the Unicode default mapping, and bare `i` under a
+  Turkish tailoring, which also maps `In Progress` to `ın progress`. The existing four vectors did
+  not settle it, and the sharper statement is that `title-case-two-words` **does** fail under the
+  Turkish tailoring: the corpus
+  checked the dangerous reading conditionally on the locale of the machine that ran it, so a green
+  result on a CI runner was not evidence about the deployment host. Section 4.2 now defines
+  `Lowercase Normalization` once — Unicode Default Case Conversion, full mappings, no
+  language-specific tailoring, no Unicode normalization form applied — and every case-insensitive
+  comparison in the document cites it. Three vectors pin it: `İ` separates all three readings on any
+  host, `ẞ` → `ß` separates lowercasing from case folding, and a decomposed input pins the
+  no-normalization-form rule.
 - **Section 17.3 requires four RECOMMENDED tracker categories by name (open).** Section 11.4
   declares its eleven error categories RECOMMENDED, but Section 17.3's `Core Conformance` checks
   name `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict` and
