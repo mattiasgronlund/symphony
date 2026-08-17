@@ -81,3 +81,8 @@ paragraph explaining it, which left "The rule is stated over the capability list
 described the network bound. Moved after that paragraph. A reference to this decision by number was
 also written into the specification and removed — neither `SPEC.md` nor `VCSX-SPEC.md` cites a
 decision number anywhere, the decision log pointing at the spec and not the reverse.
+
+A third finding, shared with decision 0107 and corrected by 0112: step 6's text cites Section 2.2
+for whether to call again being the consumer's, and **Section 2.2 did not state that** when this
+decision was applied. The boundary was real in the design and unstated in the document. 0112 adds
+the non-goal, which makes the citation true.

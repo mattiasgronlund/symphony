@@ -4125,3 +4125,54 @@ two that disagree. The concurrency-stress tier is deliberately not covered: it a
 concurrent sessions rather than one injected response, and is deferred to the Symphony-side work.
 Relates to 0106–0110, 0053 and 0105. Accepted and applied to `conformance/vcsx/README.md` and
 `VCSX-SPEC.md` (Section 13.1).
+
+## 0112 — The wait becomes an operation, and the non-goal it tests gets written down
+
+**State:** Accepted
+**Folder:** [decisions/0112-bounded-await-checks/](decisions/0112-bounded-await-checks/)
+
+Issue #60's engine half. The issue states its own fork — a shared consumer library, or a bounded
+engine subcommand — and **(b)** was chosen by the maintainer. Applying it surfaced a finding that
+reordered the decision: the boundary the objection to (b) rests on **was never written down**.
+Section 2.2's Non-Goals are four — credential storage, agent-sandbox mechanism, commit conventions, a
+general-purpose workflow engine — and retry, back-off and budget appear in none of them; the claim is
+asserted only in text this slice itself added, since 0107 and 0109 were each drafted citing
+"(Section 2.2)" for it. The downstream study says the same thing with the same confidence. So the
+boundary everyone reasons from was folklore: substantively true of the design, never stated, never
+checkable, never decided. A bounded exception cannot be stated against a rule that does not exist, so
+Section 2.2 gains the non-goal first — deciding **when** to retry, **how long** to back off, and
+**what a budget is worth** are the consumer's — and `await_checks` is then a stated exception to it.
+The exception is to **waiting**, not to **deciding**: the bound, the read count, the interval and the
+budget floor are all invocation arguments, the engine compares against numbers it was handed and
+chooses none, and an invocation supplying none makes a single read and cannot loop. The usual
+objection to (b) is weaker than it looks — 0081 already settled that a bound is a bound on a unit,
+and the engine already waits on hooks and (since 0109) on network calls — and the real cost is that a
+budget-aware cadence needs a budget policy, which this containment is designed to keep outside.
+Building it required a read that did not exist: 0106 gave the conditional-read validator to
+`pr_state` because that was the only forge read, while issue #58's VX-1 names two, so `checks_state`
+joins Section 9.2 with the same four answers and reuses the validator machinery rather than
+rebuilding it. Polling by re-dispatching `merge` was rejected outright — it asks a cheap question
+with a **mutating** request, charged at a mutation's cost and carrying whatever a refused merge
+costs on a given forge — and the new read has a benefit past the loop: check state stops being
+reachable only by asking a question whose favourable answer merges the work. `await_checks` is an
+operation and an entry point rather than a front-end sequence, which buys three things: `<op>:<reason>`
+results a repository can bind, membership of the gated-at-no-position category (a gate before a wait
+inspects nothing), and **one** dispatch against the flow bound however many reads it makes — counting
+each read would make a policy's flow budget depend on how long a CI run took. Four reasons:
+`still_pending` and `budget_floor` are separate because one is met by waiting longer and the other by
+waiting for a bucket to refill, and a consumer that could not tell them apart would raise the wrong
+bound. The `await_checks` **need** and the `await_checks` **operation** share a spelling
+deliberately: needs and operations are separate vocabularies, and the need now names the operation
+that meets it. Steelmanned and rejected: **(a)** a shared library keeps cadence policy with the party
+owning the budget, but turns a skill's dependency-free shell invocation into a language-specific
+build dependency, and a library nobody links is a governance layer that governs nothing — which is
+how the drain happened; **(c)** stating the loop's obligations and leaving packaging
+`Implementation-defined` is this repository's idiom and was the recommended option, but specifies
+nothing a skill can *call*, so "written once" becomes written once per implementation — right if the
+two consumers needed different loops, and they need the same one. Reconsider if the argument surface
+grows: a fifth parameter — a back-off curve, a per-bucket policy, jitter — would mean the engine is
+accumulating the budget policy this decision claims it does not hold, one argument at a time, and
+that accumulation rather than the wait is what would make (b) the mistake its objectors expect. Also
+reconsider on a forge whose check state is not aggregable. Relates to 0081, 0106, 0107, 0108 and
+0109. Accepted and applied to `VCSX-SPEC.md` (Sections 2.2, 4.1, 4.3, 5.6, 7.2, 8.1, 9.2, 13.1,
+13.2), `VCSX-CONTRACT.md` (Sections 3, 6) and `conformance/vcsx/vocabulary.json`.

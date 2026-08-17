@@ -77,3 +77,11 @@ New anchors: the `forge_budget` output token and its bucket field names (`limit`
 ## Status
 
 Applied to `VCSX-SPEC.md` (Sections 8.2, 9.2, 13.1, 13.2, 13.3).
+
+One application finding, found later in the same slice and corrected there. Step 5's text cites
+Section 2.2 for retry, back-off and budget being the consumer's, and **Section 2.2 did not say
+that** when this decision was applied: its Non-Goals were credential storage, the agent-sandbox
+mechanism, commit conventions and a general-purpose workflow engine. The boundary was real in the
+design and unstated in the document, so the citation pointed at nothing. Decision 0112 adds the
+non-goal, which makes this citation true; it is recorded here rather than silently repaired, because
+a decision that cites a rule into existence is worth being able to find later.

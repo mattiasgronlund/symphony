@@ -90,6 +90,18 @@ itself:
 - Prescribing a commit convention, message format, content-hygiene rule, or branch-protection policy —
   repository-owned Way of Working.
 - A general-purpose workflow engine beyond the VCS/forge operation domain.
+- **Deciding when to retry, how long to back off, or what a budget is worth** — the consumer's. The
+  engine reports what it observed and stops: an operation that failed is reported rather than
+  re-attempted (Section 4.3), a network call that reached its bound is reported rather than re-made
+  (Section 9), and a forge budget is reported rather than paced against (Section 9.2). Which of
+  those to act on, and how, is a decision that depends on what else the consumer intends to spend
+  its budget on and how many other holders of the same credential are spending concurrently —
+  neither visible from inside one invocation.
+  - The `await_checks` operation (Section 4.1) is the one bounded exception, and it is an exception
+    to *waiting* rather than to *deciding*. It executes a wait the consumer parameterizes — the
+    bound, the interval and the budget floor are all invocation arguments (Section 8.1) — and
+    answers none of the three questions above for itself. Supplied no arguments it makes a single
+    read and cannot loop.
 
 ## 3. Architecture
 
@@ -265,6 +277,17 @@ work branch reaches, rather than leaving the arrangement to each backend.
   composing its title and body (Section 10.2). Gated at `before:create_pr`.
 - `merge` — merge the pull request using the configured strategy (Section 6.8). Gated at
   `before:merge`; a squash strategy applies the `pr_to_squash` transform (Section 10.3).
+- `await_checks` — read the pull request's required-check state (Section 9.2 `checks_state`) until
+  one of four conditions holds: the checks completed successfully, they completed and did not pass,
+  a bound the invocation supplied was reached, or a budget floor the invocation supplied was
+  reached (Sections 4.3, 8.1). Gated at no fixed position. Read-only: it changes none of the three
+  things that term quantifies over, and in particular it does not merge — the state it reports is
+  the state a subsequent `merge` would act on, not an action on it. Each read is conditional where
+  the consumer carried a validator forward and the backend supports one (Sections 8.1, 9.2), so a
+  loop that finds nothing changed costs a loop's worth of unchanged answers rather than of full
+  reads. It exists because the alternative way to poll is to re-dispatch `merge` until it stops
+  reporting `checks_pending`, which asks a cheap question with a mutating request — charged at a
+  mutation's cost, and carrying whatever a refused merge request costs on a given forge.
 - `pull` — update the local work branch from its remote counterpart, preserving the commits already on
   the branch: the counterpart is merged in, and no commit on the branch is rewritten, dropped, or
   re-parented (Section 11). `pull:conflict` is therefore a merge conflict, which the caller resolves and
@@ -278,6 +301,9 @@ An engine MAY define additional operations and their `before:<op>` positions; th
 the required set and the four positions `before:commit`, `before:push`, `before:create_pr`,
 `before:merge` are the required lifecycle positions. `provision` has none, for the reason its entry
 states: the policy that would carry the gate is not readable when the operation must first run.
+`await_checks` has none for a different reason: a gate before a wait would run a unit that inspects
+nothing and blocks nothing worth blocking, the operation acting on nothing and reading a state the
+repository's own units cannot influence.
 
 A gated operation's position runs as part of dispatching it. The engine runs `before:<op>` whenever
 `<op>` is dispatched — by a front-end sequence (Sections 12.2, 12.3), by a `[policy]` `run_op` edge
@@ -335,7 +361,8 @@ and `blocked` and `hook_unanswered` for every operation gated at a lifecycle pos
 
 Two further reasons are carried with `(any forge)` in place of an operation: `rate_limited` and
 `forge_unavailable` are defined for every operation whose forge call the condition prevented —
-`push`, whose `pr_state` read a forge answers (Section 4.1), `create_pr` and `merge`.
+`push`, whose `pr_state` read a forge answers (Section 4.1), `create_pr`, `merge`, and
+`await_checks`, whose every read is one.
 
 | Operation | Reason | Class | Default need | Meaning |
 |-----------|--------|-------|--------------|---------|
@@ -374,6 +401,10 @@ Two further reasons are carried with `(any forge)` in place of an operation: `ra
 | `merge` | `conflict` | `needs_caller` | `resolve_conflicts` | The merge would conflict. |
 | `merge` | `head_moved` | `needs_caller` | `reread_then_retry` | The pull request's head advanced after it was read; re-read then retry. |
 | `merge` | `rejected` | `error` | — | Branch protection or forge policy refused the merge. |
+| `await_checks` | `ok` | `done` | — | The required checks completed successfully. |
+| `await_checks` | `checks_failed` | `error` | — | The required checks completed and did not pass. |
+| `await_checks` | `still_pending` | `needs_caller` | `await_checks` | A supplied bound was reached with checks still pending (Section 8.1). |
+| `await_checks` | `budget_floor` | `needs_caller` | `retry_after` | A supplied budget floor was reached with checks still pending (Sections 8.1, 9.2). |
 | `pull` | `ok` | `done` | — | The local branch was updated. |
 | `pull` | `conflict` | `needs_caller` | `resolve_conflicts` | The merge of the remote counterpart stopped on conflicts. |
 | `pull` | `identity_missing` | `needs_caller` | `supply_identity` | No caller-supplied commit identity is available for the merge commit (Sections 8.6, 10.1). |
@@ -486,6 +517,22 @@ the repair is the same shape in each case, and the condition is spelled as a tok
 what diagnoses are both branchable. A backend MUST NOT report a permanent refusal under either
 reason; a forge that refuses a request it will refuse identically on every retry is that operation's
 own `error`-class result.
+
+`await_checks:still_pending` and `await_checks:budget_floor` both end a wait that found the checks
+still running, and they are two reasons because the repairs differ: one is met by waiting longer and
+the other by waiting for a bucket to refill, and a consumer that could not tell them apart would
+raise the wrong bound — extending a deadline that was never the constraint, or conserving a budget
+that was never short. Neither is `rate_limited`: nothing refused anything, and the loop did what it
+was told for as long as it was told to. `checks_failed` is `error` and mirrors `merge:checks_failed`
+because there is nothing left to wait for, which is the one outcome of the four that no further
+waiting changes.
+
+The `await_checks` **need** and the `await_checks` **operation** share a spelling deliberately.
+`merge:checks_pending` has carried that need since this registry was written, and the operation is
+now the thing that meets it: a consumer reading `need: await_checks` previously had to build a loop
+and can now dispatch the operation the need is named after. Needs and operations are separate
+vocabularies (Sections 4.1, 8.4), so nothing is ambiguous, and the shared name is the contract
+describing its own remedy at the one point where it used to send a caller away to write machinery.
 
 The version-control transport gains no transient reason here. A git remote publishes no budget and
 no reset time, so `rate_limited`'s informed repair would have nothing to be informed by, and
@@ -713,6 +760,14 @@ re-entries (Section 5.5). The bound's value is `Implementation-defined` and MUST
 MUST hold the configured value to the same floor. The floor's exact value is arbitrary; that it is
 fixed is not, because it is what keeps two engines with different bounds in agreement on every policy
 that terminates within it.
+
+An `await_checks` dispatch counts **once**, however many reads it makes (Sections 4.1, 8.1). Its
+reads are bounded by the await parameters the invocation supplied, so the two bounds measure
+different things and neither substitutes for the other: this one counts how many operations a policy
+traversal runs, and that one counts how long one operation waits. Counting each read here would make
+a policy's flow budget depend on how long a CI run happened to take, so a policy that terminates on
+a fast build and exhausts the bound on a slow one — which is the one thing this bound exists to keep
+two engines agreeing about.
 
 The bound is a count, not a cycle detector. A repeated `(trigger, edge)` pair is ordinary rather
 than pathological: `push:non_fast_forward → integrate → push` is the built-in routing (Section
@@ -1356,6 +1411,13 @@ is not open or whose required checks have not passed, surfacing the correspondin
 It merges the head it read: where the pull request's head advances between the read and the merge,
 nothing is merged, and `land` re-reads and retries within the flow bound (Sections 5.6, 12.3).
 
+`land` MAY be invoked to await first. Under `--await` — or whatever the front-end's encoding for it
+is (Section 8.1) — it dispatches `await_checks` and then the `merge` it already runs, ending on the
+await's own result where that result is not `ok`. It is a composition of two operations this
+specification already defines and introduces no sequencing rule of its own: a `land` that awaits and
+a `land` preceded by a separate `await_checks` invocation reach `merge` in the same state, the
+difference being how many invocations the consumer made.
+
 ### 7.3 The Embedded-Driver Contract
 
 An embedded driver invokes the same executor programmatically. It:
@@ -1385,8 +1447,8 @@ structured input and output. The contract is the same either way; only the encod
 The entry points are the front-end sequences and the individual operations:
 
 - `ship`, `land` — the front-end sequences (Section 7).
-- `provision`, `status`, `diff`, `commit`, `integrate`, `push`, `create_pr`, `merge`, `pull` —
-  individual operations (Section 4.1), for a driver that composes its own sequence.
+- `provision`, `status`, `diff`, `commit`, `integrate`, `push`, `create_pr`, `merge`, `pull`,
+  `await_checks` — individual operations (Section 4.1), for a driver that composes its own sequence.
 
 Common arguments: the identity the work branch is derived from (Section 6.3), the commit identity
 the commits an entry writes are attributed to (Section 10.1), a message input for
@@ -1532,6 +1594,27 @@ Sections 9.1 and 9.2 are separate to prevent. A parameter a backend cannot use i
 backend's own `failed` at first use rather than a shape the engine judged, as a coordinate it cannot
 use is.
 
+Four **await parameters** bound the `await_checks` operation (Section 4.1). All are OPTIONAL, and an
+invocation supplying none makes a single read and cannot loop:
+
+- `await_bound_ms` (OPTIONAL) — the overall wall-clock bound on the wait.
+- `await_max_reads` (OPTIONAL) — the greatest number of reads the operation makes.
+- `await_interval_ms` (OPTIONAL) — the least time between two reads.
+- `await_budget_floor` (OPTIONAL) — a bucket name and a `min_remaining`, compared against the
+  snapshot each read observes (Section 9.2). The bucket is named by the consumer because bucket
+  identity is the forge's and the engine normalizes none.
+
+Reaching either of the first two ends the wait with `await_checks:still_pending`; reaching the
+fourth ends it with `await_checks:budget_floor` (Section 4.3).
+
+These are the consumer's on the same footing as the access parameters and the credential pair, and
+for the same reason Section 2.2 states: the engine compares against numbers it was handed and
+chooses none of them. How long a wait is worth, how often to ask, and how much remaining budget is
+too little are decisions that depend on what else the consumer intends to spend and how many other
+holders of the same credential are spending concurrently — neither of which is visible from inside
+one invocation. Remove the arguments and there is no loop; supply different ones and the same engine
+waits differently.
+
 A **network bound** names how long the engine waits for one network call (Section 9):
 
 - `network_bound_ms` (OPTIONAL) — the bound applied to each network call an invocation makes. It
@@ -1563,9 +1646,11 @@ state the consumer already holds, so a read answers only where the state has mov
 9.2):
 
 - `pr_state_validator` (OPTIONAL) — the validator a previous invocation returned in `outputs`
-  (Section 8.2). Supplied, the engine presents it on the `status` read and the forge MAY answer
-  `unchanged`; absent, the read is unconditional.
-  - Default: unset — an unconditional read.
+  (Section 8.2). Supplied, the engine presents it on the `status` read and on each `await_checks`
+  read (Sections 4.1, 9.2), and the forge MAY answer `unchanged`; absent, the read is unconditional.
+  Within one `await_checks` the engine carries the validator forward from each read to the next, so
+  a loop presents one after its first read whether or not the invocation supplied one.
+  - Default: unset — an unconditional first read.
 
 The engine holds it opaque, as it holds the forge repository coordinate and the two access
 parameters opaque: it takes one, supplies it to the forge backend, and interprets nothing about it.
@@ -1601,7 +1686,8 @@ neither beyond it.
 
 The consumer-supplied values this section names — `local_vcs` and `forge`, the forge repository
 coordinate, the `remote`, `policy_branch`, `base_branch` and `base_branch_allowed`, `provision`'s
-two locations, the two access parameters, `network_bound_ms`, `forge_parameters` and the credential
+two locations, the two access parameters, `network_bound_ms`, the four await parameters,
+`forge_parameters` and the credential
 pair — `pr_state_validator` excepted, for the reason its entry states — MAY be read
 by the engine from a **consumer configuration**: a consumer-owned file, distinct from
 `repo.policy.toml` and never sourced from the repository. Its discovery precedence is
@@ -2281,6 +2367,16 @@ Realizes the pull-request and review operations. Required:
   complete is a state it could not determine and not an absent pull request — including an
   enumeration that reached a bound the backend imposes, which it MUST document (Section 13.3),
   because an incomplete search answers nothing.
+- `checks_state(work_branch, known_validator)` → the aggregate state of the pull request's required
+  checks — pending, passed, or failed — none where the forge reports no required checks for it,
+  `unchanged` where `known_validator` was presented and the state has not moved since that validator
+  was issued, or that the state could not be determined. The four answers and the prohibition on
+  answering `unchanged` without having asked are `pr_state`'s, above, and hold here for the same
+  reasons; a state the backend could not determine MUST NOT be answered as no required checks,
+  because a pull request with no checks is mergeable and one whose checks could not be read is not.
+  It realizes `await_checks` (Section 4.1) and exists so that check state is readable without
+  dispatching a `merge`: before it, the only way to learn whether checks had passed was to ask a
+  question whose favourable answer merged the work.
 - `request_merge(pr, strategy, expected_head)` → `merge:*`, honoring required checks and branch
   protection (a forge refusal surfaces as `merge:rejected`). `expected_head` is the head `pr_state`
   answered when the pull request was read at `before:merge` (Sections 10.3, 12.3). The capability
@@ -2779,6 +2875,16 @@ A conforming engine SHOULD include tests covering:
   `before:commit` read it creates no commit and yields `worktree_moved` rather than `ok` or
   `nothing_to_commit`, while a `worktree_revision()` that could not determine an identity yields
   `commit:failed` rather than a commit conditioned on nothing (Sections 4.3, 6.6, 9.1).
+- The bounded wait: an `await_checks` exits at each of its four terminal conditions and reports the
+  matching reason — checks passed, checks failed, a supplied bound reached (`still_pending`), a
+  supplied budget floor reached (`budget_floor`) — and the last two are distinguishable, so a
+  consumer can tell which bound to raise (Sections 4.1, 4.3, 8.1); an invocation supplying no await
+  parameter makes exactly one read and does not loop; reads honour `await_interval_ms`; each read
+  after the first presents the validator the previous read returned, whether or not the invocation
+  supplied one (Sections 8.1, 9.2); a `checks_state` that could not be determined is not answered as
+  no required checks, since a pull request with none is mergeable and one whose checks could not be
+  read is not (Section 9.2); and the whole dispatch counts once against the flow bound however many
+  reads it made (Section 5.6).
 - Response drift: a forge response missing a field a capability depends on yields an undetermined
   answer and the refusing result, distinguishable from the response that legitimately carries no
   pull request — so a renamed field does not let `create_or_update_pr` open a second pull request,
@@ -3095,6 +3201,9 @@ A conforming engine SHOULD include tests covering:
   and `retryable` carried on every escalation.
 - A bound on every network call, configurable to at least 600 seconds, so no unit the engine waits
   on is unbounded and the invocation exits whatever the far side does.
+- The `await_checks` operation and its `checks_state` capability, bounded entirely by
+  consumer-supplied parameters, counting once against the flow bound, and reading conditionally
+  where the backend supports it — with check state readable without dispatching a `merge`.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, every commit the engine writes attributed to the supplied commit identity, a scan reached
   through a policy edge at a lifecycle position rather than through a key of its own, and a

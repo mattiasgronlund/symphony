@@ -29,7 +29,8 @@
       { "token": "push", "read_only": false, "lifecycle_position": "before:push" },
       { "token": "create_pr", "read_only": false, "lifecycle_position": "before:create_pr" },
       { "token": "merge", "read_only": false, "lifecycle_position": "before:merge" },
-      { "token": "pull", "read_only": false, "lifecycle_position": null }
+      { "token": "pull", "read_only": false, "lifecycle_position": null },
+      { "token": "await_checks", "read_only": true, "lifecycle_position": null, "note": "Gated at no position for a reason of its own: a gate before a wait would run a unit that inspects nothing and blocks nothing worth blocking. Counts once against the flow bound however many reads it makes (Section 5.6)." }
     ]
   },
 
@@ -109,6 +110,14 @@
       { "token": "pull:identity_missing", "operation": "pull", "reason": "identity_missing", "class": "needs_caller", "default_need": "supply_identity" },
       { "token": "pull:failed", "operation": "pull", "reason": "failed", "class": "error", "default_need": null, "universal": true },
       { "token": "pull:unsupported", "operation": "pull", "reason": "unsupported", "class": "error", "default_need": null, "universal": true },
+      { "token": "await_checks:ok", "operation": "await_checks", "reason": "ok", "class": "done", "default_need": null },
+      { "token": "await_checks:checks_failed", "operation": "await_checks", "reason": "checks_failed", "class": "error", "default_need": null },
+      { "token": "await_checks:still_pending", "operation": "await_checks", "reason": "still_pending", "class": "needs_caller", "default_need": "await_checks", "note": "A supplied bound was reached with checks still pending. Separate from `budget_floor` because the repairs differ: this one is met by waiting longer." },
+      { "token": "await_checks:budget_floor", "operation": "await_checks", "reason": "budget_floor", "class": "needs_caller", "default_need": "retry_after", "note": "A supplied budget floor was reached with checks still pending; met by waiting for a bucket to refill rather than by raising the wait." },
+      { "token": "await_checks:rate_limited", "operation": "await_checks", "reason": "rate_limited", "class": "needs_caller", "default_need": "retry_after", "forge_universal": true },
+      { "token": "await_checks:forge_unavailable", "operation": "await_checks", "reason": "forge_unavailable", "class": "needs_caller", "default_need": "retry_after", "forge_universal": true },
+      { "token": "await_checks:failed", "operation": "await_checks", "reason": "failed", "class": "error", "default_need": null, "universal": true },
+      { "token": "await_checks:unsupported", "operation": "await_checks", "reason": "unsupported", "class": "error", "default_need": null, "universal": true },
 
       { "token": "status:ok", "operation": "status", "reason": "ok", "class": "done", "default_need": null },
       { "token": "status:failed", "operation": "status", "reason": "failed", "class": "error", "default_need": null, "universal": true },
@@ -301,7 +310,8 @@
       { "token": "push", "kind": "operation" },
       { "token": "create_pr", "kind": "operation" },
       { "token": "merge", "kind": "operation" },
-      { "token": "pull", "kind": "operation" }
+      { "token": "pull", "kind": "operation" },
+      { "token": "await_checks", "kind": "operation" }
     ]
   },
 
