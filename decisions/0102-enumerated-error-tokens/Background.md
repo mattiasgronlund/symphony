@@ -114,6 +114,65 @@ carried 59 tokens across 8 groups before this slice and will carry 84 across 11,
 emitting one type per group now has three names in two enums. The relationship is stated in the
 group's `note` rather than left for a code generator to trip over.
 
+## Review finding — the deferral list was audited one bullet deep
+
+A comment on issue #54 (2026-08-17, after this decision was drafted) reports the same asymmetry
+three more times, from building `symphony-model` against Sections 4, 7.1, 7.2 and 14.1: Section
+14.1's nine failure classes, Section 7.1's six orchestration states, and Section 7.2's eleven phases
+are all prose enumerations a conforming implementation must spell, and none is published. All three
+counts check out against the document.
+
+**The finding this decision has to answer for is its own.** This decision rewrote the "Deferred to
+later slices" list's first bullet and narrated why the old reason was wrong, which makes the whole
+list read as re-derived. It was not. Two of the three remaining bullets carry reasons the new
+evidence undercuts, and one set is absent from the list entirely:
+
+- **Section 7.1's states are deferred behind a reason belonging to Section 7.3's triggers.** The
+  bullet reads "the trigger vocabulary is shared with the engine's action-policy machine, so the two
+  registries would have to agree on which document owns each token" — true of the triggers, and not
+  of the six states, which are Symphony's internal claim state and are shared with nothing.
+  `Provisioning` is named in a Section 17.4 check and in Section 18.2. This is the same shape as the
+  defect this decision repaired one bullet over: a set deferred behind a blocker that is not about
+  it. That it recurred inside the very change that named the pattern is the more useful half of the
+  finding.
+- **Section 14.1's reason is half true.** "Named in prose as classes rather than as tokens an
+  implementation emits" — they are indeed not emitted, nothing puts a failure class on a wire. But
+  emission was never the property that matters here; being branched on is, and Sections 17.2, 17.4,
+  18.1.4 and 19 name them in backticks as the values a conforming implementation classifies to.
+- **Section 7.2 is in no bullet at all.** An omission with no reason attached, which is worse than a
+  reason that has gone stale, because nothing signals it was considered.
+
+**Two corrections to the report, neither weakening it.** It attributes the assertions to Section
+17.1; they are in Sections 17.2 (`Engine Invocation Failures`), 17.4 (`Repository Provisioning
+Failures`, `Provisioning`), 18.1.4 and 19, and Section 17.1 names none of them — which strengthens
+the case, since Section 19 is the Conformance Statement. And Section 7.2's phases are asserted
+nowhere in Sections 17, 18 or 19; Section 11.6 names four (`Succeeded`, `Failed`, `TimedOut`,
+`Stalled`) as the run outcomes driving tracker transitions. So of the three sets, Section 7.2 rests
+on the drift argument alone and should not be carried on the assertion argument the other two have.
+
+**The exhaustiveness question the report asks, answered.** It closed its own Section 14.1 enum at
+nine and asked whether a group would take `exhaustive: true` (confirming that reading) or `false`
+(contradicting it). It takes **`false`**, and the enum closure is still right, because the two are
+not the same question — 0071 settled this shape for `events`: *openness is a property of the set,
+not of the names*. The set is demonstrably open: Section 8.8 defines `token_budget_exceeded` as a
+failure category, Section 14.1's closing note names it as an example of one outside the core list,
+and a Section 17.4 check asserts its parked disposition. So a tenth category exists in the document
+today. What that does **not** require is tolerating an unrecognized class at runtime, which is what
+closing an enum is about: the report's argument — a failure class never arrives from outside, and
+Section 14.2 gives every class a distinct recovery, so an unknown class would be a recovery nobody
+can select — holds. An implementation shipping no such extension produces exactly nine; one shipping
+Section 8.8 produces ten and needs the tenth. `exhaustive: false` describes the set; nine describes
+that build.
+
+**Not folded into this decision.** The report frames its ask as one decision rather than four, and
+the reason is sound: the shape question — whether a group's token is Section 14.1's title as written
+or a slug — has to be answered once for a rule about prose enumerations rather than per group, and
+Section 14.1 already carries both shapes, since `token_budget_exceeded` is a category and is not
+Title Case. That derivation, and the Section 14.1 exhaustiveness ruling it needs in the prose first
+(this decision's own precedent), are a successor decision's. What lands here is the repair to the
+list this decision left half-audited: the preamble says how deep the audit went, the two challenged
+reasons carry the challenge, and Section 7.2 gets a bullet.
+
 ## Options considered
 
 ### Scope

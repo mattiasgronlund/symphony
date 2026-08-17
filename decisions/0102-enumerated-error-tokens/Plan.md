@@ -127,31 +127,43 @@ decision publishes what they already state.
     publish that would not be invented. Done-condition: the bullet no longer cites Sections 5.5, 11.4
     or 10.6, and no longer gives the per-entry requirement-level reason.
 
-15. **`conformance/README.md` — the surfaced findings.** Ensure "Surfaced findings" records the
+15. **`conformance/README.md` — the deferral list states how deep the audit went.** Ensure the
+    "Deferred to later slices" preamble records that this decision re-derived the first bullet only,
+    that the remaining reasons stand as written, and that two are under challenge (issue #54's
+    comment). Ensure the Section 7.1 bullet carries the challenge that its stated reason is about
+    Section 7.3's triggers rather than the six states; ensure the Section 14.1 bullet carries the
+    challenge that the classes are branched on and named in backticks by Sections 17.2, 17.4, 18.1.4
+    and 19, the token-shape question, and that a group takes `exhaustive: false` because
+    `token_budget_exceeded` is a category outside the nine; and ensure Section 7.2's run-attempt
+    phases have a bullet, since they had none. Done-condition: no bullet in the list asserts a
+    reason the document contradicts without saying so, and every prose enumeration known to be
+    unpublished appears.
+
+16. **`conformance/README.md` — the surfaced findings.** Ensure "Surfaced findings" records the
     Section 17.3 asymmetry (four RECOMMENDED tracker categories required by name in `Core
     Conformance` checks) as **open**, and the Section 10.6 / Section 10.4 name overlap as recorded
     rather than repaired. Done-condition: both findings are readable without reference to this
     decision folder.
 
-16. **`prompt-rendering.json` — the `description` cites the level.** Ensure the description's
+17. **`prompt-rendering.json` — the `description` cites the level.** Ensure the description's
     strict-mode sentence attributes the `template_render_error` requirement to Section 5.5's REQUIRED
     spellings rather than asserting a MUST the specification did not carry, and states the
     condition-not-stage rule for a reader of the corpus alone. Done-condition: every MUST in the file
     is traceable to a MUST in `SPEC.md`.
 
-17. **`prompt-rendering.json` — a `template_parse_error` vector.** Ensure a failure vector exercises a
-    body that is not well-formed template syntax, expecting `template_parse_error`, so the
-    classification rule of step 3 is checkable rather than only stated. Use the `iterate-labels`
+18. **`prompt-rendering.json` — a `template_parse_error` vector.** Ensure a failure vector
+    exercises a body that is not well-formed template syntax, expecting `template_parse_error`, so
+    the classification rule of step 3 is checkable rather than only stated. Use the `iterate-labels`
     template with its closing tag removed, so the contrast with the passing vector is the malformation
     alone. Done-condition: `python3 -c "import json;
     d=json.load(open('conformance/vectors/prompt-rendering.json'));
     print(sorted({v['expect'].get('error') for v in d['vectors']} - {None}))"` prints both
     `template_parse_error` and `template_render_error`.
 
-18. **`CONFORMANCE-STATEMENT-TEMPLATE.md` — the new `MUST document` obligation.** Ensure Section 4.1's
-    table carries a row for the additional error classes an implementation defines beyond Section
-    5.5's five, with a resolution naming the tokens and their gating, or `none`. Done-condition: the
-    obligation step 2 introduces has a place to be resolved.
+19. **`CONFORMANCE-STATEMENT-TEMPLATE.md` — the new `MUST document` obligation.** Ensure Section
+    4.1's table carries a row for the additional error classes an implementation defines beyond
+    Section 5.5's five, with a resolution naming the tokens and their gating, or `none`.
+    Done-condition: the obligation step 2 introduces has a place to be resolved.
 
 ## Cross-cutting sync
 

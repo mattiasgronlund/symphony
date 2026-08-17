@@ -3712,7 +3712,22 @@ publish that would not be invented. Two findings recorded rather than fixed: Sec
 four of Section 11.4's RECOMMENDED tokens by name in `Core Conformance` checks, the same asymmetry
 one section over; and Sections 10.6 and 10.4 share three spellings (`turn_failed`, `turn_cancelled`,
 `turn_input_required`), which is the useful naming rather than a collision, now stated in the group
-note. Reconsider the Section 11.4 level when a second tracker adapter lands and Section 17.3's four
+note. **Review finding, recorded rather than folded in:** a comment on issue #54 reports the same
+asymmetry three more times — Section 14.1's nine failure classes, Section 7.1's six orchestration
+states, Section 7.2's eleven run-attempt phases — and the finding this decision answers for is its
+own, because rewriting the deferral list's first bullet made the whole list read as re-derived when
+only that bullet was. Section 7.1's states sit behind a reason that is about Section 7.3's triggers;
+Section 14.1's reason ("not tokens an implementation emits") is true of emission and beside the
+point, since Sections 17.2, 17.4, 18.1.4 and 19 name the classes in backticks; and Section 7.2 had
+no bullet at all. That the defect this decision named recurred inside the same change is the more
+useful half of the finding. The list now states how deep the audit went and carries both challenges;
+the general rule the report asks for — one rule for prose enumerations, which must first fix whether
+a token is Section 14.1's title or a slug, a question Section 14.1 already answers both ways since
+`token_budget_exceeded` is a category and is not Title Case — is a successor decision's. That tenth
+category also answers the report's direct question: a Section 14.1 group takes `exhaustive: false`,
+while its own closed nine-value enum stays right, because openness is a property of the set and not
+of the names (0071). Reconsider the Section 11.4 level when a second tracker adapter lands and
+Section 17.3's four
 are asserted against it; reconsider the level field when an entry needs a level its group does not
 state; reconsider Section 10.8 when its reason codes are enumerated rather than illustrated. Depends
 on 0071 and 0048; relates to 0056, 0045, 0046 and 0002. Accepted and applied to `SPEC.md` (Sections

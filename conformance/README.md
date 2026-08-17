@@ -126,7 +126,8 @@ token.
 ### Deferred to later slices
 
 Token sets that are conformance-relevant but need their own derivation work, and are not authored
-here rather than guessed at:
+here rather than guessed at. Decision 0102 re-derived the first bullet only; the reasons below it
+stand as they were written, and two are under challenge (issue #54, comment of 2026-08-17).
 
 - **Brokered-result reason codes** (Section 10.8) — the one error set still deferred, and on a
   different reason from the three published in the error slice. Section 10.8 introduces its codes
@@ -139,9 +140,21 @@ here rather than guessed at:
   costs the one `requirement_level` field documented above.
 - **Orchestration states and transition triggers** (Sections 7.1, 7.3, 11.6) — the trigger
   vocabulary is shared with the engine's action-policy machine, so the two registries would have to
-  agree on which document owns each token.
+  agree on which document owns each token. Under challenge: that reason is about the triggers.
+  Section 7.1's six orchestration states are not triggers and are not shared with the engine's
+  machine, and `Provisioning` is named in a Section 17.4 check and again in Section 18.2 — so the
+  states may be separable from the bullet they are bundled into.
+- **Run attempt phases** (Section 7.2) — eleven identifier-shaped phases, recorded here because
+  they were omitted from this list altogether. No Section 17, 18 or 19 check names one; Section 11.6
+  names four (`Succeeded`, `Failed`, `TimedOut`, `Stalled`) as the run outcomes that drive tracker
+  transitions, so the case for a group rests on drift alone rather than on an existing assertion.
 - **Failure classes** (Section 14.1) — named in prose as classes rather than as tokens an
-  implementation emits.
+  implementation emits. Under challenge: they are not emitted, but they are branched on and named in
+  backticks by Sections 17.2, 17.4, 18.1.4 and 19. Deriving a group would also have to fix what the
+  token is, since the nine are Title Case (`Workflow/Config Failures`) while the tenth category the
+  document defines — `token_budget_exceeded` (Sections 8.8, 14.1, and a Section 17.4 check) — is
+  snake_case. That tenth also settles the set's openness: it is a failure category outside the nine,
+  so a group for Section 14.1 takes `exhaustive: false`.
 - **Snapshot and API response shapes** (Sections 13.3, 13.8.2) — RECOMMENDED baselines an
   implementation MAY extend, not a fixed vocabulary.
 
