@@ -155,6 +155,7 @@ Two interpretation notes apply:
 | `vectors/exit-codes.json` | `exit_code_for_status` | Sections 8.2, 8.3, 8.5 |
 | `vectors/policy-validation.json` | `validate_policy` | Sections 4.1, 5.4, 5.6, 6.1, 6.4, 6.6, 6.7, 6.11, 8.5, 10.2 |
 | `vectors/identity-precondition.json` | `requires_commit_identity` | Sections 8.1, 8.6, 12.2, 12.3 |
+| `vectors/base-precondition.json` | `requires_base_branch` | Sections 6.4, 8.1, 8.6, 12.3 |
 | `vectors/compose-envelope.json` | `compose_envelope` | Sections 4.3, 5.2, 5.4, 8.2, 8.4 |
 
 99 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
@@ -220,7 +221,10 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   The reason tokens themselves are in `vocabulary.json` under `precondition_reasons`. The one half
   that is determined by the invocation alone — which entry points require an identity at all — is
   covered by `identity-precondition.json`; what a dispatch does where no identity was required
-  (`identity_missing`, Section 4.3) needs a backend and stays here.
+  (`identity_missing`, Section 4.3) needs a backend and stays here. `base-precondition.json` covers
+  the same half for the base, which the policy source scopes rather than the entry point alone:
+  under `target_branch` the base is what locates the policy, so every entry but `provision` requires
+  one and requires it before validation (Sections 6.4, 8.6).
 - **Base-ref resolution and the acquire/use split** (Sections 6.4, 9.1) — which copy of the base a
   checkout holds, whether it holds one at all, and whether an acquisition failed are properties of a
   real checkout with a real remote. That covers the multi-remote read, `base_unavailable` from a failed

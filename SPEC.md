@@ -1630,7 +1630,9 @@ Configuration:
     - Default: `policy_branch`.
     - `target_branch` reads it from the pull-request target itself, so no separate branch is
       needed. What that gives up is stated in Section 15.4; it is an operator's choice to make
-      knowingly, not a convenience.
+      knowingly, not a convenience. The target is then REQUIRED from the issue or from
+      `vcs.base_branch`, since it is what says where the Way of Working is read from and
+      `repo.policy.toml` cannot supply it (below).
   - `policy_branch` (string) — the branch `repo.policy.toml`'s host-side-executed parts are read
     from (Section 15.4). REQUIRED under `policy_source = "policy_branch"`, and it has no default
     there, because every default that resolves to the pull-request target would make the trust root
@@ -1676,6 +1678,13 @@ from three sources, most specific first:
 1. the issue, where the deployment supplies a per-issue target (below);
 2. `vcs.base_branch`, the operator's default for the repository;
 3. the base branch in `repo.policy.toml`, which the repository states for itself.
+
+Under `vcs.policy_source = "target_branch"` the third source does not apply, and a target from one
+of the first two is REQUIRED. That mode reads host-side Way of Working from the target itself, so
+the target is what says which revision `repo.policy.toml` is read from, and a branch named inside
+that file cannot select the revision the file is read from (`VCSX-CONTRACT.md`, Section 15.4). An
+issue dispatched under that mode with no per-issue target and no `vcs.base_branch` is an engine
+usage/configuration failure rather than a run that picks a default (Section 14.2).
 
 A deployment MAY let an issue name its target. Which carrier does so — a label the operator maps, a
 tracker field, or something tracker-specific — is `Implementation-defined` and MUST be documented,
@@ -3332,12 +3341,14 @@ Working from the revision that makes it safe:
 
   An operator MAY set `vcs.policy_source = "target_branch"` and accept exactly that, which suits a
   deployment with no second party — a solo developer, or a repository nobody outside the operator
-  can open a pull request against. Two things are given up and neither is recoverable by other
+  can open a pull request against. Three things are given up and none is recoverable by other
   configuration: the merge path to the trust root reopens, so a host-side hook change that survives
-  review executes with the operator's credentials on the next run; and any per-branch policy section
-  becomes authorable by whoever can land a pull request. Both are consequences of the mode rather
-  than defects in it, which is why the specification states them here rather than warning against
-  the choice.
+  review executes with the operator's credentials on the next run; any per-branch policy section
+  becomes authorable by whoever can land a pull request; and the repository loses the ability to
+  state its own pull-request target, since the target is what says where the Way of Working is read
+  from — so the issue or `vcs.base_branch` MUST supply one, whatever the operation (Section 9.7).
+  All three are consequences of the mode rather than defects in it, which is why the specification
+  states them here rather than warning against the choice.
 - In-sandbox parts — the `WORKFLOW.md` prompt, its `hooks.workspace` lifecycle hooks, and the
   `hooks.engine` units the `before:commit` gate/scan runs — are read from the **worktree**. An agent
   edit there is harmless: these run inside the sandbox without credentials or host access, and
@@ -4210,7 +4221,9 @@ engine's checklist.
   a configuration in which it equals the resolved target, and by excluding it from permitted
   per-issue targets whatever `vcs.base_branch_allowed` lists. Under `target_branch` neither the
   requirement nor those two refusals apply, and Section 15.4 states what the mode gives up; the
-  pull-request target resolves from the issue, then `vcs.base_branch`, then `repo.policy.toml`
+  pull-request target resolves from the issue, then `vcs.base_branch`, then `repo.policy.toml` under
+  the default mode, while under `target_branch` the third source drops out and a target from one of
+  the first two is REQUIRED, being what says where the Way of Working is read from
   (Sections 9.7, 9.10, 15.4)
 - The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
   writes (post/reply/resolve), advertising a static forge-capability descriptor

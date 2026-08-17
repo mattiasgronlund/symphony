@@ -3571,3 +3571,95 @@ affecting the disposition above. Reconsider the binding if an operator must read
 to learn which content is guarded in a deployment where reading it is what the trust boundary avoids;
 reconsider the single reason if a repository needs to route a broken transform differently from a
 broken gate. Relates to 0081, 0086, 0098, 0057 and 0002.
+
+## 0100 — An edge does not declare its execution context
+
+**State:** Accepted
+**Folder:** [decisions/0100-edge-context-provenance/](decisions/0100-edge-context-provenance/)
+
+Issue #52 reported that Section 6.5 makes an edge's `context` OPTIONAL and "defaulted per the
+action" and that no default is stated for any action, anywhere. The label is not descriptive:
+Section 11 promises an in-sandbox edge receives no credentials, so an unlabelled `run_op` edge
+dispatching `integrate` makes one conforming engine integrate and another fail for want of a
+credential, on the same policy and the same repository, with the policy well formed because the key
+is OPTIONAL. Section 13.3 does not list the choice either, so an engine has the obligation and
+nowhere to publish how it met it, and Section 8.5 makes it a forward problem: an operation added in
+a `MINOR` arrives with no context and no rule to derive one. **Decision 0098 stopped one object
+short for a reason that does not survive checking.** It left edge `context` alone because "an edge's
+context participates in matching, a hook's does not" — but an edge's *execution* context
+participates in no matching. Section 5.3's ladder is over the trigger, Section 5.4's key is
+`(from-context, trigger)` where its own text glosses that as "a transition graph keyed on a
+workflow-state `from`, Section 6.7", and Section 12.1's `match_edge(policy, from_context, trigger)`
+reads the `from` key and the ladder and nothing else. Two different things are called a context on
+one schema object and the sentence collapsed them; the capability being preserved did not exist.
+Measured, the execution context is written 13 times in `VCSX-SPEC.md` and exactly one occurrence
+declares an edge's while exactly one consumes it — the other eleven are a hook's, already derived.
+So: **an edge does not declare its execution context**. The key is removed; the artifact fixes it,
+an edge in `repo.policy.toml` being host-side and one in the consumer's in-sandbox artifact
+in-sandbox, with the consumer tagging each edge while assembling the one merged surface as 0097's
+`load_policy` already does for hooks. The question stops being askable rather than being answered,
+Section 11's guarantee stops resting on an author labelling truthfully — a working-tree edge
+claiming `host_side` is now unwritable rather than forbidden — and the forward problem closes
+outright, since no context is derived from an operation. A policy still carrying the key has it
+ignored under Section 6.1's unknown-key rule; `malformed_policy` was rejected as a carve-out from
+forward compatibility that also refuses documents that were conforming, and because the substituted
+tag is the safe one where it matters. Rejected: a `context` field per operation in
+`vocabulary.json`, which publishes data a consumer genuinely needs but answers what an operation
+*needs* rather than what an edge *may cause*, keeps the mislabelling combination, and only defers
+the `MINOR` problem; and deriving an operation's context from the capabilities it requires, which
+Section 9.1's enumeration nearly supplies for free and which reproduces Section 3.2's list — but
+labels the operation rather than the edge, and makes `status` host-side wherever a forge is
+configured, since `status` reads `pr_state`. Declaring it `Implementation-defined` was rejected as
+making the divergence visible without removing it. What this gives up is one artifact declaring both
+contexts side by side, which is close to vacuous now that a hook carries its own context and the six
+non-`run_op` actions receive neither worktree nor credential. Reconsider if a repository needs a
+trusted-artifact edge to dispatch *without* the credentials the engine holds; the answer then is a
+per-edge assertion about credentials, not a restored `context`. Relates to 0098, 0095, 0097 and
+0002.
+
+## 0101 — Under `target_branch` the base is an argument, not a policy key
+
+**State:** Accepted
+**Folder:** [decisions/0101-base-under-target-branch/](decisions/0101-base-under-target-branch/)
+
+Issue #51 reported that under `policy_source = "target_branch"` the base resolves from a source
+inside the document the mode is trying to locate — decision 0094's bootstrap cycle, one mode over.
+Section 6.4 gives the base three sources with `[base] branch` lowest; Section 8.1 reads host-side
+policy from the pull-request target, which is the base. An invocation supplying no `base_branch`
+against a consumer configuration supplying none has no revision to read a policy from, and the only
+remaining source is inside the unread policy. Nothing names the condition:
+`policy_source_unreadable` says the source could not be read where here it was never named,
+`base_branch_missing` is scoped to entries that need a base where this reaches every entry, and
+`policy_not_found` presumes a source. **The sharper consequence is that Section 8.6's scoping is
+mode-dependent and does not say so** — its sentence that `commit`, `push`, `pull`, `merge`, `land`
+and `provision` "need none and run without one" is false under this mode for the first five, because
+an entry that needs no base to do its work still needs one to locate the policy that governs it,
+which is the argument that section already makes for `policy_branch_missing` and states as the
+reason that reason precedes validation. **A third consequence the issue did not name:** Section
+12.4's `resolve_base` also reads `resolve` and `prefixes`, so `by_prefix` reaches the same cycle by
+a second route and the rule has to be stated over `[base]` rather than over one key of it — which
+also settles that one invocation resolves one base, rather than the located policy re-resolving a
+different operational one. Measured with 0094's own instrument, `policy_source` appears in 0 of 9
+base-resolution vectors and 0 of 38 policy-validation vectors: the mode 0097 introduced and 0098
+extended is exercised by no vector, which is what hid this. So: **under `target_branch`, `[base]`
+contributes nothing to the base**, which resolves from the invocation then the consumer
+configuration alone — Section 8.1's existing sentence about the policy branch applied to the
+argument that plays its role under the other mode. Where neither supplies one, `base_branch_missing`
+whatever the entry, established before validation, so the before-validation set becomes
+mode-dependent — `arguments_unreadable`, `local_vcs_missing`, then `policy_branch_missing` under the
+default mode and `base_branch_missing` under this one — while the ordering rule for every other
+reason holds unchanged. `provision` keeps its exemption, restated rather than created: Section 6.1
+already makes it the one entry that runs where no policy could be read, so it performs no policy
+read to locate. Rejected: minting a precondition reason for the condition, because Section 6.1's
+rule keeps reasons apart where the *repair* differs and the repair here is identical — supply
+`base_branch` — so the token would spend major-stable surface to say what a consumer can read off
+the `policy_source` it configured itself; and removing the mode, which closes the cycle by
+construction and makes Section 11's guarantee unconditional, but puts a reader back to comparing two
+strings to learn which trust regime holds, turns `policy_branch_is_target` from a refusal 0094 added
+deliberately into an opt-in, and rewrites `SPEC.md` Section 15.4's statement of what the mode costs
+as a property of a coincidence between two values. All four copies of the three-source list move
+together (Sections 6.4 and 8.6, `SPEC.md` Sections 9.7 and 18.1) and Section 15.4 gains the third
+thing the mode costs. Reconsider the token if a consumer must distinguish "this entry needs a base"
+from "nothing says where to read the policy from" in automation; reconsider the mode if a deployment
+supplies an operator-level base on every invocation anyway, since it is then paying for a
+convenience it no longer uses. Relates to 0094, 0097, 0098 and 0002.
