@@ -1,118 +1,100 @@
-# Plan — 0103 Which prose enumerations are published, and what their token is
+# Plan — 0103 Which prose enumerations are published, and the trigger vocabulary as data
 
 ## Scope
 
-`SPEC.md`: Section 14.1 "Failure Classes" (each class gains an identifier-shaped token beside its
-prose name), Section 14.2 "Recovery Behavior", Sections 17.2, 17.4 and 18.1.4 (the checks that name
-a class), Section 19 "Conformance Statement", Section 11.6 "Workflow State Machine and Transition
-Triggers" (the run outcomes are named as a published set), and Section 17's registry paragraph.
+`SPEC.md`: Section 11.6 "Workflow State Machine and Transition Triggers" (the trigger spellings gain
+a requirement level and the vocabulary is named as published), Section 6.3 "Dispatch Preflight
+Validation" (an `on` outside the vocabulary is a configuration error), Section 17's registry
+paragraph, and Section 17.3 "Issue Tracker Client".
 
-`conformance/vocabulary.json`: two new groups — `transition_triggers` (Section 11.6's run outcomes)
-and `failure_classes` (Section 14.1's nine, plus the token shape).
+`conformance/vocabulary.json`: one new group, `transition_triggers`.
 
-`conformance/README.md`: the Schema section, the "What the slice covers" table, the not-closed-set
-paragraph, and the "Deferred to later slices" list, which gains the reader test and loses the two
-bullets this decision publishes.
+`conformance/README.md`: the "Deferred to later slices" preamble gains the reader test and every
+bullet states the reader it lacks; the Section 11.6 half of the orchestration bullet is removed as
+published; the coverage table, the closed-set paragraph, and "Surfaced findings".
 
-`CONFORMANCE-STATEMENT-TEMPLATE.md`: the two `MUST document` rows named by failure class, and the
-recovery-disposition table.
-
-Sections 7.1, 7.2 and 7.3 are **recorded, not published**: each keeps a deferral bullet naming the
-reader it lacks.
+Section 14.1 is **not touched**: decision 0104 applies the same rule to it, and the deferral list
+records it as pending that decision rather than as lacking a reader.
 
 ## Steps
 
-1. **`Failure Classes` — each class gains a token.** Ensure every one of the nine carries an
-   identifier-shaped token beside the Title Case name it already has, in the shape Section 14.1
-   already uses for `token_budget_exceeded`. Done-condition: Section 14.1 spells failure categories
-   one way, and a reader can tell for each of the nine what an implementation branches on.
+1. **`Workflow State Machine and Transition Triggers` — the spellings are REQUIRED.** Ensure the
+   `Triggers:` passage states that the ten spellings are REQUIRED: an implementation MUST match a
+   transition's `on` value against these tokens, so a `repo.policy.toml` authored against one
+   implementation binds the same triggers on another. State it over what a consumer can check — the
+   same policy file producing the same transitions — not over an implementation's internal matching.
+   Done-condition: the section carries an RFC 2119 keyword over the spellings, where it carries none
+   today.
 
-2. **`Failure Classes` — the set's openness is stated.** Ensure the closing note's permission for an
-   OPTIONAL extension to define additional categories is stated as the set being open, so the
-   registry can record `exhaustive: false` from the prose rather than from `token_budget_exceeded`'s
-   existence. Done-condition: a reader can tell whether a generated type may close the enum without
-   inspecting Section 8.8.
+2. **`Workflow State Machine and Transition Triggers` — where the vocabulary is published.** Ensure
+   the passage records that the vocabulary is published as data (Section 17), and that the
+   agent-emitted signals are additionally published by the VCS engine's own registry, which is the
+   authority for them (`VCSX-SPEC.md` Section 5.1). Done-condition: a reader of Section 11.6 alone
+   can find the token set without reading Section 17.
 
-3. **`Recovery Behavior` — the recovery mapping uses the tokens.** Ensure Section 14.2's per-class
-   dispositions address each class by its token, keeping the prose name where the prose reads
-   better. Done-condition: every disposition is traceable to exactly one token.
+3. **`Dispatch Preflight Validation` — an unknown trigger is a configuration error.** Ensure the
+   validation-checks list carries: a `tracker.transitions` entry whose `on` is not in Section 11.6's
+   vocabulary is a configuration error. Ensure Section 11.6's existing sentence — "A trigger that
+   fires with no matching `from`-state transition performs no transition" — is not contradicted: it
+   governs a *valid* trigger nobody bound, where this governs a name outside the vocabulary.
+   Done-condition: the two sentences can both be read literally, and a misspelled `on` is rejected
+   before dispatch rather than silently never firing.
 
-4. **The checks that name a class.** Ensure Sections 17.2, 17.4 and 18.1.4 name the token alongside
-   or instead of the prose title, so a conformance check asserts something spelled identically
-   everywhere. Done-condition: `grep -n 'Engine Invocation Failures\|Repository Provisioning
-   Failures' SPEC.md` shows no occurrence outside Sections 14.1 and 14.2 that lacks its token.
+4. **`Test and Validation Matrix` — the registry paragraph.** Ensure the sentence listing the
+   published token sets names the transition triggers (Section 11.6). Done-condition: every group in
+   `vocabulary.json` is traceable to a set this paragraph names.
 
-5. **`Conformance Statement` — the class-named rows.** Ensure Section 19 and
-   `CONFORMANCE-STATEMENT-TEMPLATE.md` Section 4.1's two park-vs-retry rows are keyed by token, so a
-   statement author transcribes a token rather than a title. Done-condition: no row in the template
-   names a failure class only by its prose title.
+5. **`Issue Tracker Client` — the check.** Ensure the bullet beginning "Tracker transitions follow a
+   deterministic policy graph" states that an `on` outside the vocabulary is a configuration error,
+   alongside the duplicate `(from, on)` it already names. Done-condition: the new preflight check
+   has a conformance check behind it.
 
-6. **`Workflow State Machine and Transition Triggers` — the run outcomes are a published set.**
-   Ensure Section 11.6 states that the trigger vocabulary's two origins are published separately —
-   the agent-emitted signals by the engine (`VCSX-SPEC.md` Section 5.1) and the
-   orchestrator-observed run outcomes here — so a reader of Section 11.6 alone can find both.
-   Done-condition: Section 11.6 names where each half is published, and neither document restates
-   the other's half.
+6. **`vocabulary.json` — `transition_triggers`.** Ensure the group exists with `spec_refs` citing
+   Sections 11.6, 8.10 and 9.12, `requirement_level: "REQUIRED"`, `exhaustive: true` (Section 11.6
+   calls the vocabulary closed), and all ten tokens each carrying its condition and `core` (`false`
+   for `tasks:all_closed` and `task:#needs_help`, which the OPTIONAL task-management extension
+   owns). Ensure the `note` records the three origins, that the engine registry's `signals` group
+   also publishes the five agent-emitted tokens and is the authority for them, and that Section 6.3
+   rejects an `on` outside the set. Done-condition: a repository author can validate a
+   `tracker.transitions` `on` value against this group alone.
 
-7. **`Test and Validation Matrix` — the registry paragraph.** Ensure the sentence listing the
-   published token sets names the transition triggers (Section 11.6) and the failure classes
-   (Section 14.1). Done-condition: every group in `vocabulary.json` is traceable to a set this
-   paragraph names.
+7. **`conformance/README.md` — the reader test.** Ensure the "Deferred to later slices" preamble
+   states the test: a prose enumeration is published when something outside the implementation's own
+   source spells it — a repository author writing configuration, a Conformance Statement author
+   filling a table, or a conformance check asserting a value. Done-condition: the list is governed
+   by one re-askable question rather than a reason per bullet.
 
-8. **`vocabulary.json` — `transition_triggers`.** Ensure the group exists with `spec_refs` citing
-   Sections 11.6 and 7.3, `requirement_level: "REQUIRED"` (a repository writes these and Section
-   11.6 calls the vocabulary closed), `exhaustive: true` for the run outcomes it carries, and the
-   five tokens with the condition each names. Ensure the `note` records that the agent-emitted half
-   is `signals` in `conformance/vcsx/vocabulary.json` and is deliberately not restated, and that
-   Section 11.6 makes an unmatched trigger a silent no-op — which is why the spelling is REQUIRED
-   rather than RECOMMENDED. Done-condition: a repository author can check a `repo.policy.toml` `on`
-   value against the two registries and nothing else.
+8. **`conformance/README.md` — every bullet states its reader.** Ensure each remaining bullet names
+   the reader it lacks rather than a historical reason: Section 10.8's codes are unenumerated;
+   Section 7.1's states reach no monitoring surface (Section 13.3 exposes none); Section 7.2's
+   phases are asserted by nothing outside Section 7.2; Section 7.3's events are not a wire
+   vocabulary. Ensure Section 14.1 is recorded as **pending decision 0104**, not as lacking a
+   reader. Ensure the Section 11.6 half of the orchestration bullet is removed as published.
+   Done-condition: no bullet carries a reason that belongs to a different set, and the challenges
+   0102 recorded are resolved rather than left standing.
 
-9. **`vocabulary.json` — `failure_classes`.** Ensure the group exists with `spec_refs` citing
-   Sections 14.1 and 14.2, `exhaustive: false` (step 2), each entry carrying its token, its prose
-   name, its Section 14.2 recovery disposition, and whether it is core or extension-defined (`Node
-   Provisioning Failures` and `Executor Bring-up Failures` are the node-scheduler extension's;
-   `token_budget_exceeded` is the budget extension's). Done-condition: a Conformance Statement
-   author can fill the recovery-disposition table from this group alone.
+9. **`conformance/README.md` — coverage table and closed-set paragraph.** Ensure the table carries a
+   `transition_triggers` row and the closed-set paragraph accounts for it — the first group whose
+   closedness the prose states, which is worth saying beside the groups that are open.
+   Done-condition: the schema section documents every field the file uses.
 
-10. **`conformance/README.md` — the reader test.** Ensure the "Deferred to later slices" preamble
-    states the test this decision names: a prose enumeration is published when something outside the
-    implementation's own source spells it — a repository author writing configuration, a Conformance
-    Statement author filling a table, or a conformance check asserting a value. Done-condition:
-    every bullet in the list states the reader it lacks, so a later reader re-asks one question
-    rather than re-deriving a reason.
-
-11. **`conformance/README.md` — the bullets this decision resolves and the ones it does not.**
-    Ensure the "Orchestration states and transition triggers" bullet is split: Section 11.6's run
-    outcomes are published (step 8), Section 7.1's states and Section 7.3's internal lifecycle
-    events keep bullets naming the missing reader (no snapshot, status surface or API response
-    exposes a state; Section 7.3's events are not a wire vocabulary). Ensure the "Failure classes"
-    bullet is removed as published, and the Section 7.2 bullet records that the measurement in this
-    decision's `Background.md` is its reconsideration check. Done-condition: no bullet carries a
-    reason that belongs to a different set.
-
-12. **`conformance/README.md` — schema, coverage table, closed-set paragraph.** Ensure the group
-    field list documents any new entry field the two groups introduce, the coverage table carries a
-    row for each, and the not-closed-set paragraph states the correct count and each group's reason.
-    Done-condition: the schema documents every field the file uses.
-
-13. **`conformance/README.md` — the surfaced finding.** Ensure "Surfaced findings" records that
-    Section 14.1 spelled failure categories two ways before this decision — nine Title Case titles
-    and one snake_case category — as resolved by step 1. Done-condition: the finding is readable
-    without reference to this decision folder.
+10. **`conformance/README.md` — the surfaced finding.** Ensure "Surfaced findings" records that the
+    ownership question the orchestration bullet deferred behind had been answered by decision 0055
+    before the bullet was written — signals are consumer-raised and have no upstream — as resolved
+    by this decision. Done-condition: the finding is readable without reference to this decision
+    folder.
 
 ## Cross-cutting sync
 
-Section 6.4's config cheat sheet gains nothing: no configuration key changes, though
-`tracker.transitions` values are now checkable against `transition_triggers`. Section 17 is covered
-by steps 4 and 7; Section 18 by step 4; Section 19 by step 5.
+Section 6.4's config cheat sheet: `tracker.transitions` gains no new key, but its validation is now
+stated in Section 6.3 — check the cheat-sheet row does not contradict it. Section 17 is covered by
+steps 4 and 5; Section 18 gains nothing, since no new conformance item is created beyond the check.
 
 ## Anchor changes
 
-**Pending acceptance.** If applied, Section 14.1's nine failure classes gain identifier-shaped
-tokens as new anchors; the Title Case names are retained as prose names, so no anchor is removed.
-Two registry group names are added: `transition_triggers`, `failure_classes`. Nothing is renamed.
+None. No token in `SPEC.md` is renamed, added or removed: Section 11.6's ten triggers gain a
+requirement level and a published group. One registry group name is added: `transition_triggers`.
 
 ## Status
 
-Not started. Proposed pending acceptance; `SPEC.md` is unchanged.
+Applied to `SPEC.md`, `conformance/vocabulary.json` and `conformance/README.md`.

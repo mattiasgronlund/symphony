@@ -9,11 +9,11 @@ jobs:
 
 Both serve the shared enforcement the multi-implementation strategy needs: an implementation
 generates or checks its token spellings from the registry and runs the corpus against its own
-binary, reporting the result in its Conformance Statement (see
-`CONFORMANCE-STATEMENT-TEMPLATE.md`, Section 7 evidence).
+binary, reporting the result in its Conformance Statement (see `CONFORMANCE-STATEMENT-TEMPLATE.md`,
+Section 7 evidence).
 
-`SPEC.md` governs both artifacts. Every value is read from the sections its `spec_refs` cite;
-where a value cannot be read, no entry is authored and the gap is recorded under "Surfaced findings"
+`SPEC.md` governs both artifacts. Every value is read from the sections its `spec_refs` cite; where
+a value cannot be read, no entry is authored and the gap is recorded under "Surfaced findings"
 below.
 
 The engine's own conformance data derives from `VCSX-SPEC.md` and lives in `vcsx/`.
@@ -27,14 +27,15 @@ The engine's own conformance data derives from `VCSX-SPEC.md` and lives in `vcsx
 
 ## Token Registry (`vocabulary.json`)
 
-`SPEC.md` names token sets an implementation is expected to spell exactly — the emitted runtime
-events (Section 10.4), the REQUIRED log context fields (Section 13.1), the neutral token-usage
-record (Sections 4.1.6, 13.5), the usage-ledger entry fields (Section 13.6), the state recovery
-classes and their per-field assignments (Sections 14.3, 4.1.8), the configuration namespaces
-(Sections 5.3, 18.2), and the enumerated error tokens — the workflow and template error classes
-(Section 5.5), the tracker error categories (Section 11.4), and the agent-runner error categories
-(Section 10.6). Each was prose, so an implementation spelled them itself and an upstream rename
-changed nothing downstream until someone read a re-pin diff.
+`SPEC.md` names token sets an implementation — or a repository author — is expected to spell
+exactly: the emitted runtime events (Section 10.4), the REQUIRED log context fields (Section 13.1),
+the neutral token-usage record (Sections 4.1.6, 13.5), the usage-ledger entry fields (Section 13.6),
+the state recovery classes and their per-field assignments (Sections 14.3, 4.1.8), the configuration
+namespaces (Sections 5.3, 18.2), the enumerated error tokens — the workflow and template error
+classes (Section 5.5), the tracker error categories (Section 11.4) and the agent-runner error
+categories (Section 10.6) — and the transition triggers a repository binds in `repo.policy.toml`
+(Section 11.6). Each was prose, so whoever wrote the token spelled it themselves and an upstream
+rename changed nothing downstream until someone read a re-pin diff.
 
 `vocabulary.json` is those sets as data, so a spelling can be generated or checked instead of
 transcribed. It is the same artifact `vcsx/vocabulary.json` is for the engine (decision 0051), on
@@ -77,9 +78,12 @@ In `config_namespaces`, `artifact` names the Section 5 configuration artifact a 
 `operator_policy_config`, `repo_policy_toml`, `workflow_md`, or `repository_owned` where the
 specification splits one key across both repository-owned artifacts by trust (Section 15.4).
 
-In the error groups, `condition` is the condition the specification states the token names, carried
-only where it states one; `error_classes` additionally carries `gating`, Section 5.5's dispatch
-gating behavior, valued `blocks_dispatch` or `fails_attempt`.
+In the error groups and in `transition_triggers`, `condition` is the condition the specification
+states the token names, carried only where it states one; `error_classes` additionally carries
+`gating`, Section 5.5's dispatch gating behavior, valued `blocks_dispatch` or `fails_attempt`. As in
+`config_namespaces`, `core: false` marks a token owned by an OPTIONAL extension rather than by the
+core schema — in `transition_triggers` the two task-state events, which an implementation shipping
+no task model never raises.
 
 ### Using it
 
@@ -88,12 +92,16 @@ gating behavior, valued `blocks_dispatch` or `fails_attempt`.
   build failure rather than a silent divergence. Read `requirement_level` first: a `REQUIRED` group
   is a conformance check, a `RECOMMENDED` one is advisory. Record in the Conformance Statement
   whether it was checked against, and at which revision.
+- **A repository author** — the one reader here who is not an implementer — checks each
+  `tracker.transitions` entry's `on` value against `transition_triggers` before committing
+  `repo.policy.toml`. A tooling author validating that file generates the check from this group; it
+  is closed (`exhaustive: true`), so the check is total.
 - **A reviewer** of a change to `SPEC.md` verifies that every token added, renamed, or removed is
   reflected here in the same change.
 - **A Conformance Statement author** reads `runtime_state_fields` for the "Spec default" column of
   its recovery-class table, `config_namespaces` for the namespace column of its extensions table,
-  and `error_classes` to check that any class it defines beyond the five is resolved in the
-  `MUST document` table.
+  and `error_classes` to check that any class it defines beyond the five is resolved in the `MUST
+  document` table.
 
 ### What the slice covers
 
@@ -109,6 +117,15 @@ gating behavior, valued `blocks_dispatch` or `fails_attempt`.
 | `error_classes` | Sections 5.5, 5.1, 5.2, 5.4 |
 | `tracker_error_categories` | Sections 11.4, 11.7, 11.8 |
 | `agent_error_categories` | Section 10.6 |
+| `transition_triggers` | Sections 11.6, 8.10, 9.12 |
+
+`transition_triggers` is the one group carrying `exhaustive: true`: Section 11.6 states in its own
+words that the trigger vocabulary is closed and that "a repository wires triggers to transitions but
+does not introduce new trigger names", and Section 6.3 rejects an `on` value outside it. A generated
+type for it may close the enum, which is the point — the set exists so a `repo.policy.toml` `on`
+value can be checked before dispatch. Its five agent-emitted and task-state tokens are also
+published by the engine registry as `signals`, which is their authority; they are carried here so a
+repository author validates one field against one vocabulary rather than two registries.
 
 Three groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
 because Section 10.4 permits an adapter to emit events the specification does not name;
@@ -125,9 +142,17 @@ token.
 
 ### Deferred to later slices
 
-Token sets that are conformance-relevant but need their own derivation work, and are not authored
-here rather than guessed at. Decision 0102 re-derived the first bullet only; the reasons below it
-stand as they were written, and two are under challenge (issue #54, comment of 2026-08-17).
+**The test (decision 0103): a prose enumeration is published when something outside the
+implementation's own source spells it** — a repository author writing configuration, a Conformance
+Statement author filling a table, or a Conformance Statement or conformance check asserting a value.
+Not whether the set is an enumeration, but *what reads the spelling and what happens when the
+reading is wrong*: a set nothing reads has no divergence to catch, and publishing it would make the
+registry an inventory rather than a derived view.
+
+So each bullet below names **the reader it lacks**, which is one question a later reader re-asks,
+rather than a reason that has to be re-derived. Decision 0103 introduced this after the previous
+form — a bespoke reason per bullet — went stale four times without anyone noticing, twice inside the
+decisions repairing it.
 
 - **Brokered-result reason codes** (Section 10.8) — the one error set still deferred, and on a
   different reason from the three published in the error slice. Section 10.8 introduces its codes
@@ -138,23 +163,31 @@ stand as they were written, and two are under challenge (issue #54, comment of 2
   which is a distinction the registry would have to carry per entry"; deriving it (decision 0102)
   showed the distinction is per *group* — each section states one level for its whole set — so it
   costs the one `requirement_level` field documented above.
-- **Orchestration states and transition triggers** (Sections 7.1, 7.3, 11.6) — the trigger
-  vocabulary is shared with the engine's action-policy machine, so the two registries would have to
-  agree on which document owns each token. Under challenge: that reason is about the triggers.
-  Section 7.1's six orchestration states are not triggers and are not shared with the engine's
-  machine, and `Provisioning` is named in a Section 17.4 check and again in Section 18.2 — so the
-  states may be separable from the bullet they are bundled into.
-- **Run attempt phases** (Section 7.2) — eleven identifier-shaped phases, recorded here because
-  they were omitted from this list altogether. No Section 17, 18 or 19 check names one; Section 11.6
-  names four (`Succeeded`, `Failed`, `TimedOut`, `Stalled`) as the run outcomes that drive tracker
-  transitions, so the case for a group rests on drift alone rather than on an existing assertion.
-- **Failure classes** (Section 14.1) — named in prose as classes rather than as tokens an
-  implementation emits. Under challenge: they are not emitted, but they are branched on and named in
-  backticks by Sections 17.2, 17.4, 18.1.4 and 19. Deriving a group would also have to fix what the
-  token is, since the nine are Title Case (`Workflow/Config Failures`) while the tenth category the
-  document defines — `token_budget_exceeded` (Sections 8.8, 14.1, and a Section 17.4 check) — is
-  snake_case. That tenth also settles the set's openness: it is a failure category outside the nine,
-  so a group for Section 14.1 takes `exhaustive: false`.
+- **Failure classes** (Section 14.1) — **not deferred: pending decision 0104.** They have a reader,
+  and a demanding one: `CONFORMANCE-STATEMENT-TEMPLATE.md` carries two rows *named by class*, so a
+  statement author transcribes the name by hand, and Sections 17.2, 17.4, 18.1.4 and 19 name classes
+  in backticks. What holds the group up is not the reader test but the token: the nine are Title
+  Case (`Workflow/Config Failures`) while the tenth category the document defines —
+  `token_budget_exceeded` (Sections 8.8, 14.1, and a Section 17.4 check) — is snake_case, so
+  `SPEC.md` answers the shape question two ways and a group cannot be derived until it answers once.
+  0104 proposes `SPEC.md` gain an identifier token per class; that is an anchor change across seven
+  documents, which is why it is its own decision. That tenth category also settles openness — it
+  sits outside the nine — so the group takes `exhaustive: false`.
+- **Orchestration states** (Section 7.1) — **no reader.** `Provisioning` is named in a Section 17.4
+  check and in Section 18.2, but descriptively, and Section 13.3's runtime snapshot returns
+  `running`/`retrying` row lists rather than a state name, so no state reaches a monitoring surface
+  as a value. Reconsider when a snapshot, status surface, or API response exposes one. (The trigger
+  vocabulary this bullet used to be bundled with is now published; see `transition_triggers`.)
+- **Run attempt phases** (Section 7.2) — **no reader.** No Section 17, 18 or 19 check names one.
+  Section 11.6 names four (`Succeeded`, `Failed`, `TimedOut`, `Stalled`) only to *define* the run
+  outcomes — "`run_succeeded` — the run attempt finished in `Succeeded`" — so the trigger a
+  repository writes is `run_succeeded` and `Succeeded` never leaves the document. Reconsider when
+  anything outside Section 7.2 asserts a phase by name; decision 0103's `Background.md` carries the
+  measurement that checks this.
+- **Transition triggers, internal** (Section 7.3) — **no reader.** Seven prose-titled lifecycle
+  events (`Poll Tick`, `Worker Exit (normal)`, …) that drive the orchestrator's own state machine
+  and reach no configuration, wire, or conformance surface. Despite the shared word these share no
+  token with Section 11.6's triggers, which are published.
 - **Snapshot and API response shapes** (Sections 13.3, 13.8.2) — RECOMMENDED baselines an
   implementation MAY extend, not a fixed vocabulary.
 
@@ -171,8 +204,8 @@ with no harness infrastructure. Integration-dependent behaviors are deferred (se
 Each file is a JSON object:
 
 - `function` (string) — the behavior under test. The harness dispatches on this name.
-- `profile` (string) — the Section 17 validation profile the behavior belongs to
-  (`Core Conformance` or `Daemon Conformance`).
+- `profile` (string) — the Section 17 validation profile the behavior belongs to (`Core Conformance`
+  or `Daemon Conformance`).
 - `spec_refs` (array of strings) — the `SPEC.md` sections the expected outputs are derived from,
   verbatim. Expected values are never invented; they are read from these sections.
 - `description` (string) — what the function computes.
@@ -231,11 +264,12 @@ Slice 2 — prompt rendering (decision 0048):
 ## Deferred to later slices
 
 These behaviors are conformance-relevant but not purely deterministic from inputs alone; they need a
-harness with fixtures or live services and belong with the `Real Integration Profile` (Section 17.8):
+harness with fixtures or live services and belong with the `Real Integration Profile` (Section
+17.8):
 
 - Config **secret-provider resolution** and `$VAR` / `~` expansion (Section 17.1) — I/O-bound.
-- **Workspace safety invariants** (Section 9.5, Invariants 1–2: cwd and root containment) — filesystem
-  and process state.
+- **Workspace safety invariants** (Section 9.5, Invariants 1–2: cwd and root containment) —
+  filesystem and process state.
 - **Tracker read/write** surfaces, candidate eligibility over live issues (Section 8.2, 11).
 - **Action-policy machine** outcomes and **message formulation** (Sections 9.8–9.12) — engine-side,
   covered by `VCSX-SPEC.md`'s own matrix.
@@ -263,6 +297,24 @@ guessed-at vector or entry:
   5.5 now states that a class names the condition rather than the stage that detected it, annotates
   all five by condition, and makes the spellings REQUIRED; the corpus gained a
   `template_parse_error` vector so the rule is checked rather than only stated.
+- **A misspelled transition trigger was caught by nothing — resolved (decision 0103).** Section 11.6
+  states a closed trigger vocabulary a repository binds in `repo.policy.toml`, but nothing rejected
+  a name outside it. The engine cannot: to `vcsx` a bare token is a well-formed **signal**, and
+  `VCSX-SPEC.md` Section 5.1 leaves the signal set open because "the consumer raises the token the
+  policy binds", so `unknown_trigger` could not fire on a typo. Section 6.3's enumerated preflight
+  checks did not cover `on` values either, and Section 11.6's "a trigger that fires with no matching
+  `from`-state transition performs no transition" made the result indistinguishable from a real
+  trigger nobody bound. So a policy loaded, validated, dispatched, and the transition silently never
+  fired. Section 6.3 now rejects an `on` outside the vocabulary, which is what makes the REQUIRED
+  spelling observable.
+- **The trigger-ownership question had already been answered — resolved (decision 0103).** The
+  deferral bullet held Sections 7.1, 7.3 and 11.6 behind "the two registries would have to agree on
+  which document owns each token". `VCSX-SPEC.md` Section 5.1 assigns the signal vocabulary to the
+  consumer, and decision 0055 states the consequence outright — "the signal vocabulary is raised by
+  the consumer … and signals have no upstream". Symphony is the consumer; the question was closed
+  before the bullet was written, and nothing re-derives a reason for *not* doing something, which is
+  why it survived. This is the finding that motivated replacing per-bullet reasons with the reader
+  test.
 - **Section 17.3 requires four RECOMMENDED tracker categories by name (open).** Section 11.4
   declares its eleven error categories RECOMMENDED, but Section 17.3's `Core Conformance` checks
   name `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict` and
@@ -279,16 +331,17 @@ guessed-at vector or entry:
   `agent_error_categories` states the relationship in its `note` rather than leaving a generator to
   discover it.
 - **Template syntax is a floor, not a mandate (open).** Section 5.4 says a "Liquid-compatible
-  semantics are sufficient" engine, which pins the strict-failure MUSTs and the `template_render_error`
-  class but leaves the concrete delimiter/filter syntax to the implementation. Because `WORKFLOW.md`
-  is repository-owned and must render on any implementation Symphony targets, the template syntax is
-  effectively a cross-implementation contract; the slice authors the reference vectors in Liquid
-  syntax. Tightening "sufficient" to a normative shared syntax is a spec-clarification candidate.
+  semantics are sufficient" engine, which pins the strict-failure MUSTs and the
+  `template_render_error` class but leaves the concrete delimiter/filter syntax to the
+  implementation. Because `WORKFLOW.md` is repository-owned and must render on any implementation
+  Symphony targets, the template syntax is effectively a cross-implementation contract; the slice
+  authors the reference vectors in Liquid syntax. Tightening "sufficient" to a normative shared
+  syntax is a spec-clarification candidate.
 - **`attempt` "null or absent" versus strict mode (open).** Section 5.4 lists `attempt` as
-  `null`/absent on the first run, but strict variable checking says unknown variables MUST fail. Whether
-  a template that reads `attempt` on the first run renders empty (known-but-null) or fails (absent =
-  unknown) is undetermined, so no first-run `attempt` vector is authored; the slice tests `attempt`
-  only with an integer value. A spec-clarification candidate.
+  `null`/absent on the first run, but strict variable checking says unknown variables MUST fail.
+  Whether a template that reads `attempt` on the first run renders empty (known-but-null) or fails
+  (absent = unknown) is undetermined, so no first-run `attempt` vector is authored; the slice tests
+  `attempt` only with an integer value. A spec-clarification candidate.
 - **`vcs` is not in Section 5.3's top-level key list (open).** Section 6.4's cheat sheet documents
   `vcs.author`, `vcs.actor`, and `vcs.api_key` as operator policy config, but Section 5.3's
   "Top-level operator-config keys" list names only `tracker`, `polling`, `workspace`, `agent`, and

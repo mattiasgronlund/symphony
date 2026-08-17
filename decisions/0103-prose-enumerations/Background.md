@@ -1,58 +1,40 @@
-# Background — 0103 Which prose enumerations are published, and what their token is
+# Background — 0103 Which prose enumerations are published, and the trigger vocabulary as data
 
 ## Context
 
-Issue #54's follow-up comment reports three more prose enumerations a conforming implementation must
+Issue #54's follow-up comment reports three prose enumerations a conforming implementation must
 spell and the registry does not publish — Section 14.1's nine failure classes, Section 7.1's six
 orchestration states, Section 7.2's eleven run-attempt phases — and argues, correctly, that the
-general answer is one decision rather than four: whether the registry grows a rule for prose
-enumerations is a single question, and one instance does not show the pattern.
+general answer is one decision rather than four.
 
-Checking the three turned up a fourth set with a stronger case than any of them, and a shape
-question the specification already answers two different ways.
+Checking the three turned up a fourth set with a stronger case than any of them, an ownership
+question an accepted decision had already answered, and a shape question the specification answers
+two incompatible ways.
 
-### The registry's own test, applied to each set
+## The rule: publish by reader
 
 Decision 0071 created the registry because a spelling transcribed by hand diverges silently: "an
 event renamed upstream changes nothing downstream until someone reads a re-pin diff." So the
 question for a candidate set is not whether it is an enumeration. It is **what reads the spelling,
-and what happens when the reading is wrong.** Ordered by that, the unpublished sets are not peers:
+and what happens when the reading is wrong.**
 
-1. **Section 11.6's run outcomes** — `dispatched`, `pull_request_opened`, `run_succeeded`,
-   `run_failed`, `retries_exhausted`. Written by a **human into `repo.policy.toml`**, drawn from a
-   vocabulary Section 11.6 calls closed, in a repository-owned file that must work on any
-   implementation Symphony targets. Section 11.6 makes a misspelling **silent**: "A trigger that
-   fires with no matching `from`-state transition performs no transition." A repository author who
-   writes `run_suceeded` gets a policy that loads, validates, and never fires — no error, no log
-   line, no transition. Nothing else on this list has a failure mode that quiet, and nothing else is
-   spelled by someone who is not an implementer.
+That test was applied without being named — every set in the first slice has such a reader — and
+naming it is most of this decision's value, because it turns a deferral list from a place reasons go
+stale into a list with one question against each entry that a later reader can re-ask.
 
-2. **Section 14.1's nine failure classes** — `Workflow/Config Failures` … `Executor Bring-up
-   Failures`. Transcribed into the Conformance Statement, whose template carries two rows *named by
-   class* — the park-vs-retry disposition of `Repository Provisioning Failures` and of `Engine
-   Invocation Failures` — and named in backticks by Sections 17.2, 17.4, 18.1.4 and 19. Divergence
-   shows at audit rather than at build: the Section 17 checks assert **behaviour** — "skip that
-   repository's dispatches, retry on a later tick" — and name the class descriptively, so the
-   spelling is not measured the way Section 5.5's was by the corpus. A real reader, a slower signal.
+**A prose enumeration is published when something outside the implementation's own source spells
+it**: a repository author writing configuration, a Conformance Statement author filling a table, or
+a conformance check asserting a value. Measured against the document, the candidates are not peers:
 
-3. **Section 7.1's six orchestration states** — `Unclaimed`, `Claimed`, `Provisioning`, `Running`,
-   `RetryQueued`, `Released`. `Provisioning` is named in a Section 17.4 check and again in Section
-   18.2, descriptively. Section 13.3's runtime snapshot does **not** expose them: it returns
-   `running` and `retrying` row lists, not a state name. Internal claim state with no external
-   reader.
+| Set | Reader | Cost of a divergence |
+|-----|--------|----------------------|
+| Section 11.6 run outcomes (5) | a **human** writing `repo.policy.toml` | **silent** — validates, never fires |
+| Section 14.1 failure classes (9) | Conformance Statement rows named by class; Sections 17.2, 17.4, 18.1.4, 19 | shows at audit, not at build |
+| Section 7.1 orchestration states (6) | Sections 17.4, 18.2 descriptively; absent from Section 13.3's snapshot | nothing catches it |
+| Section 7.3 transition triggers (7) | none — internal lifecycle events | nothing catches it |
+| Section 7.2 run-attempt phases (11) | none in Sections 17, 18 or 19 | nothing catches it |
 
-4. **Section 7.3's seven transition triggers** — `Poll Tick`, `Worker Exit (normal)`, `Worker Exit
-   (abnormal)`, `Agent Update Event`, `Retry Timer Fired`, `Reconciliation State Refresh`, `Stall
-   Timeout`. Prose-titled internal lifecycle events. Despite the shared word, these are **not**
-   Section 11.6's triggers and share no token with them.
-
-5. **Section 7.2's eleven run-attempt phases** — `PreparingWorkspace` … `CanceledByReconciliation`.
-   Asserted nowhere in Sections 17, 18 or 19. Section 11.6 names four (`Succeeded`, `Failed`,
-   `TimedOut`, `Stalled`) only to *define* the run outcomes — "`run_succeeded` — the run attempt
-   finished in `Succeeded`". The trigger a repository writes is `run_succeeded`; `Succeeded` never
-   leaves the document. No reader that a divergence would reach.
-
-Measured with the same instrument for each, which a later reader can re-run:
+Measured with one instrument, which a later reader can re-run:
 
 ```sh
 python3 - <<'PY'
@@ -82,131 +64,164 @@ for home, toks in SETS.items():
 PY
 ```
 
-→ `14.1` is named outside its own section by Sections 9.7, 17.2, 17.4, 18.1.4 and 19 — the last four
-being conformance surfaces. `7.1` by Sections 9.11, 11.6, 16.4, 17.4 and 18.2, of which only 17.4
-and 18.2 are conformance surfaces, and none of the five is a wire value. `7.2` by Section 11.6
-alone, and there only to define the run outcomes. The rest are definitional cross-references inside
-the specification, which no implementation transcribes.
+Section 14.1 reaches four conformance surfaces; Section 7.1 reaches two, descriptively; Section 7.2
+reaches none — Section 11.6's four mentions only *define* the run outcomes, so `Succeeded` never
+leaves the document. The rest are definitional cross-references no implementation transcribes.
 
-### The engine registry has already claimed half of the strongest set
+**Under the rule, Section 11.6's triggers and Section 14.1's classes are published, and Sections
+7.1, 7.2 and 7.3 are recorded with the reader each lacks.** This decision applies the rule to
+Section 11.6; Section 14.1 needs an anchor change and is decision 0104's.
 
-Section 11.6 states one closed trigger vocabulary and splits it by origin. The agent-emitted half is
-**already published** — `signals` in `conformance/vcsx/vocabulary.json` carries `ready-for-review`,
-`blocked`, `done`, `tasks:all_closed` and `task:#needs_help`, derived from `VCSX-SPEC.md` Section
-5.1. The orchestrator-observed half is published nowhere.
+## The strongest set is not among the three reported
 
-So the ownership question `conformance/README.md` defers the whole bullet behind — "the trigger
+Section 11.6 states **one closed vocabulary** of ten tokens with three origins, and a repository
+wires its `tracker.transitions` from it. Five of them are the orchestrator-observed run outcomes:
+`dispatched`, `pull_request_opened`, `run_succeeded`, `run_failed`, `retries_exhausted`.
+
+These are the only tokens in this decision written by **someone who is not an implementer** — a
+repository author, into a policy file that has to work on every implementation Symphony targets.
+
+### Why a misspelling is silent, established rather than assumed
+
+The claim that a misspelled trigger produces no diagnostic was checked against both specifications
+and both registries, because a decision resting on a failure mode should not rest on an assumption
+about one:
+
+- **The engine cannot catch it.** `VCSX-SPEC.md` Section 5.1 defines three trigger kinds, and a bare
+  token is syntactically a **signal**. The engine's `unknown_trigger` configuration reason — "an
+  edge's `on` is not a trigger the engine recognizes" — therefore cannot fire on `run_suceeded`: it
+  is a well-formed signal the engine does not know it will never receive, because Section 5.1 states
+  that "the consumer raises the token the policy binds" and does not close the signal set.
+- **Symphony does not catch it either.** Section 6.3's validation checks are enumerated — workflow
+  loads, `tracker.kind` supported, `tracker.api_key` present for a `secret`-mode adapter,
+  `tracker.project_slug` present, `set_state` capability declared when `tracker.transitions` is
+  non-empty, `codex.command` non-empty. None validates an `on` value against the vocabulary.
+- **And the runtime treats it as ordinary.** Section 11.6: "A trigger that fires with no matching
+  `from`-state transition performs no transition." Correct for a real trigger nobody bound;
+  indistinguishable, from outside, from a bound transition whose trigger name is misspelled.
+
+So the policy loads, validates, dispatches, and the transition never fires. No error, no log line.
+Nothing else on the list fails that quietly, which is what puts this set first under the rule.
+
+## The ownership question was already answered
+
+`conformance/README.md` defers Sections 7.1, 7.3 and 11.6 together behind one reason: "the trigger
 vocabulary is shared with the engine's action-policy machine, so the two registries would have to
-agree on which document owns each token" — is already answered for the half that is shared, by the
-artifacts rather than by argument: the engine owns what the agent emits. The run outcomes are the
-orchestrator's, have no counterpart in the engine registry, and carry no ownership question at all.
-They are deferred behind a blocker that is not about them.
+agree on which document owns each token."
 
-That bullet also bundles three unrelated sets under one heading — Section 7.1's states, Section
-7.3's internal lifecycle events, and Section 11.6's policy triggers — with one reason that fits part
-of one of them. Decision 0102 repaired this shape once and then reproduced it; this is its third
-recurrence, and the count is the useful part: a deferral list is where stale reasons accumulate
-unread, because nothing re-derives a reason for not doing something.
+It is answered, and not by argument. `VCSX-SPEC.md` Section 5.1 assigns the signal vocabulary to the
+consumer outright — "the consumer raises the token the policy binds" — and decision 0055 states the
+consequence in as many words, while resolving why a signal has no `#class` rung:
 
-### The shape question, which the document already answers twice
+> unlike operation reasons, where Section 8.5 lets a `MINOR` add tokens an existing policy must
+> absorb, the signal vocabulary is raised by the consumer, so a consumer never surprises its own
+> policy — the `#class` fallback exists to absorb *upstream* additions, and **signals have no
+> upstream**.
 
-Section 14.1's nine are Title Case titles. Section 8.8 defines `token_budget_exceeded`, which
-Section 14.1's own closing note names as a failure category outside the core list, and which a
-Section 17.4 check asserts — and it is snake_case. So `SPEC.md` spells failure categories two ways
-in one section, and there is no consistent answer to read off it. **A group cannot be derived until
-the document has one**, because a registry that picks is a registry deciding what the prose left
-open, which 0071 forbade and 0102 restated.
+Symphony is the consumer. Its trigger vocabulary is its own. The engine registry's `signals` group
+publishes the five tokens `VCSX-SPEC.md` names as examples of consumer-raised signals; that is the
+engine documenting its own text, not a claim on the set.
+
+So the bullet defers three unrelated sets behind a question a decision closed before it was written.
+Decision 0102 repaired this shape one bullet over and reproduced it; with the ownership finding this
+is its **fourth** instance, and the count is the useful part: nothing ever re-derives a reason for
+*not* doing something, so a deferral list is exactly where a stale reason survives longest. The
+reader test replaces per-bullet reasons with one re-askable question, which is the structural fix.
 
 ## Options considered
 
 ### What to publish
 
-**Option A — publish by reader: the run outcomes and the failure classes; record the rest with the
-reader analysis.** Chosen; reasoning below.
+**Option A — publish by reader.** Chosen; reasoning above.
 
-**Option B — publish all five sets.** The simple rule, and it has the honest argument that a reader
-appearing later is not something the registry can predict — Section 7.2's phases would be published
-before anything reads them, and the day one does, the spelling is already fixed. It also removes the
-judgement call entirely, which is worth something in a list that has just been shown to accumulate
-stale reasoning. It loses because publishing a set with no reader converts the registry from a
-derived view into an inventory: 0071's reconsideration trigger is "a registry accumulating
-properties the prose does not fix", and an inventory of every enumeration is one step from that,
-since each set published without a reader is a set nothing checks the registry against. The cheap
-insurance is cheaper than it looks — the Section 7.2 phases are already stable and their divergence
-risk is carried by `run_succeeded`/`run_failed`, which this decision does publish.
+**Option B — publish all five sets.** The simple rule, with the honest argument that a reader
+appearing later cannot be predicted — Section 7.2's phases would be covered before anything reads
+them, and the day one does, the spelling is already fixed. It also removes the judgement call that
+has now gone stale four times. It loses because publishing a set nothing checks the registry against
+converts a derived view into an inventory, one step from 0071's reconsideration trigger, and it
+forces Section 7.3's prose-title shape question as well as Section 14.1's for no reader at all.
 
-**Option C — a rule keyed on enumeration shape rather than on reader**: publish every closed
-enumeration whose members are identifier-shaped, leave Title Case prose alone. Mechanical, needs no
-judgement, and it dodges the shape question entirely by declining every set that raises it. It loses
-because it gets the two most important cases backwards: Section 14.1's classes are Title Case and
-have the Conformance Statement transcribing them, while Section 7.2's phases are identifier-shaped
-and have no reader at all. A rule that publishes what is easy to publish rather than what is read is
-not the rule the registry was created under.
+**Option C — publish identifier-shaped enumerations only.** Mechanical, no judgement, and it dodges
+the shape question by declining every set that raises it. It loses because it gets the two important
+cases backwards: Section 14.1 is Title Case *with* a reader, Section 7.2 is identifier-shaped with
+none. A rule that publishes what is easy rather than what is read is not the rule the registry was
+created under.
 
-**Option D — publish nothing further; record the reader analysis and close the question.** The
-minimal answer, and the analysis above is the durable part of this decision whatever is published.
-It loses on the run outcomes alone: a human writes them into a policy file, a misspelling is silent
-by Section 11.6's own rule, and that is the single worst failure mode in the document that a
-published token set would remove.
+**Option D — publish nothing further.** The reader analysis is the durable part regardless. It loses
+on the run outcomes alone, whose silent failure mode is the worst on the list.
 
-### What the token is where the prose has none
+### How much of Section 11.6's vocabulary
 
-**Option E — `SPEC.md` gains an identifier-shaped token for each of Section 14.1's nine, and the
-registry publishes those.** Chosen.
+**Option E — the whole closed set of ten, accepting that five are also published by the engine
+registry.** Chosen.
 
-**Option F — publish the titles verbatim and let each implementation slugify.** Faithful to the
-document, invents nothing, and needs no spec change. It loses on the mechanism the registry exists
-for: two implementations slugifying `Workflow/Config Failures` independently produce
-`workflow_config_failures`, `workflow/config_failures`, or `WorkflowConfigFailures`, and the
-divergence the registry was created to remove is reintroduced one layer down, now with the
-registry's authority behind the ambiguity.
+**Option F — the run outcomes only, with a note pointing at the engine's `signals`.** This was the
+draft's proposal and it is the more orthodox one: no token is duplicated, and the split follows the
+origin Section 11.6 already states. It loses on the reader the group exists for. A repository author
+validating a `tracker.transitions` entry has **one** field to check against **one** vocabulary the
+specification calls closed; splitting the answer across two registries by provenance serves the
+ownership model rather than the person writing the file, and provenance is a property that consumer
+has no use for. The duplication cost is real and is paid in the group note, which names the engine
+registry as the authority for the five it also carries.
 
-**Option G — the registry mints the slugs.** Cheapest, and no `SPEC.md` change. It loses on 0071's
-ruling, restated by 0102: the ruling belongs in the specification, not in the registry. A derived
-view that mints a token is leading its source, and the next reader cannot tell which tokens
-`SPEC.md` fixed and which the registry decided.
+**Option G — all ten with a per-entry origin field.** Rejected as the machinery for a property no
+generator uses. Note that **`core` is carried per entry regardless** and is not the same thing: the
+two task-state events are the OPTIONAL task-management extension's, so an implementation shipping no
+task model never raises them, and `config_namespaces` already carries exactly this distinction as
+`core`. Provenance is where a token came from; `core` is whether it exists at all in a given build.
+
+### The requirement level
+
+**Option H — REQUIRED.** Chosen. It passes 0102's test — whether a spelling can be required turns on
+who owns the condition, and these conditions are Symphony's own run mechanics, faced identically by
+every implementation. It is also the only level under which the closed-vocabulary sentence can be
+read literally: a closed set whose spellings are optional is not closed in any way a repository
+author can rely on, and a `repo.policy.toml` would be non-portable by design.
+
+**Option I — RECOMMENDED**, consistent with the two error sets 0102 left advisory. Rejected: those
+are adapter mappings onto a foreign transport, where what is distinguishable varies. Nothing varies
+here.
 
 ## Decision and reasoning
 
-**Proposed, not applied.** What follows is the recommendation; `Plan.md` is written against it and
-`SPEC.md` is unchanged until this is accepted.
+**The reader test is the rule, and it lives in `conformance/README.md`.** It governs what a derived
+view contains, not what the specification requires of an implementation — no conformance claim turns
+on it — so it does not need to be normative, and keeping it in the README lets it be revised as the
+registry learns. This is a deliberate departure from 0071, which put the registry's *precedence*
+rule in Section 17's own text; precedence decides which artifact wins a disagreement, which an
+implementation does act on, while a publication test decides only what the registry contains.
 
-**Publish by reader.** The registry publishes a prose enumeration when something outside the
-implementation's own source spells it: a repository author writing configuration, a Conformance
-Statement author filling a table, or a conformance check asserting a value. That test is the one
-0071 already applied without naming — every set in the first slice has such a reader — and stating
-it turns the deferral list from a place reasons go stale into a list with a question against each
-entry that a later reader can re-ask. Under it: **Section 11.6's five run outcomes** and **Section
-14.1's nine failure classes** are published; Sections 7.1, 7.2 and 7.3 are recorded with the reader
-that is missing, so the entry that would change the answer is named rather than left to be
-re-derived.
+**Section 11.6's whole vocabulary is published as `transition_triggers`, REQUIRED, closed.** Ten
+tokens, `core` marking the two the OPTIONAL task extension owns, and a note naming the three origins
+and recording that the engine registry also publishes the five signals and is the authority for
+them.
 
-**The run outcomes first, and separately from the signals.** They are the only tokens in this
-decision a non-implementer writes, and the only ones whose misspelling produces no diagnostic at
-all. The group is `transition_triggers` and carries the run outcomes only, with a note that the
-agent-emitted half of Section 11.6's vocabulary is published by the engine registry as `signals` and
-is not restated here — the ownership split follows the origin Section 11.6 already states, and
-neither registry duplicates the other.
+**A consequence not on the sheet, added because the level is otherwise unobservable.** Making the
+spellings REQUIRED changes nothing a consumer can check unless something rejects a token outside the
+set — and, established above, nothing does today. So Section 6.3 gains a validation check: a
+`tracker.transitions` entry whose `on` is not in the vocabulary is a configuration error, caught at
+the same preflight that already rejects a duplicate `(from, on)`. **Symphony has to be the one to
+catch it**, because the engine cannot: the engine does not close the signal set, by design, and
+Section 5.1 gives the consumer the vocabulary precisely so the consumer can fix it. This is the
+whole practical content of the REQUIRED level, and stating the level without it would have been the
+kind of guarantee that reads well and changes nothing.
 
-**`SPEC.md` gains the failure-class tokens.** Section 14.1's nine get an identifier-shaped token
-each, keeping the Title Case titles as their prose names, which also makes the section consistent
-with the `token_budget_exceeded` it already defines. This is the largest cost in the decision and
-the reason it is proposed rather than applied: it touches Sections 14.1, 14.2, 17.2, 17.4, 18.1.4
-and 19 plus `CONFORMANCE-STATEMENT-TEMPLATE.md`, and it is an anchor change, so it wants a decision
-of its own to be accepted against rather than to arrive inside a registry slice.
+**Section 14.1 is decision 0104's**, and is recorded in the deferral list as pending that decision
+rather than as lacking a reader — a distinction the list has not previously drawn, and the reason it
+accumulated stale entries. The rule says publish it; the anchor change across seven documents is
+what wants its own decision to be accepted against.
 
-**`exhaustive: false` on the failure classes**, on the evidence rather than on the reading: Section
-8.8's `token_budget_exceeded` is a category outside the nine, so the set is open in fact. This does
-not contradict a consumer closing its own enum at nine — 0071 settled that shape for `events`,
-openness is a property of the set and not of the names — and issue #54's reporter, who closed
-theirs, is right to have done so for a build shipping no such extension.
+**Sections 7.1, 7.2 and 7.3 are recorded with the reader each lacks**, so what would change the
+answer is named: a snapshot, status surface, or API response exposing an orchestration state as a
+value (Section 13.3 exposes none today), or anything outside Section 7.2 asserting a phase by name
+(the measurement above is the check, and returns Section 11.6 alone).
 
-**Reconsideration triggers.** Reopen Section 7.2 when anything outside Section 7.2 asserts a phase
-by name — the measurement above is the check, and it returns `11.6` alone today. Reopen Section 7.1
-when a snapshot, status surface or API response exposes an orchestration state as a value, which
-Section 13.3 does not today. Reopen the reader test itself if a set with a reader turns out to need
-a property `SPEC.md` does not fix, which is 0071's trigger unchanged.
+**Reconsideration triggers.** Reopen Section 7.2 when the measurement returns a conformance surface.
+Reopen Section 7.1 when a monitoring surface exposes a state as a value. Reopen the reader test
+itself on 0071's trigger — a published set needing a property `SPEC.md` does not fix. Reopen Option
+F if the five duplicated signal tokens ever drift between the two registries, which is the cost this
+decision knowingly took on.
 
-Depends on 0071 (whose test this names) and 0102 (whose deferral-list repair this completes, and
-whose recurrence of the bundling defect this records for the third time). Relates to 0051, 0056,
-0045 and 0002.
+Depends on 0071 (whose test this names) and 0102 (whose deferral-list repair this completes).
+Relates to 0055 (which settled the ownership), 0051, 0056 and 0002. Successor: 0104, which applies
+the same rule to Section 14.1.
