@@ -239,7 +239,14 @@ work branch reaches, rather than leaving the arrangement to each backend.
   configured forge could not be asked (Section 9.2). `base_absent` states what the checkout holds
   and `<field>_unavailable` states that the read did not establish it, which is the distinction
   Section 4.3 draws between a thing that is absent and a thing that is unavailable; a read reports
-  no determinate value it did not establish. Read-only.
+  no determinate value it did not establish. Where the invocation supplied a `pr_state_validator`
+  (Section 8.1) and the forge answered that the pull request has not moved since that validator was
+  issued, the pull-request fields are null and a `pr_state_unchanged` output reports it; the
+  operation still completes, and the caller reads the state it already holds. That is a third
+  distinguishable pull-request condition, stated separately from the other two because the three
+  carry different meanings: `pr_state_unavailable` is a read that established nothing,
+  `pr_state_unchanged` is a read that established the caller's copy is current, and a reported
+  state is a read that established a new one. Read-only.
 - `diff` — the branch delta against the resolved base. Read-only.
 - `commit` — create a commit from the working tree, gated at `before:commit` (Section 10.1). The
   operation captures the working tree in full: every change the VCS does not ignore, including
@@ -1486,6 +1493,30 @@ Sections 9.1 and 9.2 are separate to prevent. A parameter a backend cannot use i
 backend's own `failed` at first use rather than a shape the engine judged, as a coordinate it cannot
 use is.
 
+A consumer MAY supply `pr_state_validator`, an OPTIONAL **read validator** naming the pull-request
+state the consumer already holds, so a read answers only where the state has moved (Sections 4.1,
+9.2):
+
+- `pr_state_validator` (OPTIONAL) — the validator a previous invocation returned in `outputs`
+  (Section 8.2). Supplied, the engine presents it on the `status` read and the forge MAY answer
+  `unchanged`; absent, the read is unconditional.
+  - Default: unset — an unconditional read.
+
+The engine holds it opaque, as it holds the forge repository coordinate and the two access
+parameters opaque: it takes one, supplies it to the forge backend, and interprets nothing about it.
+Parsing one would put a forge's cache-validation grammar back in the engine, which is the mixing
+Sections 9.1 and 9.2 are separate to prevent. Its absence is no precondition failure and adds no
+row to Section 8.6: an invocation supplying none makes the read every invocation made before this
+argument existed.
+
+The validator round-trips through the consumer because the engine holds nothing between
+invocations. Credentials reach the plugins for the duration of an invocation and the engine
+persists none beyond it (Section 1.3), and each invocation is a bounded run that exits, so there is
+no engine-side cache for a validator to live in: it leaves in the result envelope and comes back as
+this argument. It is therefore also the one consumer-supplied value below that is **not** readable
+from the consumer configuration — it changes with each read, and a configured one would be stale by
+construction.
+
 A consumer MAY supply `forge_parameters`, an OPTIONAL per-backend parameter set the engine carries to
 the selected forge backend uninterpreted. A backend MUST document the keys it reads, which are
 `Implementation-defined` per backend (Section 13.3). A key the backend does not recognize is that
@@ -1505,7 +1536,8 @@ neither beyond it.
 
 The consumer-supplied values this section names — `local_vcs` and `forge`, the forge repository
 coordinate, the `remote`, `policy_branch`, `base_branch` and `base_branch_allowed`, `provision`'s
-two locations, the two access parameters, `forge_parameters` and the credential pair — MAY be read
+two locations, the two access parameters, `forge_parameters` and the credential pair —
+`pr_state_validator` excepted, for the reason its entry states — MAY be read
 by the engine from a **consumer configuration**: a consumer-owned file, distinct from
 `repo.policy.toml` and never sourced from the repository. Its discovery precedence is
 `Implementation-defined` and MUST be documented (Section 13.3). It carries no key `repo.policy.toml`
@@ -1575,7 +1607,10 @@ Every invocation returns one structured result:
 - `escalation` is present exactly when `status == "needs_caller"` (Section 8.4), a parked flow and an
   exhausted one included.
 - `outputs` carries entry-specific structured data (for example `status` fields, the pull-request
-  number/state). It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
+  number/state). Where a forge read answered, the pull-request data carries the `validator` a later
+  invocation presents as `pr_state_validator` (Sections 8.1, 9.2), which is what makes the round
+  trip readable from this section and Section 8.1 alone: the value this invocation returned is the
+  value the next one supplies. It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
   the engine emitted and no consumer performed, each naming its `action` and that action's arguments.
   The key is absent or empty when every emitted intent was performed. It likewise carries
   `unfinished_hooks`: the result-triggered hooks that gave the engine no usable answer (Section 6.6),
@@ -1874,8 +1909,12 @@ the engine composes an operation from. A capability that answers a typed result 
 it could not resolve through the result itself. A capability that answers a value MUST be able to
 answer that it could not determine one, and that answer MUST NOT be spelled as the value's absent or
 negative case. An absent counterpart, a base the checkout does not hold, a checkout with no current
-branch, a working tree that is not dirty, and a work branch with no pull request are each a
+branch, a working tree that is not dirty, a work branch with no pull request, and a pull request
+that has not moved since a validator was issued for it (Section 9.2) are each a
 determinate fact about the remote or the checkout; none of them is "the backend could not find out".
+The last is worth naming beside the others because it is the cheapest answer a capability can give
+and is therefore the one most easily mistaken for having asked nothing: a capability answers
+`unchanged` because it asked and was told so, never because it declined to ask.
 Every such non-answer MUST map to a reason a caller can read — a Section 4.3 operation reason where
 an operation has been dispatched, a Section 8.6 precondition reason where none has, the first
 dispatch being the boundary between them (Section 8.6) — and the capability's own entry MUST state
@@ -2002,6 +2041,13 @@ at its position then `commit`, which is what makes the tree the gate inspected t
 two of them act on the answer instead of reporting it: `push` refuses over a CLOSED/MERGED pull
 request (Section 4.1) and `merge` takes the head it conditions on from the same read (Section 9.2),
 which is why the state it could not determine is refused at each rather than read as an absence.
+That split also fixes which reads carry a validator (Sections 8.1, 9.2): the engine presents a
+`known_validator` on the read whose answer it **reports** — `status`'s — and on neither of the two
+an operation **conditions a write on**. An `unchanged` answer carries no state and so no head, and
+a `merge` that resolved one against the head a consumer remembered would be conditioned on a value
+the engine did not read, which is the guarantee `merge:head_moved` exists to make (Sections 4.3,
+9.2). A conditional read makes a poll cheap; it does not make a write conditional on consumer-held
+state.
 Separating the two that acquire from the two that merge is what makes the enumeration above
 exhaustive, and it places the half that stops on conflicts — the outcome the caller resolves and
 `commit` finalizes (Section 4.1) — on the local side of the boundary, where the caller that resolves
@@ -2067,13 +2113,23 @@ Realizes the pull-request and review operations. Required:
   work branch and refusing a base mismatch (`create_pr:base_mismatch`). Maintaining one requires
   finding the one that exists, so a backend that could not determine whether the work branch already
   has a pull request MUST NOT create one; it reports `create_pr:failed`.
-- `pr_state(work_branch)` → the work branch's pull request — its number, its state
-  (open/closed/merged) and the head it currently carries — none where the forge carries no pull
-  request for the work branch, or that the state could not be determined. The last two are distinct
-  answers and a state the backend could not determine MUST NOT be answered as an absent pull
+- `pr_state(work_branch, known_validator)` → the work branch's pull request — its number, its state
+  (open/closed/merged), the head it currently carries, and a **validator** a later read presents to
+  ask for the state only if it has moved — none where the forge carries no pull
+  request for the work branch, `unchanged` where `known_validator` was presented and the pull
+  request has not moved since that validator was issued, or that the state could not be determined.
+  Three of the four are distinct answers and a state the backend could not determine MUST NOT be
+  answered as an absent pull
   request, because the two carry different results: an absent pull request lets `push` proceed and
   `create_or_update_pr` create, while an undetermined one refuses both (`push:failed`,
-  `create_pr:failed`) and is a `pr_state_unavailable` output for `status` (Sections 4.1, 4.3). The
+  `create_pr:failed`) and is a `pr_state_unavailable` output for `status` (Sections 4.1, 4.3).
+  `unchanged` is the fourth and is neither of those two: it is a determinate fact about the
+  resource — the state is the one the caller already holds — where an absent pull request is a
+  determinate fact that there is none and an undetermined one is the backend stating neither. A
+  backend MUST NOT answer `unchanged` where it presented no validator or made no conditional read,
+  which is the same prohibition this section states over an undetermined answer and is stated over
+  the backend's answer for the same reason: what the backend asked the forge is not something the
+  engine can observe. The
   lookup is keyed on the work branch as head **whatever base the pull request targets**, because
   `create_pr:base_mismatch` exists to find one opened against a different base (Section 13.1) and a
   caller's own base therefore MUST NOT be substituted for the key. A search the backend could not
@@ -2110,7 +2166,18 @@ OPTIONAL:
 - `link_issue(pr, issue_ref)` where the forge does not link natively.
 
 Descriptor fields: PR create/update REQUIRED; the merge strategies supported; whether review-thread
-writes and native issue linking are supported.
+writes and native issue linking are supported; whether the backend supports **conditional reads**.
+
+A backend declaring no conditional-read support is supplied no `known_validator`, answers the full
+state, and yields no `pr_state_unchanged` output (Sections 4.1, 8.1). That is not the `unsupported`
+reason (Section 4.3), which names a capability an operation requires and cannot proceed without:
+here the operation proceeds exactly as it would have, and what is absent is a saving. One consumer
+loop is therefore correct against either backend and cheap against one of them, which is the
+property that lets a consumer write one loop rather than one per forge. Which mechanism a
+supporting backend realizes the validator with is `Implementation-defined` and MUST be documented
+(Section 13.3) — an entity tag presented as `If-None-Match` is one, a modification timestamp is
+another — as the form of `worktree_revision()` already is (Section 9.1). The engine holds the value
+opaque and requires only the distinction it MUST make.
 
 ### 9.3 Capability Descriptors
 
@@ -2510,6 +2577,15 @@ A conforming engine SHOULD include tests covering:
   `before:commit` read it creates no commit and yields `worktree_moved` rather than `ok` or
   `nothing_to_commit`, while a `worktree_revision()` that could not determine an identity yields
   `commit:failed` rather than a commit conditioned on nothing (Sections 4.3, 6.6, 9.1).
+- Conditional reads: a `status` supplying a `pr_state_validator` the forge reports unmoved yields
+  `ok` with null pull-request fields and a `pr_state_unchanged` output, and is distinguishable from
+  both a branch with no pull request and a state that could not be determined (Sections 4.1, 8.1,
+  9.2); the `validator` a `status` returned in `outputs` is the value a later invocation presents,
+  so the round trip closes without engine-held state (Section 8.2); a forge backend declaring no
+  conditional-read support is presented no validator, answers the full state, and yields no
+  `pr_state_unchanged` output rather than an `unsupported` result (Sections 4.3, 9.2); and `push`
+  and `merge` read `pr_state` with no validator whatever the invocation supplied, so no write is
+  conditioned on a head the engine did not read (Sections 9.1, 9.2).
 - Provisioning: a `provision` naming a `store_location` holding no repository and a `tree_location`
   yields a checkout the remaining operations run against; a `provision` where one exists refreshes
   it and fetches no second copy, the store the first left being the one the second used; a
@@ -2777,6 +2853,10 @@ A conforming engine SHOULD include tests covering:
   repository coordinate, `forge_access` and `forge_credential`, the VCS backend its resolved remote,
   `git_access` and `git_credential` — and every value-answering capability able to report that it
   could not determine its answer.
+- Conditional forge reads where the backend declares them: a validator returned in `outputs`,
+  presented back as `pr_state_validator`, and an unmoved pull request reported as
+  `pr_state_unchanged` rather than as an absent or an undetermined one — with no validator presented
+  on the reads `push` and `merge` condition a write on.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, every commit the engine writes attributed to the supplied commit identity, a scan reached
   through a policy edge at a lifecycle position rather than through a key of its own, and a
@@ -2816,8 +2896,10 @@ The Statement MUST record:
   operation it defines beyond Section 4.1 requires of a backend (Section 9.1), the `forge_parameters`
   keys each forge backend reads, which are `Implementation-defined` per backend (Section 8.1), any
   bound a forge
-  backend imposes on its search for a work branch's pull request (Section 9.2), and where a backend
-  writes its own bookkeeping state to answer a capability (Section 9.1).
+  backend imposes on its search for a work branch's pull request (Section 9.2), where a backend
+  writes its own bookkeeping state to answer a capability (Section 9.1), and — where a forge backend
+  declares conditional-read support — the mechanism it realizes the `pr_state` validator with
+  (Section 9.2).
 
 The Statement is a published declaration, not a precondition for running the engine: Section 13.1 and
 Section 13.2 keep their roles as the test matrix and the definition of done. Its format is

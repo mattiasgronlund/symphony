@@ -3887,3 +3887,45 @@ Accepted and applied to `SPEC.md` (Sections 4.1.1, 4.2, 5.3.1, 5.3.5, 8.2, 8.3, 
 17.1, 17.3), `conformance/vectors/state-normalization.json`,
 `conformance/vectors/per-state-concurrency.json`, `conformance/vectors/workspace-key.json` and
 `conformance/README.md`.
+
+## 0106 — A read that answers `unchanged`, and the validator that asks for it
+
+**State:** Accepted
+**Folder:** [decisions/0106-conditional-forge-reads/](decisions/0106-conditional-forge-reads/)
+
+Issue #58's first engine primitive. The engine already tells a consumer to poll —
+`merge:checks_pending` carries the default need `await_checks` (Section 4.3) — and provides no
+affordable way to come back: `pr_state` reads the pull request's number, state and head in full on
+every call, so a twenty-minute check run polled every thirty seconds is forty full reads per unit of
+work, linear in concurrent units and charged against a budget the same consumer cannot see (0107).
+No loop, cadence or budget policy moves into the engine, which Section 2.2 keeps outside it; what
+moves is the primitive a consumer cannot build for itself, because the engine owns the forge call.
+`pr_state(work_branch, known_validator)` gains a fourth answer, `unchanged`, and returns a
+**validator** the consumer presents on the next read. Verified against the upstream documentation
+rather than assumed: GitHub REST states that a conditional request "does not count against your
+primary rate limit if a `304` response is returned", and recommends it for polling — but **GitHub
+GraphQL documents no conditional request at all**, and the downstream `--watch` drain that prompted
+the issue ran on GraphQL, so this primitive does not retire the failure it is filed under; what
+protects a consumer there is the visible budget (0107) and a cadence paced against it. Forgejo's
+coverage could not be established, which is the argument for the descriptor field rather than an
+omission. `unchanged` is a **fourth** answer and not a spelling of the other three: read as `none` a
+`304` would let `create_or_update_pr` open a second pull request, and read as undetermined the
+cheapest answer would refuse what the expensive one permits — the failure Section 9's answer
+discipline exists to prevent. The engine presents a validator only on the read whose answer it
+**reports** (`status`) and on neither of the two an operation **conditions a write on**, because
+`unchanged` carries no head and a `merge` resolving one against a consumer-remembered head would
+defeat the `merge:head_moved` guarantee (0077). The validator round-trips through the consumer
+because the engine holds nothing between invocations (Section 1.3), which is also why it is the one
+consumer-supplied value not readable from the consumer configuration — a configured one is stale by
+construction. Reported as a `pr_state_unchanged` output beside `base_absent` and
+`pr_state_unavailable`, not as the `status:not_modified` reason the issue asks for: a reason token
+is a trigger (Section 5.1), and binding policy to the freshness of the consumer's own cache puts a
+condition the repository cannot see into the vocabulary a repository writes against — the argument
+against being that a consumer branching on `reason` learns the read was cheap without descending
+into `outputs`. A backend declaring no conditional-read support is presented no validator and
+answers in full; that is not `unsupported` (Section 4.3), since the operation proceeds and what is
+absent is a saving, which is what lets a consumer write one loop rather than one per forge.
+Reconsider on a forge whose conditional read is keyed to a *query* rather than a resource, which
+would make the per-`work_branch` granularity wrong, or on a `304` observed to cost budget, which
+would leave 0107's cadence carrying the whole load. Relates to 0076, 0077, 0107 and 0108. Accepted
+and applied to `VCSX-SPEC.md` (Sections 4.1, 8.1, 8.2, 9, 9.1, 9.2, 13.1, 13.2, 13.3).
