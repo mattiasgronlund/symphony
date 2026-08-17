@@ -94,8 +94,10 @@ obligation not listed here rather than omitting its resolution.
 | Required-transition-input default-or-fail behavior | 11 | `<documented default, or fail>` |
 | Log sink or sinks, and behavior when one of them fails | 13.2 | `<stderr / file / remote sink; and the disposition on sink failure>` |
 | Human-readable presentation of rate-limit data | 13.5 | `<how it is presented, or none>` |
-| Repository Provisioning Failures — persistent park-vs-retry | 14.2 | `<park after N / retry indefinitely>` |
-| Engine Invocation Failures — persistent park-vs-retry | 14.2 | `<park after N / retry indefinitely>` |
+| `repository_provisioning_failures` — persistent park-vs-retry | 14.2 | `<park after N / retry indefinitely>` |
+| `engine_invocation_failures` — persistent park-vs-retry | 14.2 | `<park after N / retry indefinitely>` |
+| `engine_invocation_failures` — unusable-policy per-repository backoff schedule | 14.2 | `<schedule>` |
+| Additional failure categories defined by a shipped extension | 14.1 | `<token + recovery disposition for each, or none>` |
 | Durable-store degradation when no store is configured | 14.3 | `<decline enforcement / fall back to Ephemeral / …>` |
 | Secret-redaction mechanism and substituted marker for captured subprocess text | 15.3 | `<known-value replacement + marker; any matching added above the floor>` |
 | Object store path location (host-side) | 16.5 | `<path policy, e.g. sibling of workspace root>` |

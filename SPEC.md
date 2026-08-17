@@ -1624,7 +1624,7 @@ Repository provisioning:
   VCS operations inside the working tree remain available to the agent.
 - The reference algorithm is `ensure_object_store` (Section 16.5); it invokes the engine once per
   repository ahead of `provision_for_issue`. A provisioning failure is classified from the engine's
-  typed result as `Repository Provisioning Failures` (Section 14.1) and recovered per Section 14.2.
+  typed result as `repository_provisioning_failures` (Section 14.1) and recovered per Section 14.2.
 
 Configuration:
 
@@ -3012,13 +3012,20 @@ API design notes:
 
 ### 14.1 Failure Classes
 
-1. `Workflow/Config Failures`
+Each class carries a name and an identifier-shaped token. The name is what this specification's
+prose uses; the token is what an implementation classifies to, what a Conformance Statement is keyed
+by, and what the token registry publishes (Section 17). The token spellings are REQUIRED: two
+implementations reporting the same condition MUST report the same token, so an operator or a
+Conformance Statement reader can compare them without knowing which implementation produced the
+record.
+
+1. `Workflow/Config Failures` (`workflow_config_failures`)
    - Missing `WORKFLOW.md`
    - Invalid YAML front matter
    - Unsupported tracker kind or missing tracker credentials/project slug
    - Missing coding-agent executable
 
-2. `Repository Provisioning Failures`
+2. `Repository Provisioning Failures` (`repository_provisioning_failures`)
    - Classified from the engine's typed provisioning result (Sections 9.7, 16.5): the remote
      unreachable at the configured access parameters, a selected backend that cannot share storage
      across working trees, and any other failure to obtain or refresh the repository
@@ -3030,13 +3037,13 @@ API design notes:
    provisioning failure is recovered repo-scoped through this class (Section 14.2) rather than
    through a policy edge in the repository it would have provisioned.
 
-3. `Workspace Failures`
+3. `Workspace Failures` (`workspace_failures`)
    - Workspace directory creation failure
    - Workspace population/synchronization failure (implementation-defined; can come from hooks)
    - Invalid workspace path configuration
    - Hook timeout/failure
 
-4. `Agent Session Failures`
+4. `Agent Session Failures` (`agent_session_failures`)
    - Startup handshake failure
    - Turn failed/cancelled
    - Turn timeout
@@ -3044,18 +3051,18 @@ API design notes:
    - Subprocess exit
    - Stalled session (no activity)
 
-5. `Tracker Failures`
+5. `Tracker Failures` (`tracker_failures`)
    - API transport errors
    - Non-200 status
    - GraphQL errors
    - malformed payloads
 
-6. `Observability Failures`
+6. `Observability Failures` (`observability_failures`)
    - Snapshot timeout
    - Dashboard render errors
    - Log sink configuration failure
 
-7. `Engine Invocation Failures`
+7. `Engine Invocation Failures` (`engine_invocation_failures`)
    - The VCS engine is unavailable — not installed, not executable, or not resolvable at the
      pinned version
    - The engine does not conform to the invocation contract (an unreadable or malformed result
@@ -3073,39 +3080,50 @@ API design notes:
    `<op>:<reason>` edges with the `#class` fallback and is fail-safe on an unmatched outcome; such
    outcomes are not this class.
 
-8. `Node Provisioning Failures` (OPTIONAL, remote execution — Section 9.11)
+8. `Node Provisioning Failures` (`node_provisioning_failures`; OPTIONAL, remote execution —
+   Section 9.11)
    - The node-scheduler cannot supply a node (no capacity, transport error, invalid placement
      configuration)
    - Node-scheduler authentication/credential failure (the scheduler's own credentials)
 
-9. `Executor Bring-up Failures` (OPTIONAL, remote execution — Section 9.11)
+9. `Executor Bring-up Failures` (`executor_bring_up_failures`; OPTIONAL, remote execution —
+   Section 9.11)
    - Remote executor process fails to start, or fails mutual authentication (Section 15.3)
    - The sandbox, per-run broker socket, or secret-isolation boundary cannot be instantiated on the
      node (Section 9.6) — fail-closed: the run MUST NOT proceed without the boundary
 
-Note: an OPTIONAL extension MAY define additional failure categories outside this core list. For
-example, the token budget guards extension (Section 8.8) defines `token_budget_exceeded`, which is
-parked rather than retried (Section 14.2); classes 8 and 9 above are defined by the OPTIONAL
-node-scheduler extension (Section 9.11).
+Note: the set is not closed. An OPTIONAL extension MAY define additional failure categories outside
+this core list, and MUST document each one and its recovery disposition (Section 14.2). For example,
+the token budget guards extension (Section 8.8) defines `token_budget_exceeded`, which is parked
+rather than retried (Section 14.2); classes 8 and 9 above are defined by the OPTIONAL node-scheduler
+extension (Section 9.11). An extension-defined category names its condition rather than a class of
+them, which is why `token_budget_exceeded` is not spelled like the nine above: the nine partition
+where a failure arose, while an extension elevates one condition it must dispose of differently.
 
 ### 14.2 Recovery Behavior
 
-- Dispatch validation failures:
+Each bullet names the failure class or classes it disposes of (Section 14.1). The mapping is not
+one-to-one: `workspace_failures` and `agent_session_failures` share the worker disposition because
+both fail one attempt, and `tracker_failures` takes two dispositions because what a tracker failure
+costs depends on where it occurred — a candidate fetch skips a tick, a state refresh keeps the
+workers it already has.
+
+- Dispatch validation failures (`workflow_config_failures`):
   - Skip new dispatches.
   - Keep service alive.
   - Continue reconciliation where possible.
 
-- Worker failures:
+- Worker failures (`workspace_failures`, `agent_session_failures`):
   - Convert to retries with exponential backoff.
 
-- Repository provisioning failures:
+- Repository provisioning failures (`repository_provisioning_failures`):
   - Skip new dispatches for the affected repository; the object store is shared across all of its
     issues, so the failure is repo-scoped, not a single worker's. Other repositories are unaffected.
   - Keep the service alive and retry on a later tick. Do not convert to a per-worker backoff retry.
   - Persistent authentication/credential or invalid-store-path failures MAY be parked rather than
     retried indefinitely; the choice is `Implementation-defined` and MUST be documented.
 
-- Engine invocation failures:
+- Engine invocation failures (`engine_invocation_failures`):
   - Skip new dispatches for the affected repository. The `version_floor` and the operation flow are
     declared in that repository's `repo.policy.toml`, so the failure is repo-scoped, not a single
     worker's. Other repositories are unaffected.
@@ -3132,14 +3150,14 @@ node-scheduler extension (Section 9.11).
   - Persistent failures MAY be parked rather than retried indefinitely; the choice is
     `Implementation-defined` and MUST be documented.
 
-- Node provisioning failures (OPTIONAL extension, Section 9.11):
+- Node provisioning failures (`node_provisioning_failures`; OPTIONAL extension, Section 9.11):
   - Skip the affected dispatch scope and retry on a later tick, mirroring repository provisioning
     above; keep the service alive and do not convert to a per-worker backoff retry.
   - Persistent node-scheduler authentication or invalid-placement-configuration failures MAY be
     parked rather than retried indefinitely; the choice is `Implementation-defined` and MUST be
     documented.
 
-- Executor bring-up failures (OPTIONAL extension, Section 9.11):
+- Executor bring-up failures (`executor_bring_up_failures`; OPTIONAL extension, Section 9.11):
   - Fail-closed and run-fatal: the run MUST NOT proceed without its sandbox, per-run broker socket,
     and credential-less agent (Section 9.6). The orchestrator MAY re-dispatch onto a fresh node
     (Section 8.4) but MUST NOT run the agent credential-exposed.
@@ -3147,15 +3165,15 @@ node-scheduler extension (Section 9.11).
 - Token budget exhaustion (OPTIONAL extension, Section 8.8):
   - Park the issue (`token_budget_exceeded`); do not convert to a backoff retry.
 
-- Tracker candidate-fetch failures:
+- Tracker candidate-fetch failures (`tracker_failures`):
   - Skip this tick.
   - Try again on next tick.
 
-- Reconciliation state-refresh failures:
+- Reconciliation state-refresh failures (`tracker_failures`):
   - Keep current workers.
   - Retry on next tick.
 
-- Dashboard/log failures:
+- Dashboard/log failures (`observability_failures`):
   - Do not crash the orchestrator.
 
 ### 14.3 State Recovery Classes
@@ -3767,7 +3785,8 @@ The token sets this specification names — the emitted runtime events (Section 
 log context fields (Section 13.1), the usage-ledger entry fields (Section 13.6), the state recovery
 classes (Section 14.3), the configuration namespaces (Sections 5.3, 18.2), the workflow and template
 error classes (Section 5.5), the tracker error categories (Section 11.4), the agent-runner error
-categories (Section 10.6), and the transition triggers (Section 11.6) — are published beside that
+categories (Section 10.6), the transition triggers (Section 11.6), and the failure classes
+(Section 14.1) — are published beside that
 corpus as a token registry, so an implementation, or a repository author binding a trigger, can
 generate or check a spelling instead of transcribing it. Each set is published with the requirement
 level this specification states for it, since a REQUIRED spelling and a RECOMMENDED one are checked
@@ -3889,7 +3908,7 @@ deployment satisfies by using a conforming engine rather than by implementing th
   change is honored, and a repo-internal integrity value never enters the sandbox
 - `repo.policy.toml` is read once at the start of a unit of work and not watched; a change to the
   policy source mid-run does not alter that run, and takes effect for the next (Section 6.2)
-- All four unusable-policy conditions are classified as `Engine Invocation Failures`, skip that
+- All four unusable-policy conditions are classified as `engine_invocation_failures`, skip that
   repository's dispatches, and are retried with a documented per-repository backoff rather than
   every tick; each is logged with the reason naming its cause; a policy that was loaded and can no
   longer be read stays in force for runs already under way while new work is refused, and one never
@@ -3990,7 +4009,7 @@ These checks are `Daemon Conformance`.
 - Retry queue entries include attempt, due time, identifier, and error
 - Stall detection kills stalled sessions and schedules retry
 - Slot exhaustion requeues retries with explicit error reason
-- A repository provisioning failure returned by the engine (`Repository Provisioning Failures`)
+- A repository provisioning failure returned by the engine (`repository_provisioning_failures`)
   skips that repository's dispatches for the tick and is retried on a later tick, leaving other
   repositories and running workers untouched; it is not converted to a per-worker backoff retry, and
   no worker is spawned for the skipped repository
@@ -4188,9 +4207,9 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   cap, accepted effort); one adapter per (agent, transport) with no protocol impersonation
 - Repository provisioning runs through the VCS engine (Section 9.7), host-side and credentialed,
   before any per-issue working tree is derived from the store, and exposes no provisioning verb to
-  the agent; a provisioning failure is classified from the engine's typed result as `Repository
-  Provisioning Failures` and recovered repo-scoped (skip the repository's dispatches, retry on a
-  later tick) rather than as a per-worker failure
+  the agent; a provisioning failure is classified from the engine's typed result as
+  `repository_provisioning_failures` and recovered repo-scoped (skip the repository's dispatches,
+  retry on a later tick) rather than as a per-worker failure
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
   structured results (`scope_denied` fails the run)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
@@ -4275,7 +4294,7 @@ engine's checklist.
   mechanically transformed via `pr_to_squash` at `before:merge`
 - The deployment declares a `version_floor` for the engine, and classifies a below-floor refusal, an
   unavailable or non-conforming engine, and a usage/configuration result in which the policy did not
-  run as `Engine Invocation Failures`, recovered repo-scoped per Section 14.2
+  run as `engine_invocation_failures`, recovered repo-scoped per Section 14.2
 
 ### 18.2 RECOMMENDED Extensions (Not REQUIRED for Conformance)
 
@@ -4303,7 +4322,8 @@ extend `Daemon Conformance`; the per-execution usage ledger extends `Broker Core
   receives secrets over a directly mutually-authenticated channel with the node-scheduler off the
   secret path, runs the turn loop and commits tracker writes itself while the orchestrator reconciles,
   and is acquired through a four-verb adapter (`request_node`, `node_ready`, `lookup_by_run_id`,
-  `signal_done`) with a `Provisioning` state, `Node Provisioning` / `Executor Bring-up` failure classes
+  `signal_done`) with a `Provisioning` state, the `node_provisioning_failures` /
+  `executor_bring_up_failures` classes
   (Section 14.1), placement-opaque concurrency (Section 8.3), and a `Durable` remote-mode run registry
   for reattach (Section 14.4). Owns the `compute.*` config namespace.
 - Autonomous task management extension (Section 8.10): a daemon-only task model with computed
@@ -4351,7 +4371,7 @@ The Statement MUST record:
   (Section 10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the log
   sink or sinks and what happens when one of them fails (Section 13.2); the human-readable status
   surface, if any, and the presentation of rate-limit data (Sections 13.4, 13.5); the park-vs-retry
-  disposition of `Repository Provisioning Failures` and `Engine Invocation Failures`
+  disposition of `repository_provisioning_failures` and `engine_invocation_failures`
   (Section 14.2); the durable-store degradation when no store is configured (Section 14.3); the
   secret-redaction mechanism and substituted marker for captured subprocess text (Section 15.3); and
   the host-side object-store path (Section 16.5).

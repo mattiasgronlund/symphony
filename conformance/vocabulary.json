@@ -218,5 +218,26 @@
       { "token": "tasks:all_closed", "core": false, "condition": "Every implementation task for the issue is closed; the daemon's computed-completion trigger (Section 8.10)." },
       { "token": "task:#needs_help", "core": false, "condition": "An agent-created human-assigned task parks the run for feedback (Section 8.10). The `#` names a condition across tasks, not a proto class." }
     ]
+  },
+
+  "failure_classes": {
+    "spec_refs": [
+      "SPEC.md Section 14.1 \"Failure Classes\"",
+      "SPEC.md Section 14.2 \"Recovery Behavior\""
+    ],
+    "note": "The classes a failure is classified to. Section 14.1 gives each a `name` for prose and a `token` an implementation classifies to and a Conformance Statement is keyed by; the token is REQUIRED, so two implementations reporting the same condition report the same token. `core: false` marks the two the OPTIONAL node-scheduler extension defines (Section 9.11). Not a closed set: Section 14.1 permits an OPTIONAL extension to define additional categories and requires it to document each one and its recovery disposition — the specification's own example is the budget extension's `token_budget_exceeded` (Section 8.8), which names a condition rather than a class of them and so is not spelled like these nine. Openness is a property of the set, not of the names: an implementation shipping no such extension classifies to exactly these nine and MAY close its own enum there. The Section 14.2 recovery disposition is deliberately not carried here — it is the prose of a rule rather than a property Section 14.1 fixes about a token, and the mapping is not one-to-one (`workspace_failures` and `agent_session_failures` share one disposition, `tracker_failures` takes two). Section 14.2 names the classes each of its bullets disposes of.",
+    "requirement_level": "REQUIRED",
+    "exhaustive": false,
+    "entries": [
+      { "token": "workflow_config_failures", "name": "Workflow/Config Failures", "core": true },
+      { "token": "repository_provisioning_failures", "name": "Repository Provisioning Failures", "core": true },
+      { "token": "workspace_failures", "name": "Workspace Failures", "core": true },
+      { "token": "agent_session_failures", "name": "Agent Session Failures", "core": true },
+      { "token": "tracker_failures", "name": "Tracker Failures", "core": true },
+      { "token": "observability_failures", "name": "Observability Failures", "core": true },
+      { "token": "engine_invocation_failures", "name": "Engine Invocation Failures", "core": true },
+      { "token": "node_provisioning_failures", "name": "Node Provisioning Failures", "core": false, "spec_ref": "Section 9.11" },
+      { "token": "executor_bring_up_failures", "name": "Executor Bring-up Failures", "core": false, "spec_ref": "Section 9.11" }
+    ]
   }
 }
