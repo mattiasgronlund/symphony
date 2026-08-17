@@ -76,6 +76,45 @@ later reader cannot tell which tokens `SPEC.md` fixed and which the registry dec
 precisely 0071's stated signal that a registry has stopped being derived. The cost of Option A is
 paid once; the cost of Option C is paid by every later reader.
 
+## What application turned up
+
+Three things the plan did not anticipate, found while applying it.
+
+**The suffix is load-bearing.** The obvious slug drops the category word — `Workspace Failures` →
+`workspace` — and reads better. It cannot be used: `workspace`, `tracker` and `observability` are
+already `config_namespaces` entries, so three of the nine would collide exactly with a configuration
+key, and a reader seeing `tracker` in a record could not tell which set it came from. Keeping
+`_failures` costs nothing and removes the ambiguity, so every token is the prose name transliterated
+rather than shortened.
+
+**Section 14.2 did not name the classes it disposes of, and the mapping is not one-to-one.** Its
+bullets carry their own descriptive headings — "Dispatch validation failures", "Worker failures",
+"Dashboard/log failures" — none of which is a Section 14.1 class name. The correspondence was
+inferable but unstated, which is a defect in its own right and also a blocker here: a registry entry
+carrying a recovery disposition would have been *inventing the mapping*, which is exactly what a
+derived view may not do. So Section 14.2's bullets now name their classes, and two facts became
+visible in the process:
+
+- `workspace_failures` and `agent_session_failures` **share** the worker disposition, because both
+  fail one attempt and convert to a backoff retry.
+- `tracker_failures` takes **two** dispositions, because what a tracker failure costs depends on
+  where it occurred: a candidate fetch skips a tick, a state refresh keeps the workers it already
+  has.
+
+A nine-row mapping would have hidden both. This is why the registry group carries **no** recovery
+disposition: with the mapping stated in Section 14.2 the group would only restate it, and 0071's line
+is that entries carry "the properties the specification fixes about them — not the prose of the rules
+those properties feed". A disposition is that prose. The contrast with `error_classes` carrying
+`gating` is deliberate: Section 5.5 states gating as a two-valued property of each token, where
+Section 14.2 states paragraphs of behaviour.
+
+**The requirement level was not asked and had to be settled.** The decision sheet fixed the token
+*shape* and did not ask whether the spellings are REQUIRED. Left unstated they would be unusable for
+the reader that motivated the decision — a Conformance Statement author transcribing a class name
+into a published document gains nothing from a token another implementation may spell differently.
+So the level is REQUIRED, on 0102's test: the condition is Symphony's own, faced identically by every
+implementation. Recorded here as a call this decision made rather than one it was given.
+
 ## Decision and reasoning
 
 **Each of the nine gains an identifier-shaped token beside the Title Case name it already has.** The

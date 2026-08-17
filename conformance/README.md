@@ -118,6 +118,7 @@ no task model never raises.
 | `tracker_error_categories` | Sections 11.4, 11.7, 11.8 |
 | `agent_error_categories` | Section 10.6 |
 | `transition_triggers` | Sections 11.6, 8.10, 9.12 |
+| `failure_classes` | Sections 14.1, 14.2 |
 
 `transition_triggers` is the one group carrying `exhaustive: true`: Section 11.6 states in its own
 words that the trigger vocabulary is closed and that "a repository wires triggers to transitions but
@@ -127,12 +128,14 @@ value can be checked before dispatch. Its five agent-emitted and task-state toke
 published by the engine registry as `signals`, which is their authority; they are carried here so a
 repository author validates one field against one vocabulary rather than two registries.
 
-Three groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
+Four groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
 because Section 10.4 permits an adapter to emit events the specification does not name;
 `config_namespaces`, because Section 5.3 permits an extension to define additional top-level keys;
-and `error_classes`, because Section 5.5 permits an implementation to define additional classes for
-conditions its five do not name. In all three, the names the specification does state are fixed; it
-is the set that is open.
+`error_classes`, because Section 5.5 permits an implementation to define additional classes for
+conditions its five do not name; and `failure_classes`, because Section 14.1 permits an OPTIONAL
+extension to define additional categories. In all four, the names the specification does state are
+fixed; it is the set that is open — so an implementation shipping no such extension may still close
+its own enum at the names it can produce.
 
 `tracker_error_categories` and `agent_error_categories` carry no `exhaustive` key. Sections 11.4 and
 10.6 do not state that their sets are open, and inferring it here would be the registry deciding a
@@ -163,16 +166,6 @@ decisions repairing it.
   which is a distinction the registry would have to carry per entry"; deriving it (decision 0102)
   showed the distinction is per *group* — each section states one level for its whole set — so it
   costs the one `requirement_level` field documented above.
-- **Failure classes** (Section 14.1) — **not deferred: pending decision 0104.** They have a reader,
-  and a demanding one: `CONFORMANCE-STATEMENT-TEMPLATE.md` carries two rows *named by class*, so a
-  statement author transcribes the name by hand, and Sections 17.2, 17.4, 18.1.4 and 19 name classes
-  in backticks. What holds the group up is not the reader test but the token: the nine are Title
-  Case (`Workflow/Config Failures`) while the tenth category the document defines —
-  `token_budget_exceeded` (Sections 8.8, 14.1, and a Section 17.4 check) — is snake_case, so
-  `SPEC.md` answers the shape question two ways and a group cannot be derived until it answers once.
-  0104 proposes `SPEC.md` gain an identifier token per class; that is an anchor change across seven
-  documents, which is why it is its own decision. That tenth category also settles openness — it
-  sits outside the nine — so the group takes `exhaustive: false`.
 - **Orchestration states** (Section 7.1) — **no reader.** `Provisioning` is named in a Section 17.4
   check and in Section 18.2, but descriptively, and Section 13.3's runtime snapshot returns
   `running`/`retrying` row lists rather than a state name, so no state reaches a monitoring surface
@@ -297,6 +290,23 @@ guessed-at vector or entry:
   5.5 now states that a class names the condition rather than the stage that detected it, annotates
   all five by condition, and makes the spellings REQUIRED; the corpus gained a
   `template_parse_error` vector so the rule is checked rather than only stated.
+- **Section 14.1 spelled failure categories two ways — resolved (decision 0104).** Nine Title Case
+  titles (`Workflow/Config Failures`) and one snake_case category, `token_budget_exceeded`, which
+  Section 14.1's own note calls a failure category and a Section 17.4 check asserts. No consistent
+  token could be read off the section, so no group could be derived: a registry that picked would
+  have been deciding what the prose left open. Section 14.1 now gives each of the nine a token
+  beside its prose name, and states why an extension-defined category is spelled differently — the
+  nine partition *where* a failure arose, while an extension elevates one *condition*. The
+  `_failures` suffix is kept rather than trimmed because `workspace`, `tracker` and `observability`
+  would otherwise collide exactly with `config_namespaces` entries.
+- **Section 14.2 did not name the classes it disposed of — resolved (decision 0104).** Its bullets
+  carried their own descriptive headings ("Dispatch validation failures", "Worker failures"), and
+  the mapping onto Section 14.1 is not one-to-one, so the correspondence was inferable but unstated
+  — which meant the registry could not carry a recovery disposition without inventing the mapping.
+  Each bullet now names its classes. Two facts the mapping made visible: `workspace_failures` and
+  `agent_session_failures` share one disposition, and `tracker_failures` takes two, because what a
+  tracker failure costs depends on where it occurred. The disposition itself is still not carried in
+  the registry — it is the prose of a rule rather than a property Section 14.1 fixes about a token.
 - **A misspelled transition trigger was caught by nothing — resolved (decision 0103).** Section 11.6
   states a closed trigger vocabulary a repository binds in `repo.policy.toml`, but nothing rejected
   a name outside it. The engine cannot: to `vcsx` a bare token is a well-formed **signal**, and

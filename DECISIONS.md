@@ -3792,30 +3792,50 @@ Successor 0104. Accepted and applied to `SPEC.md` (Sections 6.3, 11.6, 17, 17.3)
 
 ## 0104 — The failure classes get a token
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0104-failure-class-tokens/](decisions/0104-failure-class-tokens/)
 
-The half of issue #54's follow-up that 0103's reader test says to publish and could not. Section
-14.1's nine failure classes have a demanding reader: `CONFORMANCE-STATEMENT-TEMPLATE.md` carries two
-rows *named by class*, so a statement author transcribes `Repository Provisioning Failures` and
-`Engine Invocation Failures` by hand into a published document, and Sections 17.2, 17.4, 18.1.4 and
-19 name classes in backticks. What blocks the group is **what the token is**: the nine are Title
-Case titles, while `token_budget_exceeded` — which Section 14.1's own closing note calls a failure
-category and a Section 17.4 check asserts — is snake_case, so `SPEC.md` answers the shape question
-two ways in one section and a derived view cannot pick between them without deciding what the prose
-left open (0071, restated by 0102). Proposed: **`SPEC.md` gains an identifier-shaped token for each
-of the nine**, keeping the Title Case names as prose, which also makes the section consistent with
-the category it already defines. Rejected: publishing the titles verbatim and letting each
-implementation slugify (faithful and needs no spec change, but two implementations slugifying
-`Workflow/Config Failures` independently yield `workflow_config_failures`,
-`workflow/config_failures` or `WorkflowConfigFailures` — the divergence the registry exists to
-remove, reintroduced one layer down with the registry's authority behind the ambiguity); and letting
-the registry mint the slugs (cheapest, and exactly the derived view leading its source that 0071
-forbade). The group takes `exhaustive: false` on evidence rather than reading —
-`token_budget_exceeded` is a category outside the nine — which does not contradict a consumer
-closing its own enum at nine, since openness is a property of the set and not of the names (0071);
-issue #54's reporter, who closed theirs, is right for a build shipping no such extension. Separated
-from 0103 because it is an **anchor change** (0002) across Sections 14.1, 14.2, 17.2, 17.4, 18.1.4,
-19 and `CONFORMANCE-STATEMENT-TEMPLATE.md`, which wants a decision to be accepted against rather
-than arriving inside a registry slice. Depends on 0103 (whose reader test selects it) and 0071;
-relates to 0102 and 0002. Proposed: `SPEC.md` is unchanged pending acceptance.
+The half of issue #54's follow-up that 0103's reader test selects and 0103 could not publish.
+Section 14.1's nine failure classes have a demanding reader: `CONFORMANCE-STATEMENT-TEMPLATE.md`
+carries rows *named by class*, so a person transcribes `Repository Provisioning Failures` by hand
+into a published document, and Sections 9.7, 17.2, 17.4, 18.1.2, 18.1.4 and 19 name classes in
+backticks. What blocked the group was **what the token is**: the nine are Title Case titles while
+`token_budget_exceeded` — which Section 14.1's own note calls a failure category and a Section 17.4
+check asserts — is snake_case, so `SPEC.md` answered the shape question two ways and a derived view
+could not pick between them (0071, restated by 0102). **Each of the nine gains an identifier-shaped
+token beside its prose name**, which also makes the section self-consistent. Rejected: publishing
+the titles verbatim and letting each implementation slugify (faithful, needs no spec change, but two
+implementations slugifying `Workflow/Config Failures` independently yield
+`workflow_config_failures`, `workflow/config_failures` or `WorkflowConfigFailures`, and nothing
+catches it — the divergence the registry exists to remove, reintroduced with the registry's
+authority behind the ambiguity); and letting the registry mint the slugs (cheapest, and exactly the
+derived view leading its source that 0071 forbade). Three things application turned up. **The
+`_failures` suffix is load-bearing**: the better-reading short form collides `workspace`, `tracker`
+and `observability` exactly with `config_namespaces` entries, so every token is the prose name
+transliterated rather than shortened. **Section 14.2 did not name the classes it disposes of, and
+the mapping is not one-to-one** — its bullets carry their own headings ("Dispatch validation
+failures", "Worker failures"), so the correspondence was inferable but unstated, and a registry
+entry carrying a recovery disposition would have been inventing the mapping. Section 14.2's bullets
+now name their classes, which made two facts visible: `workspace_failures` and
+`agent_session_failures` **share** the worker disposition, and `tracker_failures` takes **two**,
+because what a tracker failure costs depends on where it occurred. A nine-row mapping would have
+hidden both, and the group therefore carries **no** recovery disposition — with the mapping stated
+in the prose the entry would only restate it, and 0071's line is that entries carry properties the
+specification fixes, not the prose of the rules those properties feed. The contrast with
+`error_classes` carrying `gating` is deliberate: Section 5.5 states gating as a two-valued property,
+Section 14.2 states paragraphs of behaviour. **The requirement level was not asked and had to be
+settled**: REQUIRED, on 0102's test — the condition is Symphony's own, faced identically by every
+implementation — because a token another implementation may spell differently is useless to the
+Conformance Statement author who motivated the decision. `exhaustive: false` on evidence rather than
+reading, `token_budget_exceeded` being a category outside the nine; this does not contradict a
+consumer closing its own enum at nine, since openness is a property of the set and not of the names
+(0071), and issue #54's reporter is right to have closed theirs for a build shipping no such
+extension. Section 14.1 now also states *why* an extension-defined category is spelled differently:
+the nine partition where a failure arose, while an extension elevates one condition it disposes of
+differently. Reconsider if the nine tokens turn out to be used only by the registry and the
+Conformance Statement and never by an implementation's own branching, which would mean Section
+14.2's recovery mapping was the real consumer and the token should have been derived from that
+table. Depends on 0103 (whose reader test selects this set) and 0071 (whose ordering rule it
+follows). Relates to 0102 and 0002. Accepted and applied to `SPEC.md` (Sections 9.7, 14.1, 14.2, 17,
+17.2, 17.4, 18.1.2, 18.1.4, 18.2, 19), `conformance/vocabulary.json`, `conformance/README.md` and
+`CONFORMANCE-STATEMENT-TEMPLATE.md`.
