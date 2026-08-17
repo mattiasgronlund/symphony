@@ -4176,3 +4176,43 @@ that accumulation rather than the wait is what would make (b) the mistake its ob
 reconsider on a forge whose check state is not aggregable. Relates to 0081, 0106, 0107, 0108 and
 0109. Accepted and applied to `VCSX-SPEC.md` (Sections 2.2, 4.1, 4.3, 5.6, 7.2, 8.1, 9.2, 13.1,
 13.2), `VCSX-CONTRACT.md` (Sections 3, 6) and `conformance/vcsx/vocabulary.json`.
+
+## 0113 — The specification already knows how to do this, in one place and not the other
+
+**State:** Accepted
+**Folder:** [decisions/0113-liveness-by-result-token/](decisions/0113-liveness-by-result-token/)
+
+Issue #61, which the study calls the sharpest Symphony-specific lesson: a backgrounded poller killed
+by a sandbox seccomp filter exited `0`, and the parent read that as success and merged incomplete
+work. The fix is **already written, for the engine**: `VCSX-SPEC.md` Section 8.3 evidences a result
+by a composed envelope, reserves `1` for an invocation that produced none, and reads every code
+outside its four status-bearing ones the same way — so a seccomp kill of a `vcsx` invocation yields
+no envelope and a conforming consumer reads no result rather than a status. The Agent Runner
+(Section 10.7) has no such rule: it says `run_turn` returns "a result with its outcome" and that "on
+any error the Agent Runner fails the worker attempt", and nothing says what makes an outcome a
+success. Section 10.4 already fixes `turn_completed` and requires an adapter to spell the condition
+that way; it did not require one to have **occurred**. So an agent process killed by seccomp, the OOM
+killer or `SIGKILL` ends with status `0`, no error is reported because the thing that would report
+one is dead, and the turn is reported complete — the consequence being not a run that fails but a run
+that **succeeds wrongly**, and a failed run retries where a wrongly successful one lands whatever was
+in the working tree when the process died. Three clauses, each checkable without knowing the adapter:
+success is reported only where the adapter **observed** the protocol's terminal success signal; a
+process's **exit status is not a turn outcome** in either direction, being evidence a process ended
+and none of what it accomplished; and an adapter MUST NOT report success on the evidence that a
+backgrounded process did not report a failure — the general form of the reported failure rather than
+the instance. Section 9.4's hooks get the narrower half, a hook terminated by a signal being a failed
+hook, because a shell script carries no event vocabulary and what is checkable instead is the wait
+status; without it a killed `after_create` is a passed hook and fatal to nothing. **Core**, on the
+stance this slice uses — split by what a requirement costs a single-tenant deployment — because it
+costs nothing: adapters already receive these events since Section 10.7 already requires them to be
+emitted, and what changes is that the outcome must be derived from them; seccomp, the OOM killer and
+`SIGKILL` are not properties of concurrency, so a one-session deployment gets the same protection. A
+requirement that is free and prevents merging unfinished work has no business being optional.
+Steelmanned: Symphony defers success and failure to the agent protocol on purpose, and a
+specification adjudicating what a completed turn is reaches into a boundary it drew deliberately —
+respected here, since the rule does not say what a successful turn *is*, only that the adapter must
+have observed the protocol saying so; the boundary stands and the burden of proof moves. Reconsider
+on an adapter for a protocol with **no** terminal signal, where the answer is a capability descriptor
+declaring it and a statement of what selecting such an adapter gives up, not a weakening for
+everyone. Relates to 0076, 0104 and 0110. Accepted and applied to `SPEC.md` (Sections 9.4, 10.6,
+10.7, 14.1, 17.5, 18.1).

@@ -1554,6 +1554,11 @@ Failure semantics:
 - `before_run` failure or timeout is fatal to the current run attempt.
 - `after_run` failure or timeout is logged and ignored.
 - `before_remove` failure or timeout is logged and ignored.
+- A hook whose process was **terminated by a signal** is a failed hook, whatever its exit status.
+  This is the narrower form of the rule Section 10.7 states for a turn: a shell script carries no
+  event vocabulary, so there is no terminal signal to require, and what is checkable instead is the
+  wait status. Without it a hook killed by the sandbox, the OOM killer, or an operator is a passed
+  hook, and an `after_create` that never ran to completion is fatal to nothing.
 
 ### 9.5 Safety Invariants
 
@@ -2246,6 +2251,12 @@ Note:
   interrupt-then-drain leaves the underlying turn still running, so the session is not safely
   resumable and the turn fails; an adapter that can drain cleanly MAY instead yield a resumable
   `continuation_ref`.
+- A process's **exit status is not a turn outcome**. It is evidence that a process ended and no
+  evidence of what the process accomplished, so it MUST NOT be read as an outcome in either
+  direction: an exit `0` carrying no terminal signal is a failed turn (Section 10.7), and a non-zero
+  exit is classified by the terminal signal the adapter observed where it observed one. `port_exit`
+  above names the condition that the transport ended, which is why it is an error category rather
+  than a way of reporting what the turn did.
 
 ### 10.7 Agent Runner Contract
 
@@ -2274,6 +2285,29 @@ Each adapter MUST emit the neutral event vocabulary (Section 10.4) and normalize
 neutral token-usage record (`input_tokens`, `output_tokens`, `total_tokens`; Section 13.5), carrying
 raw protocol payloads opaquely and any adapter-specific counts in an extras field. On any error the
 Agent Runner fails the worker attempt and the orchestrator retries.
+
+Success is evidenced, not inferred:
+
+- A turn is reported successful only where the adapter **observed** the targeted protocol's terminal
+  success signal, normalized to `turn_completed` (Section 10.4). A turn whose process ended without
+  any terminal signal is a failed turn, whatever its exit status (Sections 10.6, 14.1).
+- An adapter MUST NOT report a turn successful on the evidence that a process it backgrounded did
+  not report a failure. Absence of a failure report from a process whose liveness is not observed is
+  evidence of nothing.
+
+What a terminal signal *means* remains the protocol's and the adapter's: this requirement does not
+adjudicate what a completed turn is, which Section 10.7 deliberately defers, and fixes only that the
+adapter must have seen the protocol say so. The engine contract already works this way — an engine's
+result is evidenced by a composed envelope and an exit code outside its four status-bearing ones
+means no result at all (`VCSX-CONTRACT.md`, `VCSX-SPEC.md` Section 8.3) — so a conforming
+implementation already builds this discipline for the one subprocess whose contract this
+specification defers to, and this states it for the other.
+
+Without the rule the failure is not a run that fails but a run that **succeeds wrongly**: a process
+killed by a sandbox filter, the OOM killer, or a signal can end with status `0` having emitted no
+terminal event, and a turn reported complete on that basis advances the run attempt (Section 7.2)
+and carries whatever was in the working tree toward the merge. A failed run retries; a wrongly
+successful one lands.
 
 Behavior outline:
 
@@ -3071,6 +3105,8 @@ record.
    - Turn timeout
    - User input requested and handled as failure by the implementation's documented policy
    - Subprocess exit
+   - A turn that ended with no terminal signal, whatever the process's exit status — success is
+     evidenced rather than inferred (Sections 10.6, 10.7)
    - Stalled session (no activity)
 
 5. `Tracker Failures` (`tracker_failures`)
@@ -4100,6 +4136,11 @@ broker, and an `interactive-agent` deployment drives an agent session with no da
   guidance); there is no separate session-start operation
 - `cancel` stops an in-flight turn; a clean interrupt-then-drain yields a resumable
   `continuation_ref`, otherwise the turn fails; `release` frees warm resources at run end
+- A turn whose agent process is killed and exits `0` having emitted no terminal signal **fails the
+  attempt** rather than completing it, so unfinished work does not advance toward a merge; no turn
+  outcome is derived from exit status alone, in either direction; and a workspace hook terminated by
+  a signal is treated as failed, so a killed `after_create` is fatal to workspace creation as a
+  failing one is (Sections 9.4, 10.6, 10.7)
 - Each adapter advertises a capability descriptor (`resume` mode, native step cap, accepted
   `effort` values)
 - Emitted usage is normalized to the neutral token-usage record (`input_tokens`, `output_tokens`,
@@ -4233,6 +4274,10 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   resources; adapters emit the neutral event vocabulary and token-usage record (`input_tokens`,
   `output_tokens`, `total_tokens`) and advertise a capability descriptor (resume mode, native step
   cap, accepted effort); one adapter per (agent, transport) with no protocol impersonation
+- Turn success is evidenced rather than inferred: a turn is reported successful only where the
+  adapter observed the protocol's terminal success signal, a process's exit status is never read as
+  a turn outcome, an adapter never reports success because a backgrounded process did not report a
+  failure, and a workspace hook terminated by a signal is failed (Sections 9.4, 10.6, 10.7)
 - Repository provisioning runs through the VCS engine (Section 9.7), host-side and credentialed,
   before any per-issue working tree is derived from the store, and exposes no provisioning verb to
   the agent; a provisioning failure is classified from the engine's typed result as
