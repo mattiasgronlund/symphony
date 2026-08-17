@@ -1974,10 +1974,11 @@ Every invocation returns one structured result:
   Section 5.6 bounds rather than refuses.
 - `outputs` carries `forge_unavailable_condition` where the decisive result is `forge_unavailable`
   (Section 4.3): the condition that occurred — `server_error`, `bound_elapsed` (Section 8.1) or
-  `transport_failure` — absent for every other reason. It is the same arrangement
-  `unanswered_gates` makes for its own three conditions, and for the same reason: the reason routes,
-  the condition diagnoses, and both spell the condition as a token so one consumer branch reads
-  both.
+  `transport_failure` — absent for every other reason. The three are named tokens, so the diagnosis
+  a consumer reads is spelled the same on every engine, as Section 6.6 fixes for its own three. It
+  is the same arrangement `unanswered_gates` makes for its own three conditions, and for the same
+  reason: the reason routes, the condition diagnoses, and both spell the condition as a token so one
+  consumer branch reads both.
 - `outputs` carries `forge_budget`: the most recent budget snapshot a forge capability observed
   during the invocation (Section 9.2), reported whether or not any limit was reached. The key is
   absent where the invocation reached no forge capability, and equally where it reached one and the
@@ -3152,7 +3153,8 @@ A conforming engine SHOULD include tests covering:
   the informed repair and the uninformed one apart (Sections 4.1, 4.3, 9.2); a permanent refusal —
   a validation error the forge will refuse
   identically on retry — still yields an `error`-class result and is not reported under either
-  transient reason; a `forge_unavailable` result carries its condition in `outputs` and a result of
+  transient reason; a `forge_unavailable` result carries `outputs.forge_unavailable_condition`
+  naming which of `server_error`, `bound_elapsed` and `transport_failure` occurred, and a result of
   any other reason carries none (Section 8.2); every `needs_caller` escalation carries `retryable`,
   and its value matches the need's — `retry_after`, `await_checks` and `reread_then_retry` true,
   `integrate_then_retry` and both holds false (Section 8.4).

@@ -4797,3 +4797,54 @@ assignable. Depends on 0121; relates to 0129 and 0128. Accepted and applied to
 `conformance/vcsx/vectors/policy-validation.json`, `conformance/vcsx/vectors/base-resolution.json`,
 `conformance/vcsx/README.md` and `VCSX-SPEC.md` (Section 12.4).
 
+## 0131 — A value set closed in prose, and the field that points at it
+
+**State:** Accepted
+**Folder:** [decisions/0131-condition-vocabulary/](decisions/0131-condition-vocabulary/)
+
+Reported as issue #78 by an implementation building the slice for decisions 0107–0110.
+`VCSX-SPEC.md` Section 8.2 fixes `outputs.forge_unavailable_condition` to `server_error`,
+`bound_elapsed` or `transport_failure`, and `conformance/vcsx/vocabulary.json` carried the three only
+inside that output key's English `meaning`, while their sibling set — the three ways a unit gives the
+engine no usable answer — has had a group (`hook_conditions`) all along. The consequence is asymmetric
+failure on one upstream event: a renamed hook condition breaks a generated type at build, a renamed
+forge condition diverges in silence, and the mechanism built to catch exactly that reports green. The
+reporter's own workaround is the measurement — its decision 0011 R63 parses the three backticked
+tokens **out of the sentence** into a generated constant, an implementation preferring to parse
+English over accepting the silent case. Published under decision 0103's reader test, with both
+readers named (Section 13.1's network-bound row asserts `bound_elapsed` by name; the fault-injection
+obligation in `conformance/vcsx/README.md` makes `forge_unavailable_condition` an assertion an
+implementation's harness owes), though the argument that carries it is symmetry: Section 8.2 calls
+the two sets "the same arrangement … and for the same reason", and only one was published. The file
+was swept rather than the one report answered — every `meaning` and `note` scanned for a value set
+closed in prose and spelled nowhere as data, five hits and exactly one unpublished — so this is the
+**last** instance of its shape, and the instrument is in `Background.md` to be re-run. `bound_elapsed`
+is knowingly carried in both groups, on 0103's Option E reasoning and on Section 9's own "reused
+deliberately", with the sharing recorded in each note. The report's other half was found by asking
+what a generator can do with the groups that already exist: `unfinished_hooks` and `unanswered_gates`
+say "`condition` is a `hook_conditions` token" *in prose* over a flat-string `fields` array, so the
+same defect sat one layer up on keys already thought fixed — `fields` is promoted to objects carrying
+`values_from`, and `fields` itself, previously undocumented, is now described in the README. One
+candidate link was **refused by its own verification**: `unanswered_gates.position` →
+`lifecycle_positions` fails because Section 5.1 admits "any engine-defined `before:<op>`" and Section
+4.1 lets an engine add operations and positions, so a generator told to close that enum would reject
+a conforming engine's own gate — this decision's defect pointed the other way, a machine-readable
+claim about closedness that is wrong. `unperformed_intents.action` is left unlinked and the reason
+recorded: its space is the consumer-effected *subset* of `actions`, and a subset predicate is a
+property `VCSX-SPEC.md` does not fix, which is the registry's own trigger for moving a concept into
+the specification instead of letting the registry lead. Steelmanned: **publishing nothing further**,
+on the ground that the values are already in the prose an implementer reads — it loses to the
+generator, which is the reader the registry exists for and the one that cannot read prose. Section
+8.2 gains the one sentence a REQUIRED spelling rests on, in Section 6.6's own words, because the
+bullet's existing sentence claims *cross-key* uniformity where a shared generated type rests on
+*cross-engine* portability; and, a consequence not on the sheet, Section 13.1's transient-forge row
+now names the three, the new sentence being otherwise unobservable — the same move 0103 recorded
+under the same heading. `schema_version` goes `1` → `2`: adding a group is additive as prior
+additions were, but changing the shape of an existing field is this file's first non-additive change.
+Adds no `Implementation-defined` and no "MUST document" clause, so `CLAUDE.md`'s template-row rule is
+checked and not triggered — stated rather than inferred. Records one finding it does not repair:
+`hook_conditions`' first `spec_ref` cites a stale section title, `Section 6.6 "[hooks]"` for a
+heading that reads `[hooks.engine]`. Depends on 0103 and 0051; relates to 0107–0110 and 0128. Accepted
+and applied to `VCSX-SPEC.md` (Sections 8.2, 13.1), `conformance/vcsx/vocabulary.json` and
+`conformance/vcsx/README.md`.
+

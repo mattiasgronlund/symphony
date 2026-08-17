@@ -68,6 +68,28 @@ Two groups depart from that shape because the specification does: `trigger_kinds
 rather than tokens, and `task_model` is a record of field, value, and verb sets rather than a flat
 entry list.
 
+Two further keys appear on an entry rather than on a group, where the specification fixes structure
+inside one:
+
+- `fields` (array, OPTIONAL) — the fields the specification fixes inside an entry's record, for a key
+  carrying structured data rather than a bare value. Either an array of strings, or an array of
+  objects whose `name` is the field name and whose remaining keys are the properties the
+  specification fixes about that field. Every `output_keys` entry carrying one uses the object form;
+  `task_model`'s is the group-level field list of one of the two departures above and keeps the
+  string form.
+- `values_from` (string, OPTIONAL) — the group that closes a value space: carried on a `fields`
+  member, or on the entry itself where the key is scalar. It is present **only** where
+  `VCSX-SPEC.md` fixes that space to exactly one group, so a type generated for the field may close
+  its enum at that group's entries. Its absence is not a claim that the space is open — a field whose
+  space is a *subset* of a group, a composed grammar, a repository-authored token or an
+  `Implementation-defined` value carries none, and the entry's `meaning` records which. A link the
+  registry would need and the prose does not fix is `Precedence`'s trigger, not a link to invent
+  (decision 0131).
+
+`schema_version` is `2`. Adding a group is additive and did not bump it; promoting `fields` from
+strings to objects is the first change to the shape of an existing field, and a consumer reading
+`fields` as strings branches on the version.
+
 ## Normalizations
 
 The registry is a faithful view, not a byte-for-byte transcription. Three places it normalizes:
@@ -105,6 +127,38 @@ The registry is a faithful view, not a byte-for-byte transcription. Three places
 
 Adding a reason or `need` token is permitted in a `MINOR` release (Section 8.5); changing a listed
 reason's class within a `MAJOR` is not. The `class` column is therefore the load-bearing one.
+
+## What this registry publishes
+
+`Precedence` above says the specification governs and this file is derived. What the derived view
+*contains* is a separate question, and it is the one a report against this file turns on.
+
+**The test (decision 0103): a prose enumeration is published when something outside the
+implementation's own source spells it** — a repository author writing configuration, a Conformance
+Statement author filling a table, or a conformance check asserting a value. Not whether the set is an
+enumeration, but *what reads the spelling and what happens when the reading is wrong*: a set nothing
+reads has no divergence to catch, and publishing it would make the registry an inventory rather than
+a derived view. The test was introduced in `conformance/README.md` for the Symphony registry and
+governs this one on the same terms.
+
+Decision 0131 applied it here, prompted by a set that passes it and was carried only inside a
+`meaning` string — `outputs.forge_unavailable_condition`'s three conditions, whose sibling set had
+had `hook_conditions` all along. The file was swept rather than the one report answered: every
+`meaning` and `note` scanned for a value set closed in prose and spelled nowhere as data. **Five
+hits, four of them prose *about* sets the file already carries as data and one the reported gap**,
+now published as `forge_unavailable_conditions`. The instrument is in that decision's `Background.md`
+and is meant to be re-run — a hit published by nothing is a new instance of the same defect.
+
+A `values_from` link is the same question one level down, over a field's value space rather than a
+set, and is authored under the same discipline: only where the specification fixes that space to
+exactly one group. `unanswered_gates`' `position` is the worked counter-example —
+`lifecycle_positions` is the *required* set, and an engine MAY define additional operations and their
+`before:<op>` positions (Sections 4.1, 5.1), so a generator told to close that enum would reject a
+conforming engine's own gate. Each field that lacks a link and might look as though it wants one says
+why in its entry's `meaning`.
+
+This section carries no deferral list. A bullet naming the reader a set lacks belongs to a set
+actually derived, and deriving the full list for this specification is separate work.
 
 ---
 
