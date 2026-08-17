@@ -4216,3 +4216,45 @@ on an adapter for a protocol with **no** terminal signal, where the answer is a 
 declaring it and a statement of what selecting such an adapter gives up, not a weakening for
 everyone. Relates to 0076, 0104 and 0110. Accepted and applied to `SPEC.md` (Sections 9.4, 10.6,
 10.7, 14.1, 17.5, 18.1).
+
+## 0114 — One pull request per issue is a rule about which one
+
+**State:** Accepted
+**Folder:** [decisions/0114-pr-identity-under-concurrency/](decisions/0114-pr-identity-under-concurrency/)
+
+Issue #62's PR-identity item. Section 9.10 says Symphony "maintains one pull request per issue" and
+that "the head is the work branch"; what neither it nor Section 8.3 says is **how an update finds the
+pull request it updates**. The engine looks it up keyed on the work branch as head, so the identity
+of the thing being written is derived at write time from a branch name — and a branch name is a
+lookup key, not an identity: what it resolves to depends on the forge's state at the moment of the
+lookup rather than on anything the run established. Observed: a concurrent session overwrote
+another's title and body, and a later merge squashed the hijacked title into history — which
+Section 9.10's own "title verbatim" squash rule makes permanent. The engine had already solved the
+harder half and only the harder half: 0077 requires `request_merge` to refuse where the head moved,
+and `VCSX-SPEC.md` Section 9.2 goes as far as saying a backend whose forge cannot condition the merge
+does not declare the capability, "because a merge that cannot be conditioned merges content no
+lifecycle position inspected". `expected_head` pins **what** is merged; nothing pinned **which** pull
+request is written, and a hijacked title passes every head check because the head never moved.
+Symphony now carries the forge's own pull-request identity into every mutating operation, re-reads it
+immediately before the write — exists, carries this run's work branch as head, targets the resolved
+base — and refuses on mismatch with `pr_identity_mismatch`, distinct from `pr_conflict` because one
+is a write that could not be applied and the other a write that would have been applied to the wrong
+thing. The refusal is **not retried**: a second writer is active, and a retry re-reads a state that
+writer is still changing. The guarantee is stated honestly rather than overclaimed — "immediately
+before" bounds the pair as the closest the forge's interface allows and **narrows** the window rather
+than closing it, since Symphony cannot make the pair atomic; a forge offering a conditional update
+closes it and a plugin whose host has one SHOULD use it, the shape `expected_head` already has.
+**Core**, on this slice's cost test: a single-session deployment resolves once, re-reads, finds it
+unchanged and writes, and after 0106 that read is conditional where the forge supports one — a `304`
+on the common path. It is also not only a concurrency guard, which is the answer to the objection
+that Section 8.3 already covers this: Section 8.3 bounds *Symphony's own workers* and none of the
+reported writers were one — a second deployment, a developer's interactive invocation, a skill-driven
+agent (the consumer issue #60 is actively specifying for) — and without concurrency at all, a pull
+request a human closed or retargeted between two runs is the same mismatch, written to today. Issue
+#62's cross-cutting stress tier lands as a `Concurrency Stress` validation profile and Section 17.9,
+RECOMMENDED on the same ground `Real Integration Profile` is: it needs a live forge and real
+concurrency, and making it REQUIRED would make conformance depend on a harness this specification
+does not describe — the boundary 0111 drew for the engine's fault-injection vectors, reached again
+for the same reason. Reconsider if refusals appear in normal operation with no competing writer,
+which would mean the check is pinned to fields that legitimately change. Relates to 0077 and 0106.
+Accepted and applied to `SPEC.md` (Sections 9.10, 17, 17.9, 18, 18.1).

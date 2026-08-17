@@ -1844,6 +1844,38 @@ Pull requests:
   refused before anything runs, and a per-issue target naming it is refused before the run starts
   (Section 9.7). Reaching `create_pr` with such a base is therefore unreachable rather than merely
   forbidden.
+Pull-request identity under concurrency:
+
+- Symphony resolves the pull request for an issue to the forge's own pull-request identity and
+  carries **that identity** — not the work branch — into every subsequent mutating operation for the
+  run. A branch name is a lookup key rather than the identity of the thing being written, and what
+  it resolves to depends on the forge's state at the moment of the lookup rather than on anything
+  the run established.
+- Immediately before a mutating forge write, Symphony re-reads that identity and checks it against
+  what the run established: the pull request still exists, still carries this run's work branch as
+  its head, and still targets the resolved base. A mismatch MUST refuse the write.
+- A refusal is not retried. It means a second writer is acting on the same pull request, so the
+  repair is an operator's: a retry re-reads a state that writer is still changing, and the second
+  attempt is as likely to overwrite as the first. The refusal is surfaced through the broker's forge
+  verbs with a stable reason code (below) and does not enter the Section 8.4 backoff.
+
+Important nuance: "immediately before" bounds the pair — the re-read and the write are the closest
+the forge's interface allows, with no intervening Symphony operation — and **narrows** the window
+rather than closing it. Symphony cannot make the pair atomic; what the rule converts is a silent
+overwrite into a detected refusal wherever the competing write lands outside the pair. A forge
+offering a conditional update closes the window entirely, and a forge plugin whose code host has one
+SHOULD use it, which is the shape the conditional merge already takes through `expected_head`
+(Section 9.7, `VCSX-CONTRACT.md`).
+
+The concurrency this guards against is not only Symphony's own. Concurrency Control (Section 8.3)
+keeps two of Symphony's workers off one issue; it does not bound a second deployment against the
+same repository, a developer's interactive engine invocation, or a skill-driven agent invoking the
+engine directly. Nor is concurrency required: a pull request closed by a human between two runs, or
+retargeted to a different base, is the same mismatch, and the rule refuses that write too. What
+concurrency supplies is the most visible way to reproduce the failure — and its consequence outlives
+the run, because a squash subject is derived from the pull-request title verbatim (below), so a title
+another writer replaced is what enters history at the merge.
+
 - Issue link: when the tracker is the same platform as the forge, the forge establishes the
   pull-request-to-issue link natively (for example a reference in the pull-request body). When the
   tracker is a separate system (for example Linear), the pull-request reference is written onto the
@@ -1879,7 +1911,11 @@ Forge verbs:
 - The broker exposes forge verbs over the per-run socket (Section 10.8), realized through the VCS
   engine (Section 9.7): `pr` (create/update), `request-merge`, and, where supported, the review
   writes above. Each verb returns a structured result with a stable reason code on failure (for
-  example `pr_conflict`, `scope_denied`).
+  example `pr_conflict`, `scope_denied`, `pr_identity_mismatch`).
+- `pr_identity_mismatch` is the refusal above: the pull request the run established is no longer the
+  one the re-read found. It is distinct from `pr_conflict`, which names a pull request that could
+  not be created or updated cleanly — one is a write that could not be applied, the other a write
+  that would have been applied to the wrong thing.
 
 Capability descriptor:
 
@@ -3869,6 +3905,12 @@ Validation profiles:
   ship. Each OPTIONAL feature declares the layer profile it extends.
 - `Real Integration Profile`: environment-dependent smoke/integration checks RECOMMENDED before
   production use.
+- `Concurrency Stress`: RECOMMENDED checks that run several sessions concurrently against one
+  repository and one pull request, asserting that every mutating forge write either applies to the
+  pull-request identity its session established or is refused (Section 9.10). It is RECOMMENDED
+  rather than REQUIRED on the same ground as the profile above: it needs a live forge and real
+  concurrency, so it is environment-dependent in a way the deterministic corpus is not, and making
+  it REQUIRED would make conformance depend on a harness this specification does not describe.
 
 The VCS engine has no profile here. A conforming engine's own obligations are those of the engine
 contract and its specification (Section 3.4); this document states only the condition under which a
@@ -4219,13 +4261,29 @@ network access, or external service permissions are unavailable.
 - If a real-integration profile is explicitly enabled in CI or release validation, failures SHOULD
   fail that job.
 
+### 17.9 Concurrency Stress (RECOMMENDED)
+
+These checks need a live forge and genuine concurrency, and carry the `Concurrency Stress` profile
+(Section 17). They MAY be skipped on the same terms as Section 17.8, and a skipped check SHOULD be
+reported as skipped rather than treated as passed.
+
+- Several sessions run concurrently against one repository and one pull request; every mutating
+  forge write either applies to the pull-request identity its session established or is refused with
+  `pr_identity_mismatch`, and no session's title or body is replaced by another's (Section 9.10)
+- A refused write is not retried into a second overwrite: the run surfaces the refusal rather than
+  re-reading and writing again (Sections 8.4, 9.10)
+- The same guard holds without concurrency: a pull request retargeted to a different base, or closed,
+  between two runs of one issue is refused on the second run's write rather than written to
+- Concurrent sessions against one repository each report their forge budget, and the reported
+  buckets are attributable per session rather than summed into one figure (Sections 9.7, 13.5)
+
 ## 18. Implementation Checklist (Definition of Done)
 
 Use the same validation profiles as Section 17:
 
 - Section 18.1 = `Core Conformance`, grouped by the layer profile each item belongs to
 - Section 18.2 = `Extension Conformance`
-- Section 18.3 = `Real Integration Profile`
+- Section 18.3 = `Real Integration Profile` and `Concurrency Stress`
 
 ### 18.1 REQUIRED for Conformance
 
@@ -4359,6 +4417,10 @@ engine's checklist.
   (Sections 9.7, 9.10, 15.4)
 - The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
   writes (post/reply/resolve), advertising a static forge-capability descriptor
+- Every mutating forge write carries the pull-request identity the run established rather than the
+  work branch, re-verifies it immediately before writing — the pull request exists, carries this
+  run's work branch as its head, targets the resolved base — and refuses on a mismatch with
+  `pr_identity_mismatch` rather than retrying into a second overwrite (Section 9.10)
 - The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback, an
   unmatched operation outcome fail-safe, an unmatched signal a no-op, and abstract `escalate` bound
   per front-end
