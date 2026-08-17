@@ -124,9 +124,12 @@ no task model never raises.
 words that the trigger vocabulary is closed and that "a repository wires triggers to transitions but
 does not introduce new trigger names", and Section 6.3 rejects an `on` value outside it. A generated
 type for it may close the enum, which is the point — the set exists so a `repo.policy.toml` `on`
-value can be checked before dispatch. Its five agent-emitted and task-state tokens are also
-published by the engine registry as `signals`, which is their authority; they are carried here so a
-repository author validates one field against one vocabulary rather than two registries.
+value can be checked before dispatch. Symphony is its authority: `tracker.transitions` travels in
+`repo.policy.toml` because the repository owns the wiring, but `set_state` is a consumer-effected
+action over a tracker outside the VCS/forge domain, so the engine carries and validates the table
+without matching its `on` (decision 0122). The engine's own trigger vocabulary is the two kinds it
+produces itself — a lifecycle position, and a typed operation result — and it no longer publishes a
+`signals` group.
 
 Four groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
 because Section 10.4 permits an adapter to emit events the specification does not name;
@@ -324,6 +327,10 @@ guessed-at vector or entry:
   trigger nobody bound. So a policy loaded, validated, dispatched, and the transition silently never
   fired. Section 6.3 now rejects an `on` outside the vocabulary, which is what makes the REQUIRED
   spelling observable.
+  *(Later: decision 0122 removed the signal trigger kind from the engine, so the reason the engine
+  could not catch a typo has changed — a bare token is now no trigger at all rather than a well-formed
+  signal. The repair stands and is now the only thing that catches one, since `tracker.transitions`
+  is matched by Symphony and the engine validates the table without reading its `on`.)*
 - **The trigger-ownership question had already been answered — resolved (decision 0103).** The
   deferral bullet held Sections 7.1, 7.3 and 11.6 behind "the two registries would have to agree on
   which document owns each token". `VCSX-SPEC.md` Section 5.1 assigns the signal vocabulary to the

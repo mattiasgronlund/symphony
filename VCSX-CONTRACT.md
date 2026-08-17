@@ -97,7 +97,8 @@ Entry points:
   artifact is not.
   The `hooks` namespace is shared with the consumer, whose own hooks sit under a disjoint prefix,
 - `[[branch]]` sections, each matching a base-branch prefix and merging its keys over the top level
-  so one policy document can differ by the branch a unit of work targets,
+  so one policy document can differ by the branch a unit of work targets. A section carries no key
+  that resolves the base or names the work branch, those being what select the section,
 - `tracker.transitions` — the workflow state-machine, expressed as `set_state` bindings in the machine
   (Section 5),
 - `[tasks]` and `[driver]` — the task model and computed-completion wiring (Section 8).
@@ -111,7 +112,8 @@ never sourced from the repository. It holds what the engine needs before there i
 read a policy from — which VCS and forge backends are selected, where each is reached and under
 which credential, the remote the repository was provisioned from, where `provision` materializes the
 store and the working tree, the **policy branch** the host-side parts of `repo.policy.toml` are read
-from, and the pull-request target with any bound on what an invocation may name — none of which a
+from, which of the consumer-effected actions this consumer can perform and which repository units it
+bound, and the pull-request target with any bound on what an invocation may name — none of which a
 file inside the repository can supply to the step that obtains the repository or selects the
 revision the file itself is read from, and the last of which the file MAY also supply as the
 lowest-precedence source. The term
@@ -129,7 +131,7 @@ handling.
 
 ### 5.1 Triggers
 
-A trigger is one of three kinds:
+A trigger is one of two kinds:
 
 - **Lifecycle positions** — points around an engine operation:
   - `before:commit`
@@ -141,9 +143,11 @@ A trigger is one of three kinds:
   - `push:ok`
   - `push:non_fast_forward`
   - `integrate:merge_conflicts`
-- **Task-state events** — emitted by the task model (Section 8), for example:
-  - `tasks:all_closed`
-  - `task:#needs_help`
+
+Both kinds are produced by the engine itself — a position it entered, a result an operation it ran
+returned — so a trigger's producer and its matcher sit inside one invocation. An event the consumer
+observes is not a trigger: it selects which **entry point** the consumer invokes, which is what the
+task model's `[driver]` wiring is for (Section 8).
 
 Hooks are edges: a lifecycle-position trigger is where a repo-owned hook runs, and a result trigger is
 where a repo-owned reaction runs. There is no separate hook axis (see Section 7).
@@ -180,8 +184,8 @@ The proto outcome classes are a closed set:
 
 ### 5.4 Unmatched Policy
 
-- An unmatched **signal** (an agent milestone or task-state event with no matching edge) is a benign
-  no-op.
+- An unmatched **lifecycle position** is a benign no-op: nothing runs there and the operation
+  proceeds.
 - An **operation outcome no action disposed of** MUST be **fail-safe**: it is parked or failed and its
   proto reason is surfaced. It MUST NOT be silently dropped, because a dropped operation outcome would
   strand a run. An outcome is disposed of by an action that ends the run or by a `run_op` whose own
@@ -206,6 +210,12 @@ binds the *resolver*:
 
 `escalate` is what lets the same `repo.policy.toml` run under both front-ends (Section 3). It is the
 one place the two front-ends legitimately differ.
+
+A resume re-enters the point that raised the need, and it round-trips through the consumer: an
+invocation that ends on a resolvable need returns a token, and the invocation that resumes supplies
+it back. The engine holds nothing between invocations, so the flow bound accumulates across a resumed
+chain rather than restarting — which is what keeps the bound a property of the flow under either
+front-end. A need naming a **hold** rather than a request carries no token and is not resumed.
 
 ## 6. Engine Operations and Typed Results
 
@@ -235,8 +245,10 @@ operation set and its result classing are host-neutral. Named operations include
 - `push`
 - `create_pr`
 - `merge` — merge/request-merge the pull request.
-- `await_checks` — read the pull request's required-check state until the checks pass, fail, a bound
-  the consumer supplied is reached, or a budget floor the consumer supplied is reached. Read-only,
+- `await_checks` — read the pull request's required-check state until the checks pass, fail, the
+  forge reports no required checks for the pull request, a bound the consumer supplied is reached, or
+  a budget floor the consumer supplied is reached. The third is a determinate answer rather than a
+  wait that ended, and ends the wait on the first read. Read-only,
   gated at no lifecycle position, and bounded only by parameters the consumer supplies: the engine
   does not decide how long to wait, how often to ask, or how much budget is too little to keep
   asking. It exists so that check state is readable without dispatching a `merge`, which would ask a
@@ -292,8 +304,10 @@ Semantics fixed at the surface:
 
 - **Seeding** — tasks seed from the ticket when the tracker exposes structured tasks (capability-gated;
   the `structured-task-write` tracker capability), otherwise from an opening planning turn.
-- **Computed completion** — the `tasks:all_closed` trigger runs `ship` (the `[driver]` `on`/`run`
-  wiring), replacing an asserted completion flag.
+- **Computed completion** — the consumer watches its own task state for the `[driver]` `on` condition
+  (`tasks:all_closed`) and invokes the entry point `run` names, replacing an asserted completion flag.
+  The tables travel in `repo.policy.toml` because the repository owns the wiring; the engine matches
+  neither, its triggers being the two kinds Section 5.1 fixes.
 - **Escalation as tasks** — a need bound by `escalate` (Section 5.6) becomes an agent-assigned task;
   `need-help` is an agent-created human-assigned task that parks for feedback.
 - **Write-through materialization** — the agent's `add`/`split` cause the broker (credentialed; the

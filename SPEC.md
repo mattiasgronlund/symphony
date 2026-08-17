@@ -976,7 +976,7 @@ Operator policy config:
 - `vcs.base_branch_allowed`: OPTIONAL bound on the targets a per-issue source may name, default unset (unbounded)
 - `vcs.local_vcs`: REQUIRED; the VCS backend the engine loads, and the checkout mode for one it creates. For a checkout it did not create the backend detects the mode (Section 9.7)
 - `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
-- `vcs.await_bound_ms` / `vcs.await_max_reads` / `vcs.await_interval_ms`: the bounds Symphony hands the engine's `await_checks` on `merge:checks_pending` (Sections 8.11, 9.10); defaults `Implementation-defined` and documented. Reaching either bound parks the issue
+- `vcs.await_bound_ms` / `vcs.await_max_reads` / `vcs.await_interval_ms`: the bounds Symphony hands the engine's `await_checks` on `merge:checks_pending` (Sections 8.11, 9.10); defaults `Implementation-defined` and documented. Reaching either bound parks the issue; a pull request with no required checks returns `no_checks` and the flow continues
 - `vcs.await_budget_floor`: OPTIONAL bucket name and minimum remaining below which the wait stops and the issue parks, default unset
 - `forge_budget.enabled` / `forge_budget.warn_percent` / `forge_budget.<bucket>_floor`: the OPTIONAL forge budget guard (Section 8.11); defaults `false` and `80`. Recording the snapshot is Core and needs none of these
 - a `repo.policy.toml` pointer per managed repository (Section 5.6)
@@ -1453,9 +1453,11 @@ Agent verbs:
 
 Computed completion:
 
-- The `tasks:all_closed` trigger (Sections 9.12, 11.6) fires when every implementation task is closed
-  and, wired through `[driver]`, runs `ship`. Completion is derived from task state, not from an
-  asserted `done`.
+- Symphony watches its own task state for the `[driver]` `on` condition — `tasks:all_closed`, every
+  implementation task closed — and invokes the entry point `run` names, which is `ship`. Completion
+  is derived from task state, not from an asserted `done`. The watching is Symphony's: the engine
+  matches lifecycle positions and typed operation results and is told an entry point, not an event
+  (Section 9.12).
 
 Escalation as tasks:
 
@@ -2023,10 +2025,16 @@ Awaiting required checks:
   bounded, already reads conditionally where the forge supports it, and already stops on a budget
   floor (Section 9.7, `VCSX-CONTRACT.md`); a second loop around it would be two bounds with no
   defined relationship, and the one that fired first would decide behavior no one specified.
-- The operation's four outcomes are disposed of as follows. `await_checks:ok` continues the flow.
-  `await_checks:checks_failed` fails the run attempt, the checks having completed and not passed.
-  `await_checks:still_pending` and `await_checks:budget_floor` **park** the issue (Sections 11.6,
-  14.2).
+- The operation's five outcomes are disposed of as follows. `await_checks:ok` continues the flow.
+  `await_checks:no_checks` continues it too, the forge reporting no required checks for the pull
+  request and such a pull request being mergeable. `await_checks:checks_failed` fails the run attempt,
+  the checks having completed and not passed. `await_checks:still_pending` and
+  `await_checks:budget_floor` **park** the issue (Sections 11.6, 14.2).
+- `no_checks` continues rather than parking because Symphony holds no opinion about whether a
+  repository ought to require checks; that is the repository's Way of Working, expressed in
+  `repo.policy.toml` by binding the reason (Section 9.12), and a deployment that wants an ungated
+  merge surfaced binds it there. Parking every merge in every repository that runs no checks would
+  make the ordinary case the one that needs an operator.
 - Parking is the disposition rather than retry or failure, and the reasoning is worth stating.
   Retrying is wrong because Section 8.4's backoff schedule exists for transient failures and a check
   run that is still running is not failing — a retry re-enters a wait that exhausts the same bound
@@ -2150,8 +2158,16 @@ Triggers:
   `before:merge`.
 - Typed operation results of the form `<op>:<reason>` (for example `push:ok`,
   `push:non_fast_forward`, `integrate:merge_conflicts`), where the operations are `commit`,
-  `integrate` (back-merge), `push`, `create_pr`, and `merge`.
-- Task-state events (Section 8.10), for example `tasks:all_closed` and `task:#needs_help`.
+  `integrate` (back-merge), `push`, `pull`, `create_pr`, `merge`, `await_checks`, `status`, and
+  `diff`. `provision` and `load_policy` raise no `<op>:<reason>` trigger: the edges that would route
+  either are in the document those operations exist to obtain, so a gate on one would be present on
+  an invocation that refreshed a checkout and absent on the one that created it. Symphony dispatches
+  both and classifies their results itself (Sections 9.7, 14.1).
+
+There is no third kind. An event Symphony observes — an agent milestone, or every implementation
+task closing under the task model — selects a tracker transition (Section 11.6) or the entry point
+the `[driver]` wiring names (Section 8.10); it does not enter the engine's executor, whose triggers
+are the two kinds above, both produced by the engine itself.
 
 Actions:
 
@@ -2168,8 +2184,8 @@ Matching and the `#class` fallback:
 
 Unmatched policy:
 
-- An unmatched **signal** (an agent milestone or task-state event with no matching edge) is a benign
-  no-op.
+- An unmatched **lifecycle position** is a benign no-op: nothing runs at the position and the
+  operation proceeds.
 - An unmatched **operation outcome** MUST be fail-safe: it is parked or failed with its proto reason
   surfaced, never silently dropped, because a dropped operation outcome would strand a run.
 
@@ -2768,17 +2784,24 @@ State machine:
 
 Triggers:
 
-Each transition's `on` value is drawn from one closed vocabulary with several origins (the same
-trigger vocabulary as the action-policy machine, Section 9.12). A repository wires triggers to
-transitions but does not introduce new trigger names.
+Each transition's `on` value is drawn from one closed vocabulary with several origins, listed below.
+It is Symphony's vocabulary rather than the engine's trigger vocabulary (Section 9.12), the two
+naming what each party observes: the engine matches positions it entered and results its operations
+returned, and this table matches conditions the orchestrator and the agent produce. A repository
+wires triggers to transitions but does not introduce new trigger names.
 
 These spellings are REQUIRED: an implementation MUST match a transition's `on` value against the
 tokens below, so a `repo.policy.toml` authored against one implementation binds the same transitions
 on another. An `on` value outside the vocabulary is a configuration error, caught at dispatch
 preflight (Section 6.3) — distinct from a trigger that is in the vocabulary and that no transition
 binds, which fires nothing and is not an error. The vocabulary is published as data beside the
-conformance corpus (Section 17); the agent-emitted milestone signals and task-state events are also
-published by the VCS engine's registry, which is their authority (`VCSX-SPEC.md` Section 5.1).
+conformance corpus (Section 17), and Symphony is its authority: `tracker.transitions` travels in
+`repo.policy.toml` because the repository owns the wiring, but `set_state` is a consumer-effected
+action over a tracker outside the VCS/forge domain, so the engine carries and validates the table
+without matching its `on` (`VCSX-SPEC.md` Sections 5.2, 6.7). That is why the tokens below include
+conditions no engine operation reports — a milestone the agent signalled, a run that failed, a retry
+path that ran out — and why `pull_request_opened` names a pull request opened during the run by any
+means rather than one operation's result.
 
 - Milestone signals, emitted by the agent through the broker CLI to express intent, optionally with
   content:
@@ -4285,8 +4308,10 @@ deployment satisfies by using a conforming engine rather than by implementing th
   starts and no work branch is created; where no source supplies one, an operation needing a target
   is refused while commit, push and provisioning are unaffected (Section 9.7)
 - The action-policy machine (Section 9.12): an `op:#class` edge catches an unnamed operation reason,
-  an unmatched operation outcome is fail-safe (parked, not silently dropped), and an unmatched signal
-  is a benign no-op (`VCS Engine`)
+  an unmatched operation outcome is fail-safe (parked, not silently dropped), and an unmatched
+  lifecycle position runs nothing while the operation proceeds; a repository binds `await_checks:*`
+  and `pull:*` through the same ladder it binds `merge:*`, and a policy naming a `provision:*` trigger
+  is refused (`VCS Engine`)
 - Message formulation (Section 9.10): the squash message is `transform(PR)` via `pr_to_squash` at
   `before:merge` (title verbatim, body laundered); the PR title is strict-scanned while the PR body
   retains tracker keys; the commit message passes `before:commit`/`scan-content`; the default PR body
@@ -4351,7 +4376,9 @@ These checks are `Daemon Conformance`.
 - Abnormal worker exit increments retries with 10s-based exponential backoff
 - A `merge:checks_pending` dispatches the engine's `await_checks` with the configured bounds rather
   than a Symphony-side poll loop; `await_checks:still_pending` and `await_checks:budget_floor` park
-  the issue rather than entering the Section 8.4 backoff or failing the run; and `await_checks:ok`
+  the issue rather than entering the Section 8.4 backoff or failing the run; `await_checks:no_checks`
+  continues the flow rather than parking, a pull request the forge reports no required checks for
+  being mergeable; and `await_checks:ok`
   does not bypass the merge's own head condition or the pull-request identity re-verification
   (Sections 8.11, 9.10)
 - The forge budget snapshot each engine invocation reported is recorded against the run and
@@ -4691,9 +4718,11 @@ engine's checklist.
   success does not license an unconditioned merge; the forge budget snapshot each engine invocation
   reports is recorded per run and repository under the forge's own bucket names, summed into nothing
   (Sections 8.11, 9.10, 13.5)
-- The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback, an
-  unmatched operation outcome fail-safe, an unmatched signal a no-op, and abstract `escalate` bound
-  per front-end
+- The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback over the
+  two engine-produced trigger kinds, an unmatched operation outcome fail-safe, an unmatched lifecycle
+  position a no-op, and abstract `escalate` bound per front-end. The tables Symphony reads rather than
+  the executor — `tracker.transitions`, `[tasks]`, `[driver]` — are matched by Symphony against its own
+  trigger vocabulary (Sections 8.10, 11.6)
 - Message formulation (Sections 9.8–9.10): commit authored + `scan-content`; PR composed
   (auto-compose default, agent prose overrides) with strict-title / relaxed-body scans; squash
   mechanically transformed via `pr_to_squash` at `before:merge`

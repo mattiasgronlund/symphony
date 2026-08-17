@@ -175,8 +175,16 @@ frontmatter; it validates the scaffolding only and does not build or test the sp
 ## Working agreements
 
 - Keep changes scoped and reviewable; prefer focused edits over large rewrites.
-- After substantive content changes, keep the cross-cutting sections in sync: the config cheat sheet
-  (Section 6.4), test matrix (Section 17), and implementation checklist (Section 18).
+- After substantive content changes, keep the cross-cutting sections in sync. In `SPEC.md`: the
+  config cheat sheet (Section 6.4), test matrix (Section 17), and implementation checklist
+  (Section 18). In `VCSX-SPEC.md`: the test matrix (Section 13.1), implementation checklist
+  (Section 13.2), and Conformance Statement obligations (Section 13.3).
+- **A change that adds an `Implementation-defined` or "MUST document" obligation MUST add its row to
+  the matching Conformance Statement template** — `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` for the
+  engine, `CONFORMANCE-STATEMENT-TEMPLATE.md` for Symphony. The templates' tables are what a
+  generator parses, so an obligation with no row is invisible to every check: the table is complete
+  against itself and a Statement generated from it is silently missing the answer. Three decisions in
+  a row missed this before it was caught downstream (decision 0128).
 - Do not bump the `Status:` line or restructure the document without being asked.
 - This is a spec, not code: there is nothing to build, run, or test yet. Don't fabricate build/test
   commands.

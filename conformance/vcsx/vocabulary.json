@@ -114,6 +114,7 @@
       { "token": "await_checks:checks_failed", "operation": "await_checks", "reason": "checks_failed", "class": "error", "default_need": null },
       { "token": "await_checks:still_pending", "operation": "await_checks", "reason": "still_pending", "class": "needs_caller", "default_need": "await_checks", "note": "A supplied bound was reached with checks still pending. Separate from `budget_floor` because the repairs differ: this one is met by waiting longer." },
       { "token": "await_checks:budget_floor", "operation": "await_checks", "reason": "budget_floor", "class": "needs_caller", "default_need": "retry_after", "note": "A supplied budget floor was reached with checks still pending; met by waiting for a bucket to refill rather than by raising the wait." },
+      { "token": "await_checks:no_checks", "operation": "await_checks", "reason": "no_checks", "class": "done", "default_need": null, "note": "The forge reports no required checks for the pull request, so there is nothing to wait for; ends the wait on the first read (Sections 4.1, 9.2). Class `done` because a wait for checks that do not exist is a benign no-op. A reason of its own rather than `ok` because a consumer that could not tell them apart could not see a merge gate stop existing — a required check dropped from branch protection turns every later merge into an unchecked one. Not `needs_caller`: requiring checks is a Way of Working the engine does not hold, so a repository that wants the anomaly surfaced binds this reason." },
       { "token": "await_checks:rate_limited", "operation": "await_checks", "reason": "rate_limited", "class": "needs_caller", "default_need": "retry_after", "forge_universal": true },
       { "token": "await_checks:forge_unavailable", "operation": "await_checks", "reason": "forge_unavailable", "class": "needs_caller", "default_need": "retry_after", "forge_universal": true },
       { "token": "await_checks:failed", "operation": "await_checks", "reason": "failed", "class": "error", "default_need": null, "universal": true },
@@ -161,7 +162,8 @@
       { "token": "transform_unbound", "meaning": "A `[messages.squash]` `transform` naming a unit the consumer bound nothing to (Sections 6.8, 10.3). Judged from the same input as `template_unbound` and refused for the same reason, with more of the flow behind it: a transform's first use is the `merge` a `land` reaches only once the pull request is open. A `[messages.squash]` naming no transform is not this condition — it names no unit, so nothing is unbound." },
       { "token": "capability_unsupported", "meaning": "A policy requiring a capability no selected backend declares (Section 9.3). Determinable because a statically declared capability follows from the consumer's selection alone; a descriptor field only the checkout answers is not, and keeps Section 9.3's first-use disposition." },
       { "token": "policy_branch_is_target", "meaning": "The `policy_branch` names the same branch as the resolved base (Sections 6.4, 8.1). Judged from the consumer's configuration and the policy together and from no checkout, which places it here rather than among the preconditions. A trusted revision that is also the pull-request target is one the work being landed can rewrite; refusing at validation keeps the refusal ahead of `commit`, so nothing is published by an invocation that cannot open a pull request." },
-      { "token": "version_floor_unmet", "meaning": "A `version_floor` above the running engine version." }
+      { "token": "version_floor_unmet", "meaning": "A `version_floor` above the running engine version." },
+      { "token": "branch_section_selector_key", "meaning": "A `[[branch]]` section carries `[base]` or `[scope]`, either of which supplies the value that selects the section (Sections 6.4, 6.10). Base resolution runs before section selection and reads no section, so a section naming either would select itself — directly through `[base]`, or one step longer through `[scope] branch_pattern`, which a `by_prefix` resolution reads. Refused rather than resolved as a fixpoint so that validity stays answerable by looking at the document; a repository varying its base per track states it at the top level with `resolve = \"by_prefix\"`." }
     ]
   },
 
@@ -181,7 +183,8 @@
       { "token": "no_current_branch", "meaning": "The work branch is the checkout's current branch (no `branch_pattern` configured) and the checkout has none." },
       { "token": "work_branch_invalid", "meaning": "The derived work branch name is not a legal branch name for the VCS backend." },
       { "token": "identity_invalid", "meaning": "The caller-supplied commit identity is absent where the entry requires one — `commit`, `integrate`, `pull`, and a front-end sequence that dispatches one — or is malformed as the VCS backend judges it, which is judged whatever the entry. An identity absent at an entry the requirement does not cover is the operation's `identity_missing` at the dispatch instead (Section 4.3)." },
-      { "token": "checkout_unreadable", "meaning": "A VCS backend capability the engine consults before the first dispatch could not answer — the checkout could not be read. Distinct from `no_current_branch` and `work_branch_invalid`, which are answers the backend gave; this is the absence of one (Sections 8.6, 9)." }
+      { "token": "checkout_unreadable", "meaning": "A VCS backend capability the engine consults before the first dispatch could not answer — the checkout could not be read. Distinct from `no_current_branch` and `work_branch_invalid`, which are answers the backend gave; this is the absence of one (Sections 8.6, 9)." },
+      { "token": "resume_unusable", "meaning": "A supplied `resume` the engine cannot establish as its own and current — issued under a different policy, against a different repository, or by a different major version (Sections 5.5, 8.1). Judged wherever a `resume` was supplied, whatever the entry, from the invocation's arguments together with the policy the engine validated and its own version; an absent `resume` is no failure and reaches no row here. A precondition rather than a configuration error because the artifact at fault is the invocation: the policy is well formed and what is wrong is a value the caller carried forward past the point it described anything. Refusing costs a re-invocation from the entry point, where accepting a stale one runs an operation the policy no longer routes." }
     ]
   },
 
@@ -198,22 +201,10 @@
 
   "trigger_kinds": {
     "spec_refs": ["VCSX-SPEC.md Sections 5.1 \"Triggers\", 5.3 \"Matching Algorithm and the `#class` Fallback\""],
+    "note": "Two kinds, both produced by the engine itself — a position it entered, a result an operation it ran returned — so a trigger's producer and its matcher sit inside one invocation. An event the consumer observes is not a trigger: it selects which entry point the consumer invokes, which is what `[driver]` is for (Sections 5.1, 6.9). The tables a consumer reads — `tracker.transitions`, `[tasks]`, `[driver]` — are carried in the merged surface and validated for determinism without the executor matching their `on`; their vocabularies are the consumer's and are published by the consumer (for Symphony, `conformance/vocabulary.json` `transition_triggers`).",
     "entries": [
       { "kind": "lifecycle_position", "form": "before:<op>", "class_fallback": false },
-      { "kind": "typed_result", "form": "<op>:<reason>", "class_fallback": true, "ladder": ["op:reason", "op:#class", "#class", "built-in default"] },
-      { "kind": "signal", "form": "<signal>", "class_fallback": false }
-    ]
-  },
-
-  "signals": {
-    "spec_refs": ["VCSX-SPEC.md Section 5.1 \"Triggers\""],
-    "note": "Raised by the consumer. An unmatched signal is a benign no-op (Section 5.4).",
-    "entries": [
-      { "token": "ready-for-review", "kind": "agent_milestone" },
-      { "token": "blocked", "kind": "agent_milestone" },
-      { "token": "done", "kind": "agent_milestone" },
-      { "token": "tasks:all_closed", "kind": "task_state_event" },
-      { "token": "task:#needs_help", "kind": "task_state_event" }
+      { "kind": "typed_result", "form": "<op>:<reason>", "class_fallback": true, "ladder": ["op:reason", "op:#class", "#class", "built-in default"] }
     ]
   },
 
@@ -275,7 +266,9 @@
       { "token": "forge_budget", "fields": ["buckets", "observed_at"], "meaning": "The most recent budget snapshot a forge capability observed during the invocation (Sections 8.2, 9.2), reported whether or not any limit was reached. Each bucket carries `limit`, `remaining` and an OPTIONAL `resets_at` under the name the forge used; identity is opaque and the counts are in the bucket's own unit, so nothing here is normalized, summed or compared. Absent both where the invocation reached no forge capability and where it reached one and the forge reported no budget — one spelling for two events, because the consumer learned nothing new in either." },
       { "token": "forge_unavailable_condition", "meaning": "The condition behind a `forge_unavailable` result (Sections 4.3, 8.2): `server_error`, `bound_elapsed` or `transport_failure`. Absent for every other reason. The reason routes and the condition diagnoses, as `hook_unanswered` and `unanswered_gates` already divide the work." },
       { "token": "pr_state_unchanged", "meaning": "Present on a `status` whose invocation supplied a `pr_state_validator` the forge reported unmoved (Sections 4.1, 8.1, 9.2). Distinct from an absent pull request and from `pr_state_unavailable`: the read established that the caller's copy is current." },
-      { "token": "pr_state_unavailable", "meaning": "Present on a `status` whose configured forge could not be asked for the pull-request state (Sections 4.1, 9.2): the read established nothing, which is neither an absent pull request nor an unchanged one." }
+      { "token": "pr_state_unavailable", "meaning": "Present on a `status` whose configured forge could not be asked for the pull-request state (Sections 4.1, 9.2): the read established nothing, which is neither an absent pull request nor an unchanged one." },
+      { "token": "pr_state_throttled", "meaning": "Present on a `status` whose forge refused the pull-request read because a budget was exhausted (Sections 4.1, 9.2). The fourth distinguishable pull-request condition, beside an unchanged read, an unavailable one and a reported state. Spelled apart from `pr_state_unavailable` for the reason `rate_limited` and `forge_unavailable` are spelled apart one layer up: the repair here is informed, the exhausted bucket and its `resets_at` being in `forge_budget`, and there uninformed. `status` still completes — the operation reports rather than acts, so a refused forge call costs it one field rather than the run, which is why this is an output and not a reason (Section 4.3)." },
+      { "token": "resume_token", "meaning": "An opaque token naming the point that raised the need and the flow bound already spent, which a later invocation supplies as `resume` (Sections 5.5, 5.6, 8.1). Present exactly where the invocation ended at `needs_caller` with a resolvable need; absent for the two holds, `intervention` and `flow_exhausted`, so the prohibition on resuming either is readable from the envelope rather than only from the policy that produced it. It carries the point and the count and nothing a lifecycle position established — an `expected_worktree` or `expected_head` carried across would hand an operation state no position had inspected since." }
     ]
   },
 

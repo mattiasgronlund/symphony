@@ -93,8 +93,8 @@
         "policy": {
           "base": { "branch": "main" },
           "edges": [
-            { "from": "In Progress", "on": "ready-for-review", "do": "set_state", "target": "Human Review" },
-            { "from": "Human Review", "on": "ready-for-review", "do": "set_state", "target": "Done" }
+            { "from": "In Progress", "on": "push:ok", "do": "set_state", "target": "Human Review" },
+            { "from": "Human Review", "on": "push:ok", "do": "set_state", "target": "Done" }
           ]
         },
         "engine_version": "1.3",

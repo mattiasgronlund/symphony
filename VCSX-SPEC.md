@@ -254,11 +254,17 @@ work branch reaches, rather than leaving the arrangement to each backend.
   no determinate value it did not establish. Where the invocation supplied a `pr_state_validator`
   (Section 8.1) and the forge answered that the pull request has not moved since that validator was
   issued, the pull-request fields are null and a `pr_state_unchanged` output reports it; the
-  operation still completes, and the caller reads the state it already holds. That is a third
-  distinguishable pull-request condition, stated separately from the other two because the three
-  carry different meanings: `pr_state_unavailable` is a read that established nothing,
-  `pr_state_unchanged` is a read that established the caller's copy is current, and a reported
-  state is a read that established a new one. Read-only.
+  operation still completes, and the caller reads the state it already holds. Where the forge
+  refused the read because a budget was exhausted, the pull-request fields are null and a
+  `pr_state_throttled` output reports it; the operation still completes, and the exhausted bucket
+  with its `resets_at` is in `outputs.forge_budget` (Sections 8.2, 9.2), so the output names the
+  condition and the snapshot carries the figure, which keeps the figure in one place. Those are four
+  distinguishable pull-request conditions, stated separately because each carries a different
+  meaning: `pr_state_unavailable` is a read that established nothing, `pr_state_unchanged` is a read
+  that established the caller's copy is current, `pr_state_throttled` is a read the forge refused
+  for budget, and a reported state is a read that established a new one. The operation completes in
+  all four, which is what places a refused forge call here rather than in a reason of its own
+  (Section 4.3). Read-only.
 - `diff` — the branch delta against the resolved base. Read-only.
 - `commit` — create a commit from the working tree, gated at `before:commit` (Section 10.1). The
   operation captures the working tree in full: every change the VCS does not ignore, including
@@ -278,9 +284,12 @@ work branch reaches, rather than leaving the arrangement to each backend.
 - `merge` — merge the pull request using the configured strategy (Section 6.8). Gated at
   `before:merge`; a squash strategy applies the `pr_to_squash` transform (Section 10.3).
 - `await_checks` — read the pull request's required-check state (Section 9.2 `checks_state`) until
-  one of four conditions holds: the checks completed successfully, they completed and did not pass,
-  a bound the invocation supplied was reached, or a budget floor the invocation supplied was
-  reached (Sections 4.3, 8.1). Gated at no fixed position. Read-only: it changes none of the three
+  one of five conditions holds: the checks completed successfully, they completed and did not pass,
+  the forge reports no required checks for the pull request, a bound the invocation supplied was
+  reached, or a budget floor the invocation supplied was reached (Sections 4.3, 8.1). The third is a
+  determinate answer rather than a wait that ended, and it ends the wait on the first read: a pull
+  request with no required checks has nothing to wait for (Section 9.2). Gated at no fixed position.
+  Read-only: it changes none of the three
   things that term quantifies over, and in particular it does not merge — the state it reports is
   the state a subsequent `merge` would act on, not an action on it. Each read is conditional where
   the consumer carried a validator forward and the backend supports one (Sections 8.1, 9.2), so a
@@ -360,9 +369,11 @@ once rather than repeated per operation: `failed` and `unsupported` are defined 
 and `blocked` and `hook_unanswered` for every operation gated at a lifecycle position (Section 4.1).
 
 Two further reasons are carried with `(any forge)` in place of an operation: `rate_limited` and
-`forge_unavailable` are defined for every operation whose forge call the condition prevented —
-`push`, whose `pr_state` read a forge answers (Section 4.1), `create_pr`, `merge`, and
-`await_checks`, whose every read is one.
+`forge_unavailable` are defined for every operation that **acts** on a forge call the condition
+prevented — `push`, whose `pr_state` read a forge answers (Section 4.1), `create_pr`, `merge`, and
+`await_checks`, whose every read is one. `status` reads a forge and is not among them, because it
+reports the answer rather than acting on it and completes whatever the forge said; a refusal reaches
+its caller as an output (Sections 4.1, 9.2).
 
 | Operation | Reason | Class | Default need | Meaning |
 |-----------|--------|-------|--------------|---------|
@@ -405,6 +416,7 @@ Two further reasons are carried with `(any forge)` in place of an operation: `ra
 | `await_checks` | `checks_failed` | `error` | — | The required checks completed and did not pass. |
 | `await_checks` | `still_pending` | `needs_caller` | `await_checks` | A supplied bound was reached with checks still pending (Section 8.1). |
 | `await_checks` | `budget_floor` | `needs_caller` | `retry_after` | A supplied budget floor was reached with checks still pending (Sections 8.1, 9.2). |
+| `await_checks` | `no_checks` | `done` | — | The forge reports no required checks for the pull request, so there is nothing to wait for (Section 9.2). |
 | `pull` | `ok` | `done` | — | The local branch was updated. |
 | `pull` | `conflict` | `needs_caller` | `resolve_conflicts` | The merge of the remote counterpart stopped on conflicts. |
 | `pull` | `identity_missing` | `needs_caller` | `supply_identity` | No caller-supplied commit identity is available for the merge commit (Sections 8.6, 10.1). |
@@ -518,6 +530,32 @@ what diagnoses are both branchable. A backend MUST NOT report a permanent refusa
 reason; a forge that refuses a request it will refuse identically on every retry is that operation's
 own `error`-class result.
 
+The two reasons are defined for the operations that act on a forge answer and not for `status`, and
+the split falls there because the two kinds of operation lose different things to a refusal. A
+`push`, a `create_pr`, a `merge` or an `await_checks` that could not reach the forge did not do what
+it was dispatched to do, so the outcome is the operation's and belongs in its reason. A `status` that
+could not reach the forge established five of its six outputs and not the sixth, so the outcome
+belongs to the field: `pr_state_throttled` for a refusal on budget and `pr_state_unavailable` for a
+read that established nothing (Section 4.1). Reporting the refusal as a reason would end an
+inspection over one field a caller may not have been asking for, and reporting it as the universal
+`failed` would additionally carry a condition that clears on its own under a class whose default
+fails the flow. The two outputs are spelled apart for the reason the two reasons are: the repair is
+informed on one side and uninformed on the other, and one token for both would tell a caller which
+repair it has only by accident.
+
+`await_checks:no_checks` is not `ok`, and the two are separated for what a consumer can see rather
+than for what it must do. Both are class `done` and both continue the flow, so a repository binding
+neither behaves identically under either; what one token would cost is the ability to tell a
+repository whose checks all passed from one that configures none. That is how a merge gate stops
+existing without anyone deciding to remove it — a required check dropped from branch protection, or
+a workflow file that stopped matching, turns every later merge into an unchecked one, and under a
+shared `ok` nothing in the record marks the day it changed. It is class `done` because a wait for
+checks that do not exist is the benign no-op Section 4.2's definition already covers, and it is not
+`needs_caller` because "a repository must have required checks" is a Way of Working and the engine
+holds none (Section 1.1): a repository that holds it binds the reason and gets the stop, and one
+that does not is not made to escalate on every merge. It is not `still_pending`, which reports a
+bound that was reached, where nothing here was waited for.
+
 `await_checks:still_pending` and `await_checks:budget_floor` both end a wait that found the checks
 still running, and they are two reasons because the repairs differ: one is met by waiting longer and
 the other by waiting for a bucket to refill, and a consumer that could not tell them apart would
@@ -573,18 +611,21 @@ carries `blocked` or `hook_unanswered`. An engine that defines an additional ope
 
 ### 5.1 Triggers
 
-A trigger is one of:
+A trigger is one of two kinds:
 
 - **Lifecycle positions** around an operation: `before:commit`, `before:push`, `before:create_pr`,
   `before:merge` (and any engine-defined `before:<op>`). A lifecycle position is matched exactly; it
   has no class form. `provision` has no position and raises no trigger (Section 4.1).
 - **Typed operation results** `<op>:<reason>` (Section 4.3).
-- **Signals** raised by the consumer, including agent milestone signals (`ready-for-review`, `blocked`,
-  `done`) and **task-state events** (`tasks:all_closed`, `task:#needs_help`) when the consumer runs the
-  task model (Section 7.3). A signal is matched exactly and has no class form: the consumer raises the
-  token the policy binds. The `#` in `task:#needs_help` names a *condition across tasks* rather than a
-  proto class — the consumer raises it when any task needs human help, not one event per task — so it
-  is an ordinary signal token, not a fallback rung.
+
+There is no third kind, and an event that is neither of these does not enter the executor. An event
+the consumer observes — an agent milestone, or every task closing under a task model it runs
+(Section 7.3) — selects which **entry point** the consumer invokes, which is what the `[driver]`
+table it reads is for (Sections 6.9, 8.1). The engine is told `ship`; it is not told what led the
+consumer to dispatch one. A trigger the engine matches is therefore one the engine itself produced:
+a position it entered, or a result an operation it ran returned. That is what keeps a trigger's
+producer and its matcher inside one invocation, and it is why the two kinds above are the whole of
+the list.
 
 ### 5.2 Actions
 
@@ -617,15 +658,26 @@ emits the intent and the consumer performs it. `run_op` and `run` are the engine
 
 A consumer need not be able to effect every such action. A consumer may be a human at an interactive
 prompt (Section 1.3), with no task model, no tracker binding, and no notification channel, so a policy
-using these actions MUST behave predictably against a consumer that cannot perform them. Each action's
-disposition is fixed:
+using these actions MUST behave predictably against a consumer that cannot perform them. Which it can
+is the consumer's own declaration, supplied as `effectable_actions` (Section 8.1) and judged before
+the policy runs (Section 6.11), rather than something the engine infers from the entry point or the
+front-end: a driver with no notification channel and an interactive front-end wired to a tracker are
+both ordinary, so an inference either way would refuse a valid policy or admit a stranding one with
+no argument the consumer could make to correct it. Each action's disposition against an action
+outside that set is fixed:
 
 - `create_task` and `notify` are benign no-ops. The engine MUST surface each such intent in the result
   envelope (Section 8.2) rather than drop it, on the same principle that forbids silently dropping an
   operation outcome no action disposed of (Section 5.4): an intent the engine emitted and no consumer
   performed is reported, so a policy that degrades against a lesser consumer degrades visibly.
-- `set_state` is a configuration error, caught before the policy runs (Section 6.11), because a
-  workflow state that never advances strands the flow rather than merely losing information.
+- `set_state` is a configuration error, caught before the policy runs (`set_state_unbound`,
+  Section 6.11), because a workflow state that never advances strands the flow rather than merely
+  losing information.
+
+The split is also why `effectable_actions` defaults to empty (Section 8.1). A default admitting every
+action would validate a `set_state` policy against a consumer that cannot advance a state and strand
+the flow at the first transition, which is the outcome the reason exists to refuse; a consumer that
+can effect one says so.
 
 This is not a second point of front-end divergence. The engine's behavior is identical in either
 front-end — it emits the intent and records whether a consumer performed it — and only the consumer's
@@ -640,14 +692,11 @@ Given a trigger, the executor selects at most one edge by most-specific-wins ove
 - For a **typed result** `op:reason`: try, in order, `op:reason` → `op:#class` → `#class` → a built-in
   default, where `#class` is the reason's proto class (Section 4.2). Example ladder:
   `push:non_fast_forward` → `push:#needs_caller` → `#needs_caller` → default.
-- For a **signal / task-state event** `s`: match an edge keyed exactly `s`, then the unmatched-signal
-  default (Section 5.4). No class fallback — a signal carries no proto class, because it is a
-  consumer-raised condition rather than an operation result (Section 5.1).
 
 The `#class` fallback lets a policy branch on the three stable classes without enumerating every
 reason, so a new reason token added in a compatible release routes to an existing class edge. It
-applies to typed operation results alone: those are the only triggers with a proto class to fall back
-on.
+applies to typed operation results alone: a lifecycle position has no outcome to classify
+(Section 5.4), which is the other of the two trigger kinds.
 
 ### 5.4 Unmatched Policy and Determinism
 
@@ -656,7 +705,6 @@ on.
   required positions (Section 4.1) are available to every policy and most policies bind only some, so
   leaving one unbound is the ordinary case rather than an omission. This is also why a position has no
   class fallback (Section 5.3): there is no outcome to classify.
-- An unmatched **signal** (including a task-state event) is a benign no-op.
 - An **operation outcome no action disposed of** MUST be fail-safe: the executor parks or fails the
   flow with the operation's proto reason surfaced. It MUST NOT be silently dropped, because a dropped
   operation outcome would strand a flow. The built-in default for the `error` class is `fail`; for
@@ -710,18 +758,36 @@ refused may now pass and a gate that gave no usable answer may now answer, and n
 the hook did not give (Section 6.6). A resume that landed past the position would run an operation no
 gate had inspected, which is what the position exists to prevent.
 
+A resume is carried by the invocation that resumes rather than held by the engine. An invocation that
+ends at `needs_caller` with a **resolvable** need returns a `resume_token` in `outputs`, and an
+invocation supplying it as the `resume` argument re-enters the point that token names
+(Sections 8.1, 8.2). The engine holds nothing between invocations — it takes a credential for the
+duration of one and persists none beyond it (Section 1.3) — so a resume that depended on engine-side
+state would be expressible under an in-process API and not under a subprocess, and the contract is
+the same under either (Section 8). A need that names a **hold** carries no token, `intervention` and
+`flow_exhausted` being unresolvable (Section 8.4), so a front-end reads the prohibition against
+resuming either off the envelope rather than off the policy that produced it.
+
 Nothing a position established carries across a resume. The state a position inspected is read again,
 so an operation conditioned on an inspected identity — `expected_worktree`, `expected_head`
 (Section 6.6) — is conditioned on what the re-entered position saw. An engine that carried the earlier
 expectation forward would hand an operation state no position had inspected since, which is the
-condition Sections 4.3 and 6.6 exist to report rather than to produce.
+condition Sections 4.3 and 6.6 exist to report rather than to produce. The token is held to that rule
+and not excepted from it: it carries the point to re-enter and the flow bound already spent, and it
+MUST NOT carry `expected_worktree`, `expected_head`, or anything else a position established. A value
+that already carries two things is where a third looks harmless, which is why the prohibition is
+stated over the token rather than left to follow from the paragraph above it.
 
 Any **re-entry** a resume causes counts against the flow bound (Section 5.6). The count is stated over
 re-entry rather than over the dispatch it usually is, because a resume into a lifecycle position
 re-enters a position inside a dispatch whose count is already spent: a resolver that always resolves
 would otherwise loop there with nothing to stop it. Both shapes therefore reach `flow_exhausted`
 rather than running indefinitely, which is the property Section 5.6 holds for every other loop the
-schema can express.
+schema can express. The count is what the `resume_token` carries alongside the point, so it
+accumulates across a chain of resumed invocations as it does within one: a bound that restarted at
+each re-invocation would hold for a driver whose resolver returns in-process and fail for a front-end
+whose caller resolves and invokes again, and the property would then depend on an encoding the
+consumer chose for unrelated reasons.
 
 `park` (Section 5.2) reaches the same `needs_caller` result and carries a need of its own, so the
 envelope's escalation rule holds for it without exception (Section 8.2). It is not a second point of
@@ -754,10 +820,16 @@ position's `run_op` edge dispatching the operation the next position gates, reac
 any traversal and is a configuration error (`position_cycle`, Section 6.11). The bound holds every
 loop that runs operations, which is every loop whose cycle passes through a typed operation result.
 
-A conforming executor MUST bound one invocation's flow by a count of `run_op` dispatches and resume
-re-entries (Section 5.5). The bound's value is `Implementation-defined` and MUST be documented
-(Section 13.3); it MUST admit at least 64 dispatches, and an engine that lets a deployment configure it
-MUST hold the configured value to the same floor. The floor's exact value is arbitrary; that it is
+A conforming executor MUST bound one flow by a count of `run_op` dispatches and resume re-entries
+(Section 5.5). The bound is over the **flow** rather than over one invocation of it: a flow an
+`escalate` ended and a resume continued is one flow, and a resumed invocation continues from the
+count its `resume_token` carries rather than starting a fresh budget (Sections 5.5, 8.1). Stated over
+the invocation instead, the bound would hold for an embedded driver whose resolver returns inside one
+run and not for a front-end that returns to its caller and is invoked again — so the answer this
+section gives to non-termination would depend on which front-end asked. The bound's value is
+`Implementation-defined` and MUST be documented (Section 13.3); it MUST admit at least 64 dispatches,
+and an engine that lets a deployment configure it MUST hold the configured value to the same floor.
+The floor's exact value is arbitrary; that it is
 fixed is not, because it is what keeps two engines with different bounds in agreement on every policy
 that terminates within it.
 
@@ -896,6 +968,12 @@ One invocation resolves one base. Under `target_branch` the base is fixed before
 and this section cannot move it afterwards; under the default mode the policy is read first and this
 section is the lowest of the three sources, as above.
 
+Base resolution runs before `[[branch]]` section selection and reads no section, the resolved base
+being what selects one (Section 6.10). That is why a section MUST NOT carry `[base]` or `[scope]`:
+either would supply the value that selects it. The order is stated in both places rather than in one,
+because an implementer reading either section needs it and neither section is the obvious home for
+it.
+
 Resolving the base produces two values, because the two plugin layers need different things from it:
 
 - the base **branch** — a name, which the pull-request operations take (Section 9.2);
@@ -927,7 +1005,7 @@ edge scoped to the current context takes precedence over it for the same trigger
 
 ```toml
 [[policy.edge]]
-on = "push:non_fast_forward"   # trigger: lifecycle position | op:reason | op:#class | #class | signal
+on = "push:non_fast_forward"   # trigger: lifecycle position | op:reason | op:#class | #class
 do = "run_op"                  # action (Section 5.2)
 op = "integrate"               # action argument
 # then the resulting integrate:* outcome re-enters the machine
@@ -943,8 +1021,8 @@ on = "#error"                  # class fallback: any error with no more-specific
 do = "escalate"
 ```
 
-An edge's `on` MUST be a trigger the engine recognizes (a known lifecycle position, an `op:reason` /
-`op:#class` / `#class` form over a known operation, or a known signal). A duplicate `(from, on)` is a
+An edge's `on` MUST be a trigger the engine recognizes: a known lifecycle position, or an `op:reason`
+/ `op:#class` / `#class` form over a known operation (Section 5.1). A duplicate `(from, on)` is a
 configuration error (Section 5.4). An edge MUST also carry the arguments the action its `do` names
 needs in order to be dispatched — `op` for `run_op`, `hook` for `run` — and an edge that omits one
 is a configuration error (Section 6.11).
@@ -1132,13 +1210,28 @@ The workflow-state transition graph (`tracker.transitions`) is a set of `set_sta
 ```toml
 [[tracker.transitions]]
 from = "In Progress"
-on   = "pull_request_opened"   # a consumer-supplied run outcome, or a milestone signal / op:reason
+on   = "pull_request_opened"   # a condition the consumer observes
 to   = "Human Review"          # set_state target
 ```
 
 The graph is over neutral state names; mapping a state name to a tracker's representation is the
-consumer's. An unmatched `(from, on)` transitions nothing (a benign no-op, Section 5.4). The graph MUST
-be deterministic (at most one `to` per `(from, on)`).
+consumer's. An unmatched `(from, on)` transitions nothing. The graph MUST be deterministic (at most
+one `to` per `(from, on)`), which the engine validates as part of the document it loads
+(`duplicate_transition`, Section 6.11).
+
+This table is read by the **consumer**, not matched by the executor, and it travels in
+`repo.policy.toml` for the reason `[tasks]` and `[driver]` do (Section 6.9): the repository owns the
+wiring, and the party that effects the action owns the matching. `set_state` is a consumer-effected
+action (Section 5.2) and a tracker is outside the VCS/forge domain, so the condition `on` names is
+one the consumer observes in its own run — a milestone its agent signalled, an outcome it saw, or a
+condition across the tasks it manages. This specification therefore fixes neither that vocabulary nor
+its spellings; a consumer that runs a tracker publishes them, as Symphony does (`SPEC.md`
+Section 11.6). What the engine matches is Section 5.1's two kinds, both of which it produces itself.
+
+A repository MAY of course want a transition on something the engine reported, and nothing here
+prevents it: the consumer receives every operation result in the envelope (Section 8.2) and is free
+to admit `<op>:<reason>` spellings into the vocabulary it publishes. That is the consumer's choice
+about its own table rather than the engine matching one.
 
 ### 6.8 `[messages]`
 
@@ -1204,9 +1297,17 @@ enabled        = true
 write_through  = true          # materialize tasks into the tracker where the capability exists
 
 [driver]
-on  = "tasks:all_closed"       # the computed-completion trigger
-run = "ship"                   # the front-end sequence completion runs
+on  = "tasks:all_closed"       # the task-model condition the consumer watches for
+run = "ship"                   # the entry point the consumer then invokes
 ```
+
+These tables are read by the **consumer** running the task model, not matched by the executor. The
+task model is the consumer's (Section 7.3), so the condition `on` names is one the consumer observes
+in its own state, and `run` names the entry point it invokes when that condition holds
+(Section 8.1). They travel in `repo.policy.toml` because the repository owns the wiring — which
+condition completes a unit of work, and what completing it runs — and not because the engine matches
+them; the triggers the engine matches are Section 5.1's two kinds, both of which the engine itself
+produces.
 
 These tables are inert when the consumer runs no task model (for example the interactive front-end).
 
@@ -1233,7 +1334,23 @@ strategy = "merge"             # a release track keeps individual commits
   with its value. A `match` naming no recognized matcher, or more than one, is a configuration error
   (Section 6.11).
 - Any key the top level carries MAY appear under a section, and means for that branch what it means
-  at the top level.
+  at the top level — **except `[base]` and `[scope]`**, which a section MUST NOT carry
+  (`branch_section_selector_key`, Section 6.11).
+
+The exception is what keeps selection from depending on the section selected. Base resolution runs
+first and reads no `[[branch]]` section; the resolved base is then what selects one (Section 6.4). A
+section carrying `[base]` would supply the value that decides whether it applies, and one carrying
+`[scope]` would do it one step longer: `branch_pattern` fixes the work-branch name, which a
+`[base] resolve = "by_prefix"` reads to select the base, which selects the section. A value named
+inside a scope cannot select the scope it is read from — the rule Section 6.4 already states for
+`policy_source = "target_branch"`, where every `[base]` key sits in the document the base is what
+locates, applied here to the section the base is what selects.
+
+Refusing the two keys rather than resolving a fixpoint keeps "is this policy valid" answerable by
+looking at the policy. A repository that wants a different base per track states it at the top level
+with `resolve = "by_prefix"`, which is the mechanism that exists for it and which resolves in one
+pass. Everything else a section can carry is downstream of selection and is untouched: hooks, edges,
+messages, transitions and the task tables, the worked example above among them.
 
 Resolution is by **longest prefix**, and exactly one section applies. Where several match, the one
 whose prefix is longest wins; where none matches, the top level applies alone. That is what makes
@@ -1281,6 +1398,7 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | A `run` names a hook the `[hooks]` table does not declare (Section 6.6) | `unknown_hook` |
 | A duplicate `(from, on)` policy edge — non-determinism (Section 5.4) | `duplicate_edge` |
 | Two `[[branch]]` sections with the same `match` — non-determinism one level up (Section 6.11) | `duplicate_branch_section` |
+| A `[[branch]]` section carrying `[base]` or `[scope]`, either of which supplies the value that selects the section (Sections 6.4, 6.10) | `branch_section_selector_key` |
 | A duplicate `(from, on)` transition (Section 6.7) | `duplicate_transition` |
 | A cycle of lifecycle positions, each position's `run_op` edge dispatching the operation the next position gates, so no operation on the cycle can run (Sections 4.1, 5.6) | `position_cycle` |
 | A `by_prefix` base resolution with no empty-prefix default, or a missing or malformed map (Section 6.4) | `base_unresolvable` |
@@ -1296,8 +1414,12 @@ well-formedness failures, and the rest are consistency failures. The order is no
 validation takes a document, a policy that could not be obtained yields none for the well-formedness
 checks to run against, and one that does not parse yields none for the consistency checks below it.
 `malformed_policy` covers a well-formedness failure no other condition in the table names; where
-another names the state — a missing or malformed `prefixes` map is `base_unresolvable` (Section 6.4)
-— that condition's reason is reported. Section 6.1's rule that an unknown key SHOULD be ignored for
+another names the state — a missing or malformed `prefixes` map is `base_unresolvable` (Section 6.4),
+a `[[branch]]` section carrying a selector key is `branch_section_selector_key` (Section 6.10) — that
+condition's reason is reported. Each of those has a repair a reader can act on where
+`malformed_policy` would name only that something is wrong: supply the map, or move the key to the
+top level and express the variation with `resolve = "by_prefix"`. Section 6.1's rule that an unknown
+key SHOULD be ignored for
 forward compatibility covers a key the schema does not declare, not a declared key whose value the
 schema does not admit.
 
@@ -1311,9 +1433,10 @@ before the policy runs" a question with an answer (Sections 8.6, 9.3):
   plugin layer loads and therefore which descriptors the engine reads (Section 9.3); the descriptors
   of the selected backends, together with the defaults above, are what `capability_unsupported` turns
   on;
-- the actions the consumer can effect (Section 5.2), which is what `set_state_unbound` turns on;
-- the repository units the consumer bound, which is what `template_unbound` and `transform_unbound`
-  turn on.
+- the actions the consumer can effect, supplied as `effectable_actions` (Sections 5.2, 8.1), which is
+  what `set_state_unbound` turns on;
+- the repository units the consumer bound, supplied as `bound_units` (Section 8.1), which is what
+  `template_unbound` and `transform_unbound` turn on.
 
 The last is stated rather than left to inference because a template is a Section 10.2 repository
 unit and not a Section 5.2 action, so an engine judging only the document and the action set would
@@ -1324,10 +1447,14 @@ transform is the same kind of unit and is refused here for the same reason, with
 behind it: its first use is the `merge` a `land` reaches only once the pull request is open
 (Sections 10.3, 12.3).
 
-The third is an input rather than something the engine holds because the consumer supplies it with the
-invocation (Section 6.2), and nothing about the ordering changes to admit it: Section 8.6 establishes
-`arguments_unreadable` and `local_vcs_missing` before validation, so the invocation's arguments are
-decoded and its backend selection is known by the time the checks above run.
+The third, fourth and fifth are inputs rather than things the engine holds because the consumer
+supplies each with the invocation (Section 6.2), and nothing about the ordering changes to admit
+them: Section 8.6 establishes `arguments_unreadable` and `local_vcs_missing` before validation, so
+the invocation's arguments are decoded — the backend selection, `effectable_actions` and
+`bound_units` among them — by the time the checks above run. Each of the three is a fact about the
+consumer rather than about one unit of work, so each is readable from the consumer configuration
+(Section 8.1); what makes them inputs is that the engine is told them, not where the consumer keeps
+them.
 
 `policy_branch_is_target` is judged from the consumer's configuration and the policy together, and
 from no checkout, which is what places it here rather than among the preconditions. A trusted
@@ -1429,10 +1556,11 @@ An embedded driver invokes the same executor programmatically. It:
   escalation into an agent-assigned task;
 - MAY run a **task model**: tasks with an `id`, a `description`, a `status` (`open`/`closed`/`blocked`),
   an `assignee` (`agent`/`human`), an optional parent, and an optional tracker link — seeded from a
-  work item or a planning step, closed by the caller, and yielding the `tasks:all_closed` /
-  `task:#needs_help` task-state events that drive computed completion (the `[driver]` binding, Section
-  6.9). The task model, its durability, and its materialization into an external tracker are the
-  driver's; `vcsx` only consumes the resulting events.
+  work item or a planning step, and closed by the caller. The driver watches its own task state for
+  the conditions `[driver]` names — every implementation task closed, or a task needing human help —
+  and invokes the entry point that table names when one holds (Sections 6.9, 8.1). The task model,
+  its durability, its materialization into an external tracker, and the watching are all the
+  driver's; `vcsx` receives an invocation, not an event.
 
 The interactive and embedded front-ends run the identical executor over the identical policy; they
 differ only in initiator and `escalate` binding.
@@ -1453,8 +1581,9 @@ The entry points are the front-end sequences and the individual operations:
 Common arguments: the identity the work branch is derived from (Section 6.3), the commit identity
 the commits an entry writes are attributed to (Section 10.1), a message input for
 `commit`/`create_pr` (Section 10), the backend selection, the forge repository coordinate where a
-forge is configured, the `remote`, `provision`'s two locations, the access parameters, extension bag
-and credentials described below, and the execution context (Section 3.2). The two identities are
+forge is configured, the `remote`, `provision`'s two locations, the access parameters, extension bag,
+consumer-capability declarations and credentials described below, and the execution context
+(Section 3.2). The two identities are
 separate arguments: the first fills the work-branch pattern and the second names an author, and a
 consumer supplies each where its capability takes one (Section 9.1). Exact argument encodings are
 `Implementation-defined` and MUST be documented; argument *names* for shared concepts MUST match
@@ -1641,37 +1770,97 @@ across a saturated link. This is the placement Section 6.6 gives the hook bound,
 section's own reasoning rather than by analogy: the repository owns which unit runs, and the
 consumer owns how long the machine will wait for it.
 
-A consumer MAY supply `pr_state_validator`, an OPTIONAL **read validator** naming the pull-request
-state the consumer already holds, so a read answers only where the state has moved (Sections 4.1,
-9.2):
+Two **read validators** name the state a consumer already holds, so a read answers only where that
+state has moved (Sections 4.1, 9.2). There are two because Section 9.2 has two capabilities that
+issue one, over two resources that move independently — a check run completing moves the check
+aggregate and not the pull request, and a push moves both — and a validator issued for one is not an
+answer about the other:
 
-- `pr_state_validator` (OPTIONAL) — the validator a previous invocation returned in `outputs`
-  (Section 8.2). Supplied, the engine presents it on the `status` read and on each `await_checks`
-  read (Sections 4.1, 9.2), and the forge MAY answer `unchanged`; absent, the read is unconditional.
-  Within one `await_checks` the engine carries the validator forward from each read to the next, so
-  a loop presents one after its first read whether or not the invocation supplied one.
+- `pr_state_validator` (OPTIONAL) — the validator a previous invocation's `pr_state` read returned in
+  `outputs` (Section 8.2). Supplied, the engine presents it on the `status` read (Sections 4.1, 9.2),
+  and the forge MAY answer `unchanged`; absent, the read is unconditional.
+  - Default: unset — an unconditional first read.
+- `checks_state_validator` (OPTIONAL) — the validator a previous invocation's `checks_state` read
+  returned in `outputs`. Supplied, the engine presents it on the first `await_checks` read; absent,
+  that read is unconditional. Within one `await_checks` the engine carries the validator forward from
+  each read to the next, so a loop presents one after its first read whether or not the invocation
+  supplied one.
   - Default: unset — an unconditional first read.
 
-The engine holds it opaque, as it holds the forge repository coordinate and the two access
+The engine MUST NOT present a validator to a capability that did not issue it. The obligation is the
+engine's rather than the backend's because a backend holds an opaque value it was handed and cannot
+check what resource it describes, where the engine knows which read returned it — and a backend given
+the wrong one would satisfy Section 9.2's prohibition on answering `unchanged` without a conditional
+read to the letter, having presented a validator and made a conditional read, while answering about
+the wrong resource.
+
+The engine holds each opaque, as it holds the forge repository coordinate and the two access
 parameters opaque: it takes one, supplies it to the forge backend, and interprets nothing about it.
 Parsing one would put a forge's cache-validation grammar back in the engine, which is the mixing
-Sections 9.1 and 9.2 are separate to prevent. Its absence is no precondition failure and adds no
-row to Section 8.6: an invocation supplying none makes the read every invocation made before this
-argument existed.
+Sections 9.1 and 9.2 are separate to prevent. Their absence is no precondition failure and adds no
+row to Section 8.6: an invocation supplying neither makes the reads every invocation made before
+these arguments existed.
 
-The validator round-trips through the consumer because the engine holds nothing between
+A validator round-trips through the consumer because the engine holds nothing between
 invocations. Credentials reach the plugins for the duration of an invocation and the engine
 persists none beyond it (Section 1.3), and each invocation is a bounded run that exits, so there is
 no engine-side cache for a validator to live in: it leaves in the result envelope and comes back as
-this argument. It is therefore also the one consumer-supplied value below that is **not** readable
-from the consumer configuration — it changes with each read, and a configured one would be stale by
-construction.
+one of these arguments. They are therefore also the one pair of consumer-supplied values below that
+is **not** readable from the consumer configuration — each changes with each read, and a configured
+one would be stale by construction. That round trip is what makes the saving available across
+invocations rather than only within one, which is the case that matters: a consumer that parks on
+`still_pending` and resumes later reads again in a new invocation, and a validator it could not carry
+forward would leave the conditional read serving only the loop that was already cheap.
 
 A consumer MAY supply `forge_parameters`, an OPTIONAL per-backend parameter set the engine carries to
 the selected forge backend uninterpreted. A backend MUST document the keys it reads, which are
 `Implementation-defined` per backend (Section 13.3). A key the backend does not recognize is that
 backend's own disposition rather than a shape the engine judged, on the same ground: the engine reads
 no key of the set, so it holds nothing to judge one against.
+
+Two arguments declare **what the consumer can do**, which is what the last two of validation's five
+inputs are (Section 6.11):
+
+- `effectable_actions` (OPTIONAL) — which of the consumer-effected actions (`create_task`,
+  `set_state`, `notify`; Section 5.2) this consumer can perform. A `set_state` edge or transition
+  where the set does not name `set_state` is refused with `set_state_unbound` (Section 6.11); a
+  `create_task` or `notify` outside it is well formed, and the intent is emitted and reported
+  (Section 8.2).
+  - Default: empty — the consumer effects none.
+- `bound_units` (OPTIONAL) — the repository unit names the consumer bound, which a `[messages.pr]`
+  `body_source = "template"` and a `[messages.squash]` `transform` are checked against
+  (Sections 6.8, 10.2, 10.3). A unit named by either and absent from this set is refused with
+  `template_unbound` or `transform_unbound` (Section 6.11).
+  - Default: empty — the consumer bound none.
+
+Both default empty because that is the direction a wrong guess is cheap in. A default naming every
+action would validate a `set_state` policy against a consumer that cannot advance a state, which
+strands the flow at the first transition; a default naming every unit would admit a `template` body
+source whose unit does not exist, and its first use is a `create_pr` a `ship` reaches only after it
+has pushed (Section 12.2), so the policy would publish a work branch before reporting the defect.
+Refusing costs a consumer one declaration; admitting costs a published branch or a stranded flow.
+
+A consumer MAY supply `resume`, an OPTIONAL token continuing a flow a previous invocation escalated
+(Sections 5.5, 5.6):
+
+- `resume` (OPTIONAL) — the `resume_token` a previous invocation returned in `outputs`
+  (Section 8.2). Supplied, the invocation re-enters the point that raised the need rather than
+  beginning at its entry point, and the flow bound continues from the count the token carries.
+  - Default: unset — the invocation begins at its entry point.
+
+The engine holds it opaque, as it holds the base ref and the forge repository coordinate opaque, and
+here that is a choice rather than a necessity: the value is the engine's own rather than another
+party's, and an engine that published its structure would owe a stable spelling for "the point that
+raised the need" across every graph shape a policy can express — a schema for the executor's
+traversal, in exchange for nothing a consumer does with it. It round-trips through the consumer for
+the reason the read validators do: the engine holds nothing between invocations, so it is not
+readable from the consumer configuration either.
+
+An engine MUST refuse a `resume` it cannot establish as its own and current — one issued under a
+different policy, against a different repository, or by a different major version — before the policy
+runs (Section 8.6), rather than re-entering a point that no longer means what it meant. The direction
+is deliberate: a refused resume costs a re-invocation from the entry point, where an accepted stale
+one runs an operation the policy no longer routes.
 
 The consumer supplies two credentials:
 
@@ -1687,8 +1876,8 @@ neither beyond it.
 The consumer-supplied values this section names — `local_vcs` and `forge`, the forge repository
 coordinate, the `remote`, `policy_branch`, `base_branch` and `base_branch_allowed`, `provision`'s
 two locations, the two access parameters, `network_bound_ms`, the four await parameters,
-`forge_parameters` and the credential
-pair — `pr_state_validator` excepted, for the reason its entry states — MAY be read
+`forge_parameters`, `effectable_actions`, `bound_units` and the credential
+pair — the two read validators and `resume` excepted, for the reason their entries state — MAY be read
 by the engine from a **consumer configuration**: a consumer-owned file, distinct from
 `repo.policy.toml` and never sourced from the repository. Its discovery precedence is
 `Implementation-defined` and MUST be documented (Section 13.3). It carries no key `repo.policy.toml`
@@ -1758,12 +1947,19 @@ Every invocation returns one structured result:
 - `escalation` is present exactly when `status == "needs_caller"` (Section 8.4), a parked flow and an
   exhausted one included.
 - `outputs` carries entry-specific structured data (for example `status` fields, the pull-request
-  number/state). Where a forge read answered, the pull-request data carries the `validator` a later
-  invocation presents as `pr_state_validator` (Sections 8.1, 9.2), which is what makes the round
+  number/state). Where a forge read answered, the data it answered about carries the `validator` a
+  later invocation presents (Sections 8.1, 9.2) — the pull-request data carrying the one supplied
+  back as `pr_state_validator` and the required-check data the one supplied back as
+  `checks_state_validator`, each attached to the resource it describes. That is what makes the round
   trip readable from this section and Section 8.1 alone: the value this invocation returned is the
-  value the next one supplies. It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
+  value the next one supplies, and which resource it describes is readable from where it was
+  returned. It also carries `unperformed_intents`: the consumer-effected intents (Section 5.2)
   the engine emitted and no consumer performed, each naming its `action` and that action's arguments.
-  The key is absent or empty when every emitted intent was performed. It likewise carries
+  The key is absent or empty when every emitted intent was performed. An intent naming an action
+  outside `effectable_actions` (Section 8.1) is unperformed by construction, so the key is composed
+  from what the engine already holds rather than from an answer the consumer returns mid-invocation —
+  which is what makes it readable under the subprocess encoding as under the in-process one
+  (Section 8). It likewise carries
   `unfinished_hooks`: the result-triggered hooks that gave the engine no usable answer (Section 6.6),
   each naming the `hook`, the `trigger` that ran it, and the `condition` that occurred —
   `bound_elapsed`, `not_started` or `answer_unreadable` — absent or empty where every such hook
@@ -1809,6 +2005,14 @@ Every invocation returns one structured result:
   reason (Section 6.11) or a precondition reason (Section 8.6) — each from a registry a consumer
   branches on and an engine MUST document additions to — and a repository-authored value there would
   be indistinguishable from an engine one.
+- `outputs` carries `resume_token` where the invocation ended at `needs_caller` with a **resolvable**
+  need (Section 8.4): an opaque token naming the point that raised the need and the flow bound already
+  spent, which a later invocation supplies as `resume` (Sections 5.5, 5.6, 8.1). The key is absent
+  where `status` is not `needs_caller`, and absent where the need is one of the two holds —
+  `intervention` and `flow_exhausted` — which no front-end resolves and no resume continues. Its
+  presence therefore agrees with the need's resolvability, so a front-end reads Section 8.4's
+  prohibition off the envelope rather than off the policy that produced it. The token carries the
+  point and the count and nothing a lifecycle position established (Section 5.5).
 - `message` is human-readable prose. Nothing parses it: every fact a consumer branches on has a field
   or a token of its own, so a consumer reading `message` for structure reads a surface no engine holds
   stable, and an engine putting structure there is spending a field that has no schema on one that
@@ -1848,10 +2052,13 @@ required, for example `integrate_then_retry`, `reread_then_retry`, `resolve_conf
 `supply_identity`, `await_checks`, `retry_after`, `human_review`, `intervention`, `flow_exhausted`),
 whether the need is `retryable` (below), the `op` that
 produced it, and an `Implementation-defined` `detail`. The `op` is null where no operation produced
-the escalation — at a signal, at a lifecycle position where the gated operation has not run
+the escalation — at a lifecycle position where the gated operation has not run
 (Section 5.1), and at a bound the executor reached (Section 5.6). A front-end binds the resolver by
 the `need` token (Section 5.5); the `need` vocabulary is part of the public contract and MUST be
-documented and stable within a major version.
+documented and stable within a major version. Where the need is resolvable, `outputs` carries the
+`resume_token` a front-end supplies back to continue the flow (Sections 5.5, 8.2); where it is one of
+the two holds below, no token is carried, which is the prohibition against resuming either made
+readable from the envelope.
 
 `retry_after` is the need a transient forge condition raises (Section 4.3). It names a wait, and the
 length of that wait is not carried here: where the forge reported one, the exhausted bucket's
@@ -2003,6 +2210,14 @@ because the bound is about what the invocation may name rather than about what t
 same shape as the commit identity, whose *malformedness* is judged whatever the entry while its
 *absence* is judged only where one is required.
 
+`resume_unusable` is judged the same way: wherever a `resume` was supplied, whatever the entry, and
+from the invocation's arguments together with what the engine holds independently of them — the
+policy it validated and its own major version (Section 8.5). It is a precondition rather than a
+configuration error because the artifact at fault is the invocation: the policy is well formed, and
+what is wrong is a value the caller carried forward past the point it described anything. An absent
+`resume` is no failure and reaches no row here, an invocation supplying none beginning at its entry
+point as every invocation did before the argument existed.
+
 `provision` needs no base under either mode, and the list below is exhaustive for it. It is the one
 entry point that runs where no policy could be read, being the operation that obtains the repository
 the policy file is in (Section 6.1), so the argument that says where the policy is read from is one
@@ -2041,6 +2256,7 @@ run in which the policy did not run.
 | The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
 | The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it whatever the entry (Section 10.1) | `identity_invalid` |
 | A VCS backend capability consulted before the first dispatch could not answer — the checkout could not be read (Sections 3.3, 9.1) | `checkout_unreadable` |
+| A supplied `resume` the engine cannot establish as its own and current — issued under a different policy, against a different repository, or by a different major version (Sections 5.5, 8.1) | `resume_unusable` |
 
 Precondition reasons carry no proto class, for the same reason configuration reasons do not
 (Section 6.11), and they share the `usage_or_config` status, so a consumer already branching on that
@@ -2279,6 +2495,12 @@ a `merge` that resolved one against the head a consumer remembered would be cond
 the engine did not read, which is the guarantee `merge:head_moved` exists to make (Sections 4.3,
 9.2). A conditional read makes a poll cheap; it does not make a write conditional on consumer-held
 state.
+
+`checks_state` is settled by the same rule reached from its own side rather than by `pr_state`'s
+readers: it has one reader, `await_checks` reports its answer, and no operation conditions a write on
+it, so it carries a validator — its own, `checks_state_validator` (Section 8.1). The two validators
+are separate because the two capabilities read separate resources, and the engine presents each only
+to the capability that issued it (Sections 8.1, 9.2).
 Separating the two that acquire from the two that merge is what makes the enumeration above
 exhaustive, and it places the half that stops on conflicts — the outcome the caller resolves and
 `commit` finalizes (Section 4.1) — on the local side of the boundary, where the caller that resolves
@@ -2374,9 +2596,12 @@ Realizes the pull-request and review operations. Required:
   answering `unchanged` without having asked are `pr_state`'s, above, and hold here for the same
   reasons; a state the backend could not determine MUST NOT be answered as no required checks,
   because a pull request with no checks is mergeable and one whose checks could not be read is not.
-  It realizes `await_checks` (Section 4.1) and exists so that check state is readable without
-  dispatching a `merge`: before it, the only way to learn whether checks had passed was to ask a
-  question whose favourable answer merged the work.
+  That answer is determinate and ends the wait: `await_checks` reports `no_checks` for it
+  (Sections 4.1, 4.3). The validator this capability issues is its own — the required-check aggregate
+  and the pull request move independently — and the engine presents it back only here, as
+  `checks_state_validator` (Sections 8.1, 9.1). It realizes `await_checks` (Section 4.1) and exists
+  so that check state is readable without dispatching a `merge`: before it, the only way to learn
+  whether checks had passed was to ask a question whose favourable answer merged the work.
 - `request_merge(pr, strategy, expected_head)` → `merge:*`, honoring required checks and branch
   protection (a forge refusal surfaces as `merge:rejected`). `expected_head` is the head `pr_state`
   answered when the pull request was read at `before:merge` (Sections 10.3, 12.3). The capability
@@ -2448,6 +2673,16 @@ is. A backend MUST NOT report a permanent refusal under either — a request the
 identically on every retry is that operation's own `error`-class result — and MUST NOT report a
 throttle under a reason naming an unrelated condition, a `merge` reporting `checks_pending` for a
 refused call being the case that sends a caller to poll a forge that just asked it to stop.
+
+What such an answer reaches a caller as is fixed by the **reader** rather than by the capability, on
+the split Section 9.1 already draws for `pr_state`. Where the operation acts on the answer — `push`,
+`create_pr`, `merge`, `await_checks` — it is that operation's own `rate_limited` or
+`forge_unavailable` reason (Section 4.3). Where the operation reports the answer — `status`, whose
+`pr_state` read is one of three — it is an output: `pr_state_throttled` for a refusal on budget and
+`pr_state_unavailable` for a read that established nothing (Section 4.1), the operation completing
+either way. So no capability answer is permitted that the operation reading it has no spelling for,
+and the same forge condition is reported as a reason by an operation it stopped and as an output by
+one it left a field short.
 
 OPTIONAL:
 
@@ -2660,8 +2895,6 @@ function ladder(trigger):
   if trigger is a typed result op:reason:
     class = proto_class(op, reason)
     return [ "op:reason", "op:#class", "#class" ]  # substituting op/reason/class
-  if trigger is a signal or task event s:
-    return [ s ]                              # exact only; signals carry no proto class
 ```
 
 ### 12.2 `ship` Sequence
@@ -2837,7 +3070,14 @@ A conforming engine SHOULD include tests covering:
   park (Sections 4.3, 5.4); an escalation the built-in default raised carries that default need, and a
   `merge:head_moved` reached through a bare `merge` entry point escalates `reread_then_retry` rather
   than `human_review`; an `escalate` edge naming no `reason` raises the trigger's default need, and
-  `human_review` where the trigger carries none; an unmatched signal is a no-op.
+  `human_review` where the trigger carries none; an unmatched lifecycle position runs nothing and the
+  operation proceeds.
+- Trigger kinds: an edge keyed on a token that is neither a known lifecycle position nor an
+  `op:reason` / `op:#class` / `#class` form over a known operation is refused at validation with
+  `unknown_trigger` — so a policy written against a vocabulary the engine no longer matches fails
+  loudly rather than validating and never firing; `tracker.transitions`, `[tasks]` and `[driver]` are
+  carried in the merged surface and validated for determinism without the executor matching their
+  `on` (Sections 5.1, 6.7, 6.9, 6.11).
 - Determinism: a duplicate `(from, on)` edge or transition is a configuration error and the engine
   refuses to run.
 - Termination: a policy whose `run_op` results route back to an earlier operation stops at the flow
@@ -2875,15 +3115,20 @@ A conforming engine SHOULD include tests covering:
   `before:commit` read it creates no commit and yields `worktree_moved` rather than `ok` or
   `nothing_to_commit`, while a `worktree_revision()` that could not determine an identity yields
   `commit:failed` rather than a commit conditioned on nothing (Sections 4.3, 6.6, 9.1).
-- The bounded wait: an `await_checks` exits at each of its four terminal conditions and reports the
-  matching reason — checks passed, checks failed, a supplied bound reached (`still_pending`), a
-  supplied budget floor reached (`budget_floor`) — and the last two are distinguishable, so a
-  consumer can tell which bound to raise (Sections 4.1, 4.3, 8.1); an invocation supplying no await
+- The bounded wait: an `await_checks` exits at each of its five terminal conditions and reports the
+  matching reason — checks passed, checks failed, no required checks (`no_checks`), a supplied bound
+  reached (`still_pending`), a supplied budget floor reached (`budget_floor`) — and the last two are
+  distinguishable, so a consumer can tell which bound to raise (Sections 4.1, 4.3, 8.1); an
+  invocation supplying no await
   parameter makes exactly one read and does not loop; reads honour `await_interval_ms`; each read
   after the first presents the validator the previous read returned, whether or not the invocation
   supplied one (Sections 8.1, 9.2); a `checks_state` that could not be determined is not answered as
   no required checks, since a pull request with none is mergeable and one whose checks could not be
-  read is not (Section 9.2); and the whole dispatch counts once against the flow bound however many
+  read is not (Section 9.2); a pull request the forge reports no required checks for yields
+  `no_checks` on the first read rather than `ok`, rather than `still_pending` after burning a supplied
+  bound, and rather than `failed`, and a `land --await` against such a repository merges rather than
+  ending on the await's result (Sections 4.1, 4.3, 7.2); and the whole dispatch counts once against
+  the flow bound however many
   reads it made (Section 5.6).
 - Response drift: a forge response missing a field a capability depends on yields an undetermined
   answer and the refusing result, distinguishable from the response that legitimately carries no
@@ -2898,9 +3143,14 @@ A conforming engine SHOULD include tests covering:
   the 600-second floor is accepted; the bound applies to one call rather than across an operation's
   capabilities, so an `integrate` is not held to one deadline over `fetch_base` and `merge_base`;
   and no engine-internal retry occurs inside it (Sections 2.2, 9.1).
-- Transient forge conditions: a throttled forge call yields `rate_limited` and not `failed`, and the
-  run escalates rather than failing, so a condition that clears on its own does not end a unit of
-  work (Sections 4.3, 5.4); a permanent refusal — a validation error the forge will refuse
+- Transient forge conditions: a throttled forge call an operation **acts** on yields `rate_limited`
+  and not `failed`, and the run escalates rather than failing, so a condition that clears on its own
+  does not end a unit of work (Sections 4.3, 5.4); the same throttle reached through `status`, which
+  reports rather than acts, yields `ok` with null pull-request fields and a `pr_state_throttled`
+  output rather than a reason or an escalation, and is distinguishable there from a
+  `forge_unavailable`, which stays `pr_state_unavailable` — so the operation that reports both keeps
+  the informed repair and the uninformed one apart (Sections 4.1, 4.3, 9.2); a permanent refusal —
+  a validation error the forge will refuse
   identically on retry — still yields an `error`-class result and is not reported under either
   transient reason; a `forge_unavailable` result carries its condition in `outputs` and a result of
   any other reason carries none (Section 8.2); every `needs_caller` escalation carries `retryable`,
@@ -2918,9 +3168,34 @@ A conforming engine SHOULD include tests covering:
   9.2); the `validator` a `status` returned in `outputs` is the value a later invocation presents,
   so the round trip closes without engine-held state (Section 8.2); a forge backend declaring no
   conditional-read support is presented no validator, answers the full state, and yields no
-  `pr_state_unchanged` output rather than an `unsupported` result (Sections 4.3, 9.2); and `push`
+  `pr_state_unchanged` output rather than an `unsupported` result (Sections 4.3, 9.2); `push`
   and `merge` read `pr_state` with no validator whatever the invocation supplied, so no write is
-  conditioned on a head the engine did not read (Sections 9.1, 9.2).
+  conditioned on a head the engine did not read (Sections 9.1, 9.2); and each capability is presented
+  only the validator it issued — an `await_checks` presents `checks_state_validator` and never
+  `pr_state_validator`, the validator an `await_checks` returned is the value a later invocation
+  presents, so a wait that parked and resumed stays cheap across invocations, and a `status` and an
+  `await_checks` in one consumer loop each carry their own (Sections 8.1, 8.2, 9.2).
+- Resuming: a resolvable `needs_caller` carries a `resume_token` in `outputs` and a hold —
+  `intervention`, `flow_exhausted` — carries none, so the prohibition on resuming a hold is readable
+  from the envelope; supplying the token re-enters the point that raised the need rather than the
+  entry point, so a resolved `commit:blocked` re-runs the gate rather than committing past it; the
+  re-entered position reads the working tree and the pull-request head again rather than reusing what
+  the token was issued beside; a resolver that resolves every time reaches `flow_exhausted` **across
+  invocations** and not only within one, the bound being over the flow; and a token issued under a
+  different policy is refused with `resume_unusable` before the policy runs (Sections 5.5, 5.6, 8.1,
+  8.2, 8.6).
+- Consumer capability declarations: a `set_state` edge against a consumer whose `effectable_actions`
+  omits `set_state` is refused with `set_state_unbound` before any operation runs, while a
+  `create_task` edge against the same consumer validates, emits, and is reported in
+  `unperformed_intents`; a `template` body source and a `[messages.squash]` `transform` naming a unit
+  outside `bound_units` are refused with their own reasons before a push and before a merge
+  respectively; and a consumer supplying neither argument is refused for all three rather than
+  deferring to first use (Sections 5.2, 6.11, 8.1, 8.2).
+- Per-branch selector keys: a `[[branch]]` section carrying `[base]` and one carrying `[scope]` are
+  each refused with `branch_section_selector_key` before any operation runs, while a section carrying
+  `[branch.messages.squash]`, a hook or an edge still applies and merges over the top level, and a
+  top-level `[base] resolve = "by_prefix"` still resolves — so the mechanism that replaces the refused
+  one is exercised (Sections 6.4, 6.10, 6.11).
 - Provisioning: a `provision` naming a `store_location` holding no repository and a `tree_location`
   yields a checkout the remaining operations run against; a `provision` where one exists refreshes
   it and fetches no second copy, the store the first left being the one the second used; a
@@ -3150,8 +3425,11 @@ A conforming engine SHOULD include tests covering:
 
 - One policy-graph executor run by both front-ends; `ship`/`land` and the embedded-driver contract.
 - The action-policy machine: triggers, actions, the `#class` fallback, from-context scoping with
-  unscoped edges, fail-safe-on-undisposed-outcome, no-op-on-unmatched-signal, determinism, and a flow
-  bounded over `run_op` dispatches and resume re-entries.
+  unscoped edges, fail-safe-on-undisposed-outcome, no-op-on-unmatched-position, determinism, and a
+  flow bounded over `run_op` dispatches and resume re-entries — the bound over the flow, so a resumed
+  invocation continues from the count its token carries rather than starting a fresh budget. Two
+  trigger kinds, both engine-produced; the tables a consumer reads (`tracker.transitions`, `[tasks]`,
+  `[driver]`) carried and validated without being matched.
 - The operation set and the reason-token registry with stable proto classes and a default `need` per
   `needs_caller` reason, each gated operation running its `before:<op>` position as part of every
   dispatch, and a bounded wait on every hook the engine invokes with the three conditions named.
@@ -3163,7 +3441,9 @@ A conforming engine SHOULD include tests covering:
   operation that obtains both.
 - Base resolution from three sources — the invocation, the consumer configuration, then
   `[base] branch` — with the bound on what an invocation may name, and the refusal scoped to the
-  entries that need a base. Under `target_branch` the third source drops out and the refusal reaches
+  entries that need a base. Resolution runs before `[[branch]]` section selection and reads no
+  section, and a section carrying `[base]` or `[scope]` — the keys that select it — is refused.
+  Under `target_branch` the third source drops out and the refusal reaches
   every entry but `provision`, before validation, the base being what locates the policy there.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), the consumer configuration as a
   second and disjoint input, including the refusal of a
@@ -3189,10 +3469,18 @@ A conforming engine SHOULD include tests covering:
   `git_access` and `git_credential` — and every value-answering capability able to report that it
   could not determine its answer, in how it derives that answer from a response as well as in what
   it returns.
-- Conditional forge reads where the backend declares them: a validator returned in `outputs`,
-  presented back as `pr_state_validator`, and an unmoved pull request reported as
-  `pr_state_unchanged` rather than as an absent or an undetermined one — with no validator presented
-  on the reads `push` and `merge` condition a write on.
+- Conditional forge reads where the backend declares them: one validator per resource, each returned
+  in `outputs` beside the data it describes and presented back as `pr_state_validator` or
+  `checks_state_validator`, never to the capability that did not issue it; an unmoved pull request
+  reported as `pr_state_unchanged` rather than as an absent or an undetermined one — with no validator
+  presented on the reads `push` and `merge` condition a write on.
+- The consumer's own declarations as validation inputs: which actions it can effect and which
+  repository units it bound, both defaulting empty, both readable from the consumer configuration, and
+  the three `*_unbound` reasons judged from them before the policy runs.
+- A resume carried across the invocation boundary: an opaque token returned for a resolvable need and
+  withheld for a hold, supplied back to re-enter the point that raised the need, carrying the spent
+  flow-bound count and nothing a lifecycle position established, and refused where the engine cannot
+  establish it as its own and current.
 - The forge budget snapshot on every forge-touching operation, reported on success as on failure,
   carrying each bucket under the forge's own name and in the forge's own unit, with no engine
   behavior conditioned on it.
@@ -3234,8 +3522,9 @@ The Statement MUST record:
   discovery precedence, the backend's default remote where the consumer supplies none, the
   entry-point argument encodings and how a front-end derives the forge repository coordinate where
   it does, the default `network_bound_ms` and any per-capability values the engine applies
-  (Sections 8.1, 9), the `detail` field of an `unanswered_gates` entry (Section 8.2), and the
-  escalation `detail` field (Section 8.4).
+  (Sections 8.1, 9), the form of the `resume_token` and how the engine establishes that one it is
+  handed is its own and current (Sections 8.1, 8.2, 8.6), the `detail` field of an `unanswered_gates`
+  entry (Section 8.2), and the escalation `detail` field (Section 8.4).
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class and,
   where that class is `needs_caller`, its default `need` (Section 4.3), a configuration reason
   (Section 6.11), or a precondition reason (Section 8.6).
@@ -3246,9 +3535,9 @@ The Statement MUST record:
   bound a forge
   backend imposes on its search for a work branch's pull request (Section 9.2), where a backend
   writes its own bookkeeping state to answer a capability (Section 9.1), — where a forge backend
-  declares conditional-read support — the mechanism it realizes the `pr_state` validator with, and
-  which budget buckets each forge backend observes and where it reads them from, both
-  `Implementation-defined` per backend (Section 9.2).
+  declares conditional-read support — the mechanism it realizes the `pr_state` and `checks_state`
+  validators with, and which budget buckets each forge backend observes and where it reads them from,
+  both `Implementation-defined` per backend (Section 9.2).
 
 The Statement is a published declaration, not a precondition for running the engine: Section 13.1 and
 Section 13.2 keep their roles as the test matrix and the definition of done. Its format is
