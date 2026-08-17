@@ -719,23 +719,13 @@ applies to typed operation results alone: a lifecycle position has no outcome to
   `integrate_then_retry`, rather than ending a run that neither escalated, parked nor failed. The rule
   is stated over disposition rather than over matching because what strands a flow is a result nothing
   acted on, and whether an edge happened to match is not that.
-- The policy graph MUST be deterministic: at most one edge per `(from-context, trigger)` key, where
-  a duplicate is a configuration error (Section 6.11). "from-context" allows a repository to give
-  the same trigger different edges at different lifecycle points where the engine models them (for
-  example a transition graph keyed on a workflow-state `from`, Section 6.7); absent such a model the
-  key is the trigger alone.
-- An edge that carries no `from` is **unscoped**: it is a candidate in every from-context, including
-  none. Scoping is opt-in per edge, so a repository that scopes some edges does not thereby scope
-  the rest, and adding its first transition edge changes what one trigger does in one context rather
-  than silencing every edge that carries no `from`. This is what keeps the same `repo.policy.toml`
-  yielding one operation flow under a front-end that supplies a from-context and one that does not
-  (Section 13.1).
-- Where one trigger key has both an edge scoped to the current from-context and an unscoped edge,
-  the scoped edge is selected. The two are not a duplicate `(from, on)` — they are distinct keys —
-  but a default and its override in one context. The from-context is a tiebreak within one key
-  rather than an outer loop: the ladder (Section 5.3) selects the key first, so an unscoped edge on
-  `push:non_fast_forward` is selected over an edge scoped to the current context on
-  `push:#needs_caller`. Naming a context does not make a broader trigger the more specific match.
+- The policy graph MUST be deterministic: at most one edge per trigger, where a duplicate is a
+  configuration error (Section 6.11). The trigger is the whole of the key: an edge is selected by
+  the ladder (Section 5.3) and by nothing else, so the same `repo.policy.toml` yields one operation
+  flow whichever front-end runs it (Section 13.1). The engine matches no scope alongside the
+  trigger, and a repository that wants one trigger to mean different things at different points in
+  its own workflow does that scoping in the table its consumer reads (Section 6.7), which is keyed
+  on a `from` state and matched by the party that effects the action.
 
 ### 5.5 Escalation Binding
 
@@ -999,9 +989,8 @@ base from untrusted content.
 ### 6.5 `[policy]` Edges
 
 The action-policy machine (Section 5) is expressed as a table of edges. Each edge binds a trigger to
-an action, with an OPTIONAL `from` (a workflow-state name, used only by transition edges,
-Section 6.7). An edge omitting `from` is unscoped: it is a candidate in every from-context, and an
-edge scoped to the current context takes precedence over it for the same trigger (Section 5.4).
+an action. The trigger is the whole of an edge's key: the engine matches no scope alongside it, so
+at most one edge is bound to any trigger (Section 5.4).
 
 ```toml
 [[policy.edge]]
@@ -1022,7 +1011,7 @@ do = "escalate"
 ```
 
 An edge's `on` MUST be a trigger the engine recognizes: a known lifecycle position, or an `op:reason`
-/ `op:#class` / `#class` form over a known operation (Section 5.1). A duplicate `(from, on)` is a
+/ `op:#class` / `#class` form over a known operation (Section 5.1). A duplicate `on` is a
 configuration error (Section 5.4). An edge MUST also carry the arguments the action its `do` names
 needs in order to be dispatched — `op` for `run_op`, `hook` for `run` — and an edge that omits one
 is a configuration error (Section 6.11).
@@ -1055,6 +1044,11 @@ where an edge came from.
 A `context` key on an edge is ignored rather than refused, under Section 6.1's rule for unknown
 keys: a policy written against the declared form stays valid, and the context it names is not
 consulted.
+
+A `from` key on an edge is ignored rather than refused, under the same rule: a policy written
+against a version that scoped an edge by workflow state stays valid, and the state it names is not
+consulted. Two edges differing only by `from` are therefore a duplicate `on` and are refused as one
+(Section 6.11), which is the report that matches what the engine does with them.
 
 ### 6.6 `[hooks.engine]`
 
@@ -1396,7 +1390,7 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | An edge's `do` is not a known action (Section 5.2) | `unknown_action` |
 | A `run_op` names an operation the engine does not define (Section 4.1) | `unknown_operation` |
 | A `run` names a hook the `[hooks]` table does not declare (Section 6.6) | `unknown_hook` |
-| A duplicate `(from, on)` policy edge — non-determinism (Section 5.4) | `duplicate_edge` |
+| A duplicate policy edge — two edges bound to one trigger, non-determinism (Section 5.4) | `duplicate_edge` |
 | Two `[[branch]]` sections with the same `match` — non-determinism one level up (Section 6.11) | `duplicate_branch_section` |
 | A `[[branch]]` section carrying `[base]` or `[scope]`, either of which supplies the value that selects the section (Sections 6.4, 6.10) | `branch_section_selector_key` |
 | A duplicate `(from, on)` transition (Section 6.7) | `duplicate_transition` |
@@ -1505,8 +1499,8 @@ moved. A cycle that passes through a typed operation result is not this conditio
 because a result reports state outside the engine and the next traversal may differ — that is the
 routing Section 5.6 defends, and refusing it is the cycle detection that section rules out. The
 condition is judged over the `before:<op>` positions the engine defines (Section 4.1) and the
-`run_op` edges bound to them, and a policy is refused where any from-context yields such a cycle, an
-edge scoped to a context being selected over an unscoped one for the same trigger (Section 5.4).
+`run_op` edges bound to them, which is one graph: the trigger is the whole of an edge's key
+(Section 5.4), so there is a single traversal to judge rather than one per scope.
 
 Configuration reasons carry no proto class: a refused policy has no operation result to classify. They
 are reported under the `usage_or_config` status (Section 8.2) rather than through the `#class` fallback,
@@ -2106,9 +2100,16 @@ unresolvable, and neither is reachable through that default: `intervention` is r
 
 - The engine version is `MAJOR.MINOR`. The invocation envelope, the invocation status values, the
   proto classes, the exit-code mapping, the `need` vocabulary with each need's `retryable` value
-  (Section 8.4), the class of every listed reason
-  (Section 4.3), the configuration reasons (Section 6.11), and the precondition reasons
-  (Section 8.6) are the **major-stable surface**: they do not change within a `MAJOR`.
+  (Section 8.4), the class of every listed reason (Section 4.3), the configuration reasons
+  (Section 6.11), the precondition reasons (Section 8.6), and the trigger kinds together with what
+  constitutes an edge's key (Sections 5.1, 5.4) are the **major-stable surface**: they do not change
+  within a `MAJOR`.
+- The last of those is on the list for the same reason as the others, reached from what a repository
+  can observe rather than from what an engine holds: a `repo.policy.toml` is written against the
+  kinds an edge may be keyed on and against what distinguishes two edges, so a `MINOR` that added a
+  kind or a key component would change which edge fires for a policy whose text did not change, and
+  one that removed either would leave an edge that validated and never fires. Both are the shape a
+  version boundary exists to carry.
 - New reason tokens, new `need` tokens, new configuration reasons, new precondition reasons, new
   operations, and new plugin backends MAY be introduced in a `MINOR` release; existing consumers
   absorb new operation reasons through the `#class` fallback (Section 5.3), and a new configuration
@@ -2879,12 +2880,10 @@ the agent boundary and the secret isolation; those are the consumer's, not the e
 ### 12.1 Match a Trigger
 
 ```text
-function match_edge(policy, from_context, trigger):
+function match_edge(policy, trigger):
   candidates = ladder(trigger)          # most-specific first
   for key in candidates:
-    edge = policy.lookup(from_context, key)   # an edge scoped to this from-context
-    if edge does not exist:
-      edge = policy.lookup(null, key)         # else the unscoped edge, if the policy has one
+    edge = policy.lookup(key)
     if edge exists:
       return edge
   return builtin_default(trigger)
@@ -3002,13 +3001,13 @@ point, where the built-in default escalates it (Section 5.4), so the condition c
 ### 12.4 Resolve Base
 
 ```text
-function resolve_base(work_branch, base_config, remote, policy_source):
+function resolve_base(work_branch, base_config, remote, policy_source, base_branch):
   if policy_source == "target_branch":
-    return { branch: supplied_base,          # the invocation's, else the consumer
-                                             # configuration's; base_config is not read,
-                                             # because the policy it belongs to was located
-                                             # by this value (Sections 6.4, 8.1)
-             ref:    resolve_base_ref(remote, supplied_base) }
+    return { branch: base_branch,            # the invocation's, else the consumer
+                                             # configuration's (Section 8.1); base_config is
+                                             # not read, because the policy it belongs to was
+                                             # located by this value (Sections 6.4, 8.1)
+             ref:    resolve_base_ref(remote, base_branch) }
   if base_config.resolve == "fixed" or unset:
     branch = base_config.branch
   else if base_config.resolve == "by_prefix":
@@ -3058,10 +3057,9 @@ host-independence claim above stays true of the vectors it is made about.
 A conforming engine SHOULD include tests covering:
 
 - Matching: an `op:#class` edge catches an unnamed reason of that class; a `#class` edge catches an
-  otherwise-unmatched result; a lifecycle position matches exactly with no class fallback; an edge
-  carrying no `from` matches inside a from-context, an edge scoped to that context is selected over
-  it for the same trigger key, and the ladder selects the key before the from-context selects among
-  the edges bound to it (Section 5.4).
+  otherwise-unmatched result; a lifecycle position matches exactly with no class fallback; and the
+  ladder is the whole of the selection, an edge being bound to a trigger and to nothing alongside it
+  (Section 5.4).
 - Undisposed policy: an unmatched operation outcome is fail-safe (parked/failed, reason surfaced,
   never dropped); an outcome whose matched edge neither ends the flow nor dispatches an operation
   reaches the same built-in default, so a `push:non_fast_forward → notify` edge under a
@@ -3078,8 +3076,10 @@ A conforming engine SHOULD include tests covering:
   loudly rather than validating and never firing; `tracker.transitions`, `[tasks]` and `[driver]` are
   carried in the merged surface and validated for determinism without the executor matching their
   `on` (Sections 5.1, 6.7, 6.9, 6.11).
-- Determinism: a duplicate `(from, on)` edge or transition is a configuration error and the engine
-  refuses to run.
+- Determinism: two policy edges bound to one trigger are a configuration error, as is a duplicate
+  `(from, on)` transition — the two tables carrying different keys, the transition graph being the
+  consumer's and scoped by a `from` state (Sections 5.4, 6.7) — and the engine refuses to run on
+  either.
 - Termination: a policy whose `run_op` results route back to an earlier operation stops at the flow
   bound (Section 5.6), yielding `needs_caller` with the `flow_exhausted` need and null
   `op`/`reason`/`class`; a flow that converges within the bound is unaffected; a repeated
@@ -3424,9 +3424,9 @@ A conforming engine SHOULD include tests covering:
 ### 13.2 Implementation Checklist
 
 - One policy-graph executor run by both front-ends; `ship`/`land` and the embedded-driver contract.
-- The action-policy machine: triggers, actions, the `#class` fallback, from-context scoping with
-  unscoped edges, fail-safe-on-undisposed-outcome, no-op-on-unmatched-position, determinism, and a
-  flow bounded over `run_op` dispatches and resume re-entries — the bound over the flow, so a resumed
+- The action-policy machine: triggers, actions, the `#class` fallback,
+  fail-safe-on-undisposed-outcome, no-op-on-unmatched-position, determinism, and a flow bounded over
+  `run_op` dispatches and resume re-entries — the bound over the flow, so a resumed
   invocation continues from the count its token carries rather than starting a fresh budget. Two
   trigger kinds, both engine-produced; the tables a consumer reads (`tracker.transitions`, `[tasks]`,
   `[driver]`) carried and validated without being matched.

@@ -10,7 +10,7 @@
   "notes": [
     "Only valid configurations appear here. A `by_prefix` map with no empty-prefix default is a configuration error caught before the policy runs (Section 6.11), so it is a `validate_policy` vector, not a resolution vector.",
     "The empty prefix is a prefix of every branch name, so longest-prefix-wins makes it the fallback without a separate rule.",
-    "`policy_source` is absent from a vector that does not exercise it, and such a vector is read under the default `policy_branch` (Section 8.1). Under `target_branch` the `[base]` section supplies nothing, because it sits in the document the base locates, so a vector for that mode supplies `supplied_base` and the `base` table is present only to assert that it is not read (Section 6.4).",
+    "`policy_source` is absent from a vector that does not exercise it, and such a vector is read under the default `policy_branch` (Section 8.1). Under `target_branch` the `[base]` section supplies nothing, because it sits in the document the base locates, so a vector for that mode supplies `base_branch` and the `base` table is present only to assert that it is not read (Section 6.4).",
     "An invocation under `target_branch` supplying no base resolves nothing and is refused with `base_branch_missing` before validation. Which entry points require one is `requires_base_branch`'s question and is covered by `base-precondition.json`."
   ],
   "vectors": [
@@ -114,12 +114,12 @@
       "expect": { "base": "trunk" }
     },
     {
-      "id": "target_branch_resolves_from_the_supplied_base",
+      "id": "target_branch_resolves_from_the_base_branch",
       "description": "Under `target_branch` the base is what says where host-side policy is read from, so it comes from the invocation or the consumer configuration and `[base]` is not consulted (Sections 6.4, 8.1).",
       "given": {
         "work_branch": "symphony/ABC-123",
         "policy_source": "target_branch",
-        "supplied_base": "main",
+        "base_branch": "main",
         "base": {}
       },
       "expect": { "base": "main" }
@@ -130,7 +130,7 @@
       "given": {
         "work_branch": "symphony/ABC-123",
         "policy_source": "target_branch",
-        "supplied_base": "main",
+        "base_branch": "main",
         "base": { "branch": "release/2.0" }
       },
       "expect": { "base": "main" }
@@ -141,7 +141,7 @@
       "given": {
         "work_branch": "exp/spike",
         "policy_source": "target_branch",
-        "supplied_base": "main",
+        "base_branch": "main",
         "base": { "branch": "main", "resolve": "by_prefix", "prefixes": { "": "main", "exp/": "experiment" } }
       },
       "expect": { "base": "main" }
@@ -152,7 +152,7 @@
       "given": {
         "work_branch": "symphony/ABC-123",
         "policy_source": "policy_branch",
-        "supplied_base": null,
+        "base_branch": null,
         "base": { "branch": "release/2.0" }
       },
       "expect": { "base": "release/2.0" }

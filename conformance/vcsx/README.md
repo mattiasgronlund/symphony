@@ -134,6 +134,16 @@ Each file is a JSON object:
 
 The success-or-error union in `expect` is decision 0048's convention, reused here unchanged.
 
+**A `given` field naming an invocation input MUST use `VCSX-SPEC.md` Section 8.1's spelling for it.**
+Section 8.1 enumerates the invocation surface twice — the arguments and the consumer-configuration
+keys — and requires that "argument *names* for shared concepts MUST match this specification"; a
+vector file is a derived view, so a second spelling here is drift in the one direction this tree
+exists to catch, and a runner executing such a vector against a real engine has to invent the mapping.
+A field naming anything else is not bound by the rule: an entry point, the policy document, a value
+the engine derives or holds, or an envelope field is named by whatever the function under test calls
+it. Decision 0130 records why the rule is here — twice a vector modelled an input the contract did not
+carry, and once it renamed one the contract did.
+
 ### Harness contract
 
 Identical in shape to the Symphony corpus. For every file and every vector:
@@ -163,7 +173,7 @@ Two interpretation notes apply:
 | `vectors/base-precondition.json` | `requires_base_branch` | Sections 6.4, 8.1, 8.6, 12.3 |
 | `vectors/compose-envelope.json` | `compose_envelope` | Sections 4.3, 5.2, 5.4, 8.2, 8.4 |
 
-99 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
+113 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
 filesystem. (The slice was authored at 49 and grew by four as decisions 0054–0056 resolved its
 findings, each turning an unassertable behavior into an asserted one, by three more as decision
 0057 added the universal reasons and redefined `merge:blocked`, by four more as decision 0066 gave
@@ -179,7 +189,15 @@ unit bound a reason and reserved an exit code for an invocation that produced no
 fourteen more as decisions 0088–0090 gave the envelope an answer for a flow the policy failed, for a
 result no action disposed of, and for an invocation whose arguments named no entry point — the
 enumeration that found them ran every Section 5.2 disposition against every Section 4.2 class and
-broke on three, so the file exists to keep those three asserted.)
+broke on three, so the file exists to keep those three asserted. It reached 99 there and the
+enumeration stopped while the corpus did not, so the rest is reconstructed from the history rather
+than from a running note: by one more as decision 0094 made `[base] branch` optional, by two more as
+decision 0096 refused a policy branch equal to the resolved base, by three more as decision 0099 gave
+a `[messages.squash]` transform its bound-unit condition, by one more as decision 0100 made an edge's
+`context` key ignored rather than refused, and by sixteen more as decision 0101 scoped the base
+precondition and base resolution to the policy source. Two decisions have taken vectors away: 0122
+removed the five signal vectors and added `unknown_trigger_token_is_refused` in their place, and 0129
+removed the five that exercised the from-context.)
 
 ### Fault-injection vectors (schema only)
 
@@ -361,6 +379,14 @@ rather than an author writing it — and is resolved the same way.
   selects among its edges. `unscoped_edge_matches_inside_a_from_context`,
   `scoped_edge_wins_over_unscoped_edge_in_its_context`, and `ladder_outranks_the_from_context` cover
   the three.
+  *(Later: decision 0129 removed the from-context from the engine's matching entirely — Section 8.1
+  carries no argument supplying one, so the axis this repair pinned the behavior of was one no
+  invocation could ever set. All five from-context vectors are removed, including the three added
+  here, and `edges_differing_only_by_from_are_one_duplicate_edge` in `policy-validation.json` replaces
+  the vector that asserted the opposite: a `from` is now an ignored unknown key, so two edges
+  differing only by it collide on one trigger. What survives of this finding is its diagnosis of the
+  corpus — that the vectors modelled a context the contract never transmitted — which is the evidence
+  0129 turned on.)*
 
 A fifth arrived from a downstream consumer's failures rather than from the corpus or an engine, and
 is the reason the fault-injection kind exists at all.
@@ -374,3 +400,21 @@ is the reason the fault-injection kind exists at all.
   fixed above and the cases are owed by whichever implementation owns a forge twin, so the gap is
   recorded and assignable rather than invisible. Until those cases exist, nothing in this tree
   exercises a forge that misbehaves.
+
+A sixth is about this tree rather than about `VCSX-SPEC.md`, and was found by sweeping the corpus
+instead of by writing a vector.
+
+- **A `given` field naming an invocation input under its own spelling — resolved (decision 0130).**
+  Three times a vector file has modelled an engine input the invocation contract did not define under
+  that name: `consumer_capabilities` for an input Section 8.1 did not carry at all (issue #68,
+  repaired by decision 0121 as `effectable_actions` and `bound_units`), `from_context` for another
+  (issue #77, resolved by decision 0129 by removing the axis), and — found by the sweep 0129
+  authorised — `consumer_capabilities` still standing in all 38 `policy-validation.json` vectors after
+  0121 named the concept, alongside `supplied_base` in `base-resolution.json` for what Section 8.1
+  calls `base_branch`. The first two were gaps in the contract; this one is a gap in the
+  reconciliation, the corpus having been written from what the Section 12 algorithms take and Section
+  8.1 from what a caller sends. Both fields now use Section 8.1's spelling. The specification needed
+  one repair rather than none: `resolve_base` (Section 12.4) read `supplied_base` as a free name its
+  signature never bound, so the corpus was mirroring a gap rather than a parameter, and the signature
+  now carries `base_branch`. The rule under "Vector file schema" above is the standing check, placed
+  where a vector author meets it before writing a field name.

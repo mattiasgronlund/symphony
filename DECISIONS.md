@@ -1770,7 +1770,7 @@ names "an invalid `repo.policy.toml`" and now has a token for it). Accepted and 
 
 ## 0067 — An edge with no `from` is unscoped
 
-**State:** Accepted
+**State:** Superseded (by 0129)
 **Folder:** [decisions/0067-unscoped-policy-edges/](decisions/0067-unscoped-policy-edges/)
 
 Resolves issue #13, raised by an engine implementation (`vcsx-policy`) built against `06a3bc19` that had
@@ -1819,9 +1819,17 @@ cost of authoring a policy — in which case the answer is an explicit mode cons
 inverting the ladder, since inverting it breaks the specificity guarantee for every policy that wants no
 mode. Relates to 0030 (the machine this refines), 0053 (the corpus that made the gap visible), 0045 (the
 hygiene rule making it a decision rather than a guessed-at vector), and 0054 and 0055, the two sibling
-`match_edge` clarifications. Accepted and applied to `VCSX-SPEC.md` (Sections 5.4, 6.5, 12.1, 13.1,
-13.2) and the corpus (`match-edge.json` gains `unscoped_edge_matches_inside_a_from_context`,
+`match_edge` clarifications. Applied to `VCSX-SPEC.md` (Sections 5.4, 6.5, 12.1, 13.1,
+13.2) and the corpus (`match-edge.json` gained `unscoped_edge_matches_inside_a_from_context`,
 `scoped_edge_wins_over_unscoped_edge_in_its_context`, and `ladder_outranks_the_from_context`).
+**Superseded by 0129** (`Superseded` state per 0033): 0129 removes the from-context from the engine's
+matching entirely, so the mixed configuration this decision exists to adjudicate — a scoped edge and
+an unscoped one over one trigger — can no longer arise in the executor. This was sound when made and
+answered the question a real engine implementation posed; what makes it moot is that its motivating
+scenario, "a repository running a transition graph", is the scenario 0122 moved out of the executor,
+`tracker.transitions` being consumer-read and keeping its own `(from, on)` key. Its analysis survives
+its ruling: the finding that the from-context sits *inside* the ladder rather than around it is what
+0129's reconsideration trigger would need again.
 
 ## 0068 — Every commit the engine writes carries the caller-supplied commit identity
 
@@ -4703,4 +4711,89 @@ already consume, and it is the reconsideration trigger should a fourth decision 
 without its row. Repairs the release discipline of 0106, 0107 and 0109 rather than their content.
 Accepted and applied to `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (Section 3), `VCSX-SPEC.md`
 (Section 13.3) and `CLAUDE.md`.
+
+## 0129 — A matching axis the contract cannot transmit
+
+**State:** Accepted
+**Folder:** [decisions/0129-remove-from-context/](decisions/0129-remove-from-context/)
+
+Issue #77, which PR #76 predicted in its own "Follow-up this exposed and did not take". `VCSX-SPEC.md`
+Section 5.4 keys the policy graph on `(from-context, trigger)`, Section 6.5 lets an edge carry an
+OPTIONAL `from`, Section 12.1's `match_edge` takes one as a parameter, Section 6.11 refuses a
+`duplicate_edge` on the composite key and judges `position_cycle` over every context, and Sections
+13.1 and 13.2 require the scoping be tested and implemented — while Section 8.1 carries no argument
+supplying one, in either of the two lists it enumerates. Nothing here is strictly false: Section 5.4's
+*"where the engine models them … absent such a model the key is the trigger alone"* is a real hedge,
+and an engine modelling no from-context is conforming. That is the defect. Two conforming engines
+given one `repo.policy.toml` produce different operation flows — one where a `from`-scoped edge fires
+and one where it is dead text — and a repository author cannot tell which they have, the difference
+being a capability the contract never made declarable; it is the property Section 5.4's own
+unscoped-edge bullet claims to guarantee, stated over a value the specification does not transmit. The
+sole model Section 5.4 named as the engine's — Section 6.7's transition graph, which Section 6.5 still
+cross-references for `from`'s meaning — is read by the consumer and not matched by the executor as
+that section now reads. The measurement that decided it: every `from`-carrying policy edge in the
+conformance corpus, all seven across two files, uses `do: "set_state"`, the consumer-effected action
+whose own matching table is still keyed `(from, on)` for the consumer to walk, and `SPEC.md` writes no
+scoped edge at all — so the capability at stake is scoping a **non-`set_state`** action by workflow
+state, which nothing in the repository does. The executor now matches on the trigger alone; a
+leftover `from` is ignored rather than refused under Section 6.1's unknown-key rule, the precedent
+0100 set for an edge's `context`, so two edges differing only by `from` collide as a plain
+`duplicate_edge`. Steelmanned: **carrying** it is the move 0121 made for `effectable_actions` and
+`bound_units`, makes every clause true as written, leaves 0067 standing and preserves a promised
+capability — it loses on the argument's shape (an opaque scope token the engine would *match* on
+rather than hand to a plugin) and on re-opening at the argument level what is settled at the table
+level, the party that effects the action owning the matching, bought for a capability with no
+demonstrated user. **Neutering** it keeps a surface that validates and never fires, which is what 0122
+removed a trigger kind over; the half worth keeping, the ignored-key rule, is kept. Reconsider if a
+repository or the `vcsx-policy` engine wants a non-`set_state` action scoped by workflow state.
+Supersedes 0067, whose motivating scenario — a repository running a transition graph — is the one 0122
+moved out of the executor. A change to the major-stable surface (Section 8.5), landing in the next
+`MAJOR`. Confirmed with the user through decision sheet `vcsx-from-context` (`13ce1d6b`). Accepted and
+applied to `VCSX-SPEC.md` (Sections 5.4, 6.5, 6.11, 8.5, 12.1, 13.1, 13.2),
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (Section 2, which also carried a stale "no-op on an unmatched
+signal" 0122 left behind), and the conformance corpus.
+
+## 0130 — The corpus names what an algorithm takes; the contract names what a caller sends
+
+**State:** Accepted
+**Folder:** [decisions/0130-corpus-argument-names/](decisions/0130-corpus-argument-names/)
+
+Found by the sweep 0129 authorised, and its subject is the mechanism rather than any one name:
+`conformance/vcsx/vectors/*.json` was written from what the Section 12 reference algorithms *take*,
+`VCSX-SPEC.md` Section 8.1 was written from what a caller *sends*, and nothing reconciles the two
+lists. `policy-validation.json` spells Section 8.1's `effectable_actions` as `consumer_capabilities`
+in all 38 vectors and in the two notes that gloss it — the same three actions, the same semantics —
+so the corpus violates Section 8.1's own rule that *argument names for shared concepts MUST match
+this specification*, and a runner executing it against a real engine invents a channel by that name.
+Decision 0121 gave the concept its argument name and renamed `bound_units` alongside it, but left
+this one on the pre-0121 spelling. `base-resolution.json`'s `supplied_base` is the milder instance,
+mirroring Section 12.4's `resolve_base` local rather than Section 8.1's `base_branch` in four vectors
+whose own notes already call it "the invocation's". Both are renamed to Section 8.1's spelling: the
+corpus is a derived view (`conformance/vcsx/README.md`, "`VCSX-SPEC.md` governs. This file is
+derived."), and a derived view that renames what it derives is the drift the registry exists to
+prevent. Section 8.1 is already correct and is not edited; the specification needed one repair rather
+than none, and it is the more interesting half of the finding — `resolve_base` (Section 12.4) reads
+`supplied_base` as a **free name its signature never binds**, glossed in a comment as "the
+invocation's, else the consumer configuration's", which under Section 8.1 is `base_branch`. So the
+corpus was not mirroring an algorithm's local but an algorithm's gap, and the signature now carries
+the parameter it reads. This is the third instance of the pattern:
+#68's `consumer_capabilities` for an input the contract did not carry, #77's `from_context` for
+another, and now a field whose input the contract does carry under a different name — the first two
+were missing arguments and this one is a missing *reconciliation*, which is why it needs its own
+decision rather than a third repair. The standing check is a README rule rather than tooling: a
+`given` field naming an invocation input MUST use Section 8.1's spelling, stated where a vector
+author reads it, the way `CLAUDE.md`'s cross-cutting rule fixed the template misses 0128 found.
+Steelmanned: **leaving the algorithm's own parameter names** is defensible for `supplied_base`, which
+is genuinely `resolve_base`'s local rather than an invocation argument — it loses because the file's
+own notes describe it as the invocation's, so the vector already claims to model the caller's input
+and only the spelling disagrees, and because a rule with an exception a reader must judge is the rule
+that produced this. Reconsider if a vector file legitimately needs to model an algorithm-internal
+value the invocation contract has no name for; the answer then is a note saying so, not a second
+spelling. Records one finding it deliberately does not repair: Section 12.4 models the base's
+three-source precedence (Section 8.1) only under `target_branch`, its default-mode path reading
+`base_config.branch` alone, so after this rename it takes a `base_branch` parameter that path never
+reads — a defect in the reference algorithm rather than in a name, made more visible here and left
+assignable. Depends on 0121; relates to 0129 and 0128. Accepted and applied to
+`conformance/vcsx/vectors/policy-validation.json`, `conformance/vcsx/vectors/base-resolution.json`,
+`conformance/vcsx/README.md` and `VCSX-SPEC.md` (Section 12.4).
 
