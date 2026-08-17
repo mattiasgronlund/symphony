@@ -2,7 +2,7 @@
   "function": "render_prompt",
   "profile": "Daemon Conformance",
   "spec_refs": ["Section 5.4", "Section 5.5", "Section 12.2"],
-  "description": "Render the WORKFLOW.md prompt template against the normalized issue and attempt. Templates use Liquid-compatible syntax (Section 5.4); the variable set (issue, attempt) and the strict-failure semantics are the normative contract, and an engine that is not Liquid-compatible maps these to its equivalent. Strict mode: an unknown variable and an unknown filter MUST fail rendering with error template_render_error (Sections 5.4, 5.5). Templates are single-line and use delimiters rather than inter-token whitespace so the expected output does not depend on an engine's whitespace-control behavior.",
+  "description": "Render the WORKFLOW.md prompt template against the normalized issue and attempt. Templates use Liquid-compatible syntax (Section 5.4); the variable set (issue, attempt) and the strict-failure semantics are the normative contract, and an engine that is not Liquid-compatible maps these to its equivalent. Strict mode: an unknown variable and an unknown filter MUST fail rendering, and Section 5.5 makes the error class a REQUIRED spelling, so the class asserted below is the one a conforming implementation reports. A class names the condition, not the stage that detected it (Section 5.5): an engine that resolves filter names while parsing still reports an unknown filter as template_render_error, and template_parse_error is reported only for a body that is not well-formed template syntax. Templates are single-line and use delimiters rather than inter-token whitespace so the expected output does not depend on an engine's whitespace-control behavior.",
   "given": "{ template: string, issue: object, attempt: integer | null }",
   "expect": "{ rendered: string } on success, or { error: string } naming the error class on failure",
   "vectors": [
@@ -58,13 +58,23 @@
     },
     {
       "id": "unknown-filter-fails",
-      "description": "Strict mode: an unknown filter MUST fail rendering (Section 5.4).",
+      "description": "Strict mode: an unknown filter MUST fail rendering (Section 5.4). The class is template_render_error even where the engine resolves filter names while parsing, because a class names the condition rather than the stage that detected it (Section 5.5).",
       "given": {
         "template": "{{ issue.title | screaming }}",
         "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [] },
         "attempt": 3
       },
       "expect": { "error": "template_render_error" }
+    },
+    {
+      "id": "malformed-template-fails",
+      "description": "A body that is not well-formed template syntax is template_parse_error (Section 5.5). This is the iterate-labels template with its closing tag removed, so the only difference from the passing vector is the malformation.",
+      "given": {
+        "template": "{% for l in issue.labels %}[{{ l }}]",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": ["bug", "urgent"] },
+        "attempt": null
+      },
+      "expect": { "error": "template_parse_error" }
     }
   ]
 }

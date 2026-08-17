@@ -764,13 +764,26 @@ Prompt authority:
 
 ### 5.5 Workflow Validation and Error Surface
 
-Error classes:
+Error classes. These spellings are REQUIRED: where one of the conditions below occurs, the workflow
+loader (Section 5.1) or the prompt renderer (Sections 5.4, 12.4) MUST fail with the class named for
+it.
 
-- `missing_workflow_file`
-- `workflow_parse_error`
-- `workflow_front_matter_not_a_map`
-- `template_parse_error` (during prompt rendering)
-- `template_render_error` (unknown variable/filter, invalid interpolation)
+- `missing_workflow_file` (the workflow file cannot be read at the resolved path)
+- `workflow_parse_error` (the YAML front matter is not well-formed)
+- `workflow_front_matter_not_a_map` (the front matter is well-formed YAML that does not decode to a
+  map)
+- `template_parse_error` (the prompt body is not well-formed template syntax)
+- `template_render_error` (the body is well formed and names something the engine cannot resolve: an
+  unknown variable, an unknown filter, or an invalid interpolation)
+
+A class names the condition, not the stage at which an implementation detects it. An unknown
+variable and an unknown filter are both `template_render_error` however early the template engine
+resolves them; `template_parse_error` is reserved for a body that is not well-formed template syntax
+at all.
+
+The set is not closed: an implementation MAY define additional classes for conditions these five do
+not name. It MUST document any class it defines, and MUST assign each one of the dispatch gating
+behaviors below.
 
 Dispatch gating behavior:
 
@@ -3739,10 +3752,14 @@ restate or replace the checks below.
 
 The token sets this specification names — the emitted runtime events (Section 10.4), the REQUIRED
 log context fields (Section 13.1), the usage-ledger entry fields (Section 13.6), the state recovery
-classes (Section 14.3), and the configuration namespaces (Sections 5.3, 18.2) — are published beside
-that corpus as a token registry, so an implementation can generate or check its own spellings
-instead of transcribing them. The registry is a derived view: this specification governs, it
-restates no requirement's substance, and a disagreement between them is a defect in the registry.
+classes (Section 14.3), the configuration namespaces (Sections 5.3, 18.2), the workflow and template
+error classes (Section 5.5), the tracker error categories (Section 11.4), and the agent-runner error
+categories (Section 10.6) — are published beside that corpus as a token registry, so an
+implementation can generate or check its own spellings instead of transcribing them. Each set is
+published with the requirement level this specification states for it, since a REQUIRED spelling and
+a RECOMMENDED one are checked differently. The registry is a derived view: this specification
+governs, it restates no requirement's substance, and a disagreement between them is a defect in the
+registry.
 
 Validation profiles:
 
@@ -3782,9 +3799,9 @@ except where a bullet states otherwise.
   settings (prompt and in-sandbox hooks)
 - Policy-config changes are detected and re-applied without restart, with last-known-good on invalid
   reload
-- Missing `WORKFLOW.md` returns typed error
-- Invalid YAML front matter returns typed error
-- Front matter non-map returns typed error
+- Missing `WORKFLOW.md` returns `missing_workflow_file`
+- Invalid YAML front matter returns `workflow_parse_error`
+- Front matter non-map returns `workflow_front_matter_not_a_map`
 - Config defaults apply when OPTIONAL values are missing
 - `tracker.kind` validation enforces currently supported kind (`linear`)
 - `tracker.api_key` resolves through the secret provider (file provider)
@@ -3803,7 +3820,12 @@ except where a bullet states otherwise.
 - Per-state concurrency override map normalizes state names and ignores invalid values
   (`Daemon Conformance`)
 - Prompt template renders `issue` and `attempt` (`Daemon Conformance`)
-- Prompt rendering fails on unknown variables (strict mode) (`Daemon Conformance`)
+- Prompt rendering fails `template_render_error` on unknown variables (strict mode)
+  (`Daemon Conformance`)
+- The error class names the condition, not the stage that detected it: an unknown filter is
+  `template_render_error` even where the template engine resolves filter names while parsing, and
+  `template_parse_error` is reported only for a body that is not well-formed template syntax
+  (`Daemon Conformance`)
 
 ### 17.2 Workspace Manager and Safety
 
@@ -4122,7 +4144,9 @@ Required of every conforming implementation, whichever profiles its topology cla
 - Three configuration artifacts (Section 5): operator policy config, repository-owned
   `repo.policy.toml` (Way of Working; host-side sections policy-branch-sourced), and
   repository-owned `WORKFLOW.md` (in-sandbox, worktree-sourced); dynamic watch/reload/re-apply for
-  all three with last-known-good on invalid reload
+  all three with last-known-good on invalid reload; the workflow validation error classes
+  (Section 5.5) are REQUIRED spellings, and any class defined beyond them is documented and assigned
+  a dispatch gating behavior
 - Structured logs with `issue_id`, `issue_identifier`, and `session_id`
 - Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)
 - A published Conformance Statement (Section 19) recording the claimed profiles and topology, the
@@ -4190,7 +4214,8 @@ Required of the `daemon` topology only.
   silent partial result is non-conformant
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
   polling; workspace/concurrency keyed by (repository, issue)
-- Strict prompt rendering with `issue` and `attempt` variables
+- Strict prompt rendering with `issue` and `attempt` variables, failing `template_render_error`
+  whatever stage the engine resolves the unknown name at (Section 5.5)
 - Exponential retry queue with continuation retries after normal exit
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)
 - Reconciliation that stops runs on terminal/non-active tracker states

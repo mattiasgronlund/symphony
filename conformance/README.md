@@ -30,9 +30,11 @@ The engine's own conformance data derives from `VCSX-SPEC.md` and lives in `vcsx
 `SPEC.md` names token sets an implementation is expected to spell exactly — the emitted runtime
 events (Section 10.4), the REQUIRED log context fields (Section 13.1), the neutral token-usage
 record (Sections 4.1.6, 13.5), the usage-ledger entry fields (Section 13.6), the state recovery
-classes and their per-field assignments (Sections 14.3, 4.1.8), and the configuration namespaces
-(Sections 5.3, 18.2). Each was prose, so an implementation spelled them itself and an upstream
-rename changed nothing downstream until someone read a re-pin diff.
+classes and their per-field assignments (Sections 14.3, 4.1.8), the configuration namespaces
+(Sections 5.3, 18.2), and the enumerated error tokens — the workflow and template error classes
+(Section 5.5), the tracker error categories (Section 11.4), and the agent-runner error categories
+(Section 10.6). Each was prose, so an implementation spelled them itself and an upstream rename
+changed nothing downstream until someone read a re-pin diff.
 
 `vocabulary.json` is those sets as data, so a spelling can be generated or checked instead of
 transcribed. It is the same artifact `vcsx/vocabulary.json` is for the engine (decision 0051), on
@@ -60,6 +62,11 @@ Each group carries:
 
 - `spec_refs` (array of strings) — the sections the group is read from, verbatim.
 - `note` (string, OPTIONAL) — a constraint the specification states about the group as a whole.
+- `requirement_level` (string, OPTIONAL) — `REQUIRED` or `RECOMMENDED`, the level the specification
+  states for the set as a whole. Present only where the specification states one. A `RECOMMENDED`
+  group's names are a target vocabulary an implementation MAY diverge from, so a type generated from
+  one MUST admit an unknown token whether or not the group carries `exhaustive`, and a check
+  generated from it is advisory where a `REQUIRED` group's is a conformance check.
 - `exhaustive` (boolean, OPTIONAL) — present and `false` where the specification states the set is
   open. A generated type for such a group MUST admit an unknown token rather than closing the enum.
 - `key` (array of strings, OPTIONAL) — the fields the specification keys the record by.
@@ -70,17 +77,23 @@ In `config_namespaces`, `artifact` names the Section 5 configuration artifact a 
 `operator_policy_config`, `repo_policy_toml`, `workflow_md`, or `repository_owned` where the
 specification splits one key across both repository-owned artifacts by trust (Section 15.4).
 
+In the error groups, `condition` is the condition the specification states the token names, carried
+only where it states one; `error_classes` additionally carries `gating`, Section 5.5's dispatch
+gating behavior, valued `blocks_dispatch` or `fails_attempt`.
+
 ### Using it
 
-- **An implementation** generates or checks its event enum, log-context fields, ledger schema, and
-  recovery-class taxonomy from this file, so a token change upstream becomes a build failure rather
-  than a silent divergence. Record in the Conformance Statement whether it was checked against, and
-  at which revision.
+- **An implementation** generates or checks its event enum, log-context fields, ledger schema,
+  recovery-class taxonomy, and error classes from this file, so a token change upstream becomes a
+  build failure rather than a silent divergence. Read `requirement_level` first: a `REQUIRED` group
+  is a conformance check, a `RECOMMENDED` one is advisory. Record in the Conformance Statement
+  whether it was checked against, and at which revision.
 - **A reviewer** of a change to `SPEC.md` verifies that every token added, renamed, or removed is
   reflected here in the same change.
 - **A Conformance Statement author** reads `runtime_state_fields` for the "Spec default" column of
-  its recovery-class table, and `config_namespaces` for the namespace column of its extensions
-  table.
+  its recovery-class table, `config_namespaces` for the namespace column of its extensions table,
+  and `error_classes` to check that any class it defines beyond the five is resolved in the
+  `MUST document` table.
 
 ### What the slice covers
 
@@ -93,26 +106,55 @@ specification splits one key across both repository-owned artifacts by trust (Se
 | `recovery_classes` | Section 14.3 |
 | `runtime_state_fields` | Sections 4.1.8, 14.3 |
 | `config_namespaces` | Sections 5.3, 5.6, 18.2, and the extension section owning each key |
+| `error_classes` | Sections 5.5, 5.1, 5.2, 5.4 |
+| `tracker_error_categories` | Sections 11.4, 11.7, 11.8 |
+| `agent_error_categories` | Section 10.6 |
 
-Two groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
-because Section 10.4 permits an adapter to emit events the specification does not name, and
-`config_namespaces`, because Section 5.3 permits an extension to define additional top-level keys.
-In both, the names the specification does state are fixed; it is the set that is open.
+Three groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
+because Section 10.4 permits an adapter to emit events the specification does not name;
+`config_namespaces`, because Section 5.3 permits an extension to define additional top-level keys;
+and `error_classes`, because Section 5.5 permits an implementation to define additional classes for
+conditions its five do not name. In all three, the names the specification does state are fixed; it
+is the set that is open.
+
+`tracker_error_categories` and `agent_error_categories` carry no `exhaustive` key. Sections 11.4 and
+10.6 do not state that their sets are open, and inferring it here would be the registry deciding a
+question the prose left alone. The openness a generator needs follows from `requirement_level`
+instead: both are `RECOMMENDED`, so a type generated from either must already admit an unknown
+token.
 
 ### Deferred to later slices
 
 Token sets that are conformance-relevant but need their own derivation work, and are not authored
-here rather than guessed at:
+here rather than guessed at. Decision 0102 re-derived the first bullet only; the reasons below it
+stand as they were written, and two are under challenge (issue #54, comment of 2026-08-17).
 
-- **Error and category codes** — the workflow/config errors (Section 5.5), the transport-neutral
-  tracker error categories (Section 11.4), the brokered-result reason codes including `scope_denied`
-  (Section 10.8), and the agent-runner error mapping (Section 10.6). Several are RECOMMENDED rather
-  than REQUIRED spellings, which is a distinction the registry would have to carry per entry.
+- **Brokered-result reason codes** (Section 10.8) — the one error set still deferred, and on a
+  different reason from the three published in the error slice. Section 10.8 introduces its codes
+  with "for example" and gives three illustrations (`non_fast_forward`, `pr_conflict`,
+  `scope_denied`) rather than an enumeration, so there is nothing to publish that would not be
+  invented. Reconsider when the codes are enumerated. The earlier deferral covered Sections 5.5,
+  11.4 and 10.6 as well, on the ground that "several are RECOMMENDED rather than REQUIRED spellings,
+  which is a distinction the registry would have to carry per entry"; deriving it (decision 0102)
+  showed the distinction is per *group* — each section states one level for its whole set — so it
+  costs the one `requirement_level` field documented above.
 - **Orchestration states and transition triggers** (Sections 7.1, 7.3, 11.6) — the trigger
   vocabulary is shared with the engine's action-policy machine, so the two registries would have to
-  agree on which document owns each token.
+  agree on which document owns each token. Under challenge: that reason is about the triggers.
+  Section 7.1's six orchestration states are not triggers and are not shared with the engine's
+  machine, and `Provisioning` is named in a Section 17.4 check and again in Section 18.2 — so the
+  states may be separable from the bullet they are bundled into.
+- **Run attempt phases** (Section 7.2) — eleven identifier-shaped phases, recorded here because
+  they were omitted from this list altogether. No Section 17, 18 or 19 check names one; Section 11.6
+  names four (`Succeeded`, `Failed`, `TimedOut`, `Stalled`) as the run outcomes that drive tracker
+  transitions, so the case for a group rests on drift alone rather than on an existing assertion.
 - **Failure classes** (Section 14.1) — named in prose as classes rather than as tokens an
-  implementation emits.
+  implementation emits. Under challenge: they are not emitted, but they are branched on and named in
+  backticks by Sections 17.2, 17.4, 18.1.4 and 19. Deriving a group would also have to fix what the
+  token is, since the nine are Title Case (`Workflow/Config Failures`) while the tenth category the
+  document defines — `token_budget_exceeded` (Sections 8.8, 14.1, and a Section 17.4 check) — is
+  snake_case. That tenth also settles the set's openness: it is a failure category outside the nine,
+  so a group for Section 14.1 takes `exhaustive: false`.
 - **Snapshot and API response shapes** (Sections 13.3, 13.8.2) — RECOMMENDED baselines an
   implementation MAY extend, not a fixed vocabulary.
 
@@ -211,6 +253,31 @@ guessed-at vector or entry:
   `[A-Za-z0-9._-]` with `_` — identical in every language with no Unicode library.
   `vectors/workspace-key.json` now carries precomposed (`café-01` → `caf__-01`) and decomposed
   (`e`+U+0301 → `cafe__-01`) vectors.
+- **The error class named its detection phase — resolved (decision 0102).** Section 5.5 annotated
+  `template_parse_error` "(during prompt rendering)", a phase, and `template_render_error` "(unknown
+  variable/filter…)", a condition. A strict template engine resolves filter names against its own
+  filter table and variable names against the render context, so it may reject an unknown filter
+  while parsing and an unknown variable while rendering (measured: `liquid` 0.26.11 does exactly
+  that), while `vectors/prompt-rendering.json` expects `template_render_error` for both. Under the
+  phase reading, two of six vectors failed for an implementation that was otherwise correct. Section
+  5.5 now states that a class names the condition rather than the stage that detected it, annotates
+  all five by condition, and makes the spellings REQUIRED; the corpus gained a
+  `template_parse_error` vector so the rule is checked rather than only stated.
+- **Section 17.3 requires four RECOMMENDED tracker categories by name (open).** Section 11.4
+  declares its eleven error categories RECOMMENDED, but Section 17.3's `Core Conformance` checks
+  name `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict` and
+  `tracker_pagination_error` as the values a conforming implementation surfaces. Four of eleven are
+  therefore required in practice while the set is declared advisory — the same asymmetry decision
+  0102 resolved for Section 5.5, one section over. `tracker_error_categories` records Section 11.4's
+  level as written and names the four in its `note`; re-levelling Section 11.4 is a
+  spec-clarification candidate, and the evidence that would force it is a second tracker adapter
+  asserted against those checks.
+- **Sections 10.6 and 10.4 share three spellings (recorded, not a defect).** `turn_failed`,
+  `turn_cancelled` and `turn_input_required` are each both an emitted runtime event and a normalized
+  agent-runner error category, so a generator emitting one type per group has three names in two
+  enums. The category is named after the event that produced it, which is the useful naming;
+  `agent_error_categories` states the relationship in its `note` rather than leaving a generator to
+  discover it.
 - **Template syntax is a floor, not a mandate (open).** Section 5.4 says a "Liquid-compatible
   semantics are sufficient" engine, which pins the strict-failure MUSTs and the `template_render_error`
   class but leaves the concrete delimiter/filter syntax to the implementation. Because `WORKFLOW.md`
