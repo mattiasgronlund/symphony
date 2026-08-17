@@ -1532,6 +1532,32 @@ Sections 9.1 and 9.2 are separate to prevent. A parameter a backend cannot use i
 backend's own `failed` at first use rather than a shape the engine judged, as a coordinate it cannot
 use is.
 
+A **network bound** names how long the engine waits for one network call (Section 9):
+
+- `network_bound_ms` (OPTIONAL) — the bound applied to each network call an invocation makes. It
+  bounds **one call**, not the sum of an operation's calls: an operation realized through two
+  capabilities is not held to one deadline across both, since the second may be local and a bound
+  covering it would be bounding something other than a wait on a server (Section 9.1).
+  - Default: `Implementation-defined` and MUST be documented (Section 13.3). An engine MUST admit a
+    configured value of at least 600 seconds, and an engine that lets a deployment configure it MUST
+    hold the configured value to the same floor. An engine MAY apply different values to different
+    capabilities and MUST document them where it does.
+
+The floor accommodates the slowest network unit in the capability set rather than the typical one:
+`ensure_store` fetches an entire repository, and a first provision of a large one over an ordinary
+link takes minutes, so an engine capping the configurable value below that would make this
+specification's own provisioning operation unusable at scale while remaining conformant. The exact
+value is arbitrary in the way Sections 5.6 and 6.6 say theirs are; that it is fixed is not.
+
+The bound is the consumer's and `repo.policy.toml` carries no key for it. The endpoint each call
+reaches and the credential it presents are already the consumer's — `git_access`, `forge_access` and
+the credential pair, above — and how long to wait for an endpoint is a fact about that endpoint and
+the network to it, which is the consumer's environment rather than the repository's Way of Working.
+A repository cannot know whether its policy is being run against a forge on a local network or
+across a saturated link. This is the placement Section 6.6 gives the hook bound, reached from this
+section's own reasoning rather than by analogy: the repository owns which unit runs, and the
+consumer owns how long the machine will wait for it.
+
 A consumer MAY supply `pr_state_validator`, an OPTIONAL **read validator** naming the pull-request
 state the consumer already holds, so a read answers only where the state has moved (Sections 4.1,
 9.2):
@@ -1575,8 +1601,8 @@ neither beyond it.
 
 The consumer-supplied values this section names — `local_vcs` and `forge`, the forge repository
 coordinate, the `remote`, `policy_branch`, `base_branch` and `base_branch_allowed`, `provision`'s
-two locations, the two access parameters, `forge_parameters` and the credential pair —
-`pr_state_validator` excepted, for the reason its entry states — MAY be read
+two locations, the two access parameters, `network_bound_ms`, `forge_parameters` and the credential
+pair — `pr_state_validator` excepted, for the reason its entry states — MAY be read
 by the engine from a **consumer configuration**: a consumer-owned file, distinct from
 `repo.policy.toml` and never sourced from the repository. Its discovery precedence is
 `Implementation-defined` and MUST be documented (Section 13.3). It carries no key `repo.policy.toml`
@@ -2012,6 +2038,34 @@ nothing — a `pull:ok` for a fetch that failed, a `push` over a merged pull req
 reports success with the work still uncommitted — rather than the `error`-class result Section 4.3
 defines for every operation. Where the two shapes are mixed without the rule, which capability can
 report a failure is a property of how its signature happened to be written.
+
+An engine MUST bound the time it waits for each network call, under `network_bound_ms`
+(Section 8.1). The capabilities this covers are Section 9.1's four network-touching ones and every
+capability of Section 9.2.
+
+Section 6.6 bounds a hook because "a hook is the one place the engine hands control to a program
+this specification does not describe". A network call is the second such place, and it has the same
+shape: the engine hands a request to a server this specification does not describe and waits for an
+answer it does not control. What an unbounded wait costs is not a slow operation but the property
+the contract rests on — the engine runs a bounded sequence and exits (Sections 1, 2.2, 5.6), and a
+connection a host accepts and never answers holds the invocation open indefinitely, so the exit a
+consumer's escalate-and-exit loop is waiting for never arrives. Without the bound, that sentence is
+conditional on every server the engine talks to answering.
+
+What an expiry reports divides by transport. A **forge** call that reaches the bound is
+`forge_unavailable`, carrying `bound_elapsed` in
+`outputs.forge_unavailable_condition` (Sections 4.3, 8.2) — the same spelling Section 6.6 fixes for
+a unit still running when its bound elapsed, reused deliberately, since one event on two kinds of
+unit should not diagnose differently by which program the engine happened to be waiting on. A
+**version-control** call that reaches it reports the reason that operation reports today:
+`provision:unreachable`, whose gloss already names the network between the caller and the endpoint,
+and the universal `failed` for `integrate`, `pull` and `push`. That asymmetry is the one Section 4.3
+states over the transient reasons — a git remote publishes no budget and no reset time — rather than
+a second one this bound introduces.
+
+The engine stops the call and reports it; it does not retry. Whether to call again is the consumer's
+(Section 2.2), and an engine retrying inside the bound would make the bound mean the total wait
+multiplied by an attempt count the engine chose rather than the consumer.
 
 ### 9.1 VCS Backend Plugin
 
@@ -2694,6 +2748,12 @@ A conforming engine SHOULD include tests covering:
   `before:commit` read it creates no commit and yields `worktree_moved` rather than `ok` or
   `nothing_to_commit`, while a `worktree_revision()` that could not determine an identity yields
   `commit:failed` rather than a commit conditioned on nothing (Sections 4.3, 6.6, 9.1).
+- The network bound: a forge call that exceeds `network_bound_ms` yields `forge_unavailable` with
+  `bound_elapsed` in `outputs` rather than the universal `failed`, and the invocation ends rather
+  than waiting on a connection the far side never answers (Sections 8.1, 9); a configured value at
+  the 600-second floor is accepted; the bound applies to one call rather than across an operation's
+  capabilities, so an `integrate` is not held to one deadline over `fetch_base` and `merge_base`;
+  and no engine-internal retry occurs inside it (Sections 2.2, 9.1).
 - Transient forge conditions: a throttled forge call yields `rate_limited` and not `failed`, and the
   run escalates rather than failing, so a condition that clears on its own does not end a unit of
   work (Sections 4.3, 5.4); a permanent refusal — a validation error the forge will refuse
@@ -2994,6 +3054,8 @@ A conforming engine SHOULD include tests covering:
 - The transient forge reasons `rate_limited` and `forge_unavailable`, both `needs_caller` so a
   throttle escalates rather than failing the flow, with `forge_unavailable`'s condition in `outputs`
   and `retryable` carried on every escalation.
+- A bound on every network call, configurable to at least 600 seconds, so no unit the engine waits
+  on is unbounded and the invocation exits whatever the far side does.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, every commit the engine writes attributed to the supplied commit identity, a scan reached
   through a policy edge at a lifecycle position rather than through a key of its own, and a
@@ -3023,7 +3085,8 @@ The Statement MUST record:
   reported when several configuration conditions hold (Section 6.11), the consumer configuration's
   discovery precedence, the backend's default remote where the consumer supplies none, the
   entry-point argument encodings and how a front-end derives the forge repository coordinate where
-  it does (Section 8.1), the `detail` field of an `unanswered_gates` entry (Section 8.2), and the
+  it does, the default `network_bound_ms` and any per-capability values the engine applies
+  (Sections 8.1, 9), the `detail` field of an `unanswered_gates` entry (Section 8.2), and the
   escalation `detail` field (Section 8.4).
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class and,
   where that class is `needs_caller`, its default `need` (Section 4.3), a configuration reason

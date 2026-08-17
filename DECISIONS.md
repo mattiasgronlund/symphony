@@ -4014,3 +4014,44 @@ also if `forge_unavailable`'s three conditions turn out to be routed on rather t
 would mean two reasons was one too few. Relates to 0104, 0107 and 0109. Accepted and applied to
 `VCSX-SPEC.md` (Sections 4.3, 8.2, 8.4, 8.5, 9.2, 13.1, 13.2), `conformance/vcsx/vocabulary.json`
 and `conformance/vcsx/README.md`.
+
+## 0109 — The other program the engine waits on
+
+**State:** Accepted
+**Folder:** [decisions/0109-network-call-bound/](decisions/0109-network-call-bound/)
+
+Issue #58's fourth primitive. Section 6.6 bounds a hook on the ground that it is "the one place the
+engine hands control to a program this specification does not describe" — and it is not the one
+place. A network call is the second, with the same shape: the engine hands a request to a server it
+does not describe and waits for an answer it does not control, and **nothing bounded that wait**.
+What that costs is not a slow operation but the property the contract rests on. The engine runs a
+bounded sequence and exits (Sections 1, 2.2, 5.6), which is the sentence a consumer's
+escalate-and-exit loop is built against, and a host that accepts a connection and never answers holds
+the invocation open indefinitely — so that sentence was conditional on every server the engine talks
+to answering. `network_bound_ms` is a consumer-supplied bound on **one** network call, not on an
+operation's total: an operation realized through two capabilities is not held to one deadline across
+both, since the second may be local (`integrate` is `fetch_base` then `merge_base`) and a bound
+covering it would be bounding something other than a wait on a server. Its value is
+`Implementation-defined` and MUST be documented, and an engine MUST admit a configured value of at
+least 600 seconds — the same floor Section 6.6 fixes, reached from this bound's own capability set
+rather than by copying: it covers `ensure_store`, which fetches an entire repository, so the floor
+accommodates the **slowest** network unit and an engine capping below it would make the
+specification's own provisioning operation unusable at scale while staying conformant. A hardcoded
+value settles nothing, for the reason Section 6.6 gives its floor — sixty seconds is generous for an
+API call and far too short for a clone, so an engine picking one number picks it wrong for one of
+the two. The bound is the consumer's and `repo.policy.toml` carries no key for it, argued from this
+section's own placement rather than only from Section 6.6's sourcing rule: the endpoint and the
+credential are already the consumer's, and how long to wait for an endpoint is a fact about the
+consumer's environment — a repository cannot know whether its policy runs against a forge on a LAN
+or across a saturated link. Expiry divides by transport, reusing what 0108 already built: a forge
+call is `forge_unavailable` carrying `bound_elapsed`, deliberately the same spelling Section 6.6
+fixes for a hook still running when its bound elapsed, since one event on two kinds of unit should
+not diagnose differently by which program the engine happened to be waiting on; a version-control
+call reports what it reports today, `provision:unreachable` or the universal `failed`. The engine
+stops the call and does not retry — an engine retrying inside the bound would make it mean the total
+wait multiplied by an attempt count the engine chose rather than the consumer (Section 2.2).
+Reconsider if every conforming engine documents a per-capability table, which would mean the
+per-call unit was wrong and the bound belongs per capability; or on an `ensure_store` reaching the
+600-second floor in ordinary use, which would mean provisioning needs a bound distinct from the API
+calls' rather than a shared one with a high ceiling. Relates to 0081, 0108 and 0112. Accepted and
+applied to `VCSX-SPEC.md` (Sections 8.1, 9, 13.1, 13.2, 13.3).
