@@ -3733,3 +3733,57 @@ state; reconsider Section 10.8 when its reason codes are enumerated rather than 
 on 0071 and 0048; relates to 0056, 0045, 0046 and 0002. Accepted and applied to `SPEC.md` (Sections
 5.5, 17, 17.1, 18.1), `conformance/vocabulary.json`, `conformance/README.md`,
 `conformance/vectors/prompt-rendering.json`, and `CONFORMANCE-STATEMENT-TEMPLATE.md`.
+
+## 0103 — Which prose enumerations are published, and what their token is
+
+**State:** Proposed
+**Folder:** [decisions/0103-prose-enumerations/](decisions/0103-prose-enumerations/)
+
+Takes up issue #54's follow-up comment on its own framing — one decision, not four. The comment
+reports three more prose enumerations the registry does not publish (Section 14.1's nine failure
+classes, Section 7.1's six orchestration states, Section 7.2's eleven run-attempt phases); checking
+them turned up a fourth with a stronger case than any, and a shape question the specification
+already answers two ways. **The test is not whether a set is an enumeration but what reads the
+spelling and what happens when the reading is wrong**, which is the test 0071 applied without naming
+it. Under it the sets are not peers. **Section 11.6's five run outcomes** (`dispatched`,
+`pull_request_opened`, `run_succeeded`, `run_failed`, `retries_exhausted`) are written by a *human
+into `repo.policy.toml`* from a vocabulary Section 11.6 calls closed, and a misspelling is
+**silent** by that section's own rule — "a trigger that fires with no matching `from`-state
+transition performs no transition" — so a policy loads, validates and never fires. Nothing else on
+the list is spelled by a non-implementer or fails that quietly. **Section 14.1's nine classes** are
+transcribed into the Conformance Statement, whose template carries rows named by class, and named in
+backticks by Sections 17.2, 17.4, 18.1.4 and 19 — a real reader, but a slower signal, since those
+checks assert behaviour and name the class descriptively. **Section 7.1's states** are named
+descriptively in Sections 17.4 and 18.2 and are absent from Section 13.3's snapshot, which returns
+row lists rather than a state name. **Section 7.3's seven triggers** are prose-titled internal
+lifecycle events sharing no token with Section 11.6's despite the word. **Section 7.2's eleven
+phases** are asserted nowhere in Sections 17, 18 or 19; Section 11.6 names four only to *define* the
+run outcomes, so `Succeeded` never leaves the document. Proposed: publish the run outcomes and the
+failure classes, record the other three with the reader each lacks. Rejected: publishing all five
+(simple, and a later reader cannot be predicted, but a set published with nothing to check it
+against turns a derived view into an inventory — 0071's reconsideration trigger one step away); a
+rule keyed on enumeration *shape* rather than reader (mechanical and dodges the shape question, but
+gets the two important cases backwards, since Section 14.1 is Title Case with a reader and Section
+7.2 is identifier-shaped with none); and publishing nothing further (the analysis is the durable
+part regardless, but it leaves the worst failure mode in the document standing). **The engine
+registry has already claimed half the strongest set**: `conformance/vcsx/vocabulary.json` publishes
+Section 11.6's agent-emitted signals as `signals` from `VCSX-SPEC.md` Section 5.1, so the ownership
+question the deferral bullet defers the whole thing behind is answered by the artifacts for the
+shared half, and the run outcomes — orchestrator-observed, Symphony's alone — carry no ownership
+question at all. That bullet also bundles three unrelated sets behind one reason fitting part of
+one, the third recurrence of the shape 0102 named and then reproduced; the count is the useful part,
+because a deferral list is where reasons go stale unread. **On the shape question**: Section 14.1
+spells failure categories two ways in one section — nine Title Case titles and
+`token_budget_exceeded`, which its own note names as a category — so no consistent answer can be
+read off it, and a group cannot be derived until the document has one. Proposed that `SPEC.md` gains
+an identifier-shaped token for each of the nine, keeping the titles as prose names; rejected:
+publishing the titles verbatim and letting each implementation slugify (faithful and needs no spec
+change, but two implementations slugifying `Workflow/Config Failures` independently reintroduce the
+divergence with the registry's authority behind the ambiguity), and the registry minting slugs
+(cheapest, and exactly the derived view leading its source that 0071 forbade and 0102 restated).
+`exhaustive: false` on the failure classes, on evidence rather than reading, which does not
+contradict a consumer closing its own enum at nine — openness is a property of the set, not of the
+names (0071). Reconsider Section 7.2 when anything outside it asserts a phase by name, Section 7.1
+when a snapshot or API exposes a state as a value, and the reader test itself on 0071's own trigger.
+Depends on 0071 and 0102; relates to 0051, 0056, 0045 and 0002. Proposed: `SPEC.md` is unchanged
+pending acceptance.
