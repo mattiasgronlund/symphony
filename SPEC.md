@@ -270,7 +270,7 @@ Fields:
     tracker has no native branch metadata leaves it null or MAY synthesize one.
 - `url` (string or null)
 - `labels` (list of strings)
-  - Normalized to lowercase.
+  - Normalized with `Lowercase Normalization` (Section 4.2).
 - `blocked_by` (list of blocker refs)
   - OPTIONAL and tracker-dependent: an adapter whose tracker has no dependency model leaves it
     empty, and blocker-gated dispatch (Section 8.2) then observes no blockers.
@@ -428,8 +428,25 @@ Fields:
     `[A-Za-z0-9._-]` with `_` (Section 9.5, Invariant 3); a non-ASCII code point yields one `_` per
     byte.
   - Use the sanitized value for the workspace directory name.
+- `Lowercase Normalization`
+  - The Unicode Default Case Conversion to lowercase (The Unicode Standard, Section 3.13 "Default
+    Case Algorithms"), using the full mappings rather than the simple ones: the mapping is not
+    one-to-one, so `İ` (U+0130) normalizes to `i` followed by U+0307.
+  - No language-specific tailoring is applied. An implementation MUST NOT use a locale-sensitive
+    lowercasing: under a Turkish tailoring `I` maps to `ı` (U+0131), so `In Progress` and
+    `in progress` would stop matching on a host whose locale happens to be Turkish, making the
+    host's environment an input to the comparison.
+  - No Unicode normalization form is applied. The normalized value is the code-point sequence the
+    mapping produces, so two spellings of the same name that differ only in normalization form do
+    not compare equal.
+  - Every case-insensitive comparison in this specification is defined over this operation:
+    `Normalized Issue State` below, and label normalization (Sections 4.1.1, 5.3.1, 11.3).
 - `Normalized Issue State`
-  - Compare states after `lowercase`.
+  - Compare states after `Lowercase Normalization`.
+  - The normalized value is a comparison key, not a display string. `active_states` and
+    `terminal_states` membership (Sections 8.2, 16.3), `max_concurrent_agents_by_state` lookup
+    (Sections 5.3.5, 8.3), and `(from, on)` transition uniqueness (Section 11.6) all test it; a
+    state written back to the tracker carries the provider's own spelling (Section 11.1).
 - `Session ID`
   - Compose from the agent adapter's thread and turn identifiers. The Codex adapter composes them as
     `<thread_id>-<turn_id>`.
@@ -574,7 +591,8 @@ Fields:
 - `required_labels` (list of strings)
   - Default: `[]`.
   - An issue MUST contain every configured label to dispatch or continue.
-  - Matching ignores case and surrounding whitespace.
+  - Matching ignores surrounding whitespace on both sides, and compares under
+    `Lowercase Normalization` (Section 4.2).
   - A blank configured label matches no issue.
 - `active_states` (list of strings)
   - Default: `Todo`, `In Progress`
@@ -685,7 +703,7 @@ Fields:
   - Changes SHOULD be re-applied at runtime and affect future retry scheduling.
 - `max_concurrent_agents_by_state` (map `state_name -> positive integer`)
   - Default: empty map.
-  - State keys are normalized (`lowercase`) for lookup.
+  - State keys are normalized for lookup (`Normalized Issue State`, Section 4.2).
   - Invalid entries (non-positive or non-numeric) are ignored.
 
 #### 5.3.6 `codex` (object — Codex adapter)
@@ -1155,7 +1173,8 @@ first.
 An issue is dispatch-eligible only if all are true:
 
 - It has `id`, `identifier`, `title`, and `state`.
-- Its state is in `active_states` and not in `terminal_states`.
+- Its state is in `active_states` and not in `terminal_states`, both tested as
+  `Normalized Issue State` (Section 4.2).
 - It is routed to this worker by the configured assignee and contains every
   label in `tracker.required_labels`.
 - It is not already in `running`.
@@ -1180,7 +1199,8 @@ Global limit:
 
 Per-state limit:
 
-- `max_concurrent_agents_by_state[state]` if present (state key normalized)
+- `max_concurrent_agents_by_state[state]` if present (both the state and the map key normalized,
+  `Normalized Issue State`, Section 4.2)
 - otherwise fallback to global limit
 
 The runtime counts issues by their current tracked state in the `running` map.
@@ -2444,9 +2464,9 @@ Candidate issue normalization SHOULD produce fields listed in Section 4.1.1.
 
 Additional normalization details:
 
-- Label names are trimmed and lowercased.
+- Label names are trimmed, then normalized with `Lowercase Normalization` (Section 4.2).
 
-- `labels` -> lowercase strings
+- `labels` -> strings normalized per `Lowercase Normalization` (Section 4.2)
 - `blocked_by` -> for `linear`, derived from inverse relations where relation type is `blocks`; an
   adapter whose tracker has no dependency model leaves it empty
 - `branch_name` -> tracker-provided when available, otherwise null or adapter-synthesized
@@ -2526,7 +2546,9 @@ State machine:
   representations.
 - A trigger that fires with no matching `from`-state transition performs no transition.
 - The graph MUST be deterministic: at most one transition per `(from, on)` pair. A duplicate
-  `(from, on)` is a configuration error (Section 6.3).
+  `(from, on)` is a configuration error (Section 6.3). `from` is compared as
+  `Normalized Issue State` (Section 4.2), so two entries whose `from` values differ only in case are
+  a duplicate.
 
 Triggers:
 
@@ -3554,9 +3576,12 @@ function reconcile_running_issues(state):
     return state
 
   for issue in refreshed:
-    if issue.state in terminal_states:
+    # Membership is tested on both sides after normalization (Section 4.2), never on the raw
+    # tracker spelling.
+    issue_state = normalize_state(issue.state)
+    if issue_state in normalize_states(terminal_states):
       state = terminate_running_issue(state, issue.id, cleanup_workspace=true)
-    else if issue.state in active_states:
+    else if issue_state in normalize_states(active_states):
       state.running[issue.id].issue = issue
     else:
       state = terminate_running_issue(state, issue.id, cleanup_workspace=false)
@@ -3850,8 +3875,11 @@ except where a bullet states otherwise.
   values only
 - `~` path expansion works
 - `codex.command` is preserved as a shell command string
-- Per-state concurrency override map normalizes state names and ignores invalid values
-  (`Daemon Conformance`)
+- State and label normalization is `Lowercase Normalization` (Section 4.2): the Unicode full
+  lowercase mapping, so `İ` (U+0130) yields `i` followed by U+0307, with a result that does not
+  depend on the host's locale and no Unicode normalization form applied
+- Per-state concurrency override map normalizes state names (`Normalized Issue State`, Section 4.2)
+  and ignores invalid values (`Daemon Conformance`)
 - Prompt template renders `issue` and `attempt` (`Daemon Conformance`)
 - Prompt rendering fails `template_render_error` on unknown variables (strict mode)
   (`Daemon Conformance`)
@@ -3981,7 +4009,7 @@ surface (Section 11.1) is `Daemon Conformance`, because it exists to find and re
   non-conformant and a broken enumeration surfaces `tracker_pagination_error`
 - Blockers are normalized from Linear inverse relations of type `blocks`; `blocked_by`/`branch_name`
   are tracker-dependent, and an empty `blocked_by` applies no blocker gating
-- Labels are normalized to lowercase
+- Labels are normalized with `Lowercase Normalization` (Section 4.2)
 - `metadata` carries adapter-defined provider-specific fields the flat model does not capture
 - Issue state refresh by ID returns minimal normalized issues
 - Issue state refresh query uses GraphQL ID typing (`[ID!]`) as specified in Section 11.2
