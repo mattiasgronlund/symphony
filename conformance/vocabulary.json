@@ -50,7 +50,9 @@
     "entries": [
       { "token": "issue_id", "required_for": "issue-related logs" },
       { "token": "issue_identifier", "required_for": "issue-related logs" },
-      { "token": "session_id", "required_for": "coding-agent session lifecycle logs" }
+      { "token": "session_id", "required_for": "coding-agent session lifecycle logs" },
+      { "token": "credential_scope", "required_for": "logs describing a call that reached the code host", "note": "Names the scope the call's credential came from — a repository, or the orchestrator level — never the credential or any part of its value (Sections 8.7, 15.3)." },
+      { "token": "origin_run_id", "required_for": "coding-agent session lifecycle logs", "note": "The run attempt whose failure produced this one (Sections 7.2, 8.4, 13.1). Names the origin of a retry sequence rather than the immediate predecessor, so the sequence is a group rather than a linked list. Always present: the first attempt of a run is its own origin." }
     ]
   },
 
@@ -130,6 +132,7 @@
       { "token": "vcs", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 6.4" },
       { "token": "budget", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 8.8" },
       { "token": "quota", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 8.9" },
+      { "token": "forge_budget", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 8.11", "note": "Owned by the OPTIONAL forge budget guard. Only the guard is optional: recording the snapshot the engine reports on every forge-touching operation is Core and requires none of this namespace's keys." },
       { "token": "[tasks]", "artifact": "repo_policy_toml", "core": false, "spec_ref": "Section 8.10" },
       { "token": "[driver]", "artifact": "repo_policy_toml", "core": false, "spec_ref": "Section 8.10" },
       { "token": "compute", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 9.11" },

@@ -968,7 +968,7 @@ Operator policy config:
 - `vcs.forge`: string, `github` | `forgejo`, the code host the repository is published on (operator-owned, Section 9.7)
 - `vcs.git_access` / `vcs.forge_access`: where the version-control operations reach the remote, and where the forge operations reach the code host
 - `vcs.forge_parameters`: OPTIONAL per-backend extension bag, carried to the selected backend uninterpreted
-- `vcs.git_credential` / `vcs.forge_credential`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; `vcs.forge_credential` defaults to `vcs.git_credential`
+- `vcs.git_credential` / `vcs.forge_credential`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; `vcs.forge_credential` defaults to `vcs.git_credential`. Both MAY be configured **per repository**, in which case that value applies to the repository's calls and the orchestrator-level value applies to repositories configuring none (Sections 8.7, 15.3). An implementation MUST support the per-repository form; using it is the operator's choice
 - `vcs.remote`: the remote the repository is provisioned from and the operations that touch one act against
 - `vcs.policy_source`: string, `policy_branch` | `target_branch`, default `policy_branch`; where host-side Way of Working is read from (Sections 9.7, 15.4)
 - `vcs.policy_branch`: REQUIRED under `policy_source = "policy_branch"`, no default; the branch `repo.policy.toml`'s host-side parts are read from. Never a pull-request target (Sections 9.7, 9.10, 15.4)
@@ -976,6 +976,9 @@ Operator policy config:
 - `vcs.base_branch_allowed`: OPTIONAL bound on the targets a per-issue source may name, default unset (unbounded)
 - `vcs.local_vcs`: REQUIRED; the VCS backend the engine loads, and the checkout mode for one it creates. For a checkout it did not create the backend detects the mode (Section 9.7)
 - `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
+- `vcs.await_bound_ms` / `vcs.await_max_reads` / `vcs.await_interval_ms`: the bounds Symphony hands the engine's `await_checks` on `merge:checks_pending` (Sections 8.11, 9.10); defaults `Implementation-defined` and documented. Reaching either bound parks the issue
+- `vcs.await_budget_floor`: OPTIONAL bucket name and minimum remaining below which the wait stops and the issue parks, default unset
+- `forge_budget.enabled` / `forge_budget.warn_percent` / `forge_budget.<bucket>_floor`: the OPTIONAL forge budget guard (Section 8.11); defaults `false` and `80`. Recording the snapshot is Core and needs none of these
 - a `repo.policy.toml` pointer per managed repository (Section 5.6)
 - `observability.*`: namespace for OPTIONAL observability settings, no core fields (Section 18.2)
 - `observability.ledger.*`: usage-ledger settings, no core fields (Section 13.6)
@@ -1309,6 +1312,16 @@ Keying:
 - Workspace identity, the per-repository object store (Section 9.7), and concurrency accounting are
   keyed by `(repository, issue)`.
 
+Credential scope:
+
+- The outward credentials are **not** keyed that way by default: a code host meters a credential
+  rather than a repository, so repositories sharing one are a single spender as far as the forge is
+  concerned. A runaway loop in one repository therefore exhausts the budget of every repository
+  beside it, and the budget guard (Section 8.11) can observe and pause on that but cannot separate
+  it — a guard that pauses on a low bucket pauses every repository, including the ones spending
+  nothing. Configuring the credentials per repository (Section 15.3) is what turns a shared failure
+  into a local one; nothing else here does.
+
 ### 8.8 Token Budget Guards (OPTIONAL)
 
 An OPTIONAL extension of `Daemon Conformance` that bounds token spend. The unit of account is
@@ -1471,6 +1484,54 @@ Configuration:
 - The extension owns `[tasks]` and `[driver]` in `repo.policy.toml` (Section 5.6). Core conformance
   does not require these fields.
 
+### 8.11 Forge API Budget
+
+The code host meters the credential Symphony reaches it with, and the engine reports what each call
+observed: every forge-touching operation carries a budget snapshot in its result envelope, on a call
+that succeeded exactly as on one that did not (Section 9.7, `VCSX-CONTRACT.md`). The snapshot is one
+or more named buckets, each with a limit, a remaining count and an OPTIONAL reset time, under the
+names and in the units the forge used.
+
+This section has two halves with different requirement levels, because they have different costs.
+
+Recording (`Core Conformance`):
+
+- Symphony MUST record the snapshot each engine invocation reported, against the run and repository
+  that produced it (Section 13.5).
+- It is Core because it is free. The figure arrives unbidden, attached to a call Symphony already
+  made for another purpose; nothing is polled, configured or spent to obtain it. A deployment that
+  discards it has thrown away the only evidence that would afterwards explain where a budget went,
+  and it paid nothing for that evidence.
+- Recording is not acting. Nothing in this half paces a call, defers a dispatch, or withholds work.
+
+Budget guard (OPTIONAL):
+
+- An OPTIONAL extension of `Daemon Conformance` that acts on the recorded snapshot. It performs a
+  pre-emptive check **before a mutating forge call** — not only a gate on taking new work — because
+  the expensive moment for this budget is the write: a run that has already provisioned a workspace
+  and spent an agent session fails differently from one that was never dispatched.
+- It MAY emit a one-shot warning when a bucket crosses a warn threshold, and MUST NOT make a
+  mutating call while a bucket the operator named is below its configured floor; a run stopped that
+  way is parked (below), not failed.
+- Bucket identity is the forge's and is opaque here as it is in the envelope: the operator names the
+  bucket a threshold applies to, and Symphony compares that bucket against itself. Buckets are never
+  summed, averaged, or normalized into a single headroom figure — a credential may hold several
+  independent budgets in different units, and one bucket's percentage is not the deployment's
+  headroom.
+- The extension owns its configuration under the `forge_budget.*` namespace: `enabled`
+  (Default: `false`), `warn_percent` (Default: `80`), and a per-bucket floor. Core conformance
+  requires none of these fields.
+
+Important boundary: this is not Section 8.9. That section governs the **coding-agent provider's**
+account headroom — a different account, reached with a different credential, spent by different
+operations, and metered in different units. Section 8.9 states the rule this section inherits rather
+than repeats: one account's quota is never summed into another's totals or budgets. The two are also
+shaped differently for a reason a reader should not have to infer. Section 8.9's snapshot carries
+`fetched_at`, `stale_after_ms` and an `UNKNOWN` state because a provider quota is fetched out of band
+and can be old. A forge budget cannot be old: it arrives attached to the call that just spent it. So
+this section carries no staleness machinery and no `UNKNOWN`, and an implementation building a poller
+for it has built one for a figure that needs none.
+
 ## 9. Workspace, VCS, and Safety
 
 ### 9.1 Workspace Layout
@@ -1554,6 +1615,11 @@ Failure semantics:
 - `before_run` failure or timeout is fatal to the current run attempt.
 - `after_run` failure or timeout is logged and ignored.
 - `before_remove` failure or timeout is logged and ignored.
+- A hook whose process was **terminated by a signal** is a failed hook, whatever its exit status.
+  This is the narrower form of the rule Section 10.7 states for a turn: a shell script carries no
+  event vocabulary, so there is no terminal signal to require, and what is checkable instead is the
+  wait status. Without it a hook killed by the sandbox, the OOM killer, or an operator is a passed
+  hook, and an `after_create` that never ran to completion is fatal to nothing.
 
 ### 9.5 Safety Invariants
 
@@ -1601,6 +1667,30 @@ Privileged channel:
 - No credentials are present inside the sandbox. Every secret-bearing environment variable MUST be
   scrubbed before the sandbox starts (Section 15.3).
 
+Constructed environment:
+
+- The agent's environment is **composed** from what the run needs, not inherited wholesale from the
+  orchestrator's process. Variables the deployment intends are passed explicitly.
+- A variable naming a **location outside the run's own workspace** — a build output directory, a
+  cache root, a toolchain or interpreter path, a temporary directory — MUST NOT reach the run unless
+  the deployment named it deliberately. The prohibition is stated over what a variable *names*
+  rather than over a list of variable names, because such a list is per-ecosystem and would be
+  incomplete before it was written.
+- Where a run needs such a location, it resolves inside the run's workspace (Section 9.1), so two
+  concurrent runs cannot name the same one.
+- The composed set is `Implementation-defined` and MUST be documented in the Conformance Statement
+  (Section 19), the disposition the sandbox profile and the egress policy already have. This
+  specification cannot enumerate every ecosystem's variables; what it fixes is that a deployment can
+  say what its agents get.
+
+Important nuance: an inherited build-output or interpreter path is **not** a containment failure, and
+a stronger sandbox profile does not address it. The variable was legitimately inherited, the location
+it names legitimately reachable, and the agent legitimately used it — every component behaved as
+configured, and the outcome was a session acting on a sibling's configuration. What this clause fixes
+is how the environment is constructed, not how strongly the sandbox contains. Nor is it specific to
+concurrency: a single-session deployment with an inherited build-output directory writes somewhere it
+did not intend too, and only lacks a sibling for the mistake to collide with.
+
 Working tree:
 
 - The per-issue working tree is a host directory bind-mounted into the sandbox. The agent edits and
@@ -1642,6 +1732,36 @@ Repository provisioning:
 - Provisioning runs host-side under the operator's `vcs.git_credential`, which the agent never sees,
   and is never performed by the agent: the broker exposes no provisioning verb (Section 9.9). Local
   VCS operations inside the working tree remain available to the agent.
+
+What a provisioned workspace contains:
+
+- A tool the workspace depends on MUST be usable from a workspace Symphony provisioned, with no step
+  the agent has to take first. The guarantee is stated over what the workspace **contains** rather
+  than over clone depth, submodule recursion, or how a store is shared — all of which are the
+  engine's determinations and vary by backend and checkout mode (`VCSX-CONTRACT.md`). It is
+  checkable the way a repository author would check it: provision a workspace from scratch, run the
+  tool.
+- It follows that a tool distributed as a **submodule** does not satisfy the guarantee. Whether
+  provisioning populates one is the engine's determination rather than something a repository can
+  rely on, so a workspace-dependency tool arrives empty exactly when the engine's acquisition did
+  not fetch it. A deployment needing such a tool distributes it as a pinned release the workspace
+  resolves, or vendors it into the tree.
+- Symphony owns the part the engine cannot state, because it is the party that starts the agent: an
+  implementation MUST NOT start an agent session against a workspace whose working-tree derivation
+  has not completed. Provisioning has two halves (Section 16.5) — maintaining the store, and
+  deriving the tree — and a repository's own tools are present only after the second.
+
+Degradation when the host cannot store more:
+
+- A provisioning run the host's storage cannot complete — a full filesystem, an exhausted quota — is
+  a `repository_provisioning_failures` condition and takes that class's existing disposition
+  (Sections 14.1, 14.2): repo-scoped, new dispatches for the repository skipped, the service kept
+  alive, retried on a later tick. It introduces no class and no disposition of its own.
+- A partially written store or working tree MUST NOT be presented as a usable one. This is the case
+  Section 9.3's allowance to remove a partially prepared workspace exists for, and the one where a
+  directory exists, looks plausible, and is not what the next step expects.
+- The retry is that class's repo-scoped one and MUST NOT be converted into a per-worker backoff
+  (Section 14.2): a filesystem that is full is not a condition one issue's retry clears.
 - The reference algorithm is `ensure_object_store` (Section 16.5); it invokes the engine once per
   repository ahead of `provision_for_issue`. A provisioning failure is classified from the engine's
   typed result as `repository_provisioning_failures` (Section 14.1) and recovered per Section 14.2.
@@ -1839,6 +1959,38 @@ Pull requests:
   refused before anything runs, and a per-issue target naming it is refused before the run starts
   (Section 9.7). Reaching `create_pr` with such a base is therefore unreachable rather than merely
   forbidden.
+Pull-request identity under concurrency:
+
+- Symphony resolves the pull request for an issue to the forge's own pull-request identity and
+  carries **that identity** — not the work branch — into every subsequent mutating operation for the
+  run. A branch name is a lookup key rather than the identity of the thing being written, and what
+  it resolves to depends on the forge's state at the moment of the lookup rather than on anything
+  the run established.
+- Immediately before a mutating forge write, Symphony re-reads that identity and checks it against
+  what the run established: the pull request still exists, still carries this run's work branch as
+  its head, and still targets the resolved base. A mismatch MUST refuse the write.
+- A refusal is not retried. It means a second writer is acting on the same pull request, so the
+  repair is an operator's: a retry re-reads a state that writer is still changing, and the second
+  attempt is as likely to overwrite as the first. The refusal is surfaced through the broker's forge
+  verbs with a stable reason code (below) and does not enter the Section 8.4 backoff.
+
+Important nuance: "immediately before" bounds the pair — the re-read and the write are the closest
+the forge's interface allows, with no intervening Symphony operation — and **narrows** the window
+rather than closing it. Symphony cannot make the pair atomic; what the rule converts is a silent
+overwrite into a detected refusal wherever the competing write lands outside the pair. A forge
+offering a conditional update closes the window entirely, and a forge plugin whose code host has one
+SHOULD use it, which is the shape the conditional merge already takes through `expected_head`
+(Section 9.7, `VCSX-CONTRACT.md`).
+
+The concurrency this guards against is not only Symphony's own. Concurrency Control (Section 8.3)
+keeps two of Symphony's workers off one issue; it does not bound a second deployment against the
+same repository, a developer's interactive engine invocation, or a skill-driven agent invoking the
+engine directly. Nor is concurrency required: a pull request closed by a human between two runs, or
+retargeted to a different base, is the same mismatch, and the rule refuses that write too. What
+concurrency supplies is the most visible way to reproduce the failure — and its consequence outlives
+the run, because a squash subject is derived from the pull-request title verbatim (below), so a title
+another writer replaced is what enters history at the merge.
+
 - Issue link: when the tracker is the same platform as the forge, the forge establishes the
   pull-request-to-issue link natively (for example a reference in the pull-request body). When the
   tracker is a separate system (for example Linear), the pull-request reference is written onto the
@@ -1863,6 +2015,37 @@ Squash message:
   9.12): title verbatim, body laundered (for example stripping tracker keys) so history is stricter
   than the live pull-request surface. `land` runs this transform; it never authors a message.
 
+Awaiting required checks:
+
+- A `merge` that reports `checks_pending` has exited without merging. Symphony responds by
+  dispatching the engine's `await_checks` operation with the bounds it supplies — `vcs.await_*`
+  (Section 6.4) — and does **not** write a poll loop of its own. The engine's operation is already
+  bounded, already reads conditionally where the forge supports it, and already stops on a budget
+  floor (Section 9.7, `VCSX-CONTRACT.md`); a second loop around it would be two bounds with no
+  defined relationship, and the one that fired first would decide behavior no one specified.
+- The operation's four outcomes are disposed of as follows. `await_checks:ok` continues the flow.
+  `await_checks:checks_failed` fails the run attempt, the checks having completed and not passed.
+  `await_checks:still_pending` and `await_checks:budget_floor` **park** the issue (Sections 11.6,
+  14.2).
+- Parking is the disposition rather than retry or failure, and the reasoning is worth stating.
+  Retrying is wrong because Section 8.4's backoff schedule exists for transient failures and a check
+  run that is still running is not failing — a retry re-enters a wait that exhausts the same bound
+  again while holding a worker slot each time. Failing is wrong because nothing failed. An operator
+  bound that was reached is the condition `token_budget_exceeded` is already parked for (Section
+  8.8), and this is the same shape. `budget_floor` parks for an additional reason: the work is fine
+  and the budget is not, so waking it on a schedule would spend the budget the floor was protecting.
+- No `checks:*` trigger vocabulary is defined. The engine's outcomes are `<op>:<reason>` results, so
+  the action-policy machine (Section 9.12) already routes them through the same matching and
+  `#class` fallback it applies to every other operation result, and a repository binds
+  `await_checks:*` as it binds `merge:*`.
+
+Important nuance: a successful `await_checks` is **not** authority to merge. It reports that the
+required checks passed for the head **it** read, and awaiting and merging are two operations with a
+gap between them — a push into that gap is exactly the condition `merge:head_moved` names. The merge
+still conditions on the head it reads itself (Section 9.7) and still re-verifies the pull-request
+identity (above). Treating an await's success as a token that licenses an unconditioned merge would
+undo that guarantee by way of a feature added to serve it.
+
 Review writes (OPTIONAL):
 
 - The engine's forge plugin MAY support code-review writes — posting a review comment, replying to a
@@ -1874,7 +2057,11 @@ Forge verbs:
 - The broker exposes forge verbs over the per-run socket (Section 10.8), realized through the VCS
   engine (Section 9.7): `pr` (create/update), `request-merge`, and, where supported, the review
   writes above. Each verb returns a structured result with a stable reason code on failure (for
-  example `pr_conflict`, `scope_denied`).
+  example `pr_conflict`, `scope_denied`, `pr_identity_mismatch`).
+- `pr_identity_mismatch` is the refusal above: the pull request the run established is no longer the
+  one the re-read found. It is distinct from `pr_conflict`, which names a pull request that could
+  not be created or updated cleanly — one is a write that could not be applied, the other a write
+  that would have been applied to the wrong thing.
 
 Capability descriptor:
 
@@ -2246,6 +2433,12 @@ Note:
   interrupt-then-drain leaves the underlying turn still running, so the session is not safely
   resumable and the turn fails; an adapter that can drain cleanly MAY instead yield a resumable
   `continuation_ref`.
+- A process's **exit status is not a turn outcome**. It is evidence that a process ended and no
+  evidence of what the process accomplished, so it MUST NOT be read as an outcome in either
+  direction: an exit `0` carrying no terminal signal is a failed turn (Section 10.7), and a non-zero
+  exit is classified by the terminal signal the adapter observed where it observed one. `port_exit`
+  above names the condition that the transport ended, which is why it is an error category rather
+  than a way of reporting what the turn did.
 
 ### 10.7 Agent Runner Contract
 
@@ -2274,6 +2467,29 @@ Each adapter MUST emit the neutral event vocabulary (Section 10.4) and normalize
 neutral token-usage record (`input_tokens`, `output_tokens`, `total_tokens`; Section 13.5), carrying
 raw protocol payloads opaquely and any adapter-specific counts in an extras field. On any error the
 Agent Runner fails the worker attempt and the orchestrator retries.
+
+Success is evidenced, not inferred:
+
+- A turn is reported successful only where the adapter **observed** the targeted protocol's terminal
+  success signal, normalized to `turn_completed` (Section 10.4). A turn whose process ended without
+  any terminal signal is a failed turn, whatever its exit status (Sections 10.6, 14.1).
+- An adapter MUST NOT report a turn successful on the evidence that a process it backgrounded did
+  not report a failure. Absence of a failure report from a process whose liveness is not observed is
+  evidence of nothing.
+
+What a terminal signal *means* remains the protocol's and the adapter's: this requirement does not
+adjudicate what a completed turn is, which Section 10.7 deliberately defers, and fixes only that the
+adapter must have seen the protocol say so. The engine contract already works this way — an engine's
+result is evidenced by a composed envelope and an exit code outside its four status-bearing ones
+means no result at all (`VCSX-CONTRACT.md`, `VCSX-SPEC.md` Section 8.3) — so a conforming
+implementation already builds this discipline for the one subprocess whose contract this
+specification defers to, and this states it for the other.
+
+Without the rule the failure is not a run that fails but a run that **succeeds wrongly**: a process
+killed by a sandbox filter, the OOM killer, or a signal can end with status `0` having emitted no
+terminal event, and a turn reported complete on that basis advances the run attempt (Section 7.2)
+and carries whatever was in the working tree toward the merge. A failed run retries; a wrongly
+successful one lands.
 
 Behavior outline:
 
@@ -2691,6 +2907,26 @@ REQUIRED context fields for issue-related logs:
 REQUIRED context for coding-agent session lifecycle logs:
 
 - `session_id`
+- `origin_run_id` — the run attempt whose failure produced this one (Sections 7.2, 8.4). It names
+  the **origin** of a retry sequence rather than the immediate predecessor, so every attempt in the
+  sequence carries one value and the sequence is a group rather than a linked list: a record missing
+  from the middle loses one member instead of severing the tail, and "everything that came from this
+  run" is a filter on one field rather than a traversal. The first attempt of a run is its own
+  origin, so the field is always present — a nullable one would invite a consumer to branch on an
+  absence that names no condition.
+  - Without it a retry sequence is, in the record, a sequence of unrelated sessions against one
+    issue, which is the shape a retry storm and a coincidence share. `issue_identifier` and
+    timestamps do not close the gap: an issue that failed, retried, succeeded, and was later
+    reopened and retried again yields two sequences under one identifier, separable only by
+    inferring where the first ended.
+
+REQUIRED context for a log record describing a call that reached the code host:
+
+- `credential_scope` — which credential the call was made under: the repository whose configured
+  credential applied, or the orchestrator-level scope where the repository configured none
+  (Sections 8.7, 15.3). It names the scope, never the credential or any part of its value. Without
+  it an operator reading a budget record afterwards has to reconstruct the scope from the
+  configuration as it was at the time, which is the one thing a record exists to avoid.
 
 Message formatting requirements:
 
@@ -2762,6 +2998,35 @@ Token accounting rules:
 - Do not treat generic `usage` maps as cumulative totals unless the event type defines them that
   way.
 - Accumulate aggregate totals in orchestrator state.
+
+Forge budget accounting:
+
+- The forge budget snapshot each engine invocation reported (Section 8.11) is recorded against the
+  run and repository that produced it. It is kept **separate** from the token-usage record above and
+  from any provider quota snapshot (Section 8.9): the three meter different accounts in different
+  units, and none is summed into another.
+- Buckets are recorded under the names the forge used, with no normalization and no derived headroom
+  figure. A snapshot is a reading, not a running total: what is recorded is what a call observed,
+  and the difference between two readings is not Symphony's spend where a credential has other
+  holders.
+
+Cross-session budget aggregation (OPTIONAL):
+
+- An OPTIONAL extension of `Daemon Conformance` that aggregates the recorded snapshots across
+  concurrent sessions, per bucket and keyed by **credential scope** (Sections 13.1, 15.3) rather
+  than by repository. The key is what the forge meters: repositories sharing one credential are
+  exhausting one bucket, and a per-repository view shows several small numbers where an operator
+  needs to see one large one.
+- Buckets MUST NOT be summed across scopes. Two credentials' remaining counts add to a figure that
+  describes nothing, being counts against separate limits.
+- A difference between two readings MUST NOT be attributed as Symphony's consumption where the
+  credential has other holders. The forge reports what the credential has left, not what Symphony
+  took, so a person running a command-line tool against the same token appears in the reading as
+  Symphony's spend.
+- The sink and retention are `Implementation-defined` and MUST be documented where the extension is
+  shipped (Section 19). Recording the per-run snapshot above is Core and needs none of this: what is
+  optional is the aggregation, which requires somewhere to aggregate into for a benefit that exists
+  only where sessions are concurrent.
 
 Runtime accounting:
 
@@ -3071,6 +3336,8 @@ record.
    - Turn timeout
    - User input requested and handled as failure by the implementation's documented policy
    - Subprocess exit
+   - A turn that ended with no terminal signal, whatever the process's exit status — success is
+     evidenced rather than inferred (Sections 10.6, 10.7)
    - Stalled session (no activity)
 
 5. `Tracker Failures` (`tracker_failures`)
@@ -3137,6 +3404,15 @@ workers it already has.
 
 - Worker failures (`workspace_failures`, `agent_session_failures`):
   - Convert to retries with exponential backoff.
+
+- An exhausted wait for required checks (`await_checks:still_pending`, `await_checks:budget_floor`;
+  Sections 8.11, 9.10) is **parked**, not retried and not failed. It is not a failure class, being
+  an operation result the action-policy machine routes (Section 9.12), and it is listed here because
+  its disposition is the one this section governs. Neither condition clears by being attempted
+  again: a check run that is still running is not failing, so a retry re-enters a wait that exhausts
+  the same operator bound while holding a worker slot, and a budget floor reached would be spent
+  against by the very retry meant to get past it. This is the disposition `token_budget_exceeded`
+  already takes (Section 8.8), and for the same reason — an operator bound, reached.
 
 - Repository provisioning failures (`repository_provisioning_failures`):
   - Skip new dispatches for the affected repository; the object store is shared across all of its
@@ -3329,6 +3605,26 @@ RECOMMENDED additional hardening for ports:
   broker channel. Symphony MAY consume standard credential mechanisms (including environment
   variables and tool-native credential files) in its own process, but MUST scrub every
   secret-bearing environment variable before starting the agent sandbox.
+- The outward credentials have a **scope**, and it is configured rather than implied. An operator MAY
+  configure `vcs.git_credential` and `vcs.forge_credential` per repository (Section 6.4); where a
+  repository configures none, the orchestrator-level value applies, which is the behavior a
+  deployment configuring nothing already has. An implementation MUST support the per-repository
+  configuration even though an operator need not use it — otherwise the recommendation below is one
+  a multi-tenant operator cannot satisfy on a conforming implementation. A deployment whose
+  orchestrator serves repositories under different ownership SHOULD partition.
+  - Two distinct failures motivate it. A forge meters a **credential**, not a repository, so
+    repositories sharing one are one spender to the code host and a runaway loop in one exhausts the
+    budget of every other; the budget guard (Section 8.11) can observe and pause on that but cannot
+    separate it, because the budgets are not separate. And a credential reaching every repository the
+    orchestrator serves is one whose compromise reaches every repository the orchestrator serves.
+  - This is orthogonal to the secret-isolation invariant below, which governs **where** a credential
+    goes — never into the agent sandbox, only into the executor's broker context. That invariant
+    holding perfectly does not bound **how much** a single leaked value unlocks; the two properties
+    are independent and this clause addresses the second.
+  - Per-agent and per-session credentials are **not** required. The forge meters a credential and the
+    observed unit of contention is the repository; minting one per run would require an issuance,
+    rotation and revocation lifecycle this specification does not define and should not acquire as a
+    side effect of a budget-isolation requirement.
 - `$VAR` indirection is retained only for non-secret path values, not for secrets.
 - Do not log API tokens or secret values.
 - Validate presence of secrets without printing them.
@@ -3663,6 +3959,11 @@ of `provision_for_issue` (Section 16.4), so a provisioning failure is recovered 
 (Section 14.2) and no worker is spawned. Whether the engine creates the store or refreshes an
 existing one is the engine's determination, not a branch Symphony takes.
 
+The two halves guarantee different things, not only different work: this function maintains the
+store, and a repository's own contents — including any tool the workspace depends on (Section 9.7) —
+are present in a tree only after `provision_for_issue` derives one. A store that is current is not a
+workspace an agent can be started against.
+
 `provision_for_issue` dispatches the same operation naming both locations, so the per-issue tree is
 derived from the store this function maintained. That re-runs the store half, which refreshes rather
 than re-obtains (`VCSX-CONTRACT.md`) — a redundant acquisition per issue and never a second copy.
@@ -3833,6 +4134,12 @@ Validation profiles:
   ship. Each OPTIONAL feature declares the layer profile it extends.
 - `Real Integration Profile`: environment-dependent smoke/integration checks RECOMMENDED before
   production use.
+- `Concurrency Stress`: RECOMMENDED checks that run several sessions concurrently against one
+  repository and one pull request, asserting that every mutating forge write either applies to the
+  pull-request identity its session established or is refused (Section 9.10). It is RECOMMENDED
+  rather than REQUIRED on the same ground as the profile above: it needs a live forge and real
+  concurrency, so it is environment-dependent in a way the deterministic corpus is not, and making
+  it REQUIRED would make conformance depend on a harness this specification does not describe.
 
 The VCS engine has no profile here. A conforming engine's own obligations are those of the engine
 contract and its specification (Section 3.4); this document states only the condition under which a
@@ -3906,6 +4213,10 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - Workspace path sanitization and root containment invariants are enforced before agent launch
 - Agent launch uses the per-issue workspace path as cwd and rejects out-of-root paths
 - Agent launch wraps the session in the configured sandbox (strict profile by default)
+- The agent's environment is composed rather than inherited: a variable naming a location outside the
+  run's workspace — a build output directory, a cache root, an interpreter path — present in the
+  orchestrator's environment does not reach the agent unless the deployment named it, and a run
+  needing such a location gets one inside its own workspace (Sections 9.1, 9.6)
 - The per-run broker socket is mounted into the sandbox and bound to one run; without it the broker
   is unreachable
 - Secret-bearing environment variables are scrubbed before the sandbox starts
@@ -3916,6 +4227,11 @@ deployment satisfies by using a conforming engine rather than by implementing th
   provisioning of a repository already present refreshes it rather than obtaining it again
 - The broker's verb set contains no provisioning verb, so the agent cannot reach provisioning
   (Sections 9.7, 9.9)
+- A tool the workspace depends on is usable from a freshly provisioned workspace with no step the
+  agent takes first; no agent session starts against a workspace whose working-tree derivation did
+  not complete; and a provisioning run the host's storage could not complete leaves no partially
+  written store or tree presented as usable, is classified `repository_provisioning_failures`, and
+  is retried repo-scoped rather than per worker (Sections 9.7, 14.2, 16.5)
 - A backend that cannot share storage across working trees reports it when the invocation is
   validated rather than at first use (`VCS Engine`)
 - The agent does local git including commit; Symphony obtains repositories and realizes
@@ -4033,6 +4349,14 @@ These checks are `Daemon Conformance`.
 - Reconciliation with no running issues is a no-op
 - Normal worker exit schedules a short continuation retry (attempt 1)
 - Abnormal worker exit increments retries with 10s-based exponential backoff
+- A `merge:checks_pending` dispatches the engine's `await_checks` with the configured bounds rather
+  than a Symphony-side poll loop; `await_checks:still_pending` and `await_checks:budget_floor` park
+  the issue rather than entering the Section 8.4 backoff or failing the run; and `await_checks:ok`
+  does not bypass the merge's own head condition or the pull-request identity re-verification
+  (Sections 8.11, 9.10)
+- The forge budget snapshot each engine invocation reported is recorded against the run and
+  repository, under the forge's own bucket names, and is not summed into the token-usage record or a
+  provider quota snapshot (Sections 8.11, 13.5)
 - Retry backoff cap uses configured `agent.max_retry_backoff_ms`
 - Retry queue entries include attempt, due time, identifier, and error
 - Stall detection kills stalled sessions and schedules retry
@@ -4100,6 +4424,11 @@ broker, and an `interactive-agent` deployment drives an agent session with no da
   guidance); there is no separate session-start operation
 - `cancel` stops an in-flight turn; a clean interrupt-then-drain yields a resumable
   `continuation_ref`, otherwise the turn fails; `release` frees warm resources at run end
+- A turn whose agent process is killed and exits `0` having emitted no terminal signal **fails the
+  attempt** rather than completing it, so unfinished work does not advance toward a merge; no turn
+  outcome is derived from exit status alone, in either direction; and a workspace hook terminated by
+  a signal is treated as failed, so a killed `after_create` is fatal to workspace creation as a
+  failing one is (Sections 9.4, 10.6, 10.7)
 - Each adapter advertises a capability descriptor (`resume` mode, native step cap, accepted
   `effort` values)
 - Emitted usage is normalized to the neutral token-usage record (`input_tokens`, `output_tokens`,
@@ -4140,6 +4469,14 @@ These checks are `Core Conformance`: structured logging and its sinks serve both
 - Structured logging includes issue/session context fields
 - Logging sink failures do not crash orchestration
 - Token/rate-limit aggregation remains correct across repeated agent updates
+- A retried attempt carries the `origin_run_id` of the attempt whose failure produced it, and a
+  first attempt carries its own, so a retry sequence groups on one value and the field is never null
+  (Sections 8.4, 13.1)
+- A call that reached the code host carries `credential_scope`, naming the scope and no part of the
+  credential (Sections 13.1, 15.3)
+- If cross-session budget aggregation is implemented, it is keyed by credential scope, sums no
+  buckets across scopes, and attributes no difference between readings as Symphony's consumption
+  (Section 13.5)
 - A secret value echoed back in agent free text appears in no observability surface — log sinks,
   snapshot or status surface, or the OPTIONAL HTTP API — having been redacted where it was captured
 - The documented redaction mechanism is not weaker than the known-value floor: pattern matching
@@ -4178,13 +4515,29 @@ network access, or external service permissions are unavailable.
 - If a real-integration profile is explicitly enabled in CI or release validation, failures SHOULD
   fail that job.
 
+### 17.9 Concurrency Stress (RECOMMENDED)
+
+These checks need a live forge and genuine concurrency, and carry the `Concurrency Stress` profile
+(Section 17). They MAY be skipped on the same terms as Section 17.8, and a skipped check SHOULD be
+reported as skipped rather than treated as passed.
+
+- Several sessions run concurrently against one repository and one pull request; every mutating
+  forge write either applies to the pull-request identity its session established or is refused with
+  `pr_identity_mismatch`, and no session's title or body is replaced by another's (Section 9.10)
+- A refused write is not retried into a second overwrite: the run surfaces the refusal rather than
+  re-reading and writing again (Sections 8.4, 9.10)
+- The same guard holds without concurrency: a pull request retargeted to a different base, or closed,
+  between two runs of one issue is refused on the second run's write rather than written to
+- Concurrent sessions against one repository each report their forge budget, and the reported
+  buckets are attributable per session rather than summed into one figure (Sections 9.7, 13.5)
+
 ## 18. Implementation Checklist (Definition of Done)
 
 Use the same validation profiles as Section 17:
 
 - Section 18.1 = `Core Conformance`, grouped by the layer profile each item belongs to
 - Section 18.2 = `Extension Conformance`
-- Section 18.3 = `Real Integration Profile`
+- Section 18.3 = `Real Integration Profile` and `Concurrency Stress`
 
 ### 18.1 REQUIRED for Conformance
 
@@ -4209,7 +4562,9 @@ Required of every conforming implementation, whichever profiles its topology cla
   all three with last-known-good on invalid reload; the workflow validation error classes
   (Section 5.5) are REQUIRED spellings, and any class defined beyond them is documented and assigned
   a dispatch gating behavior
-- Structured logs with `issue_id`, `issue_identifier`, and `session_id`
+- Structured logs with `issue_id`, `issue_identifier`, `session_id`, `origin_run_id` (a retry
+  carries its origin's; a first attempt carries its own), and `credential_scope` on any call that
+  reached the code host
 - Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)
 - A published Conformance Statement (Section 19) recording the claimed profiles and topology, the
   OPTIONAL extensions shipped, the engine and agent-runner floors, every `Implementation-defined`
@@ -4233,6 +4588,14 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   resources; adapters emit the neutral event vocabulary and token-usage record (`input_tokens`,
   `output_tokens`, `total_tokens`) and advertise a capability descriptor (resume mode, native step
   cap, accepted effort); one adapter per (agent, transport) with no protocol impersonation
+- Turn success is evidenced rather than inferred: a turn is reported successful only where the
+  adapter observed the protocol's terminal success signal, a process's exit status is never read as
+  a turn outcome, an adapter never reports success because a backgrounded process did not report a
+  failure, and a workspace hook terminated by a signal is failed (Sections 9.4, 10.6, 10.7)
+- A tool the workspace depends on is usable from a provisioned workspace with no step the agent
+  takes first — so a workspace-dependency tool is not distributed as a submodule — and no agent
+  session starts against a workspace whose working-tree derivation has not completed (Sections 9.7,
+  16.5)
 - Repository provisioning runs through the VCS engine (Section 9.7), host-side and credentialed,
   before any per-issue working tree is derived from the store, and exposes no provisioning verb to
   the agent; a provisioning failure is classified from the engine's typed result as
@@ -4242,6 +4605,11 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   structured results (`scope_denied` fails the run)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
   before start, and the broker socket as the only privileged channel
+- The agent's environment is composed rather than inherited: no variable naming a location outside
+  the run's workspace reaches it undeclared, and such a location resolves inside the workspace
+  (Section 9.6)
+- Outward credentials MAY be scoped per repository, an implementation supports that configuration,
+  and a call's `credential_scope` is in the record (Sections 8.7, 13.1, 15.3)
 - The secret model splits outward credentials (broker-mediated, never in the sandbox) from
   repo-internal integrity values (repo-owned host-side hook environment; Section 15.3)
 - Text captured from a subprocess (agent messages, host-side hook output) is redacted of the run's
@@ -4314,6 +4682,15 @@ engine's checklist.
   (Sections 9.7, 9.10, 15.4)
 - The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
   writes (post/reply/resolve), advertising a static forge-capability descriptor
+- Every mutating forge write carries the pull-request identity the run established rather than the
+  work branch, re-verifies it immediately before writing — the pull request exists, carries this
+  run's work branch as its head, targets the resolved base — and refuses on a mismatch with
+  `pr_identity_mismatch` rather than retrying into a second overwrite (Section 9.10)
+- A `merge:checks_pending` is met by dispatching the engine's bounded `await_checks` rather than a
+  poll loop of Symphony's own, its exhausted and budget-floored outcomes park the issue, and its
+  success does not license an unconditioned merge; the forge budget snapshot each engine invocation
+  reports is recorded per run and repository under the forge's own bucket names, summed into nothing
+  (Sections 8.11, 9.10, 13.5)
 - The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback, an
   unmatched operation outcome fail-safe, an unmatched signal a no-op, and abstract `escalate` bound
   per front-end
@@ -4327,8 +4704,9 @@ engine's checklist.
 ### 18.2 RECOMMENDED Extensions (Not REQUIRED for Conformance)
 
 Each extension below extends the layer profile named in its own section: the HTTP server, token
-budget guards, provider quota backpressure, the node-scheduler, and autonomous task management
-extend `Daemon Conformance`; the per-execution usage ledger extends `Broker Core Conformance`.
+budget guards, provider quota backpressure, the forge budget guard, cross-session budget
+aggregation, the node-scheduler, and autonomous task management extend `Daemon Conformance`; the
+per-execution usage ledger extends `Broker Core Conformance`.
 
 - HTTP server extension honors CLI `--port` over `server.port`, uses a safe default bind host, and
   exposes the baseline endpoints/error semantics in Section 13.8 if shipped.
@@ -4345,6 +4723,14 @@ extend `Daemon Conformance`; the per-execution usage ledger extends `Broker Core
 - Provider quota backpressure extension (Section 8.9): a normalized provider-quota snapshot (class
   `Cached external signal`) fed in-band or by an OPTIONAL poller, with a dispatch-only pause above a
   threshold, implicit resume, and a configurable fail-open/closed policy on `UNKNOWN`.
+- Cross-session budget aggregation extension (Section 13.5): the recorded per-run snapshots
+  aggregated per bucket and keyed by credential scope, with no summing across scopes and no
+  difference between readings attributed as Symphony's consumption. Recording the per-run snapshot
+  is Core; only the aggregation is optional.
+- Forge budget guard extension (Section 8.11): a pre-emptive check before a **mutating** forge call
+  against an operator-named bucket floor, plus a one-shot warn threshold, with a stopped run parked
+  rather than failed. Only the guard is OPTIONAL — **recording** the snapshot the engine already
+  reports is Core, and needs none of the extension's configuration.
 - Node-scheduler / remote-execution extension (Section 9.11): a remote executor carries the
   secret-isolation boundary (sandbox, per-run broker socket, credential-less agent) to its node,
   receives secrets over a directly mutually-authenticated channel with the node-scheduler off the
@@ -4394,8 +4780,11 @@ The Statement MUST record:
 - The engine `version_floor` the deployment declares (Section 18.1.4) and the agent-runner protocol
   floor the implementation advertises at bring-up (Section 10).
 - A resolution for every `Implementation-defined` behavior and every other "MUST document" obligation
-  in this specification, including: the agent sandbox profile and effective egress policy
-  (Section 9.6); the approval, sandbox, operator-confirmation, and user-input-required policy
+  in this specification, including: the agent sandbox profile, the effective egress policy, and the
+  composed environment set an agent receives
+  (Section 9.6); whether the deployment scopes outward credentials per repository (Section 15.3);
+  the bounds handed to the engine's bounded check wait and the forge budget guard's enablement
+  (Sections 8.11, 9.10); the approval, sandbox, operator-confirmation, and user-input-required policy
   (Section 10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the log
   sink or sinks and what happens when one of them fails (Section 13.2); the human-readable status
   surface, if any, and the presentation of rate-limit data (Sections 13.4, 13.5); the park-vs-retry
