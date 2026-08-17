@@ -3663,3 +3663,58 @@ thing the mode costs. Reconsider the token if a consumer must distinguish "this 
 from "nothing says where to read the policy from" in automation; reconsider the mode if a deployment
 supplies an operator-level base on every invocation anyway, since it is then paying for a
 convenience it no longer uses. Relates to 0094, 0097, 0098 and 0002.
+
+## 0102 — The enumerated error tokens as data, and a class that names its condition
+
+**State:** Accepted
+**Folder:** [decisions/0102-enumerated-error-tokens/](decisions/0102-enumerated-error-tokens/)
+
+Resolves issue #54, which reports that Section 5.5's five workflow/template error classes have no
+group in `conformance/vocabulary.json` while `vectors/prompt-rendering.json` already asserts one by
+name. Three defects sit on that spot. **The corpus measures a spelling the specification does not
+require**: the vector file calls `template_render_error` a MUST, Section 5.5 carries no RFC 2119
+keyword at all, and Section 17.1's four checks say "returns typed error" — satisfied by any
+spelling. **The registry could not have carried the group anyway**, because 0071 ruled that the
+ruling belongs in the specification and deferred these tokens on a stated blocker — "several are
+RECOMMENDED rather than REQUIRED spellings, which is a distinction the registry would have to carry
+per entry" — so the registry gap is downstream of the level gap. Deriving it shows the blocker is
+per **group**, not per entry: each section states one level for its whole set, so the distinction
+costs one field and the slice is cheaper than the deferral assumed. **A class named by its condition
+or by the pass that caught it** is the defect that breaks an implementation today: a strict template
+engine resolves filter names against its own filter table and variable names against the render
+context, so it may reject an unknown filter earlier than an unknown variable (measured, `liquid`
+0.26.11 / rustc 1.97.1: filter at parse, variable at render), and the corpus expects
+`template_render_error` for both — which holds only if the class names what was wrong rather than
+which pass noticed. Section 5.5 annotates `template_parse_error` "(during prompt rendering)", a
+phase, which is the sentence that invites the misreading; under it two of six vectors fail for an
+implementation that is otherwise correct. **The five Section 5.5 classes become REQUIRED spellings;
+Sections 11.4 and 10.6 stay RECOMMENDED, and the registry carries the level per group.** The split
+is where the mechanism draws the line: whether a spelling can be required turns on **who owns the
+condition**. Section 5.5's five are conditions on artifacts this specification defines, so every
+implementation faces exactly those five; Sections 11.4 and 10.6 are categories an adapter maps a
+foreign failure onto — "each adapter maps its transport's failures onto them" — and requiring a
+spelling there requires a *distinction* the transport may not offer. Rejected: RECOMMENDED
+throughout (it makes the corpus the overreaching party and would delete its two sharpest vectors,
+leaving the one class a consumer branches on spelled per implementation); and REQUIRED throughout
+(one rule for every enumerated error token, which would retire the level field, but imposes a
+distinction an adapter over a transport that reports a bad status and a malformed payload
+identically cannot compute). Rejected on scope: carving out Section 5.5 alone, which leaves the
+deferral standing on a reason just shown wrong, so the next reader takes it on trust; and spec-only,
+which is cheapest and fixes everything that breaks today, but leaves an implementation transcribing
+five tokens by hand once the only remaining obstacle is the authoring. Section 5.5 also states that
+the set is **open** — additional classes MAY be defined, MUST be documented, and MUST be assigned
+one of the two gating behaviors — before the registry records `exhaustive: false`, because REQUIRED
+plus an unflagged group reads as closed and closing it by omission is the Section 10.4 failure 0071
+was created to fix. `gating` is carried per entry (Section 5.5 fixes the split; Sections 6.2 and
+12.4 act on it), `requirement_level` per group. Section 10.8 stays deferred on its own and stronger
+reason: its reason codes are introduced by "for example" with no enumeration, so there is nothing to
+publish that would not be invented. Two findings recorded rather than fixed: Section 17.3 requires
+four of Section 11.4's RECOMMENDED tokens by name in `Core Conformance` checks, the same asymmetry
+one section over; and Sections 10.6 and 10.4 share three spellings (`turn_failed`, `turn_cancelled`,
+`turn_input_required`), which is the useful naming rather than a collision, now stated in the group
+note. Reconsider the Section 11.4 level when a second tracker adapter lands and Section 17.3's four
+are asserted against it; reconsider the level field when an entry needs a level its group does not
+state; reconsider Section 10.8 when its reason codes are enumerated rather than illustrated. Depends
+on 0071 and 0048; relates to 0056, 0045, 0046 and 0002. Accepted and applied to `SPEC.md` (Sections
+5.5, 17, 17.1, 18.1), `conformance/vocabulary.json`, `conformance/README.md`,
+`conformance/vectors/prompt-rendering.json`, and `CONFORMANCE-STATEMENT-TEMPLATE.md`.

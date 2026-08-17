@@ -136,5 +136,64 @@
       { "token": "observability", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 18.2", "note": "Reserved for observability settings (Section 13); the specification names the namespace, not the fields. Ledger settings are `observability.ledger.*` (Section 13.6)." },
       { "token": "server", "artifact": "workflow_md", "core": false, "spec_ref": "Section 13.8", "note": "Section 13.8 starts the HTTP server when a CLI `--port` argument is given or `server.port` is present in `WORKFLOW.md` front matter." }
     ]
+  },
+
+  "error_classes": {
+    "spec_refs": [
+      "SPEC.md Section 5.5 \"Workflow Validation and Error Surface\"",
+      "SPEC.md Section 5.1 \"WORKFLOW.md Discovery and Path Resolution\"",
+      "SPEC.md Section 5.2 \"File Format\"",
+      "SPEC.md Section 5.4 \"Prompt Template Contract\""
+    ],
+    "note": "The classes the workflow loader and the prompt renderer fail with. A class names the condition, not the stage at which an implementation detects it: an unknown variable and an unknown filter are both `template_render_error` however early the template engine resolves them, and `template_parse_error` is reserved for a body that is not well-formed template syntax at all. `gating` is Section 5.5's dispatch gating behavior, which is the part a consumer acts on (Sections 6.2, 12.4): `blocks_dispatch` holds new dispatches until the file is repaired, `fails_attempt` fails only the affected run attempt. Not a closed set: Section 5.5 permits an implementation to define additional classes for conditions these five do not name, and requires it to document each one and assign it a gating behavior.",
+    "requirement_level": "REQUIRED",
+    "exhaustive": false,
+    "entries": [
+      { "token": "missing_workflow_file", "gating": "blocks_dispatch", "condition": "The workflow file cannot be read at the resolved path (Section 5.1)." },
+      { "token": "workflow_parse_error", "gating": "blocks_dispatch", "condition": "The YAML front matter is not well-formed (Section 5.2)." },
+      { "token": "workflow_front_matter_not_a_map", "gating": "blocks_dispatch", "condition": "The front matter is well-formed YAML that does not decode to a map (Section 5.2)." },
+      { "token": "template_parse_error", "gating": "fails_attempt", "condition": "The prompt body is not well-formed template syntax." },
+      { "token": "template_render_error", "gating": "fails_attempt", "condition": "The body is well formed and names something the engine cannot resolve: an unknown variable, an unknown filter, or an invalid interpolation (Section 5.4)." }
+    ]
+  },
+
+  "tracker_error_categories": {
+    "spec_refs": [
+      "SPEC.md Section 11.4 \"Error Handling Contract\"",
+      "SPEC.md Section 11.7 \"Adapter Capability Descriptor\"",
+      "SPEC.md Section 11.8 \"State Transition Write Semantics\""
+    ],
+    "note": "Transport-neutral categories each tracker adapter maps its transport's failures onto. RECOMMENDED, so the names are a target vocabulary rather than a checked spelling; a generated type MUST admit an unknown token. The first three entries carry no `condition` because Section 11.4 states none. Section 17.3 requires four of them by name in `Core Conformance` checks — `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict`, `tracker_pagination_error` — which is a disagreement with this level recorded in `conformance/README.md` rather than resolved here.",
+    "requirement_level": "RECOMMENDED",
+    "entries": [
+      { "token": "unsupported_tracker_kind" },
+      { "token": "missing_tracker_api_key" },
+      { "token": "missing_tracker_project_slug" },
+      { "token": "tracker_unsupported_operation", "condition": "Write not in the adapter capability descriptor (Section 11.7)." },
+      { "token": "tracker_state_unreachable", "condition": "`set_state` target unreachable from the current state (Section 11.8)." },
+      { "token": "tracker_state_conflict", "condition": "Issue state changed underneath a `set_state` write (Section 11.8)." },
+      { "token": "tracker_api_request", "condition": "Transport or connection failure." },
+      { "token": "tracker_api_status", "condition": "Unsuccessful response status, for example non-2xx HTTP." },
+      { "token": "tracker_backend_errors", "condition": "Backend-reported errors in a well-formed response, for example a GraphQL `errors` array." },
+      { "token": "tracker_payload_invalid", "condition": "Unexpected or unparseable response payload." },
+      { "token": "tracker_pagination_error", "condition": "Pagination integrity failure, for example a missing continuation cursor." }
+    ]
+  },
+
+  "agent_error_categories": {
+    "spec_refs": ["SPEC.md Section 10.6 \"Timeouts and Error Mapping\""],
+    "note": "Normalized categories an agent adapter maps its protocol's failures onto. RECOMMENDED, so the names are a target vocabulary rather than a checked spelling; a generated type MUST admit an unknown token. Section 10.6 states no condition for any of them. `turn_failed`, `turn_cancelled` and `turn_input_required` are also `events` entries (Section 10.4): the category is named after the event that produced it, so a generator emitting one type per group has three names in two enums by design rather than by collision.",
+    "requirement_level": "RECOMMENDED",
+    "entries": [
+      "codex_not_found",
+      "invalid_workspace_cwd",
+      "response_timeout",
+      "turn_timeout",
+      "port_exit",
+      "response_error",
+      "turn_failed",
+      "turn_cancelled",
+      "turn_input_required"
+    ]
   }
 }

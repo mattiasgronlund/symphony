@@ -82,6 +82,7 @@ obligation not listed here rather than omitting its resolution.
 | Obligation | Section | Resolution |
 |------------|---------|------------|
 | Operator policy config format and discovery path | 5 | `<...>` |
+| Workflow/template error classes defined beyond Section 5.5's five | 5.5 | `<token + dispatch gating behavior for each, or none>` |
 | `agent.default_agent` default | 5.3.5 | `<which agent>` |
 | `agent.default_effort` default | 5.3.5 | `<native effort value>` |
 | Agent sandbox profile | 9.6 | `<jai Strict / container / VM / …>` |
