@@ -333,6 +333,11 @@ All three findings from the first slice are now resolved.
   signal has none. Signals are matched exactly, the `#class` fallback is scoped to typed results, and
   the `#` in `task:#needs_help` is documented as naming a condition across tasks.
   `hash_shaped_task_event_is_an_ordinary_token` and `signal_takes_no_class_fallback` cover both halves.
+  *(Later: decision 0122 removed the signal trigger kind entirely — nothing in the invocation contract
+  could raise one, so the whole kind was surface with no producer. Both vectors are removed, and
+  `unknown_trigger_token_is_refused` replaces them: a token that is neither a position nor a typed
+  result is now refused at validation rather than matched exactly. The `#class` fallback stays scoped
+  to typed results, which is the half of this finding that survives.)*
 - **Configuration errors carry no reason token — resolved (decision 0056).** Section 6.11 enumerated
   five conditions and Section 8.3 mapped them to exit `2`, but named no token, so a caller could tell
   *that* a policy was refused but not *why* without parsing `message`. Section 6.11 now carries a

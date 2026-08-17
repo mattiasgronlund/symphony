@@ -86,6 +86,10 @@ concrete choice; do not leave a row blank.
 | `detail` field of an `outputs.unanswered_gates` entry | 8.2 | `<what the engine places there for a gate that gave no usable answer>` |
 | Escalation `detail` field contents | 8.4 | `<what the engine places there>` |
 | Where a backend writes its own bookkeeping state to answer a capability | 9.1 | `<which capabilities, and what they write>` |
+| The default `network_bound_ms`, and any per-capability values the engine applies | 8.1, 9 | `<default duration; any per-capability values; whether a deployment may configure them>` |
+| Form of the `resume_token`, and how the engine establishes that one it is handed is its own and current | 8.1, 8.2, 8.6 | `<what the token encodes; what it is bound to; how a stale one is detected>` |
+| Where a forge backend declares conditional-read support, the mechanism it realizes the `pr_state` and `checks_state` validators with | 9.2 | `<per backend: ETag / Last-Modified / cursor / not supported>` |
+| Which budget buckets each forge backend observes, and where it reads them from | 9.2 | `<per backend: bucket names, and the response headers or fields they come from>` |
 
 ## 4. Reason Tokens Beyond the Registries
 

@@ -4456,3 +4456,251 @@ identifier separable only by inferring where the first ended, and inference is w
 Reconsider if operators correlate across *repositories*, which nothing in the current model produces
 and which would mean the identifier is scoped too narrowly. Relates to 0115 and 0116. Accepted and
 applied to `SPEC.md` (Sections 13.1, 13.5, 17.6, 18.1, 18.2) and `conformance/vocabulary.json`.
+
+## 0120 — A read that always completes still has to say which repair it needs
+
+**State:** Accepted
+**Folder:** [decisions/0120-status-forge-throttle-output/](decisions/0120-status-forge-throttle-output/)
+
+Issue #69. `VCSX-SPEC.md` Section 4.3 defines `rate_limited` and `forge_unavailable` for "every
+operation whose forge call the condition prevented" and then enumerates four operations, omitting
+`status` — while Section 9.2 permits **any** forge capability to answer either reason and Section
+9.1 routes `status` through `pr_state`. A throttled `status` therefore has no defined result. Both
+readings available today lose something the document argues for elsewhere: `status:failed` is the
+`error`-class disposition Section 4.3 rejects for a condition that clears on its own, and
+`status:ok` with `pr_state_unavailable` collapses the by-repair division the registry draws between
+an informed repair carrying a `resets_at` and an uninformed one carrying nothing — a distinction
+`outputs.forge_budget` cannot recover, its absence being one spelling for two events. The repair is
+a fourth pull-request output, `pr_state_throttled`, beside `pr_state_unavailable`,
+`pr_state_unchanged` and a reported state. `status` keeps `ok`, which is the property Section 4.1
+builds the operation around: a base it cannot see, a field it could not establish and a state that
+has not moved are all outputs, and a forge that refused one field is not a reason to discard the
+version-control answers a caller asked for. Steelmanned: widening the `(any forge)` set is smaller
+and makes one rule govern all five forge-touching operations — it loses because the other four *act*
+and a throttle stops them acting, where `status` reports and a throttle stops one field, so widening
+converts the operation that always completes into one that sometimes does not. Reconsider if a forge
+appears whose throttling is per-credential rather than per-call, making a refused `pr_state`
+evidence about the next version-control operation. Relates to 0106–0112. Accepted and applied to
+`VCSX-SPEC.md` (Sections 4.1, 4.3, 9.2, 13.1, 13.2) and `conformance/vcsx/vocabulary.json`.
+
+## 0121 — A validation input with no carrier is a verdict each engine reaches on its own
+
+**State:** Accepted
+**Folder:** [decisions/0121-validation-input-carriers/](decisions/0121-validation-input-carriers/)
+
+Issue #68. `VCSX-SPEC.md` Section 6.11 fixes validation as judged from "five inputs and no others"
+and turns `set_state_unbound` on the fourth — the actions the consumer can effect — and
+`template_unbound` and `transform_unbound` on the fifth, the repository units it bound. Section 8.1
+enumerates the invocation surface twice and carries neither, so three tokens in the major-stable
+surface have truth conditions the contract does not transmit and two engines may validate one
+document differently. The cost is the one Section 6.11 already quantifies, arriving by the route it
+was written to close: an engine that cannot read the input defers to first use, and first use of a
+`template` body source is a `create_pr` a `ship` reaches only after it has pushed. The repair is two
+consumer-supplied arguments — `effectable_actions` and `bound_units`, both defaulting empty, both
+readable from the consumer configuration. Empty is the fail-closed direction Section 5.2 already
+argues for the one action it treats as fatal, a `set_state` that never advances stranding the flow;
+the asymmetry survives, with `create_task` and `notify` outside the set staying valid and reported.
+The static set also makes `outputs.unperformed_intents` computable from what the engine holds rather
+than from a report a subprocess consumer cannot return. Steelmanned: dropping the three reasons and
+deferring everything to first use is a strictly smaller contract — it loses because deferring is not
+smaller, it is a contract that publishes a work branch before reporting a defect the document could
+have shown. Reconsider `bound_units`' shape if the set of consumer-bound units stops being two.
+Relates to 0086–0090. Accepted and applied to `VCSX-SPEC.md` (Sections 5.2, 6.11, 8.1, 8.2, 13.1,
+13.2) and `VCSX-CONTRACT.md` (Section 4).
+
+## 0122 — A trigger kind nothing can raise is surface, not a feature
+
+**State:** Accepted
+**Folder:** [decisions/0122-remove-signal-triggers/](decisions/0122-remove-signal-triggers/)
+
+Issue #70. `VCSX-SPEC.md` Section 5.1 makes signals one of three trigger kinds and six further
+sections give them matching, disposition, a place in an edge's `on`, a validation reason, an
+escalation nulling rule, a reference-algorithm arm and a conformance check — while Section 8.1's
+entry points are the front-end sequences and the individual operations, and no argument carries a
+token. A repository can write `on = "ready-for-review"`, have it validate, have it counted against
+the determinism rule, and never see it fire; a policy can even be refused for a duplicate pair of
+edges neither of which is reachable. Everywhere the one signal with a concrete producer is realized
+it is realized outside the engine: `SPEC.md` Section 8.10 has the consumer observe
+`tasks:all_closed` and invoke `ship` through `[driver]`, and Section 11.6 evaluates the milestones
+as tracker transition triggers. The kind is therefore removed, and `[tasks]`, `[driver]` and
+`tracker.transitions` are named for what they already are: tables that travel in `repo.policy.toml`
+because the repository owns the wiring, and that the **consumer** reads, the party effecting an
+action owning the matching. Sections 6.7, 6.9, 7.3 and `VCSX-CONTRACT.md` Sections 5.1, 5.4 and 8
+are more surface than the issue lists, recorded rather than discovered mid-edit. A **review
+finding** is recorded in the Background: the first execution re-grounded `tracker.transitions` on
+the engine's typed results, which checking against `SPEC.md` Section 11.6 showed would narrow a
+closed consumer vocabulary — milestone signals, five orchestrator- observed run outcomes, task
+events — to the subset the engine happens to produce, `pull_request_opened` naming a broader
+condition than `create_pr:created`. The mistake has this decision's own shape: signals were engine
+surface with no engine producer, and the first repair made a table engine surface with no engine
+matcher. Steelmanned: a signal entry point makes every existing clause true as written and buys a
+real capability — it loses on what it would owe, a second entry-point shape needing its own `entry`
+value, its own Section 8.6 precondition scope and its own answer for a run that matched nothing,
+carried for a capability both consumers route around. Reconsider if a consumer appears that wants
+the repository rather than the driver to decide what a milestone means. Relates to 0026–0032;
+`SPEC.md`'s half is 0127. Accepted and applied to `VCSX-SPEC.md` (Sections 5.1, 5.3, 5.4, 6.5, 6.7,
+6.9, 7.3, 8.4, 12.1, 13.1, 13.2), `VCSX-CONTRACT.md` (Sections 4, 5.1, 5.4, 8), the
+`conformance/vcsx/` vocabulary and vectors, and the two conformance READMEs.
+
+## 0123 — A termination guarantee that holds in one encoding is not a guarantee
+
+**State:** Accepted
+**Folder:** [decisions/0123-resume-carrier/](decisions/0123-resume-carrier/)
+
+Issue #71. `VCSX-SPEC.md` Section 5.5 defines a resume as re-entering "the point that raised the
+need" and requires every such re-entry to count against the flow bound, because "a resolver that
+always resolves would otherwise loop there with nothing to stop it". Nothing carries either fact
+across an invocation: no `outputs` key, no `escalation` field — its `op` is explicitly null in the
+case the resume must re-enter — and no argument. Section 8.1 states the model that makes this fatal,
+arguing for the validator round trip: "each invocation is a bounded run that exits, so there is no
+engine-side cache". So the guarantee holds for an in-process embedded driver and fails for the
+interactive front-end, whose resume is a re-invocation with a fresh bound at the entry point — and
+Section 13.1 asserts it with no front-end qualification, while Section 8 claims the contract is the
+same under either encoding and Section 5.5 claims `escalate` is the only place the front-ends
+differ. The repair carries the resume: an opaque `resume_token` in `outputs` for a **resolvable**
+need, supplied back as `resume`, with the bound continuing from the count it carries. Opaque by
+choice rather than necessity — the value is the engine's own, and publishing the executor's
+traversal position would owe a stable spelling for every graph shape a policy can express. Holds get
+no token, which makes Section 8.4's prohibition readable off the envelope. The token carries the
+point and the count and **not** what a position established, which is what keeps Section 5.5's
+re-read guarantee intact. Steelmanned: scoping the guarantee to the in-process front-end is the
+honest minimal move — it loses because Section 5.6's bound is written as unconditional and scoping
+it leaves the interactive front-end with a resolver loop nothing stops. Bounding the resolver is
+orthogonal rather than alternative and is the reconsideration trigger: revisit when an engine's wait
+on a resolver is shown to hang an invocation. Relates to 0059 and 0060. Accepted and applied to
+`VCSX-SPEC.md` (Sections 5.5, 5.6, 8.1, 8.2, 8.4, 8.6, 13.1, 13.2, 13.3), `VCSX-CONTRACT.md`
+(Section 5.6) and `conformance/vcsx/vocabulary.json`.
+
+## 0124 — One token for two resources is a conditional read against the wrong thing
+
+**State:** Accepted
+**Folder:** [decisions/0124-per-resource-validators/](decisions/0124-per-resource-validators/)
+
+Issue #72. `VCSX-SPEC.md` Section 9.2 defines two capabilities that each take and issue a validator
+— `pr_state` over the pull request and `checks_state` over its required-check aggregate — and
+Section 8.1 defines one `pr_state_validator`, presented to both. The two resources move
+independently, so a backend handed the other's token satisfies Section 9.2's "MUST NOT answer
+`unchanged` where it presented no validator" to the letter while answering about the wrong resource:
+harmless on a forge with per-resource entity tags, and on one deriving both from a single timestamp
+an `unchanged` for a resource that did move, which Section 4.1 reports as `pr_state_unchanged` and a
+caller reads as current. The saving is also absent where it was wanted — `checks_state`'s validator
+has no `outputs` key, so it carries forward inside one `await_checks` and not across the
+park-and-resume cycle `SPEC.md` Section 9.10 actually runs. Section 9.1's rule for which reads carry
+a validator is derived from `pr_state`'s three readers and settles `pr_state` completely, leaving
+`checks_state` covered only by the clause that hands it the wrong token. The repair is two arguments
+and two returned values, each named for its resource, with the engine carrying the obligation not to
+present one issued for the other — the engine being the party that knows which resource issued a
+token and the backend holding an opaque value it cannot check. Steelmanned: one bag keyed by
+resource is a single argument and makes a third read a key — it loses because the engine would parse
+a structure to route its parts, which is the mixing Sections 9.1 and 9.2 are separate to prevent,
+and because a bag missing a key and a bag not supplied are two spellings of one condition.
+Reconsider the shape if a third conditional read is added. Relates to 0106–0112. Accepted and
+applied to `VCSX-SPEC.md` (Sections 8.1, 8.2, 9.1, 9.2, 13.1, 13.2, 13.3).
+
+## 0125 — A gate that stopped existing should not read as a gate that passed
+
+**State:** Accepted
+**Folder:** [decisions/0125-await-checks-no-checks/](decisions/0125-await-checks-no-checks/)
+
+Issue #73. `VCSX-SPEC.md` Section 4.1 bounds `await_checks` by four terminal conditions and Section
+9.2's `checks_state` has a fifth determinate answer — "none where the forge reports no required
+checks for it" — that no reason covers. Section 9's catch-all does not reach it, that rule governing
+a value a capability could not determine and this being the absent case the same entry treats as
+determinate on purpose: "a pull request with no checks is mergeable and one whose checks could not
+be read is not". The reachable paths are the two that do not run `merge` first — the bare
+`await_checks` entry point, and Section 7.2's `land --await`, which for such a repository ends on an
+undefined result instead of merging, the operation composed to make awaiting cheap defeating the
+merge it was composed with. Read literally the operation burns a supplied bound and reports
+`still_pending` for a pull request that was mergeable from the first read. The repair is
+`await_checks:no_checks`, class `done` — the benign no-op Section 4.2's definition already covers,
+so the flow continues and a `land --await` merges. A reason of its own rather than `ok` because a
+shared token would leave a consumer unable to see a merge gate stop existing: a required check
+removed from branch protection turns every subsequent merge into an unchecked one, and nothing in
+the record would show the day it changed. Steelmanned: folding into `ok` adds no token and the
+dispositions agree — it loses because the token is free where they agree and unrecoverable where a
+deployment later wants to alert. `needs_caller` is rejected because "a repository must have required
+checks" is a Way of Working, which Section 1.1 keeps out of the engine. Reconsider if `checks_state`
+gains a way to distinguish a pull request with no checks from a forge whose check interface is not
+configured. Relates to 0106–0112. Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3, 9.2,
+13.1), `VCSX-CONTRACT.md` (Section 6), `SPEC.md` (Sections 6.4, 9.10, 17.4, 18.1) and
+`conformance/vcsx/vocabulary.json`.
+
+## 0126 — A section cannot supply the value that selects it
+
+**State:** Accepted
+**Folder:** [decisions/0126-branch-section-selector/](decisions/0126-branch-section-selector/)
+
+Issue #74. `VCSX-SPEC.md` Section 6.10 selects a `[[branch]]` section by the resolved base branch
+and admits every top-level key inside a section — including `[base]`, which resolves that branch,
+and `[scope]`, whose `branch_pattern` fixes the work-branch name a `by_prefix` resolution reads. The
+selector therefore depends on values the selected section may change, directly or one step longer
+through the work branch, and nothing refuses it: `duplicate_branch_section` and `base_unresolvable`
+name neither, Section 6.10's "exactly one section applies" is a property of the prefix comparison
+rather than of the fixpoint, and Section 6.4 describes resolution without reference to `[[branch]]`
+at all. Two conforming engines dispatch against different branches from one document, which is what
+Section 6.10 closes by claiming longest-prefix-wins avoids. This is the recurrence of the defect
+issue #51 and decision 0101 repaired — a value named inside a scope selecting the scope it is read
+from — found in the construct that carves the document into scopes, the first repair having been
+stated over the document rather than over the general form. The repair refuses a section carrying
+`[base]` or `[scope]`, with `branch_section_selector_key`: total, checkable from the document alone,
+and the posture Sections 5.4 and 6.11 take wherever two things could both apply. What it costs is
+narrow and stated — a release track cannot take its own base or branch pattern from a section, which
+is expressed at the top level with `resolve = "by_prefix"`, and every hook, edge, message and task
+key is untouched. Steelmanned: an explicit two-phase resolution gives up nothing and refuses only
+the documents that are actually circular — it loses because validity stops being answerable by
+looking at the document, and a two-pass rule is one an implementation can get subtly wrong where a
+one-pass rule cannot. Reconsider if a matcher is added that does not depend on the resolved base.
+Relates to 0101. Accepted and applied to `VCSX-SPEC.md` (Sections 6.4, 6.10, 6.11, 13.1, 13.2),
+`VCSX-CONTRACT.md` (Section 4) and `conformance/vcsx/vocabulary.json`.
+
+## 0127 — The section whose job is the vocabulary is the one where a missing member is the failure
+
+**State:** Accepted
+**Folder:** [decisions/0127-spec-trigger-vocabulary/](decisions/0127-spec-trigger-vocabulary/)
+
+Issue #75. `SPEC.md` Section 9.12 opens by fixing its job — naming the machine's vocabulary and
+deferring the schema — and then names a vocabulary with members missing: five operations where the
+engine defines eleven, and a trigger list carrying task-state events while its own unmatched-policy
+bullet three lines below names agent milestones too. Section 9.10 four pages earlier instructs a
+repository to bind `await_checks:*` "as it binds `merge:*`", so a reader following the
+cross-reference lands on a list that does not contain what they were sent to find. Two omissions are
+correct and must survive: `provision` and `load_policy` raise no `<op>:<reason>` trigger, the edges
+that would route them being in the document they exist to obtain — which is why the repair is nine
+names and a stated reason for the two exclusions, rather than eleven. The signal half is settled by
+0122's removal rather than by reconciling the two bullets, and the milestone tokens are pointed at
+Section 11.6, where they are evaluated. Steelmanned: replacing the enumeration with a
+cross-reference cannot drift — it loses because naming the vocabulary is what this section exists to
+do, Sections 9.10, 11.6 and 8.10 being unreadable without it, and because the two exclusions are
+Symphony-visible facts a bare reference would hide. Reconsider if the engine's operation set starts
+changing between releases. Depends on 0122. Accepted and applied to `SPEC.md` (Sections 8.10, 9.12,
+11.6, 17.4, 18.1) and `conformance/vocabulary.json`.
+
+## 0128 — A table that is complete against itself is where a missing obligation hides
+
+**State:** Accepted
+**Folder:** [decisions/0128-conformance-template-rows/](decisions/0128-conformance-template-rows/)
+
+Issue #67, reported by a downstream implementation while re-pinning. Decisions 0106, 0107 and 0109
+each added an `Implementation-defined` answer to `VCSX-SPEC.md` Section 13.3 and
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` Section 3 gained a row for none — verified against the
+file, whose table carries sixteen rows and none of the three, while every other obligation on that
+bullet list has one. The two documents have different readers, which is what makes the gap silent:
+Section 13.3 is prose an implementer reads once, and the template's table is what a **generator**
+parses, so an engine implementing conditional reads, the budget snapshot and the network bound
+publishes a Statement silent about all three while every check designed to catch that silence
+reports green — the table being complete against itself. Treating this as bookkeeping is wrong on
+two counts: the conditional-read row carries a condition no other per-backend row does, and after
+0123 and 0124 the same bullet list carries two more answers, one of which is that very row now
+covering two validators rather than one. Five rows are added and a conditional row states its
+condition in the resolution column, `not supported` reading correctly and a new column being a
+schema change to a table other implementations already parse. The recurrence is the more useful
+finding: three decisions each edited a normative list and not the artifact mirroring it, because
+`CLAUDE.md`'s cross-cutting sync list is `SPEC.md`'s alone and names neither `VCSX-SPEC.md` Section
+13.3 nor either template — so that list is extended here, the alternative being to fix the rows and
+leave the mechanism that dropped them. Steelmanned: generating the template from Section 13.3 cannot
+regress — it loses on ownership, the template being a RECOMMENDED shape downstream generators
+already consume, and it is the reconsideration trigger should a fourth decision land an obligation
+without its row. Repairs the release discipline of 0106, 0107 and 0109 rather than their content.
+Accepted and applied to `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (Section 3), `VCSX-SPEC.md`
+(Section 13.3) and `CLAUDE.md`.
+

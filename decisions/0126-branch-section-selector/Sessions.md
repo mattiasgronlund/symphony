@@ -1,0 +1,5 @@
+# Sessions — 0126 A section cannot supply the value that selects it
+
+| Date | Session name | Session id |
+|------|--------------|------------|
+| 2026-08-17 | Nine contract gaps found by sweeping the specs (issues #67–#75) | 3f221c20-de8e-4def-a88a-5008a088e3f0 |

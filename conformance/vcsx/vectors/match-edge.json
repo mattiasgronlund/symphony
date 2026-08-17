@@ -209,8 +209,8 @@
       "expect": { "matched": null, "action": "continue" }
     },
     {
-      "id": "signal_matches_exactly",
-      "description": "A consumer-raised signal is matched by an exact edge (Section 5.1).",
+      "id": "unknown_trigger_token_is_refused",
+      "description": "A token that is neither a known lifecycle position nor an `op:reason` / `op:#class` / `#class` form over a known operation is not a trigger; the policy is refused at validation with `unknown_trigger` rather than validating and never firing (Sections 5.1, 6.5, 6.11). Decision 0122 removed the signal trigger kind, so a policy written against it fails loudly.",
       "given": {
         "edges": [
           { "on": "ready-for-review", "do": "run_op", "op": "create_pr" }
@@ -218,81 +218,32 @@
         "trigger": "ready-for-review",
         "from_context": null
       },
-      "expect": { "matched": "ready-for-review", "action": "run_op" }
-    },
-    {
-      "id": "unmatched_signal_is_benign_noop",
-      "description": "An unmatched signal is a benign no-op, and a #class edge does not catch it (Section 5.4).",
-      "given": {
-        "edges": [
-          { "on": "#error", "do": "fail", "reason": "policy_error" }
-        ],
-        "trigger": "blocked",
-        "from_context": null
-      },
-      "expect": { "matched": null, "action": "no_op" }
-    },
-    {
-      "id": "task_state_event_matches_exactly",
-      "description": "A task-state event is a signal-kind trigger (Section 5.1).",
-      "given": {
-        "edges": [
-          { "on": "tasks:all_closed", "do": "notify", "channel": "team" }
-        ],
-        "trigger": "tasks:all_closed",
-        "from_context": null
-      },
-      "expect": { "matched": "tasks:all_closed", "action": "notify" }
-    },
-    {
-      "id": "hash_shaped_task_event_is_an_ordinary_token",
-      "description": "`task:#needs_help` is a signal token naming a condition across tasks, not a class-fallback rung; it is matched exactly (Section 5.1).",
-      "given": {
-        "edges": [
-          { "on": "task:#needs_help", "do": "escalate" }
-        ],
-        "trigger": "task:#needs_help",
-        "from_context": null
-      },
-      "expect": { "matched": "task:#needs_help", "action": "escalate" }
-    },
-    {
-      "id": "signal_takes_no_class_fallback",
-      "description": "A signal carries no proto class, so no #class edge catches it and it falls to the unmatched-signal default (Sections 5.1, 5.3).",
-      "given": {
-        "edges": [
-          { "on": "#needs_caller", "do": "escalate" },
-          { "on": "#done", "do": "notify", "channel": "team" }
-        ],
-        "trigger": "task:#needs_help",
-        "from_context": null
-      },
-      "expect": { "matched": null, "action": "no_op" }
+      "expect": { "validation_error": "unknown_trigger" }
     },
     {
       "id": "from_context_disambiguates_same_trigger",
       "description": "The same trigger takes different transition edges at different from-contexts (Section 5.4, \"from-context\"; `from` is a transition-edge key, Section 6.5).",
       "given": {
         "edges": [
-          { "from": "In Progress", "on": "ready-for-review", "do": "set_state", "target": "Human Review" },
-          { "from": "Human Review", "on": "ready-for-review", "do": "set_state", "target": "Done" }
+          { "from": "In Progress", "on": "push:ok", "do": "set_state", "target": "Human Review" },
+          { "from": "Human Review", "on": "push:ok", "do": "set_state", "target": "Done" }
         ],
-        "trigger": "ready-for-review",
+        "trigger": "push:ok",
         "from_context": "Human Review"
       },
-      "expect": { "matched": "ready-for-review", "action": "set_state", "target": "Done" }
+      "expect": { "matched": "push:ok", "action": "set_state", "target": "Done" }
     },
     {
       "id": "from_context_scoped_edge_does_not_leak",
-      "description": "A transition edge keyed to a from-context does not fire in another context; the trigger is then an unmatched signal (Section 5.4).",
+      "description": "A transition edge keyed to a from-context does not fire in another context; with no other edge for the trigger the outcome reaches the built-in default for its class (Sections 5.4, 5.3).",
       "given": {
         "edges": [
-          { "from": "In Progress", "on": "ready-for-review", "do": "set_state", "target": "Human Review" }
+          { "from": "In Progress", "on": "push:ok", "do": "set_state", "target": "Human Review" }
         ],
-        "trigger": "ready-for-review",
+        "trigger": "push:ok",
         "from_context": "Done"
       },
-      "expect": { "matched": null, "action": "no_op" }
+      "expect": { "matched": null, "action": "continue" }
     },
     {
       "id": "unscoped_edge_matches_inside_a_from_context",
@@ -311,13 +262,13 @@
       "description": "Where one trigger key has both a context-scoped edge and an unscoped one, the scoped edge is selected in its own context; the two are distinct keys, not a duplicate (Section 5.4).",
       "given": {
         "edges": [
-          { "on": "ready-for-review", "do": "run_op", "op": "create_pr" },
-          { "from": "Human Review", "on": "ready-for-review", "do": "set_state", "target": "Done" }
+          { "on": "push:ok", "do": "run_op", "op": "create_pr" },
+          { "from": "Human Review", "on": "push:ok", "do": "set_state", "target": "Done" }
         ],
-        "trigger": "ready-for-review",
+        "trigger": "push:ok",
         "from_context": "Human Review"
       },
-      "expect": { "matched": "ready-for-review", "action": "set_state", "target": "Done" }
+      "expect": { "matched": "push:ok", "action": "set_state", "target": "Done" }
     },
     {
       "id": "ladder_outranks_the_from_context",
