@@ -2030,6 +2030,13 @@ an operation has been dispatched, a Section 8.6 precondition reason where none h
 dispatch being the boundary between them (Section 8.6) — and the capability's own entry MUST state
 which.
 
+The obligation holds over how a capability **derives** its answer and not only over the answer it
+returns. That is worth stating separately because the way it is broken is not an answer anybody
+composed: a response field read as its type's default yields a well-formed value the backend never
+established, and the capability then returns something that satisfies every clause above to the
+letter. Where a capability's answer is derived from a response, a shape the derivation depended on
+and did not find is a value it could not determine.
+
 The rule is stated over the capability list rather than left to each capability because the failure
 it prevents is silent by construction. A value-answering capability that reports its failure as the
 absent answer raises nothing anywhere: the engine composes an operation from a determinate-looking
@@ -2323,6 +2330,21 @@ supports.
 The version-control network capabilities (Section 9.1) answer no snapshot and are outside this: a
 git transport publishes no quota, so there is nothing for a backend to observe and a counterpart
 key there would be permanently absent.
+
+Where a forge response does not carry the shape a capability depends on, that capability MUST answer
+that it could not determine the value, and MUST NOT answer a default, an empty value, or the value's
+absent case. A value found in the right place whose content the backend cannot interpret — a
+pull-request state carrying a token it does not recognize — is the same condition one level in, and
+reading it as `closed` because an enum's fallback arm says so is the same defect with a different
+default. The consequences are the ones `pr_state`'s entry already states for an undetermined answer
+misspelled as an absent one, and drift is simply the likeliest way to produce that misspelling and
+the least visible in review: nothing in such a backend's source says it is assuming there is no pull
+request.
+
+A field the capability does not read is **not** this condition. A forge that adds a key, reorders an
+object, or returns a member the backend ignores MUST NOT be treated as a response the capability
+cannot answer from; forge payloads gain fields continuously, and a backend refusing every
+unrecognized one would break on the next upstream release with nothing wrong.
 
 Any capability above MAY answer `rate_limited` or `forge_unavailable` (Section 4.3), every one of
 them reaching the code host; the obligation is stated over the list for the same reason the snapshot
@@ -2695,6 +2717,15 @@ language-neutral vector corpus under `conformance/vcsx/` (RECOMMENDED); an engin
 own binary and records the result in its Conformance Statement (Section 13.3). The corpus does not
 restate or replace the checks below.
 
+The corpus additionally publishes the **shape** of a fault-injection vector without publishing its
+cases. Asserting what an engine produces when a forge refuses, stalls or answers a payload missing a
+field requires something to stand in for a forge and behave that way on demand, which is a harness
+in an implementation's language rather than data derived from this specification; the fixture also
+differs per backend, one condition reaching two forges as two different responses. The corpus
+therefore fixes what such a vector MUST assert and leaves the cases to the implementation that owns
+the harness. A runner that cannot execute one reports it as not run rather than as passed, so the
+host-independence claim above stays true of the vectors it is made about.
+
 A conforming engine SHOULD include tests covering:
 
 - Matching: an `op:#class` edge catches an unnamed reason of that class; a `#class` edge catches an
@@ -2748,6 +2779,13 @@ A conforming engine SHOULD include tests covering:
   `before:commit` read it creates no commit and yields `worktree_moved` rather than `ok` or
   `nothing_to_commit`, while a `worktree_revision()` that could not determine an identity yields
   `commit:failed` rather than a commit conditioned on nothing (Sections 4.3, 6.6, 9.1).
+- Response drift: a forge response missing a field a capability depends on yields an undetermined
+  answer and the refusing result, distinguishable from the response that legitimately carries no
+  pull request — so a renamed field does not let `create_or_update_pr` open a second pull request,
+  does not let `push` proceed over a CLOSED/MERGED one, and reaches `status` as
+  `pr_state_unavailable` rather than as an absent one; an unrecognized pull-request state is
+  likewise undetermined and not read as `closed`; and a response carrying an **extra** field the
+  capability does not read is answered normally (Sections 9, 9.2).
 - The network bound: a forge call that exceeds `network_bound_ms` yields `forge_unavailable` with
   `bound_elapsed` in `outputs` rather than the universal `failed`, and the invocation ends rather
   than waiting on a connection the far side never answers (Sections 8.1, 9); a configured value at
@@ -3043,7 +3081,8 @@ A conforming engine SHOULD include tests covering:
   engine supplying each plugin the parameter and credential it uses — the forge backend its
   repository coordinate, `forge_access` and `forge_credential`, the VCS backend its resolved remote,
   `git_access` and `git_credential` — and every value-answering capability able to report that it
-  could not determine its answer.
+  could not determine its answer, in how it derives that answer from a response as well as in what
+  it returns.
 - Conditional forge reads where the backend declares them: a validator returned in `outputs`,
   presented back as `pr_state_validator`, and an unmoved pull request reported as
   `pr_state_unchanged` rather than as an absent or an undetermined one — with no validator presented

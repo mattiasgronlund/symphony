@@ -4055,3 +4055,73 @@ per-call unit was wrong and the bound belongs per capability; or on an `ensure_s
 600-second floor in ordinary use, which would mean provisioning needs a bound distinct from the API
 calls' rather than a shared one with a high ceiling. Relates to 0081, 0108 and 0112. Accepted and
 applied to `VCSX-SPEC.md` (Sections 8.1, 9, 13.1, 13.2, 13.3).
+
+## 0110 — A field that moved is not a field that is empty
+
+**State:** Accepted
+**Folder:** [decisions/0110-forge-parse-answer-domain/](decisions/0110-forge-parse-answer-domain/)
+
+Issue #59's first half. The obligation already existed — Section 9 requires a value-answering
+capability to be able to say it could not determine a value and forbids spelling that as the value's
+absent case, and Section 4.1 puts it in one line: a read reports no determinate value it did not
+establish. What this decision fixes is **where the rule is broken**, and the gap is that the rule is
+written over what a capability *answers* while the defect lives in how the answer is *derived*. No
+backend author decides to report a missing field as an empty one; a deserializer does it by default,
+a field absent from the payload taking the type's zero value, and the capability then returns a
+well-formed value that satisfies every existing clause to the letter. The failure path is fully
+specified by text already present: a renamed number field yields a default, `pr_state` answers
+**none**, and `create_or_update_pr` — required to maintain one pull request per work branch, which
+Section 9.2 says requires finding the one that exists — **creates a second**, while `push` stops
+refusing over a CLOSED/MERGED one and `status` reports no pull request where `pr_state_unavailable`
+is the truth. Section 9's preamble now states that the obligation reaches the derivation, and Section
+9.2 that a response not carrying a depended-on shape is a value the capability could not determine —
+never a default, an empty value, or the absent case — with an unrecognized pull-request state the
+same condition one level in, since reading it as `closed` off an enum's fallback arm is the same
+defect with a different default. The boundary is stated in the other direction too, because the
+conservative reading is unusable: a field the capability does **not** read is not drift, forge
+payloads gaining keys continuously, and a backend refusing every unrecognized response would break on
+the next upstream release with nothing wrong. This record does not overclaim: the clause adds no
+requirement and is a redundancy placed where the failure actually occurs, which is its whole
+justification — plus a Section 13.1 check, since a prose obligation on a parse step is verifiable
+only by reading a backend's source, and an injected-response check is verifiable against a binary.
+Reconsider if a backend is observed refusing on drift that did not matter, which would mean
+"depended-on shape" is being read as "the shape the forge documented". Relates to 0076 and 0111;
+adjacent to 0108, which covers a forge that did not answer where this covers one that answered
+something unreadable. Accepted and applied to `VCSX-SPEC.md` (Sections 9, 9.2, 13.1, 13.2).
+
+## 0111 — The corpus states the assertion; the harness holds the fixture
+
+**State:** Accepted
+**Folder:** [decisions/0111-fault-injection-vector-shape/](decisions/0111-fault-injection-vector-shape/)
+
+Issue #59's second half, driven by the sharpest observation in the study behind issues #58–#62: **the
+failures that bit us are exactly the ones with no test** — 99 vectors green, none of them in the
+transient family. A fault-injection case cannot be an ordinary vector here, and the reason is
+structural rather than a matter of effort: every file under `conformance/vcsx/vectors/` states a pure
+function checkable by reading JSON and comparing two values, which is what makes the corpus
+language-neutral, while asserting that a 429 yields `rate_limited` requires something to *be* a forge
+and return a 429 on demand. That is a harness — a program in one implementation's language — and this
+repository holds none and should not, the corpus deriving from a specification and being consumed by
+every implementation. So the halves split where each can be stated authoritatively: **this repository
+fixes the assertion**, read from `VCSX-SPEC.md` as every entry is, and **an implementation authors the
+cases** against the twin it owns, the fixture being a property of a forge and a backend that reaches
+two forges as two different responses. Six injected conditions are enumerated with the sections they
+derive from, and five assertions are REQUIRED of each: the reason and its proto class, the need and
+its `retryable` value, the `outputs` keys, undetermined-and-distinguishable for a drift case, and —
+called out separately — that the operation **did not act**, because the other four are readable off an
+envelope while that one is a statement about the forge afterwards, and a vector asserting only the
+envelope would pass for an engine that reported `create_pr:failed` and created a pull request anyway.
+A runner that cannot execute such a file MUST report it **not run**, never passed, so "the corpus is
+green" keeps meaning one thing. Rejected: authoring the data here with the harness obligation
+attached — it would make the first file in this tree that no reader here can execute, the same hazard
+0105 found in a vector that had degraded into a tautology, a corpus whose green is conditional on
+something the corpus does not state. The honest form of that alternative is that a specification
+repository should be able to demand a test rather than describe one; that demand is met normatively by
+the Section 13.1 checks the sibling decisions added, and what is not claimed is that this repository
+verifies them. Reconsider if two implementations' suites disagree about what one injected condition
+should yield, which would mean the schema underspecifies the assertion and the data must come back
+here — at which point the language-neutrality cost is worth paying, a corpus nobody can run beating
+two that disagree. The concurrency-stress tier is deliberately not covered: it asserts over N
+concurrent sessions rather than one injected response, and is deferred to the Symphony-side work.
+Relates to 0106–0110, 0053 and 0105. Accepted and applied to `conformance/vcsx/README.md` and
+`VCSX-SPEC.md` (Section 13.1).
