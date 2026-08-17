@@ -917,6 +917,11 @@ Validation checks:
 - `tracker.project_slug` is present when REQUIRED by the selected tracker kind.
 - When `tracker.transitions` is non-empty, the selected tracker adapter declares the `set_state`
   capability (Section 11.7); otherwise configuration error.
+- Every `tracker.transitions` entry's `on` value is in the trigger vocabulary (Section 11.6);
+  otherwise configuration error. The VCS engine cannot make this check on Symphony's behalf: a bare
+  token is a well-formed signal to the engine, whose signal set is open because the consumer raises
+  what its policy binds (`VCSX-SPEC.md` Section 5.1), so a misspelled trigger would otherwise
+  validate and then never fire.
 - `codex.command` is present and non-empty.
 
 ### 6.4 Core Config Fields Summary (Cheat Sheet)
@@ -2529,6 +2534,14 @@ Each transition's `on` value is drawn from one closed vocabulary with several or
 trigger vocabulary as the action-policy machine, Section 9.12). A repository wires triggers to
 transitions but does not introduce new trigger names.
 
+These spellings are REQUIRED: an implementation MUST match a transition's `on` value against the
+tokens below, so a `repo.policy.toml` authored against one implementation binds the same transitions
+on another. An `on` value outside the vocabulary is a configuration error, caught at dispatch
+preflight (Section 6.3) — distinct from a trigger that is in the vocabulary and that no transition
+binds, which fires nothing and is not an error. The vocabulary is published as data beside the
+conformance corpus (Section 17); the agent-emitted milestone signals and task-state events are also
+published by the VCS engine's registry, which is their authority (`VCSX-SPEC.md` Section 5.1).
+
 - Milestone signals, emitted by the agent through the broker CLI to express intent, optionally with
   content:
   - `ready-for-review`
@@ -3753,11 +3766,12 @@ restate or replace the checks below.
 The token sets this specification names — the emitted runtime events (Section 10.4), the REQUIRED
 log context fields (Section 13.1), the usage-ledger entry fields (Section 13.6), the state recovery
 classes (Section 14.3), the configuration namespaces (Sections 5.3, 18.2), the workflow and template
-error classes (Section 5.5), the tracker error categories (Section 11.4), and the agent-runner error
-categories (Section 10.6) — are published beside that corpus as a token registry, so an
-implementation can generate or check its own spellings instead of transcribing them. Each set is
-published with the requirement level this specification states for it, since a REQUIRED spelling and
-a RECOMMENDED one are checked differently. The registry is a derived view: this specification
+error classes (Section 5.5), the tracker error categories (Section 11.4), the agent-runner error
+categories (Section 10.6), and the transition triggers (Section 11.6) — are published beside that
+corpus as a token registry, so an implementation, or a repository author binding a trigger, can
+generate or check a spelling instead of transcribing it. Each set is published with the requirement
+level this specification states for it, since a REQUIRED spelling and a RECOMMENDED one are checked
+differently. The registry is a derived view: this specification
 governs, it restates no requirement's substance, and a disagreement between them is a defect in the
 registry.
 
@@ -3935,8 +3949,9 @@ surface (Section 11.1) is `Daemon Conformance`, because it exists to find and re
 - A `none`-mode tracker adapter dispatches without `tracker.api_key`; a `secret`-mode adapter
   requires it at preflight (Section 6.3)
 - Tracker transitions follow a deterministic policy graph (`tracker.transitions`) keyed on milestone
-  signals and observed run outcomes; an unmatched trigger transitions nothing and a duplicate
-  `(from, on)` is a configuration error
+  signals and observed run outcomes; an unmatched trigger transitions nothing, while an `on` value
+  outside the Section 11.6 vocabulary and a duplicate `(from, on)` are both configuration errors
+  caught at preflight (Section 6.3)
 - `set_state` is idempotent (already-in-target succeeds without re-applying a transition), fails
   `tracker_state_unreachable` for an unreachable target, and `tracker_state_conflict` on a
   concurrent state change

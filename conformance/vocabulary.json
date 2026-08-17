@@ -195,5 +195,28 @@
       "turn_cancelled",
       "turn_input_required"
     ]
+  },
+
+  "transition_triggers": {
+    "spec_refs": [
+      "SPEC.md Section 11.6 \"Workflow State Machine and Transition Triggers\"",
+      "SPEC.md Section 8.10 \"Autonomous Task Management (OPTIONAL)\"",
+      "SPEC.md Section 9.12 \"The Action-Policy Machine\""
+    ],
+    "note": "The closed vocabulary a repository's `tracker.transitions` draws each entry's `on` value from, and the same vocabulary the action-policy machine matches (Section 9.12). Three origins: agent-emitted milestone signals, orchestrator-observed run outcomes, and the OPTIONAL task-state events (`core: false`). The five agent-emitted and task-state tokens are also published by the VCS engine's registry as `signals` (`conformance/vcsx/vocabulary.json`, from `VCSX-SPEC.md` Section 5.1), which is their authority; they are carried here because a repository author validates one field against one vocabulary and should not have to consult two registries to do it. REQUIRED rather than RECOMMENDED because Section 6.3 rejects an `on` outside this set — a check Symphony MUST make itself, since the engine's signal set is open by design (the consumer raises what its policy binds), so a misspelled trigger is a well-formed signal to the engine and would otherwise validate and never fire.",
+    "requirement_level": "REQUIRED",
+    "exhaustive": true,
+    "entries": [
+      { "token": "ready-for-review", "core": true, "condition": "The agent signals through the broker CLI that the work is ready for review." },
+      { "token": "blocked", "core": true, "condition": "The agent signals that it is blocked." },
+      { "token": "done", "core": true, "condition": "The agent signals that the work is done." },
+      { "token": "dispatched", "core": true, "condition": "The orchestrator has claimed the issue and started its first turn (Sections 7.1, 7.3)." },
+      { "token": "pull_request_opened", "core": true, "condition": "A pull request was opened for the issue during the run." },
+      { "token": "run_succeeded", "core": true, "condition": "The run attempt finished in `Succeeded` (Section 7.2)." },
+      { "token": "run_failed", "core": true, "condition": "The run attempt finished in a failure terminal reason — `Failed`, `TimedOut` or `Stalled` (Section 7.2)." },
+      { "token": "retries_exhausted", "core": true, "condition": "The retry path completed without re-dispatch (Sections 7.1 `Released`, 8.4)." },
+      { "token": "tasks:all_closed", "core": false, "condition": "Every implementation task for the issue is closed; the daemon's computed-completion trigger (Section 8.10)." },
+      { "token": "task:#needs_help", "core": false, "condition": "An agent-created human-assigned task parks the run for feedback (Section 8.10). The `#` names a condition across tasks, not a proto class." }
+    ]
   }
 }
