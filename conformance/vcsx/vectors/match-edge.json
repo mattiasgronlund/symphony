@@ -8,7 +8,7 @@
     "VCSX-SPEC.md Section 6.5 \"`[policy]` Edges\""
   ],
   "description": "Select at most one policy edge for a trigger by most-specific-wins over the fallback ladder, or fall through to the built-in default.",
-  "given": "an edge set, a trigger token, and the from-context the trigger fires in",
+  "given": "an edge set and a trigger token",
   "expect": "the `on` key of the selected edge (null when none matched), the resulting action, and any action argument the vector pins",
   "notes": [
     "A proto class is not supplied: the implementation derives it from the Section 4.3 registry, as `proto_class(op, reason)` in Section 12.1 does.",
@@ -25,10 +25,9 @@
           { "on": "push:#needs_caller", "do": "escalate" },
           { "on": "#needs_caller", "do": "escalate" }
         ],
-        "trigger": "push:non_fast_forward",
-        "from_context": null
+        "trigger": "push:non_fast_forward"
       },
-      "expect": { "matched": "push:non_fast_forward", "action": "run_op" }
+      "expect": { "matched": "push:non_fast_forward", "action": "run_op", "op": "integrate" }
     },
     {
       "id": "op_class_catches_unnamed_reason",
@@ -38,8 +37,7 @@
           { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" },
           { "on": "push:#needs_caller", "do": "escalate" }
         ],
-        "trigger": "push:pr_closed",
-        "from_context": null
+        "trigger": "push:pr_closed"
       },
       "expect": { "matched": "push:#needs_caller", "action": "escalate" }
     },
@@ -50,8 +48,7 @@
         "edges": [
           { "on": "#error", "do": "escalate" }
         ],
-        "trigger": "merge:checks_failed",
-        "from_context": null
+        "trigger": "merge:checks_failed"
       },
       "expect": { "matched": "#error", "action": "escalate" }
     },
@@ -63,8 +60,7 @@
           { "on": "#error", "do": "escalate" },
           { "on": "push:#error", "do": "fail", "reason": "push_failed" }
         ],
-        "trigger": "push:rejected",
-        "from_context": null
+        "trigger": "push:rejected"
       },
       "expect": { "matched": "push:#error", "action": "fail" }
     },
@@ -75,8 +71,7 @@
         "edges": [
           { "on": "push:#error", "do": "fail", "reason": "push_failed" }
         ],
-        "trigger": "push:non_fast_forward",
-        "from_context": null
+        "trigger": "push:non_fast_forward"
       },
       "expect": { "matched": null, "action": "escalate" }
     },
@@ -87,21 +82,20 @@
         "edges": [
           { "on": "merge:#needs_caller", "do": "escalate" }
         ],
-        "trigger": "push:pr_closed",
-        "from_context": null
+        "trigger": "push:pr_closed"
       },
       "expect": { "matched": null, "action": "escalate" }
     },
     {
       "id": "default_for_error_is_fail",
       "description": "Built-in default for the error class (Section 5.4).",
-      "given": { "edges": [], "trigger": "merge:rejected", "from_context": null },
+      "given": { "edges": [], "trigger": "merge:rejected" },
       "expect": { "matched": null, "action": "fail" }
     },
     {
       "id": "gate_block_is_needs_caller",
       "description": "The universal `blocked` reason is class needs_caller at every gated operation, so a gate-blocked create_pr escalates by default (Sections 4.3, 5.4, 6.6).",
-      "given": { "edges": [], "trigger": "create_pr:blocked", "from_context": null },
+      "given": { "edges": [], "trigger": "create_pr:blocked" },
       "expect": { "matched": null, "action": "escalate" }
     },
     {
@@ -112,27 +106,26 @@
           { "on": "merge:#needs_caller", "do": "escalate" },
           { "on": "merge:#error", "do": "fail", "reason": "merge_failed" }
         ],
-        "trigger": "merge:blocked",
-        "from_context": null
+        "trigger": "merge:blocked"
       },
       "expect": { "matched": "merge:#needs_caller", "action": "escalate" }
     },
     {
       "id": "undeclared_capability_is_error_on_a_read_only_operation",
       "description": "The universal `unsupported` reason is class error and is defined for every operation, including the read-only ones (Sections 4.3, 9.3).",
-      "given": { "edges": [], "trigger": "diff:unsupported", "from_context": null },
+      "given": { "edges": [], "trigger": "diff:unsupported" },
       "expect": { "matched": null, "action": "fail" }
     },
     {
       "id": "default_for_needs_caller_is_escalate",
       "description": "Built-in default for the needs_caller class (Section 5.4).",
-      "given": { "edges": [], "trigger": "integrate:merge_conflicts", "from_context": null },
+      "given": { "edges": [], "trigger": "integrate:merge_conflicts" },
       "expect": { "matched": null, "action": "escalate" }
     },
     {
       "id": "default_for_done_is_continue",
       "description": "A done result with no edge continues the flow (Section 5.4).",
-      "given": { "edges": [], "trigger": "commit:ok", "from_context": null },
+      "given": { "edges": [], "trigger": "commit:ok" },
       "expect": { "matched": null, "action": "continue" }
     },
     {
@@ -142,8 +135,7 @@
         "edges": [
           { "on": "commit:nothing_to_commit", "do": "run_op", "op": "push" }
         ],
-        "trigger": "commit:nothing_to_commit",
-        "from_context": null
+        "trigger": "commit:nothing_to_commit"
       },
       "expect": { "matched": "commit:nothing_to_commit", "action": "run_op" }
     },
@@ -154,8 +146,7 @@
         "edges": [
           { "on": "create_pr:#done", "do": "notify", "channel": "team" }
         ],
-        "trigger": "create_pr:updated",
-        "from_context": null
+        "trigger": "create_pr:updated"
       },
       "expect": { "matched": "create_pr:#done", "action": "notify" }
     },
@@ -166,8 +157,7 @@
         "edges": [
           { "on": "before:commit", "do": "run", "hook": "scan-content" }
         ],
-        "trigger": "before:commit",
-        "from_context": null
+        "trigger": "before:commit"
       },
       "expect": { "matched": "before:commit", "action": "run" }
     },
@@ -178,8 +168,7 @@
         "edges": [
           { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate", "context": "in_sandbox" }
         ],
-        "trigger": "push:non_fast_forward",
-        "from_context": null
+        "trigger": "push:non_fast_forward"
       },
       "expect": { "matched": "push:non_fast_forward", "action": "run_op" }
     },
@@ -191,8 +180,7 @@
           { "on": "#needs_caller", "do": "escalate" },
           { "on": "#error", "do": "fail", "reason": "policy_error" }
         ],
-        "trigger": "before:push",
-        "from_context": null
+        "trigger": "before:push"
       },
       "expect": { "matched": null, "action": "continue" }
     },
@@ -203,8 +191,7 @@
         "edges": [
           { "on": "before:commit", "do": "run", "hook": "scan-content" }
         ],
-        "trigger": "before:merge",
-        "from_context": null
+        "trigger": "before:merge"
       },
       "expect": { "matched": null, "action": "continue" }
     },
@@ -215,73 +202,9 @@
         "edges": [
           { "on": "ready-for-review", "do": "run_op", "op": "create_pr" }
         ],
-        "trigger": "ready-for-review",
-        "from_context": null
+        "trigger": "ready-for-review"
       },
       "expect": { "validation_error": "unknown_trigger" }
-    },
-    {
-      "id": "from_context_disambiguates_same_trigger",
-      "description": "The same trigger takes different transition edges at different from-contexts (Section 5.4, \"from-context\"; `from` is a transition-edge key, Section 6.5).",
-      "given": {
-        "edges": [
-          { "from": "In Progress", "on": "push:ok", "do": "set_state", "target": "Human Review" },
-          { "from": "Human Review", "on": "push:ok", "do": "set_state", "target": "Done" }
-        ],
-        "trigger": "push:ok",
-        "from_context": "Human Review"
-      },
-      "expect": { "matched": "push:ok", "action": "set_state", "target": "Done" }
-    },
-    {
-      "id": "from_context_scoped_edge_does_not_leak",
-      "description": "A transition edge keyed to a from-context does not fire in another context; with no other edge for the trigger the outcome reaches the built-in default for its class (Sections 5.4, 5.3).",
-      "given": {
-        "edges": [
-          { "from": "In Progress", "on": "push:ok", "do": "set_state", "target": "Human Review" }
-        ],
-        "trigger": "push:ok",
-        "from_context": "Done"
-      },
-      "expect": { "matched": null, "action": "continue" }
-    },
-    {
-      "id": "unscoped_edge_matches_inside_a_from_context",
-      "description": "An edge carrying no `from` is unscoped and fires in any from-context (Section 5.4).",
-      "given": {
-        "edges": [
-          { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" }
-        ],
-        "trigger": "push:non_fast_forward",
-        "from_context": "In Progress"
-      },
-      "expect": { "matched": "push:non_fast_forward", "action": "run_op" }
-    },
-    {
-      "id": "scoped_edge_wins_over_unscoped_edge_in_its_context",
-      "description": "Where one trigger key has both a context-scoped edge and an unscoped one, the scoped edge is selected in its own context; the two are distinct keys, not a duplicate (Section 5.4).",
-      "given": {
-        "edges": [
-          { "on": "push:ok", "do": "run_op", "op": "create_pr" },
-          { "from": "Human Review", "on": "push:ok", "do": "set_state", "target": "Done" }
-        ],
-        "trigger": "push:ok",
-        "from_context": "Human Review"
-      },
-      "expect": { "matched": "push:ok", "action": "set_state", "target": "Done" }
-    },
-    {
-      "id": "ladder_outranks_the_from_context",
-      "description": "The ladder selects the trigger key before the from-context selects among the edges bound to it, so an unscoped exact edge is selected over a context-scoped class edge (Sections 5.3, 5.4).",
-      "given": {
-        "edges": [
-          { "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" },
-          { "from": "In Progress", "on": "push:#needs_caller", "do": "set_state", "target": "Blocked" }
-        ],
-        "trigger": "push:non_fast_forward",
-        "from_context": "In Progress"
-      },
-      "expect": { "matched": "push:non_fast_forward", "action": "run_op" }
     }
   ]
 }

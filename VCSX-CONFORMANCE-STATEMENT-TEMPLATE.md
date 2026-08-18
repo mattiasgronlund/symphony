@@ -47,8 +47,8 @@ claim. Mark each complete.
 
 - [ ] One policy-graph executor run by both front-ends; `ship`, `land`, and the embedded-driver
       contract (Sections 7.1–7.3)
-- [ ] The action-policy machine: triggers, actions, the `#class` fallback, fail-safe on an unmatched
-      outcome, no-op on an unmatched signal, determinism (Section 5)
+- [ ] The action-policy machine: triggers, actions, the `#class` fallback, fail-safe on an
+      undisposed outcome, no-op on an unmatched lifecycle position, determinism (Section 5)
 - [ ] The required operation set and the four required lifecycle positions (Section 4.1), including
       `provision` — which has none, is validated against no policy document, and establishes no
       precondition that reads a checkout (Sections 6.1, 6.11, 8.6)

@@ -152,7 +152,7 @@
       { "token": "unknown_action", "meaning": "An edge's `do` is not a known action." },
       { "token": "unknown_operation", "meaning": "A `run_op` names an operation the engine does not define." },
       { "token": "unknown_hook", "meaning": "A `run` names a hook the `[hooks]` table does not declare." },
-      { "token": "duplicate_edge", "meaning": "A duplicate `(from, on)` policy edge — non-determinism." },
+      { "token": "duplicate_edge", "meaning": "A duplicate policy edge — two edges bound to one trigger, non-determinism. The trigger is the whole of an edge's key (Section 5.4); the `(from, on)` key below is `tracker.transitions`' own and is the consumer's." },
       { "token": "duplicate_transition", "meaning": "A duplicate `(from, on)` transition." },
       { "token": "duplicate_branch_section", "meaning": "Two `[[branch]]` sections with the same `match` (Section 6.10). Refused rather than merged in file order, on Section 5.4's reasoning one level up: a scheme in which two sections could both contribute an edge for one trigger reintroduces the non-determinism the one-edge-per-trigger rule refuses." },
       { "token": "position_cycle", "meaning": "A cycle of lifecycle positions, each position's `run_op` edge dispatching the operation the next position gates, so no operation on the cycle can run (Sections 4.1, 5.6). A position is matched exactly and binds at most one edge, so such a cycle reaches no operation on any traversal; a cycle through a typed operation result is not this condition and is bounded rather than refused." },
