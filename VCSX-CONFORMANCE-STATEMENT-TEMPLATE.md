@@ -85,7 +85,9 @@ concrete choice; do not leave a row blank.
 | How a front-end derives the forge repository coordinate where it defaults one | 8.1 | `<from the resolved remote's URL / not defaulted, always supplied>` |
 | `detail` field of an `outputs.unanswered_gates` entry | 8.2 | `<what the engine places there for a gate that gave no usable answer>` |
 | Escalation `detail` field contents | 8.4 | `<what the engine places there>` |
+| Form of `worktree_revision()`'s value, and how a backend derives it | 9.1 | `<per backend: what the value is; how it is derived so it differs whenever a `commit` would capture different content>` |
 | Where a backend writes its own bookkeeping state to answer a capability | 9.1 | `<which capabilities, and what they write>` |
+| Bound a forge backend imposes on its search for a work branch's pull request | 9.2 | `<per backend: the bound, or none — a search that reached it determines no state>` |
 | The default `network_bound_ms`, and any per-capability values the engine applies | 8.1, 9 | `<default duration; any per-capability values; whether a deployment may configure them>` |
 | Form of the `resume_token`, and how the engine establishes that one it is handed is its own and current | 8.1, 8.2, 8.6 | `<what the token encodes; what it is bound to; how a stale one is detected>` |
 | Where a forge backend declares conditional-read support, the mechanism it realizes the `pr_state` and `checks_state` validators with | 9.2 | `<per backend: ETag / Last-Modified / cursor / not supported>` |

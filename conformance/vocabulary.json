@@ -242,5 +242,91 @@
       { "token": "node_provisioning_failures", "name": "Node Provisioning Failures", "core": false, "spec_ref": "Section 9.11" },
       { "token": "executor_bring_up_failures", "name": "Executor Bring-up Failures", "core": false, "spec_ref": "Section 9.11" }
     ]
+  },
+
+  "layer_profiles": {
+    "spec_refs": [
+      "SPEC.md Section 17 \"Test and Validation Matrix\"",
+      "SPEC.md Section 3.4 \"Layers, the VCS Engine, and Deployment Topologies\"",
+      "SPEC.md Section 18.1 \"REQUIRED for Conformance\""
+    ],
+    "note": "The two profiles `Core Conformance` comprises, one per layer that has one. A deployment claims the ones its topology composes (`deployment_topologies`), and Section 19 makes the claim a field of its Conformance Statement — which is the reader this group serves: the spelling is what a consumer reads to learn what an implementation asserts about itself, so it is published rather than transcribed. Closed: Section 17 states that `Core Conformance` \"comprises two layer profiles\". The VCS engine layer has no profile here, its obligations being the engine contract's (Sections 3.4, 17), so the set has two members and not three. Written in the specification's capitalization, which is what a Statement reproduces.",
+    "requirement_level": "REQUIRED",
+    "exhaustive": true,
+    "entries": [
+      {
+        "token": "Broker Core Conformance",
+        "layer": "Broker Core",
+        "checklist_ref": "Section 18.1.2",
+        "condition": "The secret-isolation invariant and the per-run execution boundary: the per-run broker socket and scope guard, the sandbox, the secret split, the executor, the workspace manager, the agent runner and its adapters, and the broker-mediated tracker writes. Independently conformant — satisfiable for a single agent session in a workspace that already exists."
+      },
+      {
+        "token": "Daemon Conformance",
+        "layer": "Autonomous Daemon",
+        "checklist_ref": "Section 18.1.3",
+        "condition": "The autonomous layer: polling, candidate selection and enumeration, concurrency, retry, reconciliation, multi-repository routing, the tracker read surface, and the workflow file and prompt template."
+      }
+    ]
+  },
+
+  "validation_profiles": {
+    "spec_refs": [
+      "SPEC.md Section 17 \"Test and Validation Matrix\"",
+      "SPEC.md Section 18 \"Implementation Checklist (Definition of Done)\""
+    ],
+    "note": "The profiles a check belongs to. Section 18 uses the same four for the checklist, so the names span the test matrix and the definition of done. `Core Conformance` is the one that decomposes: it comprises the two `layer_profiles`, and a claim names those rather than this. Requirement level varies by member and is carried per entry rather than for the group, which is why the group states none: `Core Conformance` is REQUIRED of every implementation, `Extension Conformance` is REQUIRED only for an OPTIONAL feature an implementation ships, and the last two are RECOMMENDED — both being environment-dependent in a way the deterministic corpus is not.",
+    "exhaustive": true,
+    "entries": [
+      {
+        "token": "Core Conformance",
+        "requirement_level": "REQUIRED",
+        "condition": "Deterministic tests REQUIRED for all conforming implementations. Comprises the two `layer_profiles`; an implementation claims the ones its topology composes."
+      },
+      {
+        "token": "Extension Conformance",
+        "requirement_level": "REQUIRED",
+        "condition": "REQUIRED only for OPTIONAL features an implementation chooses to ship. Each OPTIONAL feature declares the layer profile it extends."
+      },
+      {
+        "token": "Real Integration Profile",
+        "requirement_level": "RECOMMENDED",
+        "condition": "Environment-dependent smoke and integration checks, RECOMMENDED before production use (Section 17.8)."
+      },
+      {
+        "token": "Concurrency Stress",
+        "requirement_level": "RECOMMENDED",
+        "condition": "Several sessions run concurrently against one repository and one pull request, asserting that every mutating forge write either applies to the pull-request identity its session established or is refused (Sections 9.10, 17.9)."
+      }
+    ]
+  },
+
+  "deployment_topologies": {
+    "spec_refs": [
+      "SPEC.md Section 3.4 \"Layers, the VCS Engine, and Deployment Topologies\"",
+      "SPEC.md Section 18.1 \"REQUIRED for Conformance\""
+    ],
+    "note": "The three ways the layers compose into a deployment. Section 19 makes the topology a field of the Conformance Statement, which is this group's reader. Closed: Section 3.4 states \"Three deployment topologies compose the layers\". `claims` carries the layer profiles each topology asserts — `engine-direct` claims none defined by `SPEC.md`, having no Broker Core and no daemon, which is a value a generated type has to admit rather than an omission. Conformance follows the layers rather than the topologies (Section 3.4), so a topology is what an implementation reports and a profile is what it is held to.",
+    "requirement_level": "REQUIRED",
+    "exhaustive": true,
+    "entries": [
+      {
+        "token": "daemon",
+        "claims": ["Broker Core Conformance", "Daemon Conformance"],
+        "requires_engine": true,
+        "condition": "The autonomous daemon over the Broker Core, driving the VCS Engine. The full service this specification describes."
+      },
+      {
+        "token": "interactive-agent",
+        "claims": ["Broker Core Conformance"],
+        "requires_engine": true,
+        "condition": "The Broker Core plus the VCS Engine's `ship`/`land`, driving one interactive agent session with no polling daemon."
+      },
+      {
+        "token": "engine-direct",
+        "claims": [],
+        "requires_engine": true,
+        "condition": "The VCS Engine alone, run directly by an operator who holds the credentials, with no Broker Core sandbox. Outside the agent-secret-isolation model, and therefore claiming no profile defined in `SPEC.md`."
+      }
+    ]
   }
 }

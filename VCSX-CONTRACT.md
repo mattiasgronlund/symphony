@@ -288,8 +288,8 @@ Task:
 - `description`
 - `status` — `open` / `closed` / `blocked`
 - `assignee` — `agent` / `human`
-- optional parent task
-- optional tracker link
+- `parent` — OPTIONAL; the task this one hangs from
+- `tracker_link` — OPTIONAL; the tracker artifact this task corresponds to
 
 Broker task verbs (exposed to the credential-less agent through the broker CLI; they carry no
 credentials):
