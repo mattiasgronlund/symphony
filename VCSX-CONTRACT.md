@@ -245,10 +245,12 @@ operation set and its result classing are host-neutral. Named operations include
 - `push`
 - `create_pr`
 - `merge` — merge/request-merge the pull request.
-- `await_checks` — read the pull request's required-check state until the checks pass, fail, the
-  forge reports no required checks for the pull request, a bound the consumer supplied is reached, or
-  a budget floor the consumer supplied is reached. The third is a determinate answer rather than a
-  wait that ended, and ends the wait on the first read. Read-only,
+- `await_checks` — read the pull request's required-check state until one of five conditions
+  holds: the checks pass, they fail, the forge reports no required checks for the pull request,
+  the invocation's read allowance ends, or a budget floor the consumer supplied is reached. The
+  third is a determinate answer rather than a wait that ended, and ends the wait on the first read.
+  The read allowance is what the consumer's parameters authorize, an invocation authorizing no loop
+  having an allowance of one read. Read-only,
   gated at no lifecycle position, and bounded only by parameters the consumer supplies: the engine
   does not decide how long to wait, how often to ask, or how much budget is too little to keep
   asking. It exists so that check state is readable without dispatching a `merge`, which would ask a

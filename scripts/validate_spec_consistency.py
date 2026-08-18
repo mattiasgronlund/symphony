@@ -2,10 +2,12 @@
 """Check the artifacts derived from SPEC.md, VCSX-SPEC.md and VCSX-CONTRACT.md against the
 enumerations that govern them.
 
-Every check here corresponds to a defect found by hand in decision 0132, where the same shape had
+Checks 1 to 4 each correspond to a defect found by hand in decision 0132, where the same shape had
 been found by a person reading for the fourth time: a specification sentence enumerates something,
 a second artifact restates that enumeration, the two disagree, and nothing notices because each
-artifact is complete against itself.
+artifact is complete against itself. Check 5 was added by decision 0133, whose two issues were the
+same shape again with no registry involved — one prose sentence enumerating what other prose
+establishes.
 
 Checks:
 
@@ -14,8 +16,11 @@ Checks:
      one row in the matching Conformance Statement template.
   3. A config key is spelled in the namespace its defining section fixes.
   4. Every token a registry publishes occurs in the document that governs it.
+  5. The await enumeration: every await parameter is named where VCSX-SPEC.md fixes the set and in
+     the engine registry, and VCSX-SPEC.md and VCSX-CONTRACT.md state the same number of terminal
+     conditions for `await_checks`.
 
-Two limits are deliberate and stated here rather than left to be discovered:
+Three limits are deliberate and stated here rather than left to be discovered:
 
   * Check 2 matches per *section*, not per obligation. A section with three obligations and two
     rows is reported as a shortfall; a section with one obligation and one row that answers a
@@ -25,6 +30,11 @@ Two limits are deliberate and stated here rather than left to be discovered:
   * Check 4 is a substring test, which is what a registry-versus-prose comparison can honestly do.
     It under-reports: `parent` occurs in VCSX-SPEC.md as an English word ("re-parents a commit"), so
     a field named `parent` passes whether or not the document fixes it as a token.
+  * Check 5 carries one set and one count, spelled here rather than derived. It catches a parameter
+    or a condition dropped from one artifact and not the other, which is the drift decision 0133
+    repaired; it cannot catch a set that grows in both artifacts and leaves this constant behind,
+    and it says nothing about what any parameter or condition *means*. A parameter added to
+    VCSX-SPEC.md without being added here passes.
 
 Run from the repository root. Exit 0 if no error, 1 otherwise; warnings are printed either way.
 """
@@ -57,6 +67,13 @@ OBLIGATION_EXEMPT_SECTIONS = {
 # Section 5.3.4 fixes these two namespaces and says why: prefixing is what keeps a lifecycle point
 # and a named unit of the same name from colliding.
 NAMESPACE_RULES = {"hooks": ("hooks.workspace.", "hooks.engine.")}
+
+# VCSX-SPEC.md Section 8.1 fixes the await parameters and Section 4.1 the terminal conditions the
+# operation exits at; VCSX-CONTRACT.md Section 6 restates the count. Decision 0133 repaired the
+# drift between them.
+AWAIT_PARAMETERS = ("await_bound_ms", "await_max_reads", "await_interval_ms", "await_budget_floor")
+AWAIT_TERMINAL_CONDITIONS = 5
+AWAIT_COUNT_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7}
 
 errors = []
 warnings = []
@@ -271,6 +288,59 @@ def check_registries(texts):
                       f"{' or '.join(govern)}")
 
 
+# --------------------------------------------------------------------------- check 5
+
+def section_body(text, number):
+    """The text under a numbered heading, up to the next numbered heading of any level."""
+    start = re.search(r"^#{2,5}\s+" + re.escape(number) + r"\.?\s+\S", text, re.M)
+    if not start:
+        return None
+    nxt = re.search(r"^#{2,5}\s+[0-9]+(?:\.[0-9]+)*\.?\s+\S", text[start.end():], re.M)
+    return text[start.end(): start.end() + nxt.start()] if nxt else text[start.end():]
+
+
+def stated_condition_count(body):
+    """The count an `await_checks` entry states for its terminal conditions, or None.
+
+    Whitespace is collapsed first: both documents wrap the sentence, so the phrase spans a line
+    break and an indent wherever the wrap happens to fall.
+    """
+    m = re.search(r"until one of (\w+) conditions holds", " ".join(body.split()))
+    return AWAIT_COUNT_WORDS.get(m.group(1)) if m else None
+
+
+def check_await_enumeration(texts):
+    parameters = section_body(texts["VCSX-SPEC.md"], "8.1")
+    registry = read("conformance/vcsx/vocabulary.json")
+    if parameters is None:
+        error("VCSX-SPEC.md has no Section 8.1 for the await parameters to be fixed in")
+    else:
+        for name in AWAIT_PARAMETERS:
+            if f"`{name}`" not in parameters:
+                error(f"VCSX-SPEC.md Section 8.1 does not name `{name}`, which the await "
+                      f"enumeration fixes")
+            if name not in registry:
+                error(f"conformance/vcsx/vocabulary.json does not name `{name}`, so a consumer "
+                      f"reading the registry cannot tell what bounds a wait")
+
+    counts = {}
+    for doc, number in (("VCSX-SPEC.md", "4.1"), ("VCSX-CONTRACT.md", "6")):
+        body = section_body(texts[doc], number)
+        counts[doc] = stated_condition_count(body) if body else None
+        if counts[doc] is None:
+            error(f"{doc} Section {number} states no terminal-condition count for `await_checks` "
+                  f"in the form this check reads (\"until one of N conditions holds\")")
+
+    stated = {doc: n for doc, n in counts.items() if n is not None}
+    if len(set(stated.values())) > 1:
+        error("`await_checks` terminal conditions: "
+              + ", ".join(f"{doc} states {n}" for doc, n in sorted(stated.items())))
+    for doc, n in stated.items():
+        if n != AWAIT_TERMINAL_CONDITIONS:
+            error(f"{doc} states {n} `await_checks` terminal conditions where this check carries "
+                  f"{AWAIT_TERMINAL_CONDITIONS} — update the constant if the set grew")
+
+
 # --------------------------------------------------------------------------- main
 
 def main():
@@ -286,6 +356,7 @@ def main():
     check_obligations(texts)
     check_config_keys(texts)
     check_registries(texts)
+    check_await_enumeration(texts)
 
     for line in warnings:
         print(f"warning: {line}")
