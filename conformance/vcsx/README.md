@@ -105,10 +105,11 @@ The registry is a faithful view, not a byte-for-byte transcription. Three places
   are separate fields rather than one scope enum, because they answer different questions — whether
   a reason is defined for every operation, and whether it is defined for the ones that reach a
   forge — and a consumer generating a per-operation enum reads both.
-- **`operations`** carries `lifecycle_position: null` for the operations Section 4.1 gates at no fixed
-  position (`integrate`, `pull`), for the read-only ones (`status`, `diff`), and for `provision`,
-  which has no position at all (Section 4.1) and therefore carries neither `blocked` nor
-  `hook_unanswered` — rather than omitting the field.
+- **`operations`** carries `lifecycle_position: null` for every operation Section 4.1 gives no
+  position, rather than omitting the field. The null is what a generator reads to apply Section
+  4.3's invariant from the other side: an operation with no `before:<op>` position carries neither
+  `blocked` nor `hook_unanswered`, so which universal reasons an operation has follows from the
+  field rather than from a list this file would have to keep current.
 - **`reasons`** likewise carries `default_need: null` for every `done` and `error` entry, where
   Section 4.3's column reads `—`, rather than omitting the field — the same choice, for the same
   reason: a generated record has the property either way, and its absence would be indistinguishable
@@ -151,11 +152,15 @@ and is meant to be re-run — a hit published by nothing is a new instance of th
 
 A `values_from` link is the same question one level down, over a field's value space rather than a
 set, and is authored under the same discipline: only where the specification fixes that space to
-exactly one group. `unanswered_gates`' `position` is the worked counter-example —
-`lifecycle_positions` is the *required* set, and an engine MAY define additional operations and their
-`before:<op>` positions (Sections 4.1, 5.1), so a generator told to close that enum would reject a
-conforming engine's own gate. Each field that lacks a link and might look as though it wants one says
-why in its entry's `meaning`.
+exactly one group. `unperformed_intents`' `action` is the worked counter-example — its space is the
+`effected_by: "consumer"` subset of `actions` rather than that group, and a subset is not a link
+this registry can state without fixing a property the specification does not. `unanswered_gates`'
+`position` was a second one until decision 0134: `lifecycle_positions` was the *required* set an
+engine could add to, so a generator told to close that enum would have rejected a conforming
+engine's own gate. The positions are now fixed by the specification at a version and extended only
+by a MINOR release (Sections 4.1, 8.5), so the space is exactly that group and the link is authored.
+Each field that lacks a link and might look as though it wants one says why in its entry's
+`meaning`.
 
 This section carries no deferral list. A bullet naming the reader a set lacks belongs to a set
 actually derived, and deriving the full list for this specification is separate work.

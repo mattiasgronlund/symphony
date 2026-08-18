@@ -221,7 +221,7 @@ front-end. A need naming a **hold** rather than a request carries no token and i
 
 `run_op` (Section 5.2) runs an engine operation. The engine's plugin layer realizes each operation
 against the selected backends — the VCS backend, and a code host such as GitHub or Forgejo; the
-operation set and its result classing are host-neutral. Named operations include:
+operation set and its result classing are host-neutral. The named operations are:
 
 - `load_policy` — obtain the merged host-side policy surface once for a unit of work, from the
   policy source the consumer names. The consumer holds the result and supplies it to subsequent
@@ -240,6 +240,12 @@ operation set and its result classing are host-neutral. Named operations include
   precondition that reads a checkout: all four are matched, read, or judged against what is inside
   the repository this operation obtains. A consumer dispatches it and classifies its result rather
   than routing it through the machine.
+- `status` — inspect working state: the checkout mode, the work branch, whether the tree is dirty or
+  conflicted, how far it stands ahead of and behind the resolved base, and the pull request's state
+  where a forge is configured. A read the operation could not complete is reported per output rather
+  than as a failure of the read; the outputs and their absence forms are the full spec's
+  (Section 11). Read-only.
+- `diff` — the branch delta against the resolved base. Read-only.
 - `commit`
 - `integrate` — bring the base branch into the work branch (back-merge / update-branch).
 - `push`
@@ -255,6 +261,16 @@ operation set and its result classing are host-neutral. Named operations include
   does not decide how long to wait, how often to ask, or how much budget is too little to keep
   asking. It exists so that check state is readable without dispatching a `merge`, which would ask a
   cheap question with a mutating request.
+- `pull` — update the work branch from its remote counterpart, preserving the commits already on it:
+  the counterpart is merged in, and no commit on the branch is rewritten, dropped, or re-parented. A
+  remote carrying no counterpart is a benign no-op rather than a failure, the work branch being
+  engine-derived and not required to exist on the remote before the first push.
+
+The set is closed at a version. An engine defines no operation of its own; an operation is added
+only by a `MINOR` release of the full engine spec, whose version grammar this document defers
+(Section 11). So a `repo.policy.toml` keyed on an `<op>:<reason>` result is accepted or refused
+identically by every conforming engine at that version, which is what Section 2's conformance rule
+requires of a name this document fixes.
 
 Each operation completes with a typed result `<op>:<reason>` whose `reason` carries a proto class
 (`done` / `needs_caller` / `error`, Section 5.3), which is itself a trigger (Section 5.1). For example,
@@ -264,7 +280,9 @@ is class `needs_caller`. The exhaustive per-operation reason registry is deferre
 ## 7. Lifecycle Positions
 
 The lifecycle-position triggers of Section 5.1 are the fixed points around the operations of
-Section 6. `provision` has none, for the reason its entry in Section 6 states. Earlier positional hook
+Section 6, fixed at a version on the same terms as the operation set: an engine defines no position
+of its own, and a position is added only by a `MINOR` release of the full engine spec (Section 11).
+`provision` has none, for the reason its entry in Section 6 states. Earlier positional hook
 names map onto the machine as follows, so a repository expressing a policy in the older positional
 form aligns to the same edges:
 

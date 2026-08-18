@@ -4975,3 +4975,76 @@ budget interface from one reporting an empty budget. Depends on 0112 and 0125 as
 0132 and 0002. Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3, 7.2, 8.1, 8.6, 12.3, 13.1,
 13.2), `VCSX-CONTRACT.md` (Section 6), `conformance/vcsx/vocabulary.json`, and
 `scripts/validate_spec_consistency.py`.
+
+## 0134 — A vocabulary two documents closed and one left the engine to extend
+
+**State:** Accepted
+**Folder:** [decisions/0134-spec-owned-trigger-vocabulary/](decisions/0134-spec-owned-trigger-vocabulary/)
+
+No open issues to work from — all 54 closed, #81 and #82 having closed when PR #87 landed — so a
+fresh consistency review was run against what the mechanical checks structurally cannot see: one
+document against another, and prose against prose. Three defects and one derived-artifact omission,
+filed as #88, #89 and #90. The **first is the one that matters**: the trigger vocabulary a
+`repo.policy.toml` is keyed on was closed in `VCSX-CONTRACT.md` (Section 5.1's four positions,
+Section 7's "the fixed points") and in `SPEC.md`, and open in `VCSX-SPEC.md`, which said an engine
+"MAY define additional operations and their `before:<op>` positions", wrote "(and any engine-defined
+`before:<op>`)" into the definition of a trigger, and judged `position_cycle` over "the positions
+the engine defines". That is observable rather than academic, because Section 6.11 refuses an
+unrecognized trigger with `unknown_trigger`: a policy keyed on an engine-defined position, or on an
+engine-defined operation's result, **validates on one conforming engine and is refused by another**,
+against `VCSX-CONTRACT.md` Section 2's promise that conformance is to the contract and not to a
+binary. Nothing disclosed it either — Section 13.3 required only the *backend capabilities* an added
+operation needs, never the operation's own name or its position — which made it the sole gap in an
+otherwise complete pattern, added reason, configuration and precondition tokens each carrying a
+MUST-document obligation *and* a template row. **The maximal reading wins**: the operation set and
+the position set become **spec-owned and versioned**, extensible by a MINOR release of Section 8.5
+and never by an individual engine, because the minimal repair — document the extension, row it in
+the template — documents a divergence rather than removing it, and `unknown_trigger` is a refusal to
+run rather than something a consumer routes around. That a MINOR may add a *position* where it may
+not add a trigger **kind** or a key component is Section 8.5's own second-bullet argument run
+backwards: a policy keyed on a position the running version does not define was already refused, so
+there is no previously-firing edge for an addition to move, while a *removal* leaves an edge that
+validated and never fires and stays MAJOR. Both halves close rather than the operation set alone,
+since closing one would leave a consumer to know which half of its policy is portable. **#89**:
+`VCSX-CONTRACT.md` Section 6 opened "Named operations **include**:" and listed eight where Section
+4.1 defines eleven — `status`, `diff` and `pull` missing from the document whose Section 1 claims to
+fix the operation names and whose Sections 1 and 12 require them identical with `SPEC.md`, which
+names all eleven. `status` and `pull` were each reworked by #69 and #8 without the contract's list
+moving; the word *include* is what let it happen quietly, and the contract's only occurrence of the
+token `status` was the task model's field, so grepping for it found an unrelated concept. The three
+are added at contract altitude and the list is closed. **#90**: Section 4.3's "none of the four" was
+short by one, `await_checks` being gated at no fixed position and `provision` carrying none at all,
+while the registry beside the sentence was already right — the third instance of this shape in as
+many decisions and the fifth overall. Replaced by **the invariant** — an operation with no
+`before:<op>` position carries neither `blocked` nor `hook_unanswered` — which covers both without
+naming either and cannot drift; Section 4.1's own "`integrate` and `pull`" list is repaired the same
+way. **The fourth finding**, noted inside #89: `conformance/vcsx/vocabulary.json` published ten
+operations and omitted `load_policy`, invisible to every check because check 4 walks registry→prose
+and never the reverse. Repaired, and the class made machine-detectable by **check 6**, deliberately
+narrow — a table of two closed groups, `operations` and `lifecycle_positions` — because closedness
+is a property of the prose no general rule reads off it, so a group the table does not name stays
+unchecked in that direction. Adding `load_policy` to the registry needed a `read_only` answer the
+marker had never given, so Section 4.1 now marks the operation **Read-only**, which is what the
+registry derives from rather than inventing; the position set closing likewise made
+`unanswered_gates`' `position` a `values_from` link the registry's own discipline had previously
+forbidden. Two of the three standing validator warnings are fixed **in the checker rather than in
+the documents**, both being correct as written: Section 14.2's obligation belongs to the extension
+that defines it, so check 2 **re-homes** an obligation declared under an "OPTIONAL extension,
+Section N.M" bullet instead of loosening `covers()`, and Section 6.6's fourth obligation is a TOML
+example restating the prose beside it, so fenced regions are excluded. Records three things
+unrepaired: Section 4.3's "every operation has at least one `done` and one `error` reason" does not
+hold for `load_policy`, whose failures are configuration reasons — pre-existing, and a decision
+about that operation rather than about this vocabulary; the registry's `reasons` note names three
+forge-universal operations where Section 4.3 names four; and Section 8.4's residual
+2-obligations-1-row warning, whose second obligation is the `need` vocabulary's own spec-level
+stability clause, carried forward from 0132. A sweep for further counted enumerations is explicitly
+**not** part of this decision, 0133 having already recorded the general case as open. `SPEC.md`
+needs no change and gets none, so Sections 6.4, 17 and 18 are untouched. No token is renamed or
+removed and no new `Implementation-defined` obligation is created, so no Conformance Statement row
+is owed; three existing template rows are narrowed instead. Reconsider on an engine holding a real
+operation the specification lacks, on a matching rule that made an unrecognized position a no-op
+rather than a refusal, or on a third group wanting check 6. Relates to 0128, 0131, 0132, 0133 and
+0002. Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3, 5.1, 6.11, 8.5, 9.1, 9.3, 13.1,
+13.2, 13.3, 14), `VCSX-CONTRACT.md` (Sections 6, 7), `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`,
+`conformance/vcsx/vocabulary.json`, `conformance/vcsx/README.md`, and
+`scripts/validate_spec_consistency.py`.
