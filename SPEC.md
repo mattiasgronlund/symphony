@@ -814,7 +814,7 @@ Dispatch gating behavior:
 config points each managed repository at its `repo.policy.toml`; the repository owns the contents, so
 configuring Symphony needs no knowledge of its policy machine, host-side hooks, transitions, or
 branch-name pattern. Symphony consumes it through the VCS engine contract (`VCSX-CONTRACT.md`,
-Section 3.4); this specification names its sections and defers the field-level schema to that
+Section 4); this specification names its sections and defers the field-level schema to that
 contract.
 
 The file carries no code-host selection, access parameters, credentials, or remote: those are read
@@ -1597,10 +1597,10 @@ Failure handling:
 
 Supported hooks:
 
-- `hooks.after_create`
-- `hooks.before_run`
-- `hooks.after_run`
-- `hooks.before_remove`
+- `hooks.workspace.after_create`
+- `hooks.workspace.before_run`
+- `hooks.workspace.after_run`
+- `hooks.workspace.before_remove`
 
 Execution contract:
 
@@ -1608,7 +1608,7 @@ Execution contract:
   `cwd`.
 - On POSIX systems, `sh -lc <script>` (or a stricter equivalent such as `bash -lc <script>`) is a
   conforming default.
-- Hook timeout uses `hooks.timeout_ms`; default: `60000 ms`.
+- Hook timeout uses `hooks.workspace.timeout_ms`; default: `60000 ms`.
 - Log hook start, failures, and timeouts.
 
 Failure semantics:
@@ -1842,7 +1842,7 @@ from three sources, most specific first:
 Under `vcs.policy_source = "target_branch"` the third source does not apply, and a target from one
 of the first two is REQUIRED. That mode reads host-side Way of Working from the target itself, so
 the target is what says which revision `repo.policy.toml` is read from, and a branch named inside
-that file cannot select the revision the file is read from (`VCSX-CONTRACT.md`, Section 15.4). An
+that file cannot select the revision the file is read from (`VCSX-SPEC.md`, Sections 6.4, 8.1). An
 issue dispatched under that mode with no per-issue target and no `vcs.base_branch` is an engine
 usage/configuration failure rather than a run that picks a default (Section 14.2).
 
@@ -4130,18 +4130,21 @@ language-neutral vector corpus under `conformance/` (RECOMMENDED); an implementa
 its own binary and records the result in its Conformance Statement (Section 19). The corpus does not
 restate or replace the checks below.
 
-The token sets this specification names — the emitted runtime events (Section 10.4), the REQUIRED
-log context fields (Section 13.1), the usage-ledger entry fields (Section 13.6), the state recovery
-classes (Section 14.3), the configuration namespaces (Sections 5.3, 18.2), the workflow and template
-error classes (Section 5.5), the tracker error categories (Section 11.4), the agent-runner error
-categories (Section 10.6), the transition triggers (Section 11.6), and the failure classes
-(Section 14.1) — are published beside that
-corpus as a token registry, so an implementation, or a repository author binding a trigger, can
-generate or check a spelling instead of transcribing it. Each set is published with the requirement
-level this specification states for it, since a REQUIRED spelling and a RECOMMENDED one are checked
-differently. The registry is a derived view: this specification
-governs, it restates no requirement's substance, and a disagreement between them is a defect in the
-registry.
+The token sets this specification names — the emitted runtime events (Section 10.4) and the fields
+of the envelope each carries (Sections 10.4, 10.7), the REQUIRED log context fields (Section 13.1),
+the neutral token-usage record (Sections 4.1.6, 10.7, 13.5), the usage-ledger entry fields (Section
+13.6), the state recovery classes (Section 14.3), the Orchestrator Runtime State fields and the
+class stated for each (Sections 4.1.8, 14.3), the configuration namespaces (Sections 5.3, 18.2),
+the workflow and template error classes (Section 5.5), the tracker error categories (Section 11.4),
+the agent-runner error categories (Section 10.6), the transition triggers (Section 11.6), the
+failure classes (Section 14.1), and the names an implementation claims itself by — the layer
+profiles and the validation profiles below, and the deployment topologies (Section 3.4) — are
+published beside that corpus as a token registry, so an implementation, a repository author binding
+a trigger, or a Conformance Statement author naming what it claims (Section 19) can generate or
+check a spelling instead of transcribing it. Each set is published with the requirement level this
+specification states for it, since a REQUIRED spelling and a RECOMMENDED one are checked
+differently. The registry is a derived view: this specification governs, it restates no
+requirement's substance, and a disagreement between them is a defect in the registry.
 
 Validation profiles:
 
@@ -4607,7 +4610,7 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   `repo.policy.toml` from the policy branch; `WORKFLOW.md` hooks in the sandbox from the worktree,
   Section 15.4), with a host-side hook's unit resolved from the policy branch and its working
   directory outside the workspace, so the trust its declaration carries reaches the program it runs
-- Hook timeout config (`hooks.timeout_ms`, default `60000`)
+- Hook timeout config (`hooks.workspace.timeout_ms`, default `60000`)
 - Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
   app-server JSON line protocol as the worked example)
 - Turn-centric contract: `run_turn` threads an opaque `continuation_ref` (no separate start),
@@ -4812,17 +4815,24 @@ The Statement MUST record:
   in this specification, including: the agent sandbox profile, the effective egress policy, and the
   composed environment set an agent receives
   (Section 9.6); whether the deployment scopes outward credentials per repository (Section 15.3);
+  the carrier by which an issue names its pull-request target, where a deployment admits one
+  (Section 9.7);
   the bounds handed to the engine's bounded check wait and the forge budget guard's enablement
   (Sections 8.11, 9.10); the approval, sandbox, operator-confirmation, and user-input-required policy
   (Section 10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the log
   sink or sinks and what happens when one of them fails (Section 13.2); the human-readable status
-  surface, if any, and the presentation of rate-limit data (Sections 13.4, 13.5); the park-vs-retry
+  surface, if any, the presentation of rate-limit data, and — where the aggregation extension is
+  shipped — the sink it aggregates into and how long that data is retained
+  (Sections 13.4, 13.5); the park-vs-retry
   disposition of `repository_provisioning_failures` and `engine_invocation_failures`
   (Section 14.2); the durable-store degradation when no store is configured (Section 14.3); the
-  secret-redaction mechanism and substituted marker for captured subprocess text (Section 15.3); and
+  secret-redaction mechanism and substituted marker for captured subprocess text (Section 15.3);
+  how it is established that no route beyond the two this specification closes can write the policy
+  branch, and how a host-side hook's unit is resolved (Section 15.4); and
   the host-side object-store path (Section 16.5).
 - The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8) and to any
-  state an OPTIONAL extension introduces (Section 14.3).
+  state an OPTIONAL extension introduces, and the reset consequence of each field classified
+  `Ephemeral` (Section 14.3).
 - The trust and safety posture (Sections 1, 9.6, 15).
 
 The Statement's format is `Implementation-defined`. `CONFORMANCE-STATEMENT-TEMPLATE.md` in the

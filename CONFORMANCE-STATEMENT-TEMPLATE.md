@@ -87,6 +87,8 @@ obligation not listed here rather than omitting its resolution.
 | `agent.default_effort` default | 5.3.5 | `<native effort value>` |
 | Agent sandbox profile | 9.6 | `<jai Strict / container / VM / …>` |
 | Effective egress policy for the sandbox and broker socket | 9.6 | `<...>` |
+| Composed environment set an agent's run receives | 9.6 | `<the variables passed through, and how a location outside the run's own workspace is kept out>` |
+| Carrier by which an issue names its pull-request target | 9.7 | `<label the operator maps / tracker field / tracker-specific / not offered>` |
 | Approval, sandbox, and operator-confirmation policy | 10.5 | `<...>` |
 | Targeted-protocol user-input-required signal handling | 10.5 | `<...>` |
 | Tracker adapter result hard-cap / pagination limitation | 11 | `<cap, or none>` |
@@ -100,6 +102,8 @@ obligation not listed here rather than omitting its resolution.
 | Additional failure categories defined by a shipped extension | 14.1 | `<token + recovery disposition for each, or none>` |
 | Durable-store degradation when no store is configured | 14.3 | `<decline enforcement / fall back to Ephemeral / …>` |
 | Secret-redaction mechanism and substituted marker for captured subprocess text | 15.3 | `<known-value replacement + marker; any matching added above the floor>` |
+| How it is established that no route beyond the two Section 15.4 closes can write the policy branch | 15.4 | `<branch protection / repository permissions / a mirror the service alone writes>` |
+| How a host-side hook's unit is resolved from the policy branch | 15.4 | `<how the unit is addressed; what working directory it is given>` |
 | Object store path location (host-side) | 16.5 | `<path policy, e.g. sibling of workspace root>` |
 
 ### 4.2 Extension-scoped (resolve only if shipped)
@@ -112,9 +116,10 @@ obligation not listed here rather than omitting its resolution.
 | Node provisioning failures — persistent park-vs-retry | 9.11 | `<... / n/a>` |
 | Compute provider — variant catalog, pool sizing, billing | 9.11 | `<... / n/a>` |
 | Human-readable status surface — what it is and what it draws from | 13.4 | `<... / n/a>` |
+| Rate-limit aggregation — the sink it aggregates into, and the retention | 13.5 | `<... / n/a>` |
 | `<other>` | `<section>` | `<... / n/a>` |
 
-## 5. State Recovery-Class Assignments
+## 5. State Recovery-Class Assignments (Section 14.3)
 
 Section 14.3 requires every Orchestrator Runtime State field (Section 4.1.8) — and any state a
 shipped extension introduces — to be assigned exactly one recovery class and the assignment
@@ -122,17 +127,21 @@ documented. Classes: `Reconstructable`, `Ephemeral`, `Cached external signal`, `
 "Spec default" column is the assignment `SPEC.md` states; fill "As implemented" and note any
 divergence in Section 7.
 
-| State field (Section 4.1.8) | Spec default | As implemented |
-|-----------------------------|--------------|----------------|
-| `poll_interval_ms` | `Reconstructable` | `<...>` |
-| `max_concurrent_agents` | `Reconstructable` | `<...>` |
-| `running` | `Reconstructable` | `<...>` |
-| `claimed` | `Reconstructable` | `<...>` |
-| `retry_attempts` | `Ephemeral` | `<...>` |
-| `completed` | `Ephemeral` | `<...>` |
-| `agent_totals` | `Ephemeral` (`Durable` under a budgeting extension) | `<...>` |
-| `provider_rate_limits` | `Cached external signal` | `<...>` |
-| `<extension state field>` | `<n/a>` | `<class>` |
+Section 14.3 also requires the **reset consequence** of each `Ephemeral` field to be documented —
+what a restart costs, for example that retry backoff restarts from the first attempt. Fill the last
+column for every field whose implemented class is `Ephemeral`; leave it `n/a` for the others.
+
+| State field (Section 4.1.8) | Spec default | As implemented | Reset consequence (`Ephemeral`) |
+|-----------------------------|--------------|----------------|----------------------------------|
+| `poll_interval_ms` | `Reconstructable` | `<...>` | `<n/a>` |
+| `max_concurrent_agents` | `Reconstructable` | `<...>` | `<n/a>` |
+| `running` | `Reconstructable` | `<...>` | `<n/a>` |
+| `claimed` | `Reconstructable` | `<...>` | `<n/a>` |
+| `retry_attempts` | `Ephemeral` | `<...>` | `<...>` |
+| `completed` | `Ephemeral` | `<...>` | `<...>` |
+| `agent_totals` | `Ephemeral` (`Durable` under a budgeting extension) | `<...>` | `<...>` |
+| `provider_rate_limits` | `Cached external signal` | `<...>` | `<n/a>` |
+| `<extension state field>` | `<n/a>` | `<class>` | `<... / n/a>` |
 
 ## 6. Trust and Safety Posture
 

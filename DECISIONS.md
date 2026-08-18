@@ -4848,3 +4848,65 @@ heading that reads `[hooks.engine]`. Depends on 0103 and 0051; relates to 0107�
 and applied to `VCSX-SPEC.md` (Sections 8.2, 13.1), `conformance/vcsx/vocabulary.json` and
 `conformance/vcsx/README.md`.
 
+
+## 0132 — Nine derived artifacts, and the enumerations they drifted from
+
+**State:** Accepted
+**Folder:** [decisions/0132-derived-artifact-drift/](decisions/0132-derived-artifact-drift/)
+
+Found by a review pass run when the issue queue emptied, and filed as issues #83, #84 and #85. Every
+finding has one shape: a specification sentence enumerates something, a second artifact restates
+that enumeration, the two disagree, and nothing notices because each artifact is complete against
+itself. The shape is not new — 0128 exists because three decisions in a row added an obligation and
+no template row, 0103 counted four bullets that went stale "twice inside the decisions repairing
+it", and 0131 swept a file rather than answer its one report — so this decision repairs the
+instances
+**and** adds `scripts/validate_spec_consistency.py`, which is the part that is not another instance
+of the same manual sweep. Section 17's registry enumeration named ten token sets where
+`conformance/vocabulary.json` publishes thirteen; the direction of repair is settled by the
+artifacts rather than by the derived-view rule, since all three unnamed groups are in
+`conformance/README.md`'s coverage table and `runtime_state_fields` is named there as the group **a
+Conformance Statement author reads for its recovery-class table** — so the prose list is what fell
+behind, and the rule that would have deleted a documented group allocates authority rather than
+direction. Three groups are added for sets Section 19 makes an implementation spell and no group
+carried — `layer_profiles`, `validation_profiles`, `deployment_topologies` — the reader being the
+one 0103's test names outright, "a Conformance Statement author filling a table", and the failure
+being 0131's on a worse field: an implementation hand-writes the string that says what it claims
+conformance to, and a rename diverges silently in the one field a consumer reads to learn what is
+being asserted. The **layer** names (`Broker Core`, `VCS Engine`, `Autonomous Daemon`) were checked
+against the same test and **declined** — Section 19 records the profile, not the layer, so no reader
+outside an implementation's own source spells one; this is 0131's `unanswered_gates.position`
+refusal run again. Seven obligations gained rows in the matching Conformance Statement template, two
+of them provable against the templates' own closing sentence that each "enumerates each obligation
+above as a row" — the composed environment set (Section 9.6) and the forge pull-request-search bound
+(`VCSX-SPEC.md` Section 9.2) — and five missing at both layers, so Section 19 and Section 13.3
+gained the clauses above their new rows. What went unanswered was not incidental: Section 15.4's
+first obligation is the trust root of the host-side hook category, and a Statement that never asks
+it cannot distinguish a protected policy branch from an unprotected one. `hooks.after_create` and
+its three siblings, plus `hooks.timeout_ms` in Section 9.4 and in Section 18's checklist, are
+prefixed to the `hooks.workspace` namespace Section 5.3.4 fixes and gives a reason for — the
+collision being live, since `hooks.engine.<name>` is a sibling whose entries are tables where these
+are scalars. Two citations are retargeted: Section 9.7's to `VCSX-SPEC.md` Sections 6.4 and 8.1,
+from a `VCSX-CONTRACT.md` Section 15.4 that does not exist in a document where `policy_source` never
+appears. `parent` and `tracker_link` become tokens in `VCSX-CONTRACT.md` Section 8 and
+`VCSX-SPEC.md`, the registry having published two spellings **no document backed** — worse than a
+disagreement, which the derived-view rule resolves, because there was nothing to disagree with and
+the check built to catch divergence could report neither red nor green. **The checker found the
+eighth and ninth defects before it was finished**: `SPEC.md` Section 5 cites `VCSX-CONTRACT.md`
+Section 3.4, which that document has no subsection for, and Section 14.3's requirement that every
+`Ephemeral` field's reset consequence be documented had nowhere in the template to be recorded — the
+latter surfacing in the *warning* tier, the case a zero-row check cannot see and a reviewer's eye
+slides over. That is the decision's measurement: two of nine instances were invisible to a careful
+person reading for exactly this class, and both fell out of a check in under an hour. Steelmanned:
+**three decisions grouped by artifact and no tooling**, the repository's established rhythm — it
+loses
+because three groupings record three symptoms and no disease, and the disease has now been diagnosed
+four times by four people reading. The checker's two limits are written into its docstring rather
+than left to be discovered, and its warning tier is kept rather than silenced, since dropping it for
+noise would have left the ninth defect open. Records three findings it does not repair: Section 9.7
+claims a parallel obligation Section 9.8 does not carry, seven registry groups carry no
+`requirement_level` though the README says to read it first, and 0131's stale `hook_conditions`
+`spec_ref` is still open. Depends on 0103, 0051 and 0128; relates to 0131 and 0002. Accepted and
+applied to `SPEC.md` (Sections 5, 9.4, 9.7, 17, 18.1.2, 19), `VCSX-SPEC.md` (Sections 7.3, 13.3),
+`VCSX-CONTRACT.md` (Section 8), both Conformance Statement templates, `conformance/vocabulary.json`,
+`conformance/README.md`, and `scripts/validate_spec_consistency.py`.

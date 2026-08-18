@@ -1549,8 +1549,9 @@ An embedded driver invokes the same executor programmatically. It:
 - binds `escalate` to its own resolver (Section 5.5) — for example an automation service that turns an
   escalation into an agent-assigned task;
 - MAY run a **task model**: tasks with an `id`, a `description`, a `status` (`open`/`closed`/`blocked`),
-  an `assignee` (`agent`/`human`), an optional parent, and an optional tracker link — seeded from a
-  work item or a planning step, and closed by the caller. The driver watches its own task state for
+  an `assignee` (`agent`/`human`), an optional `parent`, and an optional `tracker_link` — seeded
+  from a work item or a planning step, and closed by the caller. The driver watches its own task
+  state for
   the conditions `[driver]` names — every implementation task closed, or a task needing human help —
   and invokes the entry point that table names when one holds (Sections 6.9, 8.1). The task model,
   its durability, its materialization into an external tracker, and the watching are all the
@@ -3535,7 +3536,8 @@ The Statement MUST record:
   operation it defines beyond Section 4.1 requires of a backend (Section 9.1), the `forge_parameters`
   keys each forge backend reads, which are `Implementation-defined` per backend (Section 8.1), any
   bound a forge
-  backend imposes on its search for a work branch's pull request (Section 9.2), where a backend
+  backend imposes on its search for a work branch's pull request (Section 9.2), the form of
+  `worktree_revision()`'s value and how a backend derives it (Section 9.1), where a backend
   writes its own bookkeeping state to answer a capability (Section 9.1), — where a forge backend
   declares conditional-read support — the mechanism it realizes the `pr_state` and `checks_state`
   validators with, and which budget buckets each forge backend observes and where it reads them from,

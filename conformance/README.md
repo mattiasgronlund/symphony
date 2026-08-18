@@ -100,8 +100,10 @@ no task model never raises.
   reflected here in the same change.
 - **A Conformance Statement author** reads `runtime_state_fields` for the "Spec default" column of
   its recovery-class table, `config_namespaces` for the namespace column of its extensions table,
+  `layer_profiles` and `deployment_topologies` for the claim and topology its first section states,
   and `error_classes` to check that any class it defines beyond the five is resolved in the `MUST
-  document` table.
+  document` table. The profile and topology are the fields a consumer reads to learn what the
+  implementation asserts about itself, which is why they are published rather than transcribed.
 
 ### What the slice covers
 
@@ -119,9 +121,12 @@ no task model never raises.
 | `agent_error_categories` | Section 10.6 |
 | `transition_triggers` | Sections 11.6, 8.10, 9.12 |
 | `failure_classes` | Sections 14.1, 14.2 |
+| `layer_profiles`, `validation_profiles` | Sections 17, 18.1, 3.4 |
+| `deployment_topologies` | Sections 3.4, 18.1 |
 
-`transition_triggers` is the one group carrying `exhaustive: true`: Section 11.6 states in its own
-words that the trigger vocabulary is closed and that "a repository wires triggers to transitions but
+`transition_triggers` is the one *token* group carrying `exhaustive: true`: Section 11.6 states in
+its own words that the trigger vocabulary is closed and that "a repository wires triggers to
+transitions but
 does not introduce new trigger names", and Section 6.3 rejects an `on` value outside it. A generated
 type for it may close the enum, which is the point — the set exists so a `repo.policy.toml` `on`
 value can be checked before dispatch. Symphony is its authority: `tracker.transitions` travels in
@@ -130,6 +135,15 @@ action over a tracker outside the VCS/forge domain, so the engine carries and va
 without matching its `on` (decision 0122). The engine's own trigger vocabulary is the two kinds it
 produces itself — a lifecycle position, and a typed operation result — and it no longer publishes a
 `signals` group.
+
+The three conformance-vocabulary groups — `layer_profiles`, `validation_profiles` and
+`deployment_topologies` — are closed too, and on the specification's own counting rather than on an
+inference: Section 17 says `Core Conformance` "comprises two layer profiles" and Section 3.4 says
+"Three deployment topologies compose the layers". They are listed apart from the token groups
+because what they name is a claim rather than a value carried in a payload or a config file: their
+reader is a Conformance Statement author, and a divergence shows up as an implementation describing
+its own conformance in a spelling nothing else recognizes. `validation_profiles` carries
+`requirement_level` per entry rather than for the group, its four members not sharing one.
 
 Four groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
 because Section 10.4 permits an adapter to emit events the specification does not name;
