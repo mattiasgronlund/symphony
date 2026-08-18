@@ -7,7 +7,9 @@ been found by a person reading for the fourth time: a specification sentence enu
 a second artifact restates that enumeration, the two disagree, and nothing notices because each
 artifact is complete against itself. Check 5 was added by decision 0133, whose two issues were the
 same shape again with no registry involved — one prose sentence enumerating what other prose
-establishes.
+establishes. Check 6 was added by decision 0134, whose defect ran the direction check 4 cannot see:
+`VCSX-SPEC.md` Section 4.1 defines `load_policy` as an operation and the engine registry published
+ten operations without it.
 
 Checks:
 
@@ -19,8 +21,10 @@ Checks:
   5. The await enumeration: every await parameter is named where VCSX-SPEC.md fixes the set and in
      the engine registry, and VCSX-SPEC.md and VCSX-CONTRACT.md state the same number of terminal
      conditions for `await_checks`.
+  6. The reverse of check 4, over the groups whose membership the prose closes: every token the
+     governing section defines occurs in the registry.
 
-Three limits are deliberate and stated here rather than left to be discovered:
+Four limits are deliberate and stated here rather than left to be discovered:
 
   * Check 2 matches per *section*, not per obligation. A section with three obligations and two
     rows is reported as a shortfall; a section with one obligation and one row that answers a
@@ -35,6 +39,9 @@ Three limits are deliberate and stated here rather than left to be discovered:
     repaired; it cannot catch a set that grows in both artifacts and leaves this constant behind,
     and it says nothing about what any parameter or condition *means*. A parameter added to
     VCSX-SPEC.md without being added here passes.
+  * Check 6 runs over a table of two groups rather than over every group, because closedness is a
+    property of the prose that no general rule reads off it: a group this table does not name is
+    unchecked in that direction, as every group was before decision 0134.
 
 Run from the repository root. Exit 0 if no error, 1 otherwise; warnings are printed either way.
 """
@@ -67,6 +74,17 @@ OBLIGATION_EXEMPT_SECTIONS = {
 # Section 5.3.4 fixes these two namespaces and says why: prefixing is what keeps a lifecycle point
 # and a named unit of the same name from colliding.
 NAMESPACE_RULES = {"hooks": ("hooks.workspace.", "hooks.engine.")}
+
+# The groups whose membership the governing prose closes, and where check 6 reads that membership
+# from: the registry group, the document, the sections that fix it, and the pattern that spells a
+# token there. Section 4.1 lists the operations as column-0 bullets and both sections write the
+# lifecycle positions as `before:<op>` literals.
+CLOSED_GROUPS = {
+    "conformance/vcsx/vocabulary.json": {
+        "operations": ("VCSX-SPEC.md", ("4.1",), r"^- `([a-z_]+)` —"),
+        "lifecycle_positions": ("VCSX-SPEC.md", ("4.1", "5.1"), r"`(before:[a-z_]+)`"),
+    },
+}
 
 # VCSX-SPEC.md Section 8.1 fixes the await parameters and Section 4.1 the terminal conditions the
 # operation exits at; VCSX-CONTRACT.md Section 6 restates the count. Decision 0133 repaired the
@@ -155,11 +173,43 @@ def check_references(texts, heads):
 
 # --------------------------------------------------------------------------- check 2
 
+def blank_fenced(text):
+    """`text` with every fenced block's content replaced by spaces, preserving every offset.
+
+    An obligation inside a fence is a restatement by construction: a worked example repeats what the
+    prose beside it already requires, and counting both makes one obligation two. Newlines are kept
+    so line and section arithmetic over the result still holds.
+    """
+    out = list(text)
+    for m in re.finditer(r"^```.*?^```", text, re.M | re.S):
+        for i in range(m.start(), m.end()):
+            if out[i] != "\n":
+                out[i] = " "
+    return "".join(out)
+
+
+def extension_home(text, offset):
+    """The section an enclosing extension bullet attributes its obligation to, or None.
+
+    An obligation nested under `- … (…; OPTIONAL extension, Section N.M):` is the extension's, and
+    the template rows it under the extension's own section rather than under the section whose prose
+    happens to carry it. Re-homing keeps `covers()` matching downward only; aliasing would loosen it
+    for every section.
+    """
+    start = text.rfind("\n- ", 0, offset)
+    if start == -1 or "\n\n" in text[start + 1:offset]:
+        return None
+    line = text[start + 1: text.find("\n", start + 1)]
+    m = re.match(r"- .*?OPTIONAL extension, Sections? ([0-9]+(?:\.[0-9]+)*)", line)
+    return m.group(1) if m else None
+
+
 def obligation_sentences(doc, text):
-    """Distinct obligation sentences, grouped by the section they sit in."""
+    """Distinct obligation sentences, grouped by the section that answers for them."""
     marker = re.compile(r"`Implementation-defined`|Implementation-defined|MUST document|"
                         r"MUST be documented")
-    flat = text.replace("\n", " ")
+    scanned = blank_fenced(text)
+    flat = scanned.replace("\n", " ")
     by_section = {}
     for m in marker.finditer(flat):
         start = flat.rfind(".", 0, max(0, m.start() - 1)) + 1
@@ -169,6 +219,7 @@ def obligation_sentences(doc, text):
         num, title = section_at(text, m.start())
         if title and any(t in title for t in OBLIGATION_EXEMPT_TITLES):
             continue
+        num = extension_home(text, m.start()) or num
         if num in OBLIGATION_EXEMPT_SECTIONS.get(doc, set()):
             continue
         if num is None:
@@ -341,6 +392,29 @@ def check_await_enumeration(texts):
                   f"{AWAIT_TERMINAL_CONDITIONS} — update the constant if the set grew")
 
 
+# --------------------------------------------------------------------------- check 6
+
+def check_registry_completeness(texts):
+    for path, groups in sorted(CLOSED_GROUPS.items()):
+        registry = json.loads(read(path))
+        for group, (doc, sections, pattern) in sorted(groups.items()):
+            if group not in registry:
+                error(f"{path} publishes no `{group}` group, which {doc} closes")
+                continue
+            published = registry_tokens({group: registry[group]})
+            fixed = set()
+            for number in sections:
+                body = section_body(texts[doc], number)
+                if body is None:
+                    error(f"{doc} has no Section {number}, which fixes `{group}`")
+                    continue
+                fixed |= set(re.findall(pattern, body, re.M))
+            where = " and ".join(f"Section {n}" for n in sections)
+            for token in sorted(fixed - published):
+                error(f"{path}: `{group}` omits `{token}`, which {doc} defines in {where} — a "
+                      f"generator reading the group gets a set that is short and says so nowhere")
+
+
 # --------------------------------------------------------------------------- main
 
 def main():
@@ -357,6 +431,7 @@ def main():
     check_config_keys(texts)
     check_registries(texts)
     check_await_enumeration(texts)
+    check_registry_completeness(texts)
 
     for line in warnings:
         print(f"warning: {line}")

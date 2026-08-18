@@ -220,7 +220,7 @@ work branch reaches, rather than leaving the arrangement to each backend.
   operation does it once, rather than a capability doing it per read. Like `provision`, it has no
   lifecycle position and raises no `<op>:<reason>` trigger, for the same reason: the edges that
   would gate or route it are in the document it exists to obtain. Its failures are the four
-  Section 6.1 names, reported as configuration errors.
+  Section 6.1 names, reported as configuration errors. Read-only.
 - `provision` — ensure the repository is present and current: create the store where
   `store_location` holds none, refresh it where it holds one, and, where the invocation names a
   `tree_location`, derive the working tree there from that store (Section 8.1). An invocation naming
@@ -309,13 +309,13 @@ work branch reaches, rather than leaving the arrangement to each backend.
   acquisition the engine could not complete is not that no-op and reports `pull:failed`
   (Sections 4.3, 9.1).
 
-An engine MAY define additional operations and their `before:<op>` positions; the operations above are
-the required set and the four positions `before:commit`, `before:push`, `before:create_pr`,
-`before:merge` are the required lifecycle positions. `provision` has none, for the reason its entry
-states: the policy that would carry the gate is not readable when the operation must first run.
-`await_checks` has none for a different reason: a gate before a wait would run a unit that inspects
-nothing and blocks nothing worth blocking, the operation acting on nothing and reading a state the
-repository's own units cannot influence.
+This specification fixes the operation set and the lifecycle positions; an engine defines neither of
+its own. The operations above are the set, and `before:commit`, `before:push`, `before:create_pr`,
+`before:merge` are the lifecycle positions; both are extended only by a `MINOR` release (Section
+8.5). `provision` has none, for the reason its entry states: the policy that would carry the gate is
+not readable when the operation must first run. `await_checks` has none for a different reason: a
+gate before a wait would run a unit that inspects nothing and blocks nothing worth blocking, the
+operation acting on nothing and reading a state the repository's own units cannot influence.
 
 A gated operation's position runs as part of dispatching it. The engine runs `before:<op>` whenever
 `<op>` is dispatched — by a front-end sequence (Sections 12.2, 12.3), by a `[policy]` `run_op` edge
@@ -323,8 +323,8 @@ A gated operation's position runs as part of dispatching it. The engine runs `be
 gated. Gating is a property of the operation, as the entries above state it, rather than a step a
 caller takes around it: Section 6.6 surfaces a block as the gated operation's own reason and Section
 13.1 requires that surfacing at every gated operation, neither of which a caller could guarantee for a
-dispatch it does not make. An operation gated at no fixed position — `integrate` and `pull` — enters
-none wherever it is dispatched. Because the dispatch runs the position and a position's `run_op` edge
+dispatch it does not make. An operation carrying no lifecycle position enters none wherever it is
+dispatched. Because the dispatch runs the position and a position's `run_op` edge
 makes a dispatch of its own, a set of `[policy]` edges that returns a position to itself describes
 dispatches that reach no operation at all; Section 6.11 refuses a policy carrying one
 (`position_cycle`).
@@ -614,10 +614,10 @@ second token carrying an identical repair. Which unit it was is what `unanswered
 
 Every operation therefore has at least one `done` reason and at least one `error` reason, so an
 `error`-class result is expressible for every operation including the read-only ones; every gated
-operation additionally has a `needs_caller` reason. `integrate` and `pull` are gated at no fixed
-position and `status` and `diff` carry no lifecycle position (Section 4.1), so none of the four
-carries `blocked` or `hook_unanswered`. An engine that defines an additional operation, and a
-`before:<op>` position for it, defines the same universal reasons for that operation.
+operation additionally has a `needs_caller` reason. The converse is the invariant rather than the
+list of operations it happens to cover: an operation with no `before:<op>` position carries neither
+`blocked` nor `hook_unanswered` (Section 4.1). An operation a `MINOR` release introduces takes the
+same universal reasons on the same terms, gated or not (Section 8.5).
 
 ## 5. The Action-Policy Machine
 
@@ -626,8 +626,8 @@ carries `blocked` or `hook_unanswered`. An engine that defines an additional ope
 A trigger is one of two kinds:
 
 - **Lifecycle positions** around an operation: `before:commit`, `before:push`, `before:create_pr`,
-  `before:merge` (and any engine-defined `before:<op>`). A lifecycle position is matched exactly; it
-  has no class form. `provision` has no position and raises no trigger (Section 4.1).
+  `before:merge`. A lifecycle position is matched exactly; it has no class form. `provision` has no
+  position and raises no trigger (Section 4.1).
 - **Typed operation results** `<op>:<reason>` (Section 4.3).
 
 There is no third kind, and an event that is neither of these does not enter the executor. An event
@@ -1510,9 +1510,9 @@ reaching an operation on every traversal, whatever the checkout holds and howeve
 moved. A cycle that passes through a typed operation result is not this condition and is not refused,
 because a result reports state outside the engine and the next traversal may differ — that is the
 routing Section 5.6 defends, and refusing it is the cycle detection that section rules out. The
-condition is judged over the `before:<op>` positions the engine defines (Section 4.1) and the
-`run_op` edges bound to them, which is one graph: the trigger is the whole of an edge's key
-(Section 5.4), so there is a single traversal to judge rather than one per scope.
+condition is judged over the `before:<op>` positions Section 4.1 defines and the `run_op` edges
+bound to them, which is one graph: the trigger is the whole of an edge's key (Section 5.4), so there
+is a single traversal to judge rather than one per scope.
 
 Configuration reasons carry no proto class: a refused policy has no operation result to classify. They
 are reported under the `usage_or_config` status (Section 8.2) rather than through the `#class` fallback,
@@ -2153,9 +2153,20 @@ unresolvable, and neither is reachable through that default: `intervention` is r
   one that removed either would leave an edge that validated and never fires. Both are the shape a
   version boundary exists to carry.
 - New reason tokens, new `need` tokens, new configuration reasons, new precondition reasons, new
-  operations, and new plugin backends MAY be introduced in a `MINOR` release; existing consumers
-  absorb new operation reasons through the `#class` fallback (Section 5.3), and a new configuration
-  or precondition reason through the `usage_or_config` status, which does not change.
+  operations, new lifecycle positions, and new plugin backends MAY be introduced in a `MINOR`
+  release; existing consumers absorb new operation reasons through the `#class` fallback (Section
+  5.3), and a new configuration or precondition reason through the `usage_or_config` status, which
+  does not change.
+- The operation set and the lifecycle positions are this specification's rather than an engine's
+  (Section 4.1), so the two additions above are a release's and never an individual engine's: a
+  token outside the running version's set is `unknown_trigger` on every conforming engine (Section
+  6.11) rather than validating against one and being refused by another. A `MINOR` MAY add a
+  position where it may not add a trigger kind or a key component, and the argument is the one this
+  section's second bullet makes for an edge's key, run in the opposite direction: a policy keyed on
+  a position the running version does not define was already refused at validation, so an addition
+  cannot change which edge fires for a policy that previously validated. Removing a position or an
+  operation is the other half of that bullet's shape — it leaves an edge that validated and never
+  fires — and is a `MAJOR` change.
 - Reserving an exit code for a condition that is **not** an invocation status (Section 8.3) MAY
   likewise be done in a `MINOR`, and is not a change to the exit-code mapping the bullet above fixes:
   the four status-bearing codes and the statuses they map from are untouched. What grows is the set of
@@ -2607,10 +2618,10 @@ branch is derived from (Section 6.3), which is a derivation input rather than an
 writes no commit.
 
 The list is the minimum every backend MUST provide, not a maximum: every operation Section 4.1
-requires of a VCS backend is realizable through it. An engine MAY define additional operations
-(Section 4.1), and where it does it MUST document the capabilities they require of a backend
-(Section 13.3), so a capability beyond this list is visible as the engine's own rather than as shared
-surface.
+defines is realizable through it, and which operations there are is this specification's to say
+rather than an engine's (Sections 4.1, 8.5), so no engine adds one that would require more. A
+capability a backend provides beyond this list is visible as that backend's own rather than as
+shared surface.
 
 Descriptor fields: supported modes, whether `merge_base` can reuse recorded conflict resolutions,
 whether the backend can operate in a workspace with no colocated remote (Section 3.3), and whether it
@@ -2777,12 +2788,11 @@ refused at validation — whether the policy states the strategy or takes the Se
 since the engine holds its own default. A consumer configuration that derives more than one working
 tree from one store against a VCS backend declaring it cannot (Section 9.1) is refused the same way,
 and for the same reason: the declaration is static and the consumer's requirement is held before the
-policy runs. What remains on the first-use side is a capability required by an operation an engine
-defines beyond Section 4.1, an OPTIONAL capability such an operation reaches, and a descriptor field
-a backend can answer only once it has opened the checkout. None of those is reachable through the
-required operation set and the policy keys this specification defines, so a Conformance Statement
-claiming the first-use half names the operation or optional capability it demonstrated the claim
-against (Section 13.1).
+policy runs. What remains on the first-use side is an OPTIONAL capability (Section 9.2) an
+operation reaches against a backend that does not declare it, and a descriptor field a backend can
+answer only once it has opened the checkout. Neither is reachable through the operation set and the
+policy keys this specification defines, so a Conformance Statement claiming the first-use half names
+the optional capability or descriptor field it demonstrated the claim against (Section 13.1).
 
 ## 10. Message Formulation
 
@@ -3145,7 +3155,9 @@ A conforming engine SHOULD include tests covering:
 - Trigger kinds: an edge keyed on a token that is neither a known lifecycle position nor an
   `op:reason` / `op:#class` / `#class` form over a known operation is refused at validation with
   `unknown_trigger` — so a policy written against a vocabulary the engine no longer matches fails
-  loudly rather than validating and never firing; `tracker.transitions`, `[tasks]` and `[driver]` are
+  loudly rather than validating and never firing; the vocabulary a token is judged against is the
+  running version's rather than the engine's, so two conforming engines at one version accept and
+  refuse the same tokens (Sections 4.1, 8.5); `tracker.transitions`, `[tasks]` and `[driver]` are
   carried in the merged surface and validated for determinism without the executor matching their
   `on` (Sections 5.1, 6.7, 6.9, 6.11).
 - Determinism: two policy edges bound to one trigger are a configuration error, as is a duplicate
@@ -3475,9 +3487,9 @@ A conforming engine SHOULD include tests covering:
   and the operation's `unsupported` reason at first use otherwise, never a silent no-op; a
   `[messages.squash] strategy` no selected forge declares is refused at validation whether the
   policy states it or takes the Section 6.8 default, and a Conformance Statement claiming
-  Section 9.3's first-use half names the engine-added operation or optional capability it
-  demonstrated the claim against, because that half has no producer among the required operation set
-  and policy keys (Sections 6.8, 9.3); git and jj
+  Section 9.3's first-use half names the optional capability or descriptor field it demonstrated the
+  claim against, because that half has no producer among the operation set and policy keys this
+  specification defines (Sections 6.8, 9.3); git and jj
   checkout modes (including a jj secondary workspace) are handled; the remote-touching operations
   act against the resolved remote, a consumer-supplied `remote` overriding the backend's default
   (Section 8.1); no forge capability infers a repository from the checkout or the policy, and a
@@ -3514,7 +3526,8 @@ A conforming engine SHOULD include tests covering:
   invocation continues from the count its token carries rather than starting a fresh budget. Two
   trigger kinds, both engine-produced; the tables a consumer reads (`tracker.transitions`, `[tasks]`,
   `[driver]`) carried and validated without being matched.
-- The operation set and the reason-token registry with stable proto classes and a default `need` per
+- The operation set and the lifecycle positions as this specification fixes them, neither extended
+  by the engine, and the reason-token registry with stable proto classes and a default `need` per
   `needs_caller` reason, each gated operation running its `before:<op>` position as part of every
   dispatch, and a bounded wait on every hook the engine invokes with the three conditions named.
 - The provisioning operation: a store created where `store_location` holds none and refreshed where
@@ -3615,10 +3628,9 @@ The Statement MUST record:
   where that class is `needs_caller`, its default `need` (Section 4.3), a configuration reason
   (Section 6.11), or a precondition reason (Section 8.6).
 - The `need` vocabulary the engine emits (Section 8.4).
-- The capability descriptors its VCS and forge plugins advertise (Section 9.3), the capabilities any
-  operation it defines beyond Section 4.1 requires of a backend (Section 9.1), the `forge_parameters`
-  keys each forge backend reads, which are `Implementation-defined` per backend (Section 8.1), any
-  bound a forge
+- The capability descriptors its VCS and forge plugins advertise (Section 9.3), the
+  `forge_parameters` keys each forge backend reads, which are `Implementation-defined` per backend
+  (Section 8.1), any bound a forge
   backend imposes on its search for a work branch's pull request (Section 9.2), the form of
   `worktree_revision()`'s value and how a backend derives it (Section 9.1), where a backend
   writes its own bookkeeping state to answer a capability (Section 9.1), — where a forge backend
@@ -3637,10 +3649,12 @@ consumer's own statement; an `engine-direct` deployment publishes this Statement
 ## 14. Alignment with `VCSX-CONTRACT.md`
 
 `VCSX-CONTRACT.md` is the surface an embedding consumer references; this document is its full
-realization. Every token shared between the two — the operations, the lifecycle positions, the trigger
-and action names, the proto classes, the reason and `need` vocabularies, the `repo.policy.toml`
-sections, the task and message-formulation surfaces — MUST be spelled identically in both. Changing a
-name is a contract change: update both documents in step, and record it where the owning consumer tracks
-its anchors. This engine spec was shaped by the surface it realizes and by the Symphony decision record
-(0026–0032) that motivated the surface; those hold the reasoning, this document holds the schema and
-algorithms.
+realization. Every token shared between the two — the operations, the lifecycle positions, the
+trigger and action names, the proto classes, the reason and `need` vocabularies, the
+`repo.policy.toml` sections, the task and message-formulation surfaces — MUST be spelled identically
+in both. The operations and the lifecycle positions are additionally fixed as **sets** by this
+specification (Sections 4.1, 8.5), so `VCSX-CONTRACT.md`'s closed lists are the whole of each at a
+version rather than a core an engine extends. Changing a name is a contract change: update both
+documents in step, and record it where the owning consumer tracks its anchors. This engine spec was
+shaped by the surface it realizes and by the Symphony decision record (0026–0032) that motivated the
+surface; those hold the reasoning, this document holds the schema and algorithms.

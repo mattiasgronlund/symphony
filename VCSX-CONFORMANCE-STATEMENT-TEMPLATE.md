@@ -49,9 +49,9 @@ claim. Mark each complete.
       contract (Sections 7.1–7.3)
 - [ ] The action-policy machine: triggers, actions, the `#class` fallback, fail-safe on an
       undisposed outcome, no-op on an unmatched lifecycle position, determinism (Section 5)
-- [ ] The required operation set and the four required lifecycle positions (Section 4.1), including
-      `provision` — which has none, is validated against no policy document, and establishes no
-      precondition that reads a checkout (Sections 6.1, 6.11, 8.6)
+- [ ] The operation set and the four lifecycle positions (Section 4.1), neither extended by this
+      engine, including `provision` — which has none, is validated against no policy document, and
+      establishes no precondition that reads a checkout (Sections 6.1, 6.11, 8.6)
 - [ ] The reason-token registry with its stable proto classes (Sections 4.2, 4.3)
 - [ ] `repo.policy.toml` loader and validation, with the `vcsx.toml` merge, the refusal of a policy
       that is not well formed, base resolution, and execution-context labeling (Sections 3.2, 6)
@@ -152,7 +152,7 @@ engine surfaces each hold.
 
 The rest are reachable from the registry rather than from a policy alone: Section 4.3 gives every
 `needs_caller` reason a default `need`, and the built-in default raises it where nothing in the policy
-named one, so an engine defining the required operation set can emit each of the six. Record the
+named one, so an engine defining the operation set can emit each of the six. Record the
 `<other>` row for a need this engine adds — including the default need of any reason it adds beyond
 the registry.
 
@@ -173,11 +173,13 @@ A backend that does not declare the last column is refused at validation with
 (Sections 4.3, 6.11, 9.3) — the other half of Section 9.3's split, and determinable because the
 consumer's selection fixes whose descriptor is read.
 
-Section 9.1's required capabilities are a minimum. If this engine defines operations beyond Section
-4.1, list what it additionally requires of a VCS backend; leave empty if it defines none.
+Section 9.1's required capabilities are a minimum for a backend, not a maximum: the operation set is
+the specification's and this engine adds none to it (Sections 4.1, 8.5), so a capability beyond the
+list is a backend's own rather than an engine's. List each one a shipped VCS backend provides; leave
+empty where none does.
 
-| Capability | Required by (operation) | Signature and result |
-|------------|-------------------------|----------------------|
+| Capability beyond Section 9.1 | Provided by (backend) | Signature and result |
+|-------------------------------|-----------------------|----------------------|
 | `<...>` | `<...>` | `<...>` |
 
 ### 6.2 Forge Backends (Section 9.2)
@@ -189,12 +191,12 @@ Section 9.1's required capabilities are a minimum. If this engine defines operat
 A policy that states no `[messages.squash] strategy` is refused against a backend that does not
 declare `merge`, because the Section 6.8 default is `merge` and the engine holds it — which is one
 half of Section 9.3's split. The other half, an unsupported capability reported at first use, has no
-producer among the required operation set and policy keys (Section 13.1), so an engine claiming it
-names what the claim was demonstrated against:
+producer among the operation set and policy keys the specification defines (Section 13.1), so an
+engine claiming it names what the claim was demonstrated against:
 
 | First-use `unsupported` demonstrated against | Operation | Capability |
 |----------------------------------------------|-----------|------------|
-| `<engine-added operation / OPTIONAL capability, or "not claimed">` | `<...>` | `<...>` |
+| `<OPTIONAL capability / descriptor field, or "not claimed">` | `<...>` | `<...>` |
 
 ## 7. Consumer-Effected Actions
 
