@@ -285,10 +285,13 @@ work branch reaches, rather than leaving the arrangement to each backend.
   `before:merge`; a squash strategy applies the `pr_to_squash` transform (Section 10.3).
 - `await_checks` — read the pull request's required-check state (Section 9.2 `checks_state`) until
   one of five conditions holds: the checks completed successfully, they completed and did not pass,
-  the forge reports no required checks for the pull request, a bound the invocation supplied was
-  reached, or a budget floor the invocation supplied was reached (Sections 4.3, 8.1). The third is a
-  determinate answer rather than a wait that ended, and it ends the wait on the first read: a pull
-  request with no required checks has nothing to wait for (Section 9.2). Gated at no fixed position.
+  the forge reports no required checks for the pull request, the invocation's read allowance ended,
+  or a budget floor the invocation supplied was reached (Sections 4.3, 8.1). The read allowance is
+  what the invocation's await parameters authorize, an invocation authorizing no loop having an
+  allowance of one read, so the fourth condition covers a supplied bound that was reached and a
+  single read that found the checks still running alike. The third is a determinate answer rather
+  than a wait that ended, and it ends the wait on the first read: a pull request with no required
+  checks has nothing to wait for (Section 9.2). Gated at no fixed position.
   Read-only: it changes none of the three
   things that term quantifies over, and in particular it does not merge — the state it reports is
   the state a subsequent `merge` would act on, not an action on it. Each read is conditional where
@@ -414,8 +417,8 @@ its caller as an output (Sections 4.1, 9.2).
 | `merge` | `rejected` | `error` | — | Branch protection or forge policy refused the merge. |
 | `await_checks` | `ok` | `done` | — | The required checks completed successfully. |
 | `await_checks` | `checks_failed` | `error` | — | The required checks completed and did not pass. |
-| `await_checks` | `still_pending` | `needs_caller` | `await_checks` | A supplied bound was reached with checks still pending (Section 8.1). |
-| `await_checks` | `budget_floor` | `needs_caller` | `retry_after` | A supplied budget floor was reached with checks still pending (Sections 8.1, 9.2). |
+| `await_checks` | `still_pending` | `needs_caller` | `await_checks` | The invocation's read allowance ended with checks still pending (Section 8.1). |
+| `await_checks` | `budget_floor` | `needs_caller` | `retry_after` | A supplied budget floor was reached with checks still pending, or the observed snapshot could not answer it (Sections 8.1, 9.2). |
 | `await_checks` | `no_checks` | `done` | — | The forge reports no required checks for the pull request, so there is nothing to wait for (Section 9.2). |
 | `pull` | `ok` | `done` | — | The local branch was updated. |
 | `pull` | `conflict` | `needs_caller` | `resolve_conflicts` | The merge of the remote counterpart stopped on conflicts. |
@@ -561,7 +564,16 @@ still running, and they are two reasons because the repairs differ: one is met b
 the other by waiting for a bucket to refill, and a consumer that could not tell them apart would
 raise the wrong bound — extending a deadline that was never the constraint, or conserving a budget
 that was never short. Neither is `rate_limited`: nothing refused anything, and the loop did what it
-was told for as long as it was told to. `checks_failed` is `error` and mirrors `merge:checks_failed`
+was told for as long as it was told to. `still_pending` is stated over the invocation's read
+allowance rather than over a supplied bound, so it also covers the invocation that authorized no
+loop: its allowance is one read, and a single read that found the checks running has reached the end
+of it (Sections 4.1, 8.1). Where an allowance and a floor are reached on the same read the reason is
+`budget_floor`, which is the same repair distinction applied to one read rather than to two
+outcomes: the floor is a fact about the snapshot the read observed, the allowance a fact about
+whether there is another read, and reporting the constraint the read already met is what tells the
+consumer which bound to raise. A floor the observed snapshot cannot answer reports `budget_floor`
+too, the engine having failed to establish there is room to keep spending rather than having
+observed room (Section 8.1). `checks_failed` is `error` and mirrors `merge:checks_failed`
 because there is nothing left to wait for, which is the one outcome of the four that no further
 waiting changes.
 
@@ -1533,11 +1545,12 @@ It merges the head it read: where the pull request's head advances between the r
 nothing is merged, and `land` re-reads and retries within the flow bound (Sections 5.6, 12.3).
 
 `land` MAY be invoked to await first. Under `--await` — or whatever the front-end's encoding for it
-is (Section 8.1) — it dispatches `await_checks` and then the `merge` it already runs, ending on the
-await's own result where that result is not `ok`. It is a composition of two operations this
-specification already defines and introduces no sequencing rule of its own: a `land` that awaits and
-a `land` preceded by a separate `await_checks` invocation reach `merge` in the same state, the
-difference being how many invocations the consumer made.
+is (Section 8.1) — it dispatches `await_checks` and then the `merge` it already runs, continuing
+to the merge where the await's result is class `done` and ending on it otherwise. That is the
+disposition Section 5.4 gives every operation result rather than a rule this composition adds: it is
+a composition of two operations this specification already defines and introduces no sequencing rule
+of its own, so a `land` that awaits and a `land` preceded by a separate `await_checks` invocation
+reach `merge` in the same state, the difference being how many invocations the consumer made.
 
 ### 7.3 The Embedded-Driver Contract
 
@@ -1728,8 +1741,35 @@ invocation supplying none makes a single read and cannot loop:
   snapshot each read observes (Section 9.2). The bucket is named by the consumer because bucket
   identity is the forge's and the engine normalizes none.
 
-Reaching either of the first two ends the wait with `await_checks:still_pending`; reaching the
-fourth ends it with `await_checks:budget_floor` (Section 4.3).
+The first two **authorize** a second read; the other two do not. `await_bound_ms` and
+`await_max_reads` are what give an invocation a **read allowance** greater than one read:
+`await_interval_ms` paces reads an allowance already authorized, and `await_budget_floor` can only
+end a wait early. The two questions are separate: what lets a wait read again, and what stops it.
+Stating only the second leaves a floor or an interval supplied alone reading against a forge that
+may never answer, which is a wait no supplied argument ends, where Section 2.2 admits this operation
+only as a **bounded** exception.
+
+An invocation supplying `await_interval_ms` or `await_budget_floor` and neither `await_bound_ms` nor
+`await_max_reads` is refused before the policy runs, as `await_bound_missing` (Section 8.6). It is
+refused rather than read as the no-parameter case because an invocation naming a floor or an
+interval is asking for a wait that repeats, and a single read reported as a wait that ended answers
+a question the consumer did not ask. A consumer that wants one read and an early stop on a low
+bucket supplies the floor together with `await_max_reads`.
+
+Reaching the end of the read allowance ends the wait with `await_checks:still_pending`; reaching the
+floor ends it with `await_checks:budget_floor` (Section 4.3). Where both are reached on the same
+read the operation reports `budget_floor`. That order follows from the snapshot **each read**
+observes: the floor judges the read just made, while the allowance decides whether to read again, so
+a read whose snapshot is already below the floor has answered before the allowance is consulted.
+
+A floor the observed snapshot **cannot answer** — the forge published no snapshot, or the snapshot
+carries no bucket of the name the consumer supplied — ends the wait with `budget_floor`. An engine
+that cannot establish there is room to keep spending does not keep spending, and the floor behaves
+the same whichever forge is underneath, which is what a consumer that cannot see the backend can
+check. The consequence is stated rather than left to be found: against a forge that publishes no
+budget at all, a floor-carrying invocation makes one read and reports `budget_floor` whatever the
+checks said. The floor is OPTIONAL and no default supplies one, so a consumer reaches this only by
+naming a floor.
 
 These are the consumer's on the same footing as the access parameters and the credential pair, and
 for the same reason Section 2.2 states: the engine compares against numbers it was handed and
@@ -2221,6 +2261,15 @@ what is wrong is a value the caller carried forward past the point it described 
 `resume` is no failure and reaches no row here, an invocation supplying none beginning at its entry
 point as every invocation did before the argument existed.
 
+`await_bound_missing` is judged the same way: wherever an await parameter was supplied, whatever the
+entry, because what is wrong is the combination the invocation named rather than an argument the
+entry point required. A parameter that can only end a wait — `await_interval_ms`,
+`await_budget_floor` — supplied with neither `await_bound_ms` nor `await_max_reads` describes a
+wait nothing authorized to read twice, and no entry point makes that combination coherent
+(Section 8.1). It is not one of the rows naming a missing argument below: nothing here is required
+and absent, and an invocation supplying no await parameter at all is refused by nothing, making the
+single read Section 4.1 gives it.
+
 `provision` needs no base under either mode, and the list below is exhaustive for it. It is the one
 entry point that runs where no policy could be read, being the operation that obtains the repository
 the policy file is in (Section 6.1), so the argument that says where the policy is read from is one
@@ -2231,10 +2280,15 @@ the Section 6.1 exemption rests on, applied to this mode's argument rather than 
 no work branch, consults no `detect_mode()`, and accepts no commit identity, because each of those
 reads a checkout this operation exists to produce — so `no_current_branch`, `work_branch_invalid`,
 `identity_invalid` and `checkout_unreadable` are unreachable for it, and a `provision` into a
-location holding no repository is refused by none of them. What remains is `arguments_unreadable`,
-`local_vcs_missing`, `git_access_missing` and `store_location_missing`, together with the forge pair
-where a forge is configured. This is the Section 6.11 exemption's counterpart on the precondition
-side and rests on the same sentence: the engine cannot read a repository it has not yet obtained.
+location holding no repository is refused by none of them. What remains is the set judged from the
+arguments alone: `arguments_unreadable`, `local_vcs_missing`, `git_access_missing` and
+`store_location_missing`, together with the forge pair where a forge is configured, and the three
+judged wherever their argument is supplied whatever the entry — `base_branch_not_permitted`,
+`resume_unusable` and `await_bound_missing`. Those three reach `provision` for the reason they reach
+every entry: what they judge is a value the invocation named, and the scoping rule that exempts
+`provision` from needing a base does not license it to name one outside the permitted set. This is
+the Section 6.11 exemption's counterpart on the precondition side and rests on the same sentence:
+the engine cannot read a repository it has not yet obtained.
 
 A precondition the engine cannot establish is not an operation result. No operation ran, so the
 Section 4.3 registry does not apply, no proto class is assigned, and there is no `<op>:<reason>` for
@@ -2260,6 +2314,7 @@ run in which the policy did not run.
 | The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it whatever the entry (Section 10.1) | `identity_invalid` |
 | A VCS backend capability consulted before the first dispatch could not answer — the checkout could not be read (Sections 3.3, 9.1) | `checkout_unreadable` |
 | A supplied `resume` the engine cannot establish as its own and current — issued under a different policy, against a different repository, or by a different major version (Sections 5.5, 8.1) | `resume_unusable` |
+| An await parameter that only ends a wait was supplied with neither `await_bound_ms` nor `await_max_reads` (Section 8.1) | `await_bound_missing` |
 
 Precondition reasons carry no proto class, for the same reason configuration reasons do not
 (Section 6.11), and they share the `usage_or_config` status, so a consumer already branching on that
@@ -2278,8 +2333,8 @@ access configuration, the actions a consumer can effect and the repository units
 converse does not hold and is not claimed: a precondition MAY need the checkout and MAY be judged
 from the invocation's arguments alone, as `arguments_unreadable`, `local_vcs_missing`,
 `policy_branch_missing`, `forge_coordinate_missing`, `git_access_missing`, `forge_access_missing`,
-`store_location_missing`, `base_branch_missing` and `base_branch_not_permitted` are. Each row above
-says what it is judged from.
+`store_location_missing`, `base_branch_missing`, `base_branch_not_permitted` and
+`await_bound_missing` are. Each row above says what it is judged from.
 
 `base_branch_missing` is the one row judged partly from the policy document, since `[base] branch`
 is its lowest source under the default mode (Section 6.4), and it is still a precondition rather
@@ -2967,7 +3022,13 @@ running indefinitely.
 ### 12.3 `land` Sequence
 
 ```text
-function land():
+function land(await_first):
+  if await_first:                            # --await, or the front-end's encoding for it
+    if flow_bound_reached():                 # Section 5.6; counts every run_op
+      return flow_exhausted()                # needs_caller, need = flow_exhausted
+    a = run_op("await_checks")               # one dispatch, however many reads (Sections 4.1, 8.1)
+    if a.class != done:
+      return result_of(a)                    # class default (Section 5.4); every done reason merges
   loop:
     if flow_bound_reached():                 # Section 5.6; counts every run_op
       return flow_exhausted()                # needs_caller, need = flow_exhausted
@@ -2982,6 +3043,15 @@ function land():
 
 The routing above is the built-in default, as Section 12.2's is; a repository's `[policy]` edges
 override it.
+
+The await branch is Section 7.2's composition written out, and it adds no rule: it dispatches the
+operation and applies the class default Section 5.4 gives every operation result, which is why the
+branch tests the class rather than a reason. Every class `done` reason therefore reaches the merge
+loop below it, and a repository that wants one of them to stop the flow binds it as it binds any
+other outcome. The dispatch counts **once** against the flow bound however many reads the wait made
+(Sections 5.6, 8.1), so an awaiting `land` and a `land` preceded by a separate `await_checks`
+invocation spend the same budget on the wait; only the loop below re-dispatches, and only its
+retries count again.
 
 The retry re-dispatches the operation, which re-runs the position (Section 4.1), and that is what
 makes it sound. `before:merge` is where the pull request is read and where a squash strategy's
@@ -3118,20 +3188,31 @@ A conforming engine SHOULD include tests covering:
   `nothing_to_commit`, while a `worktree_revision()` that could not determine an identity yields
   `commit:failed` rather than a commit conditioned on nothing (Sections 4.3, 6.6, 9.1).
 - The bounded wait: an `await_checks` exits at each of its five terminal conditions and reports the
-  matching reason — checks passed, checks failed, no required checks (`no_checks`), a supplied bound
-  reached (`still_pending`), a supplied budget floor reached (`budget_floor`) — and the last two are
-  distinguishable, so a consumer can tell which bound to raise (Sections 4.1, 4.3, 8.1); an
-  invocation supplying no await
-  parameter makes exactly one read and does not loop; reads honour `await_interval_ms`; each read
-  after the first presents the validator the previous read returned, whether or not the invocation
-  supplied one (Sections 8.1, 9.2); a `checks_state` that could not be determined is not answered as
-  no required checks, since a pull request with none is mergeable and one whose checks could not be
-  read is not (Section 9.2); a pull request the forge reports no required checks for yields
-  `no_checks` on the first read rather than `ok`, rather than `still_pending` after burning a supplied
-  bound, and rather than `failed`, and a `land --await` against such a repository merges rather than
-  ending on the await's result (Sections 4.1, 4.3, 7.2); and the whole dispatch counts once against
-  the flow bound however many
-  reads it made (Section 5.6).
+  matching reason — checks passed, checks failed, no required checks (`no_checks`), the read
+  allowance ended (`still_pending`), a supplied budget floor reached (`budget_floor`) — and the
+  last two are distinguishable, so a consumer can tell which bound to raise (Sections 4.1, 4.3,
+  8.1); an
+  invocation supplying no await parameter makes exactly one read and does not loop, and where that
+  read finds the checks still running it yields `still_pending`, its allowance being one read; an
+  invocation supplying only `await_budget_floor`, or only `await_interval_ms`, is refused with
+  `await_bound_missing` whatever the entry and runs nothing, while the same invocation carrying
+  `await_bound_ms` or `await_max_reads` alongside runs (Sections 8.1, 8.6); a floor naming a bucket
+  the observed snapshot does not carry, and a floor against a forge that publishes no snapshot at
+  all, each end the wait with `budget_floor` on the first read rather than reading on; a read that
+  reaches the end of the allowance and the floor together yields `budget_floor` rather than
+  `still_pending`; reads honour `await_interval_ms`; each read after the first presents the
+  validator the previous read returned, whether or not the invocation supplied one (Sections 8.1,
+  9.2); a
+  `checks_state` that could not be determined is not answered as no required checks, since a pull
+  request with none is mergeable and one whose checks could not be read is not (Section 9.2); a pull
+  request the forge reports no required checks for yields `no_checks` on the first read rather than
+  `ok`, rather than `still_pending` after burning a supplied bound, and rather than `failed`, and a
+  `land --await` against such a repository merges rather than ending on the await's result (Sections
+  4.1, 4.3, 7.2); an awaiting `land` continues to the merge on every class `done` await reason and
+  ends on every other class, the decision being the class rather than the reason, so a repository
+  binding no edge merges under either `done` reason and one binding an edge that ends the flow stops
+  under it (Sections 5.4, 7.2, 12.3); and the whole dispatch counts once against the flow bound
+  however many reads it made (Section 5.6).
 - Response drift: a forge response missing a field a capability depends on yields an undetermined
   answer and the refusing result, distinguishable from the response that legitimately carries no
   pull request — so a renamed field does not let `create_or_update_pr` open a second pull request,
@@ -3494,7 +3575,9 @@ A conforming engine SHOULD include tests covering:
   on is unbounded and the invocation exits whatever the far side does.
 - The `await_checks` operation and its `checks_state` capability, bounded entirely by
   consumer-supplied parameters, counting once against the flow bound, and reading conditionally
-  where the backend supports it — with check state readable without dispatching a `merge`.
+  where the backend supports it — with check state readable without dispatching a `merge`; only
+  `await_bound_ms` and `await_max_reads` authorize a second read, and an invocation supplying a
+  parameter that can only end a wait without one of them is refused with `await_bound_missing`.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
   format, every commit the engine writes attributed to the supplied commit identity, a scan reached
   through a policy edge at a lifecycle position rather than through a key of its own, and a

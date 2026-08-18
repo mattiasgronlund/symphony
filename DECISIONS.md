@@ -4910,3 +4910,68 @@ claims a parallel obligation Section 9.8 does not carry, seven registry groups c
 applied to `SPEC.md` (Sections 5, 9.4, 9.7, 17, 18.1.2, 19), `VCSX-SPEC.md` (Sections 7.3, 13.3),
 `VCSX-CONTRACT.md` (Section 8), both Conformance Statement templates, `conformance/vocabulary.json`,
 `conformance/README.md`, and `scripts/validate_spec_consistency.py`.
+
+## 0133 — A token that was the whole class, and a bound that was the only bound
+
+**State:** Accepted
+**Folder:** [decisions/0133-await-class-and-authorization/](decisions/0133-await-class-and-authorization/)
+
+Issues #81 and #82, the whole open queue, both against `await_checks` and both the same defect twice:
+an enumeration that was correct when it had one member, and a sentence reasoning over it that was not
+revisited when a second member arrived. **#82** is document against document. Section 7.2 ends an
+awaiting `land` on any await result "not `ok`"; Section 13.1 requires that same `land` to **merge**
+when the await answered `no_checks`; Section 4.3 says of the pair that both are class `done` and
+"both continue the flow"; `VCSX-CONTRACT.md` says the composition "introduces no sequencing of its
+own". Of four artifacts carrying the behaviour, exactly one drifted — decision 0125 minted the second
+`done` reason and never revisited the one sentence it had just falsified. The cost inverts 0125's own
+argument: that decision split `no_checks` off `ok` so a merge gate that stops existing is *visible*,
+and Section 7.2 unrepaired makes the same change *breaking* — the day branch protection loses its
+last required check is the day every awaiting `land` parks. The repair states Section 7.2 over the
+**class**, as the disposition Section 5.4 already gives every operation result, which also makes the
+paragraph's own "introduces no sequencing rule of its own" claim true where a token-specific stop had
+made it false. A separate policy-override clause was **declined**: Section 5.4's wording is already
+conditional — "for `done` **with no edge**, continue" — so a repository binding
+`await_checks:no_checks` still gets the stop 0125 promised, and restating it would state one rule
+twice. Section 13.1's `land --await` sentence is left **verbatim**, being correct as written and the
+observable assertion a test checks rather than a restatement of the rule it tests. Section 12.3's
+`land` pseudocode gains the await branch it never had, in Section 12.2's existing idiom. **#81** is a
+silence with a hang behind it: Section 8.1 says which await parameters **end** a wait and never says
+which one authorizes a second read, and read as an authorization `await_budget_floor` alone is a loop
+with no terminator against a forge publishing no budget — Forgejo publishes none, so it is the
+ordinary case against one of the two backends the reporter carries, and two conforming engines
+diverge into a hang and a single read from one sentence. Only `await_bound_ms` and `await_max_reads`
+authorize a loop; `await_interval_ms` paces reads a bound already authorized and `await_budget_floor`
+can only end one early; an invocation naming either of the latter and neither of the former is
+**refused** before the policy runs as `await_bound_missing`, a new precondition reason. The silent
+single read — the reporter's own behaviour and the minimal answer — loses because an invocation
+naming a floor is asking for a bounded wait, and answering with one read that looks like a wait that
+ran answers a question nobody asked; the accepted cost is that "read once, but stop if the bucket is
+low" now needs `await_max_reads = 1` beside the floor. A bound and a floor reached on the same read
+report **`budget_floor`**, the order falling out of Section 8.1's own "the snapshot **each read**
+observes": the floor judges the read just made, the allowance decides whether to read again. A floor
+the observed snapshot cannot answer — no snapshot, or no bucket of that name — **fires**, ending the
+wait with `budget_floor`, which is the **opposite** of what #81 proposed and of what was recommended:
+an engine that cannot establish there is room does not keep spending, and the behaviour stops
+depending on which forge is underneath. The cost is stated rather than argued away — against Forgejo
+every floor-carrying invocation reads once and Symphony parks on that reason — and is bounded by the
+floor being OPTIONAL with `vcs.await_budget_floor` defaulting unset, so a deployment opts in. The
+declined reading, that an unanswerable comparison is no comparison rather than a failed one, is
+recorded in its own terms with the trigger that reopens it. Section 4.1's five terminal conditions are
+re-framed to the invocation's **read allowance** ending, an invocation authorizing no loop having an
+allowance of one read — which is what makes the enumeration true of a no-parameter invocation whose
+checks are pending, a case that previously matched none of the five. Records a finding the repair
+turned up: Section 8.6's `provision` sentence "What remains is…" was **already short by two**, omitting
+`base_branch_not_permitted` and `resume_unusable`, both judged wherever their argument is supplied and
+the former asserted so in the test matrix — adding `await_bound_missing` silently would have been the
+third omission in a list already missing two, so the sentence is repaired. The fifth instance of
+0132's enumeration-drift class, and the second found inside the decision repairing one;
+`validate_spec_consistency.py` could not have caught it, comparing registries against prose where this
+is prose against prose, so **check 5** is added for the await enumeration and the general case is
+recorded as still open. Also recorded and not repaired: `await_max_reads` has no stated floor, so `0`
+is a bound that authorizes a loop and permits no read. Reconsider on a fifth await parameter (0112's
+own trigger), a forge that publishes a budget only sometimes, a consumer for which the two-parameter
+spelling is a burden rather than a nuisance, or a budget snapshot that distinguishes a forge with no
+budget interface from one reporting an empty budget. Depends on 0112 and 0125 as support; relates to
+0132 and 0002. Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3, 7.2, 8.1, 8.6, 12.3, 13.1,
+13.2), `VCSX-CONTRACT.md` (Section 6), `conformance/vcsx/vocabulary.json`, and
+`scripts/validate_spec_consistency.py`.
