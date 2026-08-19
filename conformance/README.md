@@ -369,6 +369,20 @@ guessed-at vector or entry:
   comparison in the document cites it. Three vectors pin it: `İ` separates all three readings on any
   host, `ẞ` → `ß` separates lowercasing from case folding, and a decomposed input pins the
   no-normalization-form rule.
+- **`SPEC.md` Section 12.2 made a map iterable and fixed no iteration order — resolved (decision
+  0135).** The rendering rules required nested maps to be preserved "so templates can iterate", and
+  no section said what order iterating one yields. `labels` and `blocked_by` have an order because
+  they are lists; `metadata` is a map and the issue object is another. Section 5.4's
+  "Liquid-compatible semantics are sufficient" does not settle it — the reference Liquid iterates a
+  hash in insertion order, which for a payload-decoded map is a property of the decoder, and
+  `liquid` 0.26.11 iterates a hash map whose order is a randomizing hasher's, measured at three
+  orders across six runs of one binary. So `render_prompt`, whose `iterate-labels` vector already
+  established iteration as in-contract, had an unspecified output for an input the same corpus says
+  must work. Section 12.2 now fixes the order (ascending by key, keys compared as strings by
+  Unicode code point), the entry shape (a two-element key/value pair, key first) and the rule's
+  reach. Three vectors pin it: `iterate-metadata-map`, `iterate-issue-object`, and
+  `iterate-metadata-map-non-ascii`, whose keys separate code-point order from a locale collation —
+  measured, `en_US.UTF-8` and `sv_SE.UTF-8` both collate them in the other order.
 - **Section 17.3 requires four RECOMMENDED tracker categories by name (open).** Section 11.4
   declares its eleven error categories RECOMMENDED, but Section 17.3's `Core Conformance` checks
   name `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict` and
