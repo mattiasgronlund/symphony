@@ -137,9 +137,15 @@ symlinks. In Claude Code invoke them as `/spec-roadmap`, `/phase-workflow`, `/ph
 `/phase-behavior-contract`, `/phase-verification`, `/phase-implementer`, and `/phase-closeout`; Codex
 invokes the same skills as `$spec-roadmap`, and so on. `USAGE.md` documents the commands.
 
-`decision-record` and `spec-guarantee` live in the same tree but are **not** part of this dormant
-bundle: they govern the work happening now and are neither described by `USAGE.md` nor checked by
-`scripts/validate_workflow_bundle.py`.
+`decision-record`, `spec-guarantee` and `plan-review` live in the same tree but are **not** part of
+this dormant bundle: they govern the work happening now and are neither described by `USAGE.md` nor
+checked by `scripts/validate_workflow_bundle.py`.
+
+Use `plan-review` on a session plan once it is written and before its first edit — it checks the
+plan's claims about the corpus, mechanically for the quoted spans (`python3
+scripts/check_plan_anchors.py <plan.md> --rev <revision>`) and by reading for the conventions above
+and for whether each consequence the plan keeps survives the premise it removes. Decision 0134's
+plan carried four such claims that did not hold, one of which reached `VCSX-SPEC.md`.
 
 ### Source of truth (once planning begins)
 
