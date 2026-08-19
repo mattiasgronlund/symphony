@@ -5048,3 +5048,57 @@ rather than a refusal, or on a third group wanting check 6. Relates to 0128, 013
 13.2, 13.3, 14), `VCSX-CONTRACT.md` (Sections 6, 7), `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`,
 `conformance/vcsx/vocabulary.json`, `conformance/vcsx/README.md`, and
 `scripts/validate_spec_consistency.py`.
+
+## 0135 — The map a template can iterate, and the order it never had
+
+**State:** Accepted
+**Folder:** [decisions/0135-map-iteration-order/](decisions/0135-map-iteration-order/)
+
+Issue #93, the only one open, filed by the `symphony-rs` build against Section 12.2: the rendering
+rules require the renderer to "Preserve nested arrays/maps (labels, blockers, metadata) so templates
+can iterate", and nothing in the document fixes the order iterating one yields. `labels` and
+`blocked_by` have an order because they are lists; `metadata` is a map and the `issue` object is
+another, and a template may name either whole. Section 5.4 makes the rendered body the agent's whole
+instruction for the run, so **one template and one issue produce two different instruction texts on
+two conforming implementations** — and worse than that, on neither one reproducibly: Ruby Liquid
+iterates a `Hash` in insertion order, which for a payload-decoded map is a property of the JSON
+parser, and `liquid` 0.26.11 iterates a `HashMap` whose order is the randomizing hasher's, measured
+by the reporter as three orders across six runs of one binary. Both are "Liquid-compatible", which
+is why Section 5.4's sufficiency clause could not settle it, and `render_prompt` is a corpus
+function whose `iterate-labels` vector already established iteration as in-contract — so the
+observable output of a checked function was unspecified for an input the same corpus says must work.
+**The order is fixed ascending by key, compared by Unicode code point**, with a `Note:` recording
+that the result is independent of the host's locale, applies no Unicode normalization form, and is
+reproduced by comparing the keys' UTF-8 bytes — the clause that makes the rule implementable rather
+than aspirational, since an implementation whose engine hands it an unordered map can sort on the
+way out. Section 12.2 also fixes **what one iteration yields** — a two-element key/value entry, key
+first — because an order is only observable through a shape, and without one a vector can assert
+that two runs agree but not what they render. **And it fixes the rule's reach**, which is the half
+#93 did not ask for and the half that decides whether the rule is true as written: the maps a
+template names by path, the `issue` object and `metadata`, and not a blocker ref's own fields. That
+boundary is the engine's rather than a preference — verified in `liquid` 0.26.11 rather than taken
+from the report, `StackFrame::get` materializes a variable through `ValueView::to_value()` before a
+`{% for %}` sees it, so an implementation buys the order by writing `to_value()` by hand, and a
+value that returns an ordered pair array is no longer an object, which `{{ b.identifier }}` after
+`{% for b in issue.blocked_by %}` needs it to be. A rule over *every* map an implementation exposes
+would therefore be unimplementable on a Liquid-compatible engine; the rule as written is
+implementable on all of them, because path resolution walks `ObjectView::get` and materializes only
+what the path ends at. One cost is recorded rather than discovered downstream: the same
+materialization makes `{% assign i = issue %}` followed by a field read fail, on any implementation
+buying the order that way. Two options are steelmanned and lose — **order alone**, exactly as #93
+asked, which states a rule wider than any implementation can meet and leaves the next implementer to
+rediscover the conflict; and **removing map iteration from the contract**, which owes no order at
+all but takes away the only way a template can render adapter-owned `metadata` whose keys it cannot
+name in advance, the case that field exists for. The fourth answer, `Implementation-defined` plus a
+documented choice, is recorded as rejected: it documents the divergence rather than removing it
+(0134's finding) and does not even buy reproducibility within one implementation. Three vectors pin
+it — `iterate-metadata-map` (keys `zeta`, `mu`, `alpha` in, ascending out), `iterate-issue-object`
+for the container, and `iterate-metadata-map-non-ascii`, whose three keys separate code-point order
+from both an en_US and a Swedish collation and sort identically in NFC and NFD, so it tests the
+comparison rather than the normalization form. No token is added, renamed or removed, and no
+`Implementation-defined` or "MUST document" obligation is created, so no Conformance Statement row
+is owed. Reconsider on a Liquid-compatible engine that can order an object without destroying it, on
+a repository that genuinely needs to iterate a blocker's fields, or on a tracker adapter whose
+metadata keys are not stable strings. Relates to 0048, 0102, 0105 and 0128. Accepted and applied to
+`SPEC.md` (Sections 12.2, 17.1, 18.1.3), `conformance/vectors/prompt-rendering.json` and
+`conformance/README.md`.

@@ -2901,6 +2901,19 @@ Inputs to prompt rendering:
 - Render with strict filter checking.
 - Convert issue object keys to strings for template compatibility.
 - Preserve nested arrays/maps (labels, blockers, metadata) so templates can iterate.
+- Yield a map's entries in ascending order of key, comparing keys as strings by Unicode code point.
+  Each entry is a two-element key/value pair with the key first. Yield a list's elements in list
+  order.
+
+Note: comparing by code point makes the order independent of the host's locale, and applies no
+Unicode normalization form. Comparing the keys' UTF-8 bytes yields the same order, so an
+implementation whose template engine hands it an unordered map can sort on the way out rather than
+carry an ordered container.
+
+The maps this order governs are the ones a template names by path: the `issue` object, whose members
+are the fields Section 4.1.1 defines, and `metadata`. A blocker ref is reached by iterating
+`blocked_by` and its fields are read by name, so iterating a blocker ref's own fields is outside
+this contract and no order is fixed for it.
 
 ### 12.3 Retry/Continuation Semantics
 
@@ -4220,6 +4233,9 @@ except where a bullet states otherwise.
   `template_render_error` even where the template engine resolves filter names while parsing, and
   `template_parse_error` is reported only for a body that is not well-formed template syntax
   (`Daemon Conformance`)
+- A map iterates in ascending key order by Unicode code point (Section 12.2), each entry a
+  two-element key/value pair with the key first, and a list iterates in list order
+  (`Daemon Conformance`)
 
 ### 17.2 Workspace Manager and Safety
 
@@ -4675,7 +4691,8 @@ Required of the `daemon` topology only.
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
   polling; workspace/concurrency keyed by (repository, issue)
 - Strict prompt rendering with `issue` and `attempt` variables, failing `template_render_error`
-  whatever stage the engine resolves the unknown name at (Section 5.5)
+  whatever stage the engine resolves the unknown name at (Section 5.5), and map iteration in
+  ascending key order with a two-element key/value entry (Section 12.2)
 - Exponential retry queue with continuation retries after normal exit
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)
 - Reconciliation that stops runs on terminal/non-active tracker states

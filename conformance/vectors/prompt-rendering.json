@@ -2,7 +2,7 @@
   "function": "render_prompt",
   "profile": "Daemon Conformance",
   "spec_refs": ["Section 5.4", "Section 5.5", "Section 12.2"],
-  "description": "Render the WORKFLOW.md prompt template against the normalized issue and attempt. Templates use Liquid-compatible syntax (Section 5.4); the variable set (issue, attempt) and the strict-failure semantics are the normative contract, and an engine that is not Liquid-compatible maps these to its equivalent. Strict mode: an unknown variable and an unknown filter MUST fail rendering, and Section 5.5 makes the error class a REQUIRED spelling, so the class asserted below is the one a conforming implementation reports. A class names the condition, not the stage that detected it (Section 5.5): an engine that resolves filter names while parsing still reports an unknown filter as template_render_error, and template_parse_error is reported only for a body that is not well-formed template syntax. Templates are single-line and use delimiters rather than inter-token whitespace so the expected output does not depend on an engine's whitespace-control behavior.",
+  "description": "Render the WORKFLOW.md prompt template against the normalized issue and attempt. Templates use Liquid-compatible syntax (Section 5.4); the variable set (issue, attempt) and the strict-failure semantics are the normative contract, and an engine that is not Liquid-compatible maps these to its equivalent. Strict mode: an unknown variable and an unknown filter MUST fail rendering, and Section 5.5 makes the error class a REQUIRED spelling, so the class asserted below is the one a conforming implementation reports. A class names the condition, not the stage that detected it (Section 5.5): an engine that resolves filter names while parsing still reports an unknown filter as template_render_error, and template_parse_error is reported only for a body that is not well-formed template syntax. Templates are single-line and use delimiters rather than inter-token whitespace so the expected output does not depend on an engine's whitespace-control behavior. Section 12.2 also fixes what iterating a nested structure yields: a list yields its elements in list order, and a map yields its entries in ascending order of key, keys compared as strings by Unicode code point, with each entry a two-element key/value pair, key first. That order governs the maps a template names by path (the issue object and metadata) and not a blocker ref's own fields, which Section 12.2 reads by name rather than by iteration.",
   "given": "{ template: string, issue: object, attempt: integer | null }",
   "expect": "{ rendered: string } on success, or { error: string } naming the error class on failure",
   "vectors": [
@@ -35,6 +35,36 @@
         "attempt": null
       },
       "expect": { "rendered": "[bug][urgent]" }
+    },
+    {
+      "id": "iterate-metadata-map",
+      "description": "A nested map (Section 12.2) iterates in ascending key order, and an entry is a two-element key/value pair with the key first. The keys are supplied in an order that is not ascending; there are three rather than two because two agree with any order one time in two. The expectation does not depend on the supplied order, so a harness whose JSON decoder reorders object keys still checks the rule.",
+      "given": {
+        "template": "{% for kv in issue.metadata %}[{{ kv[0] }}={{ kv[1] }}]{% endfor %}",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [], "metadata": { "zeta": "z", "mu": "m", "alpha": "a" } },
+        "attempt": null
+      },
+      "expect": { "rendered": "[alpha=a][mu=m][zeta=z]" }
+    },
+    {
+      "id": "iterate-issue-object",
+      "description": "The issue object is itself a map a template may name whole (Section 12.2), so it iterates in ascending key order too. The expected keys are the fields Section 4.1.1 defines, and the vector rests on those being the normalized record's members: an implementation exposing a template field beyond Section 4.1.1 renders an entry this vector does not expect.",
+      "given": {
+        "template": "{% for kv in issue %}[{{ kv[0] }}]{% endfor %}",
+        "issue": { "id": "issue-1001", "identifier": "ENG-42", "title": "Fix the login bug", "description": "The login form rejects valid credentials.", "priority": 2, "state": "In Progress", "branch_name": null, "url": "https://tracker.example/ENG-42", "labels": ["bug"], "blocked_by": [], "created_at": "2026-01-02T03:04:05Z", "updated_at": "2026-01-02T03:04:05Z", "metadata": {} },
+        "attempt": null
+      },
+      "expect": { "rendered": "[blocked_by][branch_name][created_at][description][id][identifier][labels][metadata][priority][state][title][updated_at][url]" }
+    },
+    {
+      "id": "iterate-metadata-map-non-ascii",
+      "description": "Ascending is by Unicode code point (Section 12.2), which a locale collation is not. The keys are apple, U+00E5r and U+00E4rlig: by code point U+00E4 precedes U+00E5, so the order is apple, U+00E4rlig, U+00E5r, where an en_US collation gives apple, U+00E5r, U+00E4rlig and a Swedish tailoring gives the same as en_US. The three sort identically precomposed and decomposed, so the vector separates the comparison rather than the normalization form, of which Section 12.2 applies none.",
+      "given": {
+        "template": "{% for kv in issue.metadata %}[{{ kv[0] }}]{% endfor %}",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [], "metadata": { "apple": "a", "\u00e5r": "y", "\u00e4rlig": "h" } },
+        "attempt": null
+      },
+      "expect": { "rendered": "[apple][\u00e4rlig][\u00e5r]" }
     },
     {
       "id": "substitute-attempt-integer",
