@@ -451,3 +451,19 @@ guessed-at vector or entry:
   already taken the entry the fire must not touch. `vectors/retry-fire-disposition.json` pins all
   three cases, and `entry_retained` on `fire-generation-stale` is what a pop-then-test implementation
   fails. Issue #95.
+- **Core behavior held state the state model had no room for — resolved (decision 0137).** Section
+  14.2 requires that where an engine policy could not be used at all, retry is "backed off per
+  repository rather than attempted every tick", and lets persistent failures of both
+  `repository_provisioning_failures` and `engine_invocation_failures` be parked. Section 4.1.8's
+  eight fields held nothing keyed by repository, and Section 14.3 required a recovery class of every
+  Section 4.1.8 field "and any state introduced by an OPTIONAL extension" — exhaustive over the
+  wrong set, admitting extensions and leaving Core's own additions out. The same construct was
+  therefore blessed on the extension path (`node_provisioning_failures` carries an identical park
+  MAY) and homeless on the Core path. What broke was the Conformance Statement rather than the
+  daemon: a Statement generated from the template was complete against its own table and silently
+  missing the restart behaviour of the one piece of state an operator most needs it for. Section
+  4.1.8 gains `repository_backoff` (`Ephemeral`), Section 14.3 admits Core-introduced state on the
+  same terms as an extension's, and Sections 19, 18.1.1 and 18.1.3 carry the widened obligation —
+  three further sites of the extension-only framing, two of which the decision's first plan did not
+  name and `scripts/check_plan_anchors.py` found. No vector is owed: a recovery class is an
+  assignment, not a function of inputs. Issue #96.

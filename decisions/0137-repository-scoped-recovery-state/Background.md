@@ -167,3 +167,13 @@ Statement reads "each Orchestrator Runtime State field's recovery class", narrow
 even before this decision widens it. So the extension-only framing was written in three places and
 the plan's first draft named one. That the second run found the third site is the argument for
 re-running the check after repairing it, rather than treating one clean pass as the gate.
+
+**Citing an obligation created a phantom one.** The first draft of the Section 4.1.8 field
+description and the Section 14.3 note both referred to Section 14.2's park choice using the literal
+`Implementation-defined` token. `scripts/validate_spec_consistency.py` counts obligations per
+section, so the citation registered as a *new* obligation owed by Section 4.1.8 and by Section 14.3
+respectively — one error and one warning against a baseline of none. The obligation is Section
+14.2's and already has its template rows; the fix was to cite the choice in prose rather than by the
+token. Worth recording because the instinct that produced it is the right one — name the obligation
+you are pointing at — and the tool is right too: a section that spells the token owns a row. The
+resolution is that a cross-reference names the section, not the token.

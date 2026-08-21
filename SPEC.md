@@ -394,6 +394,12 @@ Fields (with recovery class):
 - `agent_totals` (aggregate tokens + runtime seconds) — `Ephemeral` for observability (resets to
   zero); becomes `Durable` when a budgeting extension enforces on it, and then MUST be
   Symphony-attributed rather than account-wide.
+- `repository_backoff` (map `repository -> { due_at_ms, attempt }`; the per-repository backoff
+  Section 14.2 requires where an engine policy could not be used at all) — `Ephemeral` (a restarted
+  orchestrator retries every backed-off repository on its next tick and backs off from the first
+  attempt again). It carries no park state: whether persistent failures are parked at all is a
+  choice Section 14.2 leaves to the implementation, so a park record is state Core behavior MAY
+  introduce rather than state this enumeration mandates a shape for, and Section 14.3 governs it.
 - `provider_rate_limits` (latest rate-limit snapshot from agent events) — `Cached external signal`;
   an absent value denotes `UNKNOWN` (distinct from any reading; in particular not `0`), and the
   policy on `UNKNOWN` is defined by the consuming provider-quota extension.
@@ -3557,9 +3563,17 @@ workers it already has.
 
 ### 14.3 State Recovery Classes
 
-Every field of the Orchestrator Runtime State (Section 4.1.8) — and any state introduced by an
-OPTIONAL extension — MUST be assigned exactly one recovery class, and the assignment MUST be
-documented in the implementation's Conformance Statement (Section 19). The class governs what happens
+Every field of the Orchestrator Runtime State (Section 4.1.8) — any state introduced by an OPTIONAL
+extension, and any state Core behavior requires an implementation to hold beyond the fields Section
+4.1.8 enumerates — MUST be assigned exactly one recovery class, and the assignment MUST be
+documented in the implementation's Conformance Statement (Section 19).
+
+Note: the enumeration in Section 4.1.8 is not closed. Core behavior defined elsewhere in this
+document MAY require state it does not list — a park record for either park-versus-retry choice
+Section 14.2 leaves open, and a counter satisfying the generation non-reuse requirement in Section
+8.4, are the cases this document creates today. Such state is governed by
+this section on the same terms as a listed field: exactly one class, documented, and where the class
+is `Ephemeral`, its reset consequence documented with it. The class governs what happens
 to the value across a process restart and when a current value is unavailable.
 
 - `Reconstructable` (`R`)
@@ -4561,6 +4575,9 @@ These checks are `Daemon Conformance`.
 - If a snapshot API is implemented, it returns running rows, retry rows, token totals, and rate
   limits
 - If a snapshot API is implemented, timeout/unavailable cases are surfaced
+- A per-repository backoff is keyed by the repository: a repository backed off after an unusable
+  policy does not suppress dispatch for any other repository, and its own backoff survives across
+  ticks rather than being re-evaluated from scratch each one
 - Every Orchestrator Runtime State field has a documented recovery class (`Reconstructable` /
   `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3)
 - If a `Durable` or `Cached external signal` extension is implemented, restart restores its state
@@ -4756,7 +4773,8 @@ Required of every conforming implementation, whichever profiles its topology cla
 - Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)
 - A published Conformance Statement (Section 19) recording the claimed profiles and topology, the
   OPTIONAL extensions shipped, the engine and agent-runner floors, every `Implementation-defined`
-  resolution, each Orchestrator Runtime State field's recovery class, and the trust and safety posture
+  resolution, the recovery class of each Orchestrator Runtime State field and of any state held
+  beyond them (Section 14.3), and the trust and safety posture
 
 #### 18.1.2 Broker Core Conformance
 
@@ -4843,7 +4861,8 @@ Required of the `daemon` topology only.
   runtime accounting for the runs it terminates so a worker exit it caused queues no retry
   (Section 8.5)
 - Every Orchestrator Runtime State field is assigned and documented as a recovery class
-  (`Reconstructable` / `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3)
+  (`Reconstructable` / `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3), as is any
+  state Core behavior requires beyond the fields Section 4.1.8 enumerates
 - Workspace cleanup for terminal issues (startup sweep + active transition)
 
 #### 18.1.4 VCS Engine
@@ -4993,9 +5012,10 @@ The Statement MUST record:
   how it is established that no route beyond the two this specification closes can write the policy
   branch, and how a host-side hook's unit is resolved (Section 15.4); and
   the host-side object-store path (Section 16.5).
-- The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8) and to any
-  state an OPTIONAL extension introduces, and the reset consequence of each field classified
-  `Ephemeral` (Section 14.3).
+- The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8), to any state
+  an OPTIONAL extension introduces, and to any state Core behavior requires beyond the fields
+  Section 4.1.8 enumerates, and the reset consequence of each field classified `Ephemeral`
+  (Section 14.3).
 - The trust and safety posture (Sections 1, 9.6, 15).
 
 The Statement's format is `Implementation-defined`. `CONFORMANCE-STATEMENT-TEMPLATE.md` in the

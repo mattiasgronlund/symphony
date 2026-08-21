@@ -121,9 +121,13 @@ obligation not listed here rather than omitting its resolution.
 
 ## 5. State Recovery-Class Assignments (Section 14.3)
 
-Section 14.3 requires every Orchestrator Runtime State field (Section 4.1.8) — and any state a
-shipped extension introduces — to be assigned exactly one recovery class and the assignment
-documented. Classes: `Reconstructable`, `Ephemeral`, `Cached external signal`, `Durable`. The
+Section 14.3 requires every Orchestrator Runtime State field (Section 4.1.8) — any state a shipped
+extension introduces, and any state Core behavior requires beyond the fields Section 4.1.8
+enumerates — to be assigned exactly one recovery class and the assignment documented. The
+enumeration is not closed: a park record for either park-versus-retry choice Section 14.2 leaves
+open, and a counter satisfying the generation non-reuse requirement (Section 8.4),
+are Core state this specification creates without listing, and each belongs in the table below if
+the implementation holds it. Classes: `Reconstructable`, `Ephemeral`, `Cached external signal`, `Durable`. The
 "Spec default" column is the assignment `SPEC.md` states; fill "As implemented" and note any
 divergence in Section 7.
 
@@ -140,8 +144,9 @@ column for every field whose implemented class is `Ephemeral`; leave it `n/a` fo
 | `retry_attempts` | `Ephemeral` | `<...>` | `<...>` |
 | `completed` | `Ephemeral` | `<...>` | `<...>` |
 | `agent_totals` | `Ephemeral` (`Durable` under a budgeting extension) | `<...>` | `<...>` |
+| `repository_backoff` | `Ephemeral` | `<...>` | `<...>` |
 | `provider_rate_limits` | `Cached external signal` | `<...>` | `<n/a>` |
-| `<extension state field>` | `<n/a>` | `<class>` | `<... / n/a>` |
+| `<additional state field — Core or extension>` | `<n/a>` | `<class>` | `<... / n/a>` |
 
 ## 6. Trust and Safety Posture
 
