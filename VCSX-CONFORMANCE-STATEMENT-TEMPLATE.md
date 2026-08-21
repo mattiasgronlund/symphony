@@ -128,7 +128,7 @@ the invocation.
 |--------|-----------|
 | `<reason>` | `<...>` |
 
-## 5. `need` Vocabulary Emitted
+## 5. `need` Vocabulary Emitted (Section 8.4)
 
 Section 8.4 makes the `need` vocabulary part of the public contract, documented and stable within a
 major version. List every `need` this engine can emit, including the registry-named ones it uses.
