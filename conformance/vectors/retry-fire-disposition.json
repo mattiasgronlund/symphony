@@ -1,0 +1,37 @@
+{
+  "function": "retry_fire_disposition",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 8.4", "Section 16.7"],
+  "description": "Decide what an arriving retry timer fire does. Creating a retry entry cancels any timer already armed for the issue, but cancellation is not synchronous, so a fire from the cancelled arming can still arrive. A fire dispatches only when its generation equals the current retry entry's; otherwise it is discarded and the entry and its armed timer are left in place. Testing only whether an entry is present is not sufficient, because a replaced entry is present.",
+  "given": "{ entry: { generation: integer, attempt: integer } | null, fire_generation: integer }",
+  "expect": "{ disposition: 'dispatch' | 'discard', entry_retained: boolean }",
+  "vectors": [
+    {
+      "id": "fire-generation-matches",
+      "description": "The live arming's fire. The entry is consumed and the issue is dispatched at the entry's attempt.",
+      "given": {
+        "entry": { "generation": 7, "attempt": 3 },
+        "fire_generation": 7
+      },
+      "expect": { "disposition": "dispatch", "entry_retained": false }
+    },
+    {
+      "id": "fire-generation-stale",
+      "description": "A cancelled timer fired anyway and its entry has since been replaced. The fire is discarded. entry_retained is the half a pop-then-test implementation fails: it removes the entry before it compares, so the live arming's backoff is consumed by a fire that did not belong to it.",
+      "given": {
+        "entry": { "generation": 8, "attempt": 4 },
+        "fire_generation": 7
+      },
+      "expect": { "disposition": "discard", "entry_retained": true }
+    },
+    {
+      "id": "fire-with-no-entry",
+      "description": "A fire for an issue that has no retry entry. Discarded. Unreachable where timer fires are delivered in the order they were enqueued, and retained because SPEC.md states no delivery-ordering property for orchestrator messages, which is the same premise the generation non-reuse requirement rests on.",
+      "given": {
+        "entry": null,
+        "fire_generation": 7
+      },
+      "expect": { "disposition": "discard", "entry_retained": false }
+    }
+  ]
+}

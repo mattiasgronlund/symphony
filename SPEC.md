@@ -366,6 +366,8 @@ Fields:
 - `issue_id`
 - `identifier` (best-effort human ID for status surfaces/logs)
 - `attempt` (integer, 1-based for retry queue)
+- `generation` (integer; identifies the arming this entry owns, so a fire from an arming that was
+  cancelled is distinguishable from a fire from the live one)
 - `due_at_ms` (monotonic clock timestamp)
 - `timer_handle` (runtime-specific timer reference)
 - `error` (string or null)
@@ -1224,7 +1226,26 @@ affect these limits; a deployment that wants to bound co-location does so with t
 Retry entry creation:
 
 - Cancel any existing retry timer for the same issue.
-- Store `attempt`, `identifier`, `error`, `due_at_ms`, and new timer handle.
+- Assign a `generation` for the issue and arm the timer with it. The fire MUST carry the same value
+  back, so the orchestrator can tell which arming it came from.
+- Store `attempt`, `identifier`, `error`, `due_at_ms`, `generation`, and new timer handle.
+
+A generation value MUST NOT be reused for an issue for as long as the orchestrator process lives.
+This holds across the removal of a retry entry: a value derived only from the entry being replaced
+restarts once retry handling has removed that entry, and does not satisfy the requirement.
+
+Cancelling a timer is not synchronous with the timer it cancels. A fire already in flight when its
+entry is replaced still arrives, and it arrives for an issue that has a retry entry — the new one.
+An implementation MUST discard a fire whose `generation` does not equal that of the issue's current
+retry entry, leaving both that entry and its armed timer unchanged (Section 16.7). Testing only
+whether an entry is present does not satisfy this: the entry that a discarded fire must not consume
+is present by construction.
+
+Design note: the fire is matched on identity rather than on whether it is due. Continuation retries
+use a fixed `1000` ms delay, so two continuation entries created in the same millisecond carry the
+same `due_at_ms`, and comparing the current time against it cannot separate a stale fire from a live
+one. Matching on `generation` separates them without reading a clock, which is also what lets the
+behavior be checked by a vector (Section 17.4).
 
 Backoff formula:
 
@@ -4167,12 +4188,18 @@ function schedule_retry(state, issue_id, attempt, opts):
   else:
     delay = min(10000 * 2^(attempt - 1), config.agent.max_retry_backoff_ms)
 
+  # Section 8.4 requires this value never to repeat for the issue while the process lives, which
+  # is why it is not derived from the entry being replaced: retry handling removes that entry, and
+  # a counter that restarts with it would repeat.
+  generation = next_retry_generation(state, issue_id)
+
   state.retry_attempts[issue_id] = {
     issue_id: issue_id,
     identifier: opts.identifier,
     attempt: attempt,
+    generation: generation,
     due_at_ms: now_utc() + delay,
-    timer_handle: arm_timer(delay, on_retry_timer, issue_id),
+    timer_handle: arm_timer(delay, on_retry_timer, issue_id, generation),
     error: opts.error
   }
 
@@ -4208,10 +4235,18 @@ on_worker_exit(issue_id, reason, state):
 ```
 
 ```text
-on_retry_timer(issue_id, state):
-  retry_entry = state.retry_attempts.pop(issue_id)
+on_retry_timer(issue_id, generation, state):
+  retry_entry = state.retry_attempts.get(issue_id)
   if missing:
     return state
+
+  # A cancelled timer that fired anyway (Section 8.4). The live entry and its armed timer stand
+  # untouched: removing the entry here would consume an arming this fire does not belong to, and
+  # the backoff it was holding would be lost.
+  if generation != retry_entry.generation:
+    return state
+
+  state.retry_attempts.remove(issue_id)
 
   candidates = tracker.fetch_candidate_issues()
   if fetch failed:
@@ -4494,6 +4529,9 @@ These checks are `Daemon Conformance`.
 - Reconciliation with no running issues is a no-op
 - Normal worker exit schedules a short continuation retry (attempt 1)
 - Abnormal worker exit increments retries with 10s-based exponential backoff
+- A retry timer fire whose `generation` does not match the current retry entry's is discarded
+  without dispatching, and leaves that entry and its armed timer in place; a fire arriving when the
+  issue has no retry entry is likewise a no-op
 - A `merge:checks_pending` dispatches the engine's `await_checks` with the configured bounds rather
   than a Symphony-side poll loop; `await_checks:still_pending` and `await_checks:budget_floor` park
   the issue rather than entering the Section 8.4 backoff or failing the run; `await_checks:no_checks`
@@ -4797,7 +4835,9 @@ Required of the `daemon` topology only.
 - Strict prompt rendering with `issue` and `attempt` variables, failing `template_render_error`
   whatever stage the engine resolves the unknown name at (Section 5.5), and map iteration in
   ascending key order with a two-element key/value entry (Section 12.2)
-- Exponential retry queue with continuation retries after normal exit
+- Exponential retry queue with continuation retries after normal exit; a retry timer fire is
+  matched to its arming by `generation` and discarded when it does not match, so a cancelled timer
+  that fired anyway cannot collapse a backoff (Section 8.4)
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)
 - Reconciliation that stops runs on terminal/non-active tracker states, owning the removal and
   runtime accounting for the runs it terminates so a worker exit it caused queues no retry

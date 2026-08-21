@@ -268,6 +268,7 @@ Slice 1 — pure derivations (decision 0046):
 | `vectors/state-normalization.json` | `normalize_state` | Core | Section 4.2 |
 | `vectors/config-defaults.json` | `resolve_config_defaults` | Core | Sections 6.4, 17.1 |
 | `vectors/retry-backoff.json` | `retry_backoff_delay_ms` | Daemon | Section 8.4 |
+| `vectors/retry-fire-disposition.json` | `retry_fire_disposition` | Daemon | Sections 8.4, 16.7 |
 | `vectors/available-slots.json` | `available_slots` | Daemon | Section 8.3 |
 | `vectors/per-state-concurrency.json` | `per_state_concurrency_limit` | Daemon | Sections 8.3, 4.2 |
 | `vectors/dispatch-ordering.json` | `sort_for_dispatch` | Daemon | Sections 8.2, 16.2 |
@@ -437,3 +438,16 @@ guessed-at vector or entry:
   a no-op. No vector is owed: both repairs fix which state transition happens and in what order, not
   a value computed from inputs, and every file in `vectors/` is a one-shot pure function. Found while
   checking issue #95; reported by neither open issue.
+- **A retry timer fire could not name the arming it came from — resolved (decision 0136).** Section
+  8.4 required retry entry creation to "Cancel any existing retry timer for the same issue", which
+  makes cancel-then-replace in-contract; Section 16.7 then identified an arriving fire by `issue_id`
+  alone and guarded it with `if missing`. That guard tests presence, and a replaced entry is present
+  — so a cancelled timer that fired anyway consumed the *new* entry and dispatched at once,
+  discarding a `due_at_ms` that was holding a backoff. Reachable through a stall: Part A of Section
+  8.5 queues a retry, the terminated worker's exit queued a second (decision 0138), and the second
+  cancelled the first's timer. `RetryEntry` gains `generation`, Section 8.4 requires the fire to
+  carry it and forbids reusing a value for an issue while the process lives, and `on_retry_timer`
+  became get-compare-remove rather than pop-then-test — a comparison that fails after the pop has
+  already taken the entry the fire must not touch. `vectors/retry-fire-disposition.json` pins all
+  three cases, and `entry_retained` on `fire-generation-stale` is what a pop-then-test implementation
+  fails. Issue #95.
