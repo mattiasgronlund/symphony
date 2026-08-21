@@ -5256,3 +5256,42 @@ That is worse than the double-schedule being repaired: two retries is a wasted t
 dropped issue. `scripts/check_plan_anchors.py` reported nothing on this plan (0 findings from 4
 quoted spans); the premise-and-consequence lens caught it, and the observation that a plan written in
 pseudocode rather than prose is quietly under-checked by the mechanical lenses is recorded with it.
+
+## 0139 — An obligation answered in full, and the heading that did not say so
+
+**State:** Accepted
+**Folder:** [decisions/0139-need-vocabulary-obligation-citation/](decisions/0139-need-vocabulary-obligation-citation/)
+
+`scripts/validate_spec_consistency.py` warned for three decisions running that `VCSX-SPEC.md`
+Section 8.4 has two obligations and one row in `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`. Decisions
+0132 and 0134 both examined it and left it: 0132 diagnosed the cause exactly — the template answers
+with a whole section whose heading "carries no section citation for the validator to count" — and
+0134 carried that forward with a second reason, that the obligation is "the `need` vocabulary's own
+spec-level stability clause rather than a choice an engine makes", concluding "no detector is worth
+writing". **The added reason is half wrong, and it is the half the disposition rested on.** Section
+8.4's clause carries two obligations in one sentence: the `need` vocabulary "MUST be documented
+**and** stable within a major version". Stability is spec-level exactly as 0134 says — Section 8.5
+fixes it as major-stable and no engine chooses it. Documentation is not: it is an engine's
+obligation, and the template already reads it that way and already discharges it, its Section 5
+saying "List every `need` **this engine** can emit" and tabulating the eight registry needs plus an
+`<other>` row. So the obligation was answered twice and neither answer was countable — the
+documentation half by a section whose heading cites nothing, the stability half by the template's
+Section 1, whose prose cites Section 8.5 rather than 8.4. **The answering heading now names the
+section it answers**, which is the shape the validator's whole-subsection rule exists for and the
+shape five sibling headings in the same file already use; the validator reports 0 errors and 0
+warnings, against 0 and 1 at `211d515`. Three options lose. **Leaving it**, as 0132 and 0134 did,
+has the real case that a standing warning is a standing marker — but a checker that always prints
+one line trains a reader to skip it, and the next genuine warning arrives underneath: during
+decisions 0136–0138 two new obligation miscounts appeared and had to be told from the standing one
+by memory, which is a marker being remembered rather than read. **Exempting the section in the
+checker** is what 0134's reasoning points at and asserts something false — that no Statement owes
+anything for Section 8.4, when the `Implementation-defined` `detail` field is rowed and the needs are
+tabulated — and would suppress the first obligation with the second, exemption being per section
+rather than per sentence. **Splitting the sentence in `VCSX-SPEC.md`** is the most honest repair of
+the underlying conflation and loses on direction: it edits a normative document to satisfy a
+counting tool, where the template is the derived artifact and the right place to absorb it. One
+process finding is recorded: the first draft of the plan's step quoted five sibling headings that
+each embed a section citation, so `check_plan_anchors.py` read them as the plan's own attributions
+and returned eleven findings that were all one artifact. A plan quoting a title that contains a
+citation is unparseable to the checker and misleading to a reader; the step now describes the
+convention instead of quoting it.
