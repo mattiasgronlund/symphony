@@ -110,6 +110,7 @@
       { "token": "retry_attempts", "recovery_class": "Ephemeral" },
       { "token": "completed", "recovery_class": "Ephemeral" },
       { "token": "agent_totals", "recovery_class": "Ephemeral", "note": "Becomes `Durable` when a budgeting extension enforces on it, and is then Symphony-attributed rather than account-wide." },
+      { "token": "repository_backoff", "recovery_class": "Ephemeral", "note": "The per-repository backoff Section 14.2 requires where an engine policy could not be used at all. Carries no park state: whether persistent failures are parked is `Implementation-defined`, so a park record is Core-introduced state governed by Section 14.3 rather than a field this enumeration shapes." },
       { "token": "provider_rate_limits", "recovery_class": "Cached external signal", "note": "An absent value denotes `UNKNOWN`, distinct from any reading and in particular not `0`." }
     ]
   },

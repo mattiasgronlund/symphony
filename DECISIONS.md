@@ -5102,3 +5102,157 @@ a repository that genuinely needs to iterate a blocker's fields, or on a tracker
 metadata keys are not stable strings. Relates to 0048, 0102, 0105 and 0128. Accepted and applied to
 `SPEC.md` (Sections 12.2, 17.1, 18.1.3), `conformance/vectors/prompt-rendering.json` and
 `conformance/README.md`.
+
+## 0136 — A timer fire that could not name the arming it came from
+
+**State:** Accepted
+**Folder:** [decisions/0136-retry-fire-identity/](decisions/0136-retry-fire-identity/)
+
+Issue #95, filed by the `symphony-rs` build against phase D2 — planned rather than built, so nothing
+downstream has to be unwound to adopt an answer. Section 8.4 requires retry entry creation to
+"Cancel any existing retry timer for the same issue", which is what makes cancel-then-replace
+in-contract rather than an implementation's invention; Section 16.7 then identifies an arriving fire
+by `issue_id` alone and guards it with `if missing`. **That guard tests presence, and a replaced
+entry is present** — so it catches the fire whose entry was popped and not the fire whose entry was
+swapped. The reachable collision is a stall: Section 8.5 Part A terminates the worker and queues a
+retry, the terminated worker's own abnormal exit reaches `on_worker_exit` and queues a second, the
+second cancels the first's timer, and a fire already in flight then finds the *new* entry, pops it,
+and dispatches at once. What ships broken is the backoff itself — the retry that Section 8.4 says
+waits `min(10000 * 2^(attempt - 1), agent.max_retry_backoff_ms)` runs immediately and its
+`due_at_ms` is discarded unread, **collapsing backoff to zero on exactly the path that had just
+produced two failure signals in a row**. The report's own worked example is *not* reachable and this
+is recorded rather than dropped: it has reconciliation observing a stall for an issue whose worker
+already exited, but `on_worker_exit` begins `state.running.remove(issue_id)` and Part A iterates
+running issues only. **`RetryEntry` gains `generation`**, `schedule_retry` assigns it and arms the
+timer with it, and the fire carries it back. The shape change matters as much as the field:
+`on_retry_timer` becomes get-compare-remove rather than `pop`-then-test, because a comparison that
+fails after the pop has already taken the entry the fire should not have touched. Two options are
+steelmanned and lose. **Guarding on the due time** needs no new field, is robust to any number of
+stale fires, and costs nothing to thread — a sans-io step reads no clock, so `now_ms` is already on
+every input, and an earlier claim that it depends on the backoff constants is wrong and corrected in
+the Background: re-arming for the remainder is correct at any delay. It loses because it decides "is
+it time yet" rather than "is this the live arming", and Section 8.4's continuation delay is a fixed
+`1000` ms, so two continuation schedules taken at the same instant are indistinguishable to it; it
+would also owe a clock-slack value or an `Implementation-defined` row, which the generation does
+not. **Treating the fire as a wakeup over a due-scan** removes identity entirely and is the shape
+most real schedulers take, but it needs a dispatch order over the due set and a rule for
+`available_slots` running out mid-scan — today one fire dispatches exactly one issue and requeues at
+`attempt + 1` — so three due entries and one free slot would inflate two backoffs for issues that
+never got a chance; its vector `entries_due(map, now_ms) -> [issue_id]` is not expressible until
+that order is pinned, and all eight files in `conformance/vectors/` are one-shot pure functions.
+#95's own alternative, **requiring the cancellation be observed before the entry is replaced**, is
+recorded and loses for putting a liveness obligation on the host's timer facility, which a sans-io
+core cannot check. One clause goes beyond the ask: **a generation value MUST NOT be reused for an
+issue while the process lives.** Storing it only in the entry leaves nothing to derive the next
+value from once `on_retry_timer` removes the entry, and the obvious reading restarts at 1. The reuse
+turns out to be unreachable under first-in-first-out delivery — traced in the Background rather than
+assumed — but the document states no ordering property for orchestrator messages and defines neither
+`send` nor `event_loop`, so the guarantee would rest on a primitive it never wrote down. The counter
+that satisfies the clause is itself Core-introduced state with no Section 4.1.8 field, which is
+issue #96 arriving from the other direction; decision 0137's Section 14.3 widening is what admits
+it, and this decision deliberately adds no field for it, since the container is one integer and
+mandating one would over-specify a choice with no observable consequence.
+
+## 0137 — A backoff kept per repository, and the state model with no repository in it
+
+**State:** Accepted
+**Folder:** [decisions/0137-repository-scoped-recovery-state/](decisions/0137-repository-scoped-recovery-state/)
+
+Issue #96, filed alongside #95 and against the same unbuilt phase. Section 14.2 requires that where
+an engine policy could not be used at all, "retry is **backed off per repository** rather than
+attempted every tick"; Section 4.1.8 has eight fields and **not one is keyed by repository**; and
+Section 14.3 closes its recovery-class obligation over "every field of the Orchestrator Runtime
+State … and any state introduced by an OPTIONAL extension" — **exhaustive over the wrong set, since
+it admits extensions and leaves Core's own additions outside**. An implementation has three ways to
+comply and the document blesses none: a field Section 4.1.8 does not list, which Section 14.3's
+"every field" then does not reach and `CONFORMANCE-STATEMENT-TEMPLATE.md` Section 5 has no line for;
+hanging it off `running` or `claimed`, both `Reconstructable` and "rebuilt from tracker state and
+workspaces", from neither of which a backoff schedule is derivable — so a restart silently resumes
+the per-tick hammering the clause exists to stop; or not holding it, which is not complying. What
+ships broken is the Conformance Statement rather than the daemon: **the state whose restart
+behaviour an operator most needs — does my failing repository come back backed off or come back
+hammering — is the one a generated Statement has no row for**, complete against its own table and
+silently missing the answer, which is decision 0128's failure mode arriving through the enumeration
+instead of through a missed row. The drafting's claim that `repository_provisioning_failures` is
+tick-local and holds nothing is **wrong**, and wrong in the direction that mattered: what needs a
+home is one MUST and *two* Core MAYs — the mandatory per-repository backoff, plus a park MAY on each
+of the two classes — whose shapes are not the same. Section 14.2 also SHOULDs logging "the first
+failure, each backed-off retry, and recovery", and both "first" and "recovery" are predicates over
+the previous tick's per-repository state, so the state has a consumer the issue never names. The
+asymmetry that settles the shape: `node_provisioning_failures` carries the *identical* park MAY and
+is an OPTIONAL extension, so Section 14.3 already admits its state, classes it, and gets it a
+template row — the same construct blessed on one path and homeless on the other. **Both halves are
+taken.** Section 4.1.8 gains `repository_backoff` (map `repository -> { due_at_ms, attempt }`,
+`Ephemeral`), because the backoff is a MUST with one shape and the specification owes it a name the
+way it owes one to `retry_attempts`; Section 14.3 gains a clause admitting state Core behavior
+requires beyond Section 4.1.8, on the terms it already sets for an extension's, because the two
+parks are `Implementation-defined` down to whether they happen at all and a mandatory `parked` flag
+would force a representation for a choice an implementation may decline. **The field alone** loses
+on the parks — a park that does not survive a restart quietly un-parks a repository a human decided
+to stop retrying — and on leaving the class open for the next Core addition to rediscover, which is
+the lesson Section 14.1 already learned and ends with. **The rule alone** is the smaller and more
+general diff and loses on comparability, which is what #96 was about: "class and document whatever
+you hold" makes each Statement internally complete and mutually incomparable, one reporting
+`repo_backoff_until` and another `policy_retry_state` with no way to tell whether they agree.
+**Reverting to a per-tick retry** is recorded as the obvious fourth answer and loses twice — against
+its own clause's still-true reasoning, and because the two park MAYs survive the reversion and are
+still homeless, so it pays a behavioural regression and closes nothing. The `Ephemeral` class is
+argued rather than inherited: `Durable` would leave a restart unable to clear a backoff whose cause
+a human has just fixed, and `Reconstructable` would be a lie, since nothing outside the process
+records it.
+
+## 0138 — The function five call sites named and no section defined
+
+**State:** Accepted
+**Folder:** [decisions/0138-reference-algorithm-gaps/](decisions/0138-reference-algorithm-gaps/)
+
+Reported by neither issue; found checking #95's claims against the corpus, and kept as its own
+decision because the repair is not what either issue asked for and because the `symphony-rs` build
+implements Section 16.7 directly at phase D2d, where every function that section calls and does not
+define is a resolution that build has to invent. Section 16 defines eight functions and calls
+forty-two it does not — most deliberately, since `log_debug` and `spawn_worker` are primitives and
+`available_slots`, `sort_for_dispatch` and `normalize_state` are pinned by `conformance/vectors/`.
+Three are gaps. **`schedule_retry` has five call sites and no body** — `dispatch_issue` once,
+`on_worker_exit` twice, `on_retry_timer` twice — its only definition anywhere being Section 8.4's
+two prose bullets, which is plausibly why #95's defect went unnoticed: the function whose body
+decides what a fire means has no body to look at. **`terminate_running_issue` is called twice by
+`reconcile_running_issues` and defined nowhere**, and it turns out to be the seam;
+`reconcile_stalled_runs` is the third, and a gap this decision creates as much as inherits — see its
+recorded review finding. The sharper
+defect is that **`on_worker_exit` has no `if missing` guard where its sibling `on_retry_timer`,
+eleven lines away, has one**, and two paths reach it with the entry already gone. Section 8.5 Part A
+terminates a stalled worker and queues a retry, and that worker's own exit still arrives: if
+reconciliation removed the running entry, `add_runtime_seconds_to_totals` and `next_attempt_from`
+read fields off nothing; if it did not, `on_worker_exit` queues a **second** retry, which is the
+double-schedule decision 0136's race needs. The document says neither, so both defects are live and
+an implementation picks one by accident. Part B is worse in kind: a worker terminated *because its
+issue went terminal* reaches `on_worker_exit` with an abnormal reason and unconditionally schedules
+a retry for a closed issue. It self-cancels one backoff later via `find_by_id -> null ->
+claimed.remove`, so the cost is a wasted timer and a held claim rather than corruption — but
+**`available_slots` counts against `claimed`, so closing an issue whose worker is running costs a
+concurrency slot for up to `agent.max_retry_backoff_ms`, default five minutes, per closure**. Both
+are #95's shape: a message arriving for state that has moved. **One rule fixes both**: reconciliation
+that terminates a worker removes the running entry and accounts for that run's runtime at the point
+of termination, and `on_worker_exit` is authoritative only for exits the orchestrator did not cause,
+returning unchanged when the entry is gone — so the guard stops being defensive and becomes the
+mechanism, while Part A keeps queueing its one retry and Part B keeps queueing none. The cost is
+stated rather than discovered: the runtime-seconds accounting moves to `terminate_running_issue`, or
+every terminated run drops out of `agent_totals`. **Guarding and stopping there** is what a reviewer
+writes first and loses because it does not settle the race it hides — whether the entry is missing
+still depends on what reconciliation did, so the guard converts a crash into a coin flip between one
+retry and two, and a failure made quieter without being made determinate is worse than the crash,
+which at least gets reported. **Suppressing by exit reason** keeps accounting in one place and loses
+on trust: a worker killed hard reports what the operating system says rather than what the
+orchestrator meant, and a reason-based branch still reads `running_entry` before it branches — state
+the orchestrator wrote is checkable, a reason handed back across a process boundary is not.
+**Defining every function Section 16 calls** loses on altitude; the test used instead — can a reader
+supply the body without changing behaviour stated elsewhere — is written into the `Plan.md` with the
+inventory command, so a later reader can re-run the classification rather than take it on trust. One
+review finding is recorded rather than fixed quietly, and it is the sharpest thing here: **the first
+draft of the repair kept Part A's retry while removing its only producer.** Stopping `on_worker_exit`
+from queueing for a terminated run left the stall retry to `reconcile_stalled_runs`, which Section 16
+calls and does not define — so as drafted a stalled run would have been terminated and never retried.
+That is worse than the double-schedule being repaired: two retries is a wasted timer, none is a
+dropped issue. `scripts/check_plan_anchors.py` reported nothing on this plan (0 findings from 4
+quoted spans); the premise-and-consequence lens caught it, and the observation that a plan written in
+pseudocode rather than prose is quietly under-checked by the mechanical lenses is recorded with it.

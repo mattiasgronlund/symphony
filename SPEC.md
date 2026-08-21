@@ -366,6 +366,8 @@ Fields:
 - `issue_id`
 - `identifier` (best-effort human ID for status surfaces/logs)
 - `attempt` (integer, 1-based for retry queue)
+- `generation` (integer; identifies the arming this entry owns, so a fire from an arming that was
+  cancelled is distinguishable from a fire from the live one)
 - `due_at_ms` (monotonic clock timestamp)
 - `timer_handle` (runtime-specific timer reference)
 - `error` (string or null)
@@ -392,6 +394,12 @@ Fields (with recovery class):
 - `agent_totals` (aggregate tokens + runtime seconds) — `Ephemeral` for observability (resets to
   zero); becomes `Durable` when a budgeting extension enforces on it, and then MUST be
   Symphony-attributed rather than account-wide.
+- `repository_backoff` (map `repository -> { due_at_ms, attempt }`; the per-repository backoff
+  Section 14.2 requires where an engine policy could not be used at all) — `Ephemeral` (a restarted
+  orchestrator retries every backed-off repository on its next tick and backs off from the first
+  attempt again). It carries no park state: whether persistent failures are parked at all is a
+  choice Section 14.2 leaves to the implementation, so a park record is state Core behavior MAY
+  introduce rather than state this enumeration mandates a shape for, and Section 14.3 governs it.
 - `provider_rate_limits` (latest rate-limit snapshot from agent events) — `Cached external signal`;
   an absent value denotes `UNKNOWN` (distinct from any reading; in particular not `0`), and the
   policy on `UNKNOWN` is defined by the consuming provider-quota extension.
@@ -1126,6 +1134,10 @@ Note:
   - Update aggregate runtime totals.
   - Schedule exponential-backoff retry.
 
+  Note: both worker-exit triggers fire for an exit the orchestrator did not initiate. Where
+  reconciliation terminated the worker it has already removed the running entry and updated the
+  totals (Section 8.5), so the exit arrives with no running entry and triggers nothing.
+
 - `Agent Update Event`
   - Update live session fields, token counters, and rate limits.
 
@@ -1134,9 +1146,11 @@ Note:
 
 - `Reconciliation State Refresh`
   - Stop runs whose issue states are terminal or no longer active.
+  - Schedule no retry for a run stopped this way.
 
 - `Stall Timeout`
-  - Kill worker and schedule retry.
+  - Kill worker and schedule retry. The retry is queued by reconciliation, not by the killed
+    worker's exit.
 
 ### 7.4 Idempotency and Recovery Rules
 
@@ -1218,7 +1232,26 @@ affect these limits; a deployment that wants to bound co-location does so with t
 Retry entry creation:
 
 - Cancel any existing retry timer for the same issue.
-- Store `attempt`, `identifier`, `error`, `due_at_ms`, and new timer handle.
+- Assign a `generation` for the issue and arm the timer with it. The fire MUST carry the same value
+  back, so the orchestrator can tell which arming it came from.
+- Store `attempt`, `identifier`, `error`, `due_at_ms`, `generation`, and new timer handle.
+
+A generation value MUST NOT be reused for an issue for as long as the orchestrator process lives.
+This holds across the removal of a retry entry: a value derived only from the entry being replaced
+restarts once retry handling has removed that entry, and does not satisfy the requirement.
+
+Cancelling a timer is not synchronous with the timer it cancels. A fire already in flight when its
+entry is replaced still arrives, and it arrives for an issue that has a retry entry — the new one.
+An implementation MUST discard a fire whose `generation` does not equal that of the issue's current
+retry entry, leaving both that entry and its armed timer unchanged (Section 16.7). Testing only
+whether an entry is present does not satisfy this: the entry that a discarded fire must not consume
+is present by construction.
+
+Design note: the fire is matched on identity rather than on whether it is due. Continuation retries
+use a fixed `1000` ms delay, so two continuation entries created in the same millisecond carry the
+same `due_at_ms`, and comparing the current time against it cannot separate a stale fire from a live
+one. Matching on `generation` separates them without reading a clock, which is also what lets the
+behavior be checked by a vector (Section 17.4).
 
 Backoff formula:
 
@@ -1272,6 +1305,24 @@ Part B: Tracker state refresh
   re-reads the issue state itself before finalizing any push, pull request, or tracker write, so it
   does not act for an issue that has gone terminal. Reconciliation emits `signal_done` (Section 9.11)
   when it stops a remote run.
+
+Important: reconciliation owns the runs it terminates. Where either part terminates a worker, it
+removes that issue's running entry and adds that run's runtime to the aggregate totals at the point
+of termination. The terminated worker's own exit then arrives with no running entry, and a worker
+exit for an issue with no running entry is a no-op — so a termination the orchestrator initiated
+never produces a retry the orchestrator did not ask for.
+
+Two consequences follow, and they are why the invariant is stated here rather than left to the
+reference algorithms in Section 16:
+
+- A stalled run schedules exactly one retry. Part A queues it after terminating the worker; the exit
+  that termination causes queues nothing.
+- A run stopped because its issue reached a terminal or non-active state schedules no retry at all.
+  Without the invariant its worker's abnormal exit would queue one for an issue the tracker has
+  already closed, and because `claimed` counts against `available_slots` (Section 8.3) that issue
+  would hold a concurrency slot until the retry fired and released it — up to
+  `agent.max_retry_backoff_ms`, default `300000`, for every issue closed while its worker was
+  running.
 
 ### 8.6 Startup Terminal Workspace Cleanup
 
@@ -3512,9 +3563,17 @@ workers it already has.
 
 ### 14.3 State Recovery Classes
 
-Every field of the Orchestrator Runtime State (Section 4.1.8) — and any state introduced by an
-OPTIONAL extension — MUST be assigned exactly one recovery class, and the assignment MUST be
-documented in the implementation's Conformance Statement (Section 19). The class governs what happens
+Every field of the Orchestrator Runtime State (Section 4.1.8) — any state introduced by an OPTIONAL
+extension, and any state Core behavior requires an implementation to hold beyond the fields Section
+4.1.8 enumerates — MUST be assigned exactly one recovery class, and the assignment MUST be
+documented in the implementation's Conformance Statement (Section 19).
+
+Note: the enumeration in Section 4.1.8 is not closed. Core behavior defined elsewhere in this
+document MAY require state it does not list — a park record for either park-versus-retry choice
+Section 14.2 leaves open, and a counter satisfying the generation non-reuse requirement in Section
+8.4, are the cases this document creates today. Such state is governed by
+this section on the same terms as a listed field: exactly one class, documented, and where the class
+is `Ephemeral`, its reset consequence documented with it. The class governs what happens
 to the value across a process restart and when a current value is unavailable.
 
 - `Reconstructable` (`R`)
@@ -3921,6 +3980,51 @@ function reconcile_running_issues(state):
   return state
 ```
 
+```text
+function reconcile_stalled_runs(state):
+  # Part A of Section 8.5. A stall timeout of zero or less disables detection entirely.
+  if config.codex.stall_timeout_ms <= 0:
+    return state
+
+  for issue_id in keys(state.running):
+    running_entry = state.running[issue_id]
+    reference = running_entry.last_timestamp or running_entry.started_at
+    if now_utc() - reference <= config.codex.stall_timeout_ms:
+      continue
+
+    # Terminate first, then queue the retry here. The terminated worker's own exit reaches
+    # on_worker_exit with no running entry and is a no-op there (Section 8.5), so this is the
+    # single producer of a stalled run's retry.
+    state = terminate_running_issue(state, issue_id, cleanup_workspace=false)
+    state = schedule_retry(state, issue_id, next_attempt_from(running_entry), {
+      identifier: running_entry.identifier,
+      error: "stall timeout exceeded"
+    })
+
+  return state
+```
+
+```text
+function terminate_running_issue(state, issue_id, cleanup_workspace):
+  running_entry = state.running.remove(issue_id)
+  if missing:
+    return state
+
+  # The accounting moves here with the removal. An exit the orchestrator initiated is a no-op in
+  # on_worker_exit (Section 8.5), so this is where a terminated run's runtime is counted; without
+  # it every reconciliation-terminated run would drop out of agent_totals.
+  state = add_runtime_seconds_to_totals(state, running_entry)
+
+  terminate_worker(running_entry.worker)
+  if cleanup_workspace:
+    cleanup_workspace_for(issue_id)
+
+  # No retry is scheduled here. Part A of Section 8.5 queues its own after terminating; Part B
+  # queues none, for either of its two branches.
+  notify_observers()
+  return state
+```
+
 ### 16.4 Dispatch One Issue
 
 ```text
@@ -4086,8 +4190,46 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
 ### 16.7 Worker Exit and Retry Handling
 
 ```text
+function schedule_retry(state, issue_id, attempt, opts):
+  # Section 8.4. Cancelling before replacing is what makes a fire from the previous arming stale
+  # rather than merely early.
+  existing = state.retry_attempts.get(issue_id)
+  if existing is present:
+    cancel_timer(existing.timer_handle)
+
+  if opts.delay_type == continuation:
+    delay = 1000
+  else:
+    delay = min(10000 * 2^(attempt - 1), config.agent.max_retry_backoff_ms)
+
+  # Section 8.4 requires this value never to repeat for the issue while the process lives, which
+  # is why it is not derived from the entry being replaced: retry handling removes that entry, and
+  # a counter that restarts with it would repeat.
+  generation = next_retry_generation(state, issue_id)
+
+  state.retry_attempts[issue_id] = {
+    issue_id: issue_id,
+    identifier: opts.identifier,
+    attempt: attempt,
+    generation: generation,
+    due_at_ms: now_utc() + delay,
+    timer_handle: arm_timer(delay, on_retry_timer, issue_id, generation),
+    error: opts.error
+  }
+
+  # The issue is already in state.claimed from dispatch_issue and stays claimed while it is
+  # queued for retry (Section 4.1.8); on_retry_timer releases it if it is no longer a candidate.
+  return state
+```
+
+```text
 on_worker_exit(issue_id, reason, state):
   running_entry = state.running.remove(issue_id)
+  if missing:
+    # The orchestrator terminated this run itself and has already removed the entry, accounted
+    # for its runtime, and decided what happens next (Section 8.5). Nothing is owed here.
+    return state
+
   state = add_runtime_seconds_to_totals(state, running_entry)
 
   if reason == normal:
@@ -4107,10 +4249,18 @@ on_worker_exit(issue_id, reason, state):
 ```
 
 ```text
-on_retry_timer(issue_id, state):
-  retry_entry = state.retry_attempts.pop(issue_id)
+on_retry_timer(issue_id, generation, state):
+  retry_entry = state.retry_attempts.get(issue_id)
   if missing:
     return state
+
+  # A cancelled timer that fired anyway (Section 8.4). The live entry and its armed timer stand
+  # untouched: removing the entry here would consume an arming this fire does not belong to, and
+  # the backoff it was holding would be lost.
+  if generation != retry_entry.generation:
+    return state
+
+  state.retry_attempts.remove(issue_id)
 
   candidates = tracker.fetch_candidate_issues()
   if fetch failed:
@@ -4393,6 +4543,9 @@ These checks are `Daemon Conformance`.
 - Reconciliation with no running issues is a no-op
 - Normal worker exit schedules a short continuation retry (attempt 1)
 - Abnormal worker exit increments retries with 10s-based exponential backoff
+- A retry timer fire whose `generation` does not match the current retry entry's is discarded
+  without dispatching, and leaves that entry and its armed timer in place; a fire arriving when the
+  issue has no retry entry is likewise a no-op
 - A `merge:checks_pending` dispatches the engine's `await_checks` with the configured bounds rather
   than a Symphony-side poll loop; `await_checks:still_pending` and `await_checks:budget_floor` park
   the issue rather than entering the Section 8.4 backoff or failing the run; `await_checks:no_checks`
@@ -4406,6 +4559,9 @@ These checks are `Daemon Conformance`.
 - Retry backoff cap uses configured `agent.max_retry_backoff_ms`
 - Retry queue entries include attempt, due time, identifier, and error
 - Stall detection kills stalled sessions and schedules retry
+- A stalled run schedules exactly one retry, not a second from the exit its termination causes
+- A run stopped because its issue reached a terminal or non-active state schedules no retry, and its
+  claim is released without waiting for a backoff to elapse
 - Slot exhaustion requeues retries with explicit error reason
 - A repository provisioning failure returned by the engine (`repository_provisioning_failures`)
   skips that repository's dispatches for the tick and is retried on a later tick, leaving other
@@ -4419,6 +4575,9 @@ These checks are `Daemon Conformance`.
 - If a snapshot API is implemented, it returns running rows, retry rows, token totals, and rate
   limits
 - If a snapshot API is implemented, timeout/unavailable cases are surfaced
+- A per-repository backoff is keyed by the repository: a repository backed off after an unusable
+  policy does not suppress dispatch for any other repository, and its own backoff survives across
+  ticks rather than being re-evaluated from scratch each one
 - Every Orchestrator Runtime State field has a documented recovery class (`Reconstructable` /
   `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3)
 - If a `Durable` or `Cached external signal` extension is implemented, restart restores its state
@@ -4614,7 +4773,8 @@ Required of every conforming implementation, whichever profiles its topology cla
 - Operator-visible observability (structured logs; OPTIONAL snapshot/status surface)
 - A published Conformance Statement (Section 19) recording the claimed profiles and topology, the
   OPTIONAL extensions shipped, the engine and agent-runner floors, every `Implementation-defined`
-  resolution, each Orchestrator Runtime State field's recovery class, and the trust and safety posture
+  resolution, the recovery class of each Orchestrator Runtime State field and of any state held
+  beyond them (Section 14.3), and the trust and safety posture
 
 #### 18.1.2 Broker Core Conformance
 
@@ -4693,11 +4853,16 @@ Required of the `daemon` topology only.
 - Strict prompt rendering with `issue` and `attempt` variables, failing `template_render_error`
   whatever stage the engine resolves the unknown name at (Section 5.5), and map iteration in
   ascending key order with a two-element key/value entry (Section 12.2)
-- Exponential retry queue with continuation retries after normal exit
+- Exponential retry queue with continuation retries after normal exit; a retry timer fire is
+  matched to its arming by `generation` and discarded when it does not match, so a cancelled timer
+  that fired anyway cannot collapse a backoff (Section 8.4)
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)
-- Reconciliation that stops runs on terminal/non-active tracker states
+- Reconciliation that stops runs on terminal/non-active tracker states, owning the removal and
+  runtime accounting for the runs it terminates so a worker exit it caused queues no retry
+  (Section 8.5)
 - Every Orchestrator Runtime State field is assigned and documented as a recovery class
-  (`Reconstructable` / `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3)
+  (`Reconstructable` / `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3), as is any
+  state Core behavior requires beyond the fields Section 4.1.8 enumerates
 - Workspace cleanup for terminal issues (startup sweep + active transition)
 
 #### 18.1.4 VCS Engine
@@ -4847,9 +5012,10 @@ The Statement MUST record:
   how it is established that no route beyond the two this specification closes can write the policy
   branch, and how a host-side hook's unit is resolved (Section 15.4); and
   the host-side object-store path (Section 16.5).
-- The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8) and to any
-  state an OPTIONAL extension introduces, and the reset consequence of each field classified
-  `Ephemeral` (Section 14.3).
+- The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8), to any state
+  an OPTIONAL extension introduces, and to any state Core behavior requires beyond the fields
+  Section 4.1.8 enumerates, and the reset consequence of each field classified `Ephemeral`
+  (Section 14.3).
 - The trust and safety posture (Sections 1, 9.6, 15).
 
 The Statement's format is `Implementation-defined`. `CONFORMANCE-STATEMENT-TEMPLATE.md` in the

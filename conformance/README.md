@@ -268,6 +268,7 @@ Slice 1 — pure derivations (decision 0046):
 | `vectors/state-normalization.json` | `normalize_state` | Core | Section 4.2 |
 | `vectors/config-defaults.json` | `resolve_config_defaults` | Core | Sections 6.4, 17.1 |
 | `vectors/retry-backoff.json` | `retry_backoff_delay_ms` | Daemon | Section 8.4 |
+| `vectors/retry-fire-disposition.json` | `retry_fire_disposition` | Daemon | Sections 8.4, 16.7 |
 | `vectors/available-slots.json` | `available_slots` | Daemon | Section 8.3 |
 | `vectors/per-state-concurrency.json` | `per_state_concurrency_limit` | Daemon | Sections 8.3, 4.2 |
 | `vectors/dispatch-ordering.json` | `sort_for_dispatch` | Daemon | Sections 8.2, 16.2 |
@@ -422,3 +423,47 @@ guessed-at vector or entry:
   Section 13.8's placement as written; reconciling the two is a spec-clarification candidate, and is
   why decision 0069 places `observability.*` in the operator policy config rather than following
   `server.*`.
+- **A reference algorithm called a function no section defined — resolved (decision 0138).** Section
+  16 defined eight functions and called forty-three it did not. Three were gaps rather than
+  primitives: `schedule_retry`, which had five call sites (`dispatch_issue` once, `on_worker_exit`
+  twice, `on_retry_timer` twice) and no body outside Section 8.4's two prose bullets;
+  `terminate_running_issue`, called twice by `reconcile_running_issues`; and `reconcile_stalled_runs`.
+  The consequence was reachable rather than cosmetic: `on_worker_exit` had no `if missing` guard
+  where `on_retry_timer`, eleven lines away, had one, and two paths reached it with the entry
+  already gone — a stall (Section 8.5 Part A terminates and queues a retry, then the terminated
+  worker's own exit queues a second) and a terminal issue (Part B terminates, and the abnormal exit
+  queues a retry for an issue the tracker has closed, which holds a claim, and therefore a
+  concurrency slot, for up to `agent.max_retry_backoff_ms`). Section 8.5 now states that
+  reconciliation owns the runs it terminates and that an exit for an issue with no running entry is
+  a no-op. No vector is owed: both repairs fix which state transition happens and in what order, not
+  a value computed from inputs, and every file in `vectors/` is a one-shot pure function. Found while
+  checking issue #95; reported by neither open issue.
+- **A retry timer fire could not name the arming it came from — resolved (decision 0136).** Section
+  8.4 required retry entry creation to "Cancel any existing retry timer for the same issue", which
+  makes cancel-then-replace in-contract; Section 16.7 then identified an arriving fire by `issue_id`
+  alone and guarded it with `if missing`. That guard tests presence, and a replaced entry is present
+  — so a cancelled timer that fired anyway consumed the *new* entry and dispatched at once,
+  discarding a `due_at_ms` that was holding a backoff. Reachable through a stall: Part A of Section
+  8.5 queues a retry, the terminated worker's exit queued a second (decision 0138), and the second
+  cancelled the first's timer. `RetryEntry` gains `generation`, Section 8.4 requires the fire to
+  carry it and forbids reusing a value for an issue while the process lives, and `on_retry_timer`
+  became get-compare-remove rather than pop-then-test — a comparison that fails after the pop has
+  already taken the entry the fire must not touch. `vectors/retry-fire-disposition.json` pins all
+  three cases, and `entry_retained` on `fire-generation-stale` is what a pop-then-test implementation
+  fails. Issue #95.
+- **Core behavior held state the state model had no room for — resolved (decision 0137).** Section
+  14.2 requires that where an engine policy could not be used at all, retry is "backed off per
+  repository rather than attempted every tick", and lets persistent failures of both
+  `repository_provisioning_failures` and `engine_invocation_failures` be parked. Section 4.1.8's
+  eight fields held nothing keyed by repository, and Section 14.3 required a recovery class of every
+  Section 4.1.8 field "and any state introduced by an OPTIONAL extension" — exhaustive over the
+  wrong set, admitting extensions and leaving Core's own additions out. The same construct was
+  therefore blessed on the extension path (`node_provisioning_failures` carries an identical park
+  MAY) and homeless on the Core path. What broke was the Conformance Statement rather than the
+  daemon: a Statement generated from the template was complete against its own table and silently
+  missing the restart behaviour of the one piece of state an operator most needs it for. Section
+  4.1.8 gains `repository_backoff` (`Ephemeral`), Section 14.3 admits Core-introduced state on the
+  same terms as an extension's, and Sections 19, 18.1.1 and 18.1.3 carry the widened obligation —
+  three further sites of the extension-only framing, two of which the decision's first plan did not
+  name and `scripts/check_plan_anchors.py` found. No vector is owed: a recovery class is an
+  assignment, not a function of inputs. Issue #96.
