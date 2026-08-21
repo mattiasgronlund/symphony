@@ -422,3 +422,18 @@ guessed-at vector or entry:
   Section 13.8's placement as written; reconciling the two is a spec-clarification candidate, and is
   why decision 0069 places `observability.*` in the operator policy config rather than following
   `server.*`.
+- **A reference algorithm called a function no section defined — resolved (decision 0138).** Section
+  16 defined eight functions and called forty-three it did not. Three were gaps rather than
+  primitives: `schedule_retry`, which had five call sites (`dispatch_issue` once, `on_worker_exit`
+  twice, `on_retry_timer` twice) and no body outside Section 8.4's two prose bullets;
+  `terminate_running_issue`, called twice by `reconcile_running_issues`; and `reconcile_stalled_runs`.
+  The consequence was reachable rather than cosmetic: `on_worker_exit` had no `if missing` guard
+  where `on_retry_timer`, eleven lines away, had one, and two paths reached it with the entry
+  already gone — a stall (Section 8.5 Part A terminates and queues a retry, then the terminated
+  worker's own exit queues a second) and a terminal issue (Part B terminates, and the abnormal exit
+  queues a retry for an issue the tracker has closed, which holds a claim, and therefore a
+  concurrency slot, for up to `agent.max_retry_backoff_ms`). Section 8.5 now states that
+  reconciliation owns the runs it terminates and that an exit for an issue with no running entry is
+  a no-op. No vector is owed: both repairs fix which state transition happens and in what order, not
+  a value computed from inputs, and every file in `vectors/` is a one-shot pure function. Found while
+  checking issue #95; reported by neither open issue.

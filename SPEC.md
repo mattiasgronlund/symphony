@@ -1126,6 +1126,10 @@ Note:
   - Update aggregate runtime totals.
   - Schedule exponential-backoff retry.
 
+  Note: both worker-exit triggers fire for an exit the orchestrator did not initiate. Where
+  reconciliation terminated the worker it has already removed the running entry and updated the
+  totals (Section 8.5), so the exit arrives with no running entry and triggers nothing.
+
 - `Agent Update Event`
   - Update live session fields, token counters, and rate limits.
 
@@ -1134,9 +1138,11 @@ Note:
 
 - `Reconciliation State Refresh`
   - Stop runs whose issue states are terminal or no longer active.
+  - Schedule no retry for a run stopped this way.
 
 - `Stall Timeout`
-  - Kill worker and schedule retry.
+  - Kill worker and schedule retry. The retry is queued by reconciliation, not by the killed
+    worker's exit.
 
 ### 7.4 Idempotency and Recovery Rules
 
@@ -1272,6 +1278,24 @@ Part B: Tracker state refresh
   re-reads the issue state itself before finalizing any push, pull request, or tracker write, so it
   does not act for an issue that has gone terminal. Reconciliation emits `signal_done` (Section 9.11)
   when it stops a remote run.
+
+Important: reconciliation owns the runs it terminates. Where either part terminates a worker, it
+removes that issue's running entry and adds that run's runtime to the aggregate totals at the point
+of termination. The terminated worker's own exit then arrives with no running entry, and a worker
+exit for an issue with no running entry is a no-op — so a termination the orchestrator initiated
+never produces a retry the orchestrator did not ask for.
+
+Two consequences follow, and they are why the invariant is stated here rather than left to the
+reference algorithms in Section 16:
+
+- A stalled run schedules exactly one retry. Part A queues it after terminating the worker; the exit
+  that termination causes queues nothing.
+- A run stopped because its issue reached a terminal or non-active state schedules no retry at all.
+  Without the invariant its worker's abnormal exit would queue one for an issue the tracker has
+  already closed, and because `claimed` counts against `available_slots` (Section 8.3) that issue
+  would hold a concurrency slot until the retry fired and released it — up to
+  `agent.max_retry_backoff_ms`, default `300000`, for every issue closed while its worker was
+  running.
 
 ### 8.6 Startup Terminal Workspace Cleanup
 
@@ -3921,6 +3945,51 @@ function reconcile_running_issues(state):
   return state
 ```
 
+```text
+function reconcile_stalled_runs(state):
+  # Part A of Section 8.5. A stall timeout of zero or less disables detection entirely.
+  if config.codex.stall_timeout_ms <= 0:
+    return state
+
+  for issue_id in keys(state.running):
+    running_entry = state.running[issue_id]
+    reference = running_entry.last_timestamp or running_entry.started_at
+    if now_utc() - reference <= config.codex.stall_timeout_ms:
+      continue
+
+    # Terminate first, then queue the retry here. The terminated worker's own exit reaches
+    # on_worker_exit with no running entry and is a no-op there (Section 8.5), so this is the
+    # single producer of a stalled run's retry.
+    state = terminate_running_issue(state, issue_id, cleanup_workspace=false)
+    state = schedule_retry(state, issue_id, next_attempt_from(running_entry), {
+      identifier: running_entry.identifier,
+      error: "stall timeout exceeded"
+    })
+
+  return state
+```
+
+```text
+function terminate_running_issue(state, issue_id, cleanup_workspace):
+  running_entry = state.running.remove(issue_id)
+  if missing:
+    return state
+
+  # The accounting moves here with the removal. An exit the orchestrator initiated is a no-op in
+  # on_worker_exit (Section 8.5), so this is where a terminated run's runtime is counted; without
+  # it every reconciliation-terminated run would drop out of agent_totals.
+  state = add_runtime_seconds_to_totals(state, running_entry)
+
+  terminate_worker(running_entry.worker)
+  if cleanup_workspace:
+    cleanup_workspace_for(issue_id)
+
+  # No retry is scheduled here. Part A of Section 8.5 queues its own after terminating; Part B
+  # queues none, for either of its two branches.
+  notify_observers()
+  return state
+```
+
 ### 16.4 Dispatch One Issue
 
 ```text
@@ -4086,8 +4155,40 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
 ### 16.7 Worker Exit and Retry Handling
 
 ```text
+function schedule_retry(state, issue_id, attempt, opts):
+  # Section 8.4. Cancelling before replacing is what makes a fire from the previous arming stale
+  # rather than merely early.
+  existing = state.retry_attempts.get(issue_id)
+  if existing is present:
+    cancel_timer(existing.timer_handle)
+
+  if opts.delay_type == continuation:
+    delay = 1000
+  else:
+    delay = min(10000 * 2^(attempt - 1), config.agent.max_retry_backoff_ms)
+
+  state.retry_attempts[issue_id] = {
+    issue_id: issue_id,
+    identifier: opts.identifier,
+    attempt: attempt,
+    due_at_ms: now_utc() + delay,
+    timer_handle: arm_timer(delay, on_retry_timer, issue_id),
+    error: opts.error
+  }
+
+  # The issue is already in state.claimed from dispatch_issue and stays claimed while it is
+  # queued for retry (Section 4.1.8); on_retry_timer releases it if it is no longer a candidate.
+  return state
+```
+
+```text
 on_worker_exit(issue_id, reason, state):
   running_entry = state.running.remove(issue_id)
+  if missing:
+    # The orchestrator terminated this run itself and has already removed the entry, accounted
+    # for its runtime, and decided what happens next (Section 8.5). Nothing is owed here.
+    return state
+
   state = add_runtime_seconds_to_totals(state, running_entry)
 
   if reason == normal:
@@ -4406,6 +4507,9 @@ These checks are `Daemon Conformance`.
 - Retry backoff cap uses configured `agent.max_retry_backoff_ms`
 - Retry queue entries include attempt, due time, identifier, and error
 - Stall detection kills stalled sessions and schedules retry
+- A stalled run schedules exactly one retry, not a second from the exit its termination causes
+- A run stopped because its issue reached a terminal or non-active state schedules no retry, and its
+  claim is released without waiting for a backoff to elapse
 - Slot exhaustion requeues retries with explicit error reason
 - A repository provisioning failure returned by the engine (`repository_provisioning_failures`)
   skips that repository's dispatches for the tick and is retried on a later tick, leaving other
@@ -4695,7 +4799,9 @@ Required of the `daemon` topology only.
   ascending key order with a two-element key/value entry (Section 12.2)
 - Exponential retry queue with continuation retries after normal exit
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)
-- Reconciliation that stops runs on terminal/non-active tracker states
+- Reconciliation that stops runs on terminal/non-active tracker states, owning the removal and
+  runtime accounting for the runs it terminates so a worker exit it caused queues no retry
+  (Section 8.5)
 - Every Orchestrator Runtime State field is assigned and documented as a recovery class
   (`Reconstructable` / `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3)
 - Workspace cleanup for terminal issues (startup sweep + active transition)

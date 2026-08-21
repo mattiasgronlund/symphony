@@ -8,7 +8,7 @@ recorded as its own decision because the repair is not what either issue asked f
 calls and does not define is a resolution that build has to invent, and a dated record of what was
 resolved is worth more than the edit.
 
-Section 16 defines eight functions and calls forty-three it does not. Most of those are primitives a
+Section 16 defines eight functions and calls forty-two it does not. Most of those are primitives a
 reader supplies without changing observable behaviour — `log_debug`, `now_utc`, `spawn_worker`,
 `find_by_id` — and three more (`available_slots`, `sort_for_dispatch`, `normalize_state`) are
 undefined in Section 16 but pinned by files in `conformance/vectors/`, so they are not gaps either.

@@ -5210,7 +5210,7 @@ Reported by neither issue; found checking #95's claims against the corpus, and k
 decision because the repair is not what either issue asked for and because the `symphony-rs` build
 implements Section 16.7 directly at phase D2d, where every function that section calls and does not
 define is a resolution that build has to invent. Section 16 defines eight functions and calls
-forty-three it does not — most deliberately, since `log_debug` and `spawn_worker` are primitives and
+forty-two it does not — most deliberately, since `log_debug` and `spawn_worker` are primitives and
 `available_slots`, `sort_for_dispatch` and `normalize_state` are pinned by `conformance/vectors/`.
 Three are gaps. **`schedule_retry` has five call sites and no body** — `dispatch_issue` once,
 `on_worker_exit` twice, `on_retry_timer` twice — its only definition anywhere being Section 8.4's

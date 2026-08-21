@@ -44,12 +44,20 @@ print(sorted(called - defined - {'if','for','while','return','and','or','not','f
 PY
 ```
 
-At `cbc7d8a` that is 8 defined and 43 called-but-undefined. Of the 43, three (`available_slots`,
-`sort_for_dispatch`, `normalize_state`) are pinned by `conformance/vectors/` and are therefore not
-gaps; `schedule_retry`, `terminate_running_issue` and `reconcile_stalled_runs` are the three this
-decision closes. The remainder
-are primitives under the test above and are deliberately left unwritten. Re-running the inventory
-after this decision should report three fewer called-but-undefined names and three more definitions.
+At `cbc7d8a` that is **8 defined and 42 called-but-undefined**. Of the 42, three
+(`available_slots`, `sort_for_dispatch`, `normalize_state`) are pinned by `conformance/vectors/` and
+are therefore not gaps; `schedule_retry`, `terminate_running_issue` and `reconcile_stalled_runs` are
+the three this decision closes. The remainder are primitives under the test above and are
+deliberately left unwritten.
+
+After this decision the same command reports **11 defined and 43 called-but-undefined**. The
+definition count rises by exactly the three gaps closed; the undefined count rises by one rather
+than falling by three, because the three new bodies name four primitives of their own —
+`arm_timer`, `cancel_timer`, `terminate_worker` and `cleanup_workspace_for`. That is the expected
+direction and is recorded rather than smoothed over: the count is not the measure, since a reference
+algorithm bottoms out in primitives by design. The measure is the test — each of the four is a name
+whose body a reader can supply without changing behaviour the specification states elsewhere, and
+each of the three closed was not.
 
 ## Steps
 
