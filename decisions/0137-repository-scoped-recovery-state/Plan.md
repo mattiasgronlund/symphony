@@ -117,4 +117,6 @@ keep their spelling.
 
 ## Status
 
-Proposed. Issue #96.
+Applied to `SPEC.md` (Sections 4.1.8, 14.3, 17.4, 18.1.1, 18.1.3, 19),
+`conformance/vocabulary.json`, `CONFORMANCE-STATEMENT-TEMPLATE.md` (Section 5) and
+`conformance/README.md`. Issue #96.

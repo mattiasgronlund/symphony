@@ -158,4 +158,5 @@ and `agent_totals` all keep their spelling.
 
 ## Status
 
-Proposed. Found while checking issue #95; reported by neither issue.
+Applied to `SPEC.md` (Sections 7.3, 8.5, 16.3, 16.7, 17.4, 18.1.3) and
+`conformance/README.md`. Found while checking issue #95; reported by neither issue.

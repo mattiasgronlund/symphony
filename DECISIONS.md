@@ -5105,7 +5105,7 @@ metadata keys are not stable strings. Relates to 0048, 0102, 0105 and 0128. Acce
 
 ## 0136 — A timer fire that could not name the arming it came from
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0136-retry-fire-identity/](decisions/0136-retry-fire-identity/)
 
 Issue #95, filed by the `symphony-rs` build against phase D2 — planned rather than built, so nothing
@@ -5155,7 +5155,7 @@ mandating one would over-specify a choice with no observable consequence.
 
 ## 0137 — A backoff kept per repository, and the state model with no repository in it
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0137-repository-scoped-recovery-state/](decisions/0137-repository-scoped-recovery-state/)
 
 Issue #96, filed alongside #95 and against the same unbuilt phase. Section 14.2 requires that where
@@ -5203,7 +5203,7 @@ records it.
 
 ## 0138 — The function five call sites named and no section defined
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0138-reference-algorithm-gaps/](decisions/0138-reference-algorithm-gaps/)
 
 Reported by neither issue; found checking #95's claims against the corpus, and kept as its own

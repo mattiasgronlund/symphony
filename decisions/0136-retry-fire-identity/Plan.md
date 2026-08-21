@@ -139,4 +139,5 @@ Nothing is renamed or removed. `attempt`, `due_at_ms`, `timer_handle`, `error`, 
 
 ## Status
 
-Proposed. Issue #95.
+Applied to `SPEC.md` (Sections 4.1.7, 8.4, 16.7, 17.4, 18.1.3),
+`conformance/vectors/retry-fire-disposition.json` and `conformance/README.md`. Issue #95.
