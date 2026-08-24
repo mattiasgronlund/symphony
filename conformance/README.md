@@ -272,6 +272,7 @@ Slice 1 — pure derivations (decision 0046):
 | `vectors/available-slots.json` | `available_slots` | Daemon | Section 8.3 |
 | `vectors/per-state-concurrency.json` | `per_state_concurrency_limit` | Daemon | Sections 8.3, 4.2 |
 | `vectors/candidate-eligibility.json` | `should_dispatch` | Daemon | Sections 8.2, 16.2 |
+| `vectors/issue-routing.json` | `route_issue` | Daemon | Sections 4.1.1, 8.7 |
 | `vectors/dispatch-ordering.json` | `sort_for_dispatch` | Daemon | Sections 8.2, 16.2 |
 
 Slice 2 — prompt rendering (decision 0048):

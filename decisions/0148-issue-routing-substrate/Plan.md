@@ -123,4 +123,9 @@ it is evaluated, and nothing in it depends on where the mapping is written. The 
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Sections 4.1.1, 6.3, 6.4, 8.7, 11.2, 11.7, 17.4, 18.1.3, 19),
+`CONFORMANCE-STATEMENT-TEMPLATE.md` (Section 4.1), `conformance/vectors/issue-routing.json`
+and `conformance/README.md`. Section 19 is not in the Scope list above: it carries the same
+`MUST document` obligations the template tabulates, in prose, so the publication choice step 1
+adds is named there too — the site decision 0140's step 12 found by the same reach check.
+Issue #113.

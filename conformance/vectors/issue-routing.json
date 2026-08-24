@@ -1,0 +1,100 @@
+{
+  "function": "route_issue",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 4.1.1", "Section 4.2", "Section 8.7"],
+  "description": "Route a polled issue to exactly one managed repository. Section 8.7 states routing as a pure function of the normalized issue record and the policy config's mapping, evaluated after normalization, with the mapping's key space being the record's own comparable fields: project, team, labels, assignees, state. Where more than one repository's rule matches, the issue is not routed and not dispatched and the condition is reported.",
+  "given": "{ issue: { project, team, labels, assignees, state }, rules: Array<{ repository: string, match: { <record field>: <value> } }> }",
+  "expect": "{ repository: <name> | null, refused: 'multiple_rules_matched' | null }",
+  "notes": [
+    "The mapping's configuration schema is not fixed by SPEC.md and is deliberately not pinned here: the routing mapping has no configuration key yet, and the repository-enumeration schema it belongs to is owed a decision of its own (decision 0148). What Section 8.7 does fix, and what this file asserts, is the key space and that routing is a pure function of the normalized record. A rule is modelled as a conjunction of field conditions over that record; a harness maps its own mapping representation onto that shape.",
+    "A list-valued key (labels, assignees) is read as membership, the reading Section 5.3.1 already states for tracker.required_labels. A scalar key (project, team, state) is read as equality.",
+    "Section 8.7 requires the condition to be reported only where more than one rule matches. An issue no rule matches is simply unrouted, so refused is null there as well as repository. multiple_rules_matched is this file's label for the reported condition, not a published token: SPEC.md names none and conformance/vocabulary.json publishes no group for it.",
+    "Every value in given.issue is already normalized, as Section 8.7's mapping reads it (Section 4.2). Routing a raw tracker payload rather than the record is what the normalized-record vectors here fail an implementation for."
+  ],
+  "vectors": [
+    {
+      "id": "single-rule-matches",
+      "description": "One repository's rule matches on project. The issue routes there.",
+      "given": {
+        "issue": { "project": "web-platform", "team": "core", "labels": ["symphony"], "assignees": ["alice"], "state": "todo" },
+        "rules": [
+          { "repository": "web", "match": { "project": "web-platform" } },
+          { "repository": "api", "match": { "project": "api-platform" } }
+        ]
+      },
+      "expect": { "repository": "web", "refused": null }
+    },
+    {
+      "id": "rule-matches-on-list-membership",
+      "description": "A rule keyed on a list-valued field matches when the record's list contains the value.",
+      "given": {
+        "issue": { "project": "web-platform", "team": "core", "labels": ["symphony", "backend"], "assignees": ["alice"], "state": "todo" },
+        "rules": [
+          { "repository": "web", "match": { "labels": "frontend" } },
+          { "repository": "api", "match": { "labels": "backend" } }
+        ]
+      },
+      "expect": { "repository": "api", "refused": null }
+    },
+    {
+      "id": "conjunction-of-two-fields",
+      "description": "A rule with two field conditions matches only where both hold, so the issue routes to the one repository whose whole rule holds rather than to the first with a field in common.",
+      "given": {
+        "issue": { "project": "web-platform", "team": "core", "labels": ["symphony"], "assignees": ["alice"], "state": "todo" },
+        "rules": [
+          { "repository": "web-experimental", "match": { "project": "web-platform", "team": "labs" } },
+          { "repository": "web", "match": { "project": "web-platform", "team": "core" } }
+        ]
+      },
+      "expect": { "repository": "web", "refused": null }
+    },
+    {
+      "id": "no-rule-matches",
+      "description": "No rule's conditions hold. The issue is not routed and not dispatched; Section 8.7 states no reported condition for this case, only for the ambiguous one below.",
+      "given": {
+        "issue": { "project": "docs", "team": "core", "labels": [], "assignees": [], "state": "todo" },
+        "rules": [
+          { "repository": "web", "match": { "project": "web-platform" } },
+          { "repository": "api", "match": { "project": "api-platform" } }
+        ]
+      },
+      "expect": { "repository": null, "refused": null }
+    },
+    {
+      "id": "rule-keys-on-a-field-the-record-leaves-null",
+      "description": "The adapter populates no team, so a rule keyed on team matches nothing. A null field is absence, not a wildcard: the answer is no match, never every match. Dispatch preflight refuses this configuration before it runs (Sections 6.3, 11.7); the vector pins what the predicate itself does with it.",
+      "given": {
+        "issue": { "project": "web-platform", "team": null, "labels": ["symphony"], "assignees": ["alice"], "state": "todo" },
+        "rules": [
+          { "repository": "web", "match": { "team": "core" } },
+          { "repository": "api", "match": { "team": "platform" } }
+        ]
+      },
+      "expect": { "repository": null, "refused": null }
+    },
+    {
+      "id": "two-rules-match",
+      "description": "Two repositories' rules both hold over this issue. The issue is not routed and not dispatched and the condition is reported. This is the case an implementation that takes the first match fails: a dispatch grants an agent commit and pull-request authority in the repository it routes to.",
+      "given": {
+        "issue": { "project": "web-platform", "team": "core", "labels": ["symphony", "backend"], "assignees": ["alice"], "state": "todo" },
+        "rules": [
+          { "repository": "web", "match": { "project": "web-platform" } },
+          { "repository": "api", "match": { "labels": "backend" } }
+        ]
+      },
+      "expect": { "repository": null, "refused": "multiple_rules_matched" }
+    },
+    {
+      "id": "two-rules-match-same-repository-named-twice",
+      "description": "The rule is over the issue, not over the repository: two rules naming the same repository still both match, and the issue routes to it. Ambiguity is about which repository, and here there is only one.",
+      "given": {
+        "issue": { "project": "web-platform", "team": "core", "labels": ["backend"], "assignees": [], "state": "todo" },
+        "rules": [
+          { "repository": "web", "match": { "project": "web-platform" } },
+          { "repository": "web", "match": { "labels": "backend" } }
+        ]
+      },
+      "expect": { "repository": "web", "refused": null }
+    }
+  ]
+}
