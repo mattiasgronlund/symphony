@@ -132,6 +132,31 @@ for as long as the orchestrator process lives" is enough and an integer counter 
 `run_id` is written to durable logs (Section 13.1) and handed to an external node-scheduler (Section
 9.11), where a per-process counter restarting at 1 collides with the previous process's records.
 
+## Review finding: which of the two identifiers the guard compares
+
+Raised on the implementation reply to PR #114, against the compression of the section above rather
+than against its content. "The identifier is one already owed in four places, not a fourth identity"
+is true of the **definition** and says nothing about the **comparison**, and read as licence it
+points at the wrong field. `origin_run_id` names the origin of a retry sequence rather than the
+immediate predecessor — Section 13.1 states that "every attempt in the sequence carries one value",
+which is the property that makes a sequence a group rather than a linked list — so an entry carrying
+`origin_run_id` and a guard comparing against it fail in **exactly** the case this decision is
+about: reconciliation terminates run A, a retry re-dispatches run B in the same sequence, both carry
+one `origin_run_id`, and the stale exit matches.
+
+So the two are one field's worth of definition and two fields' worth of use, and the repair is one
+sentence in Section 4.1.5 rather than a caveat anywhere else (Plan step 1): a retried attempt
+carries its own `run_id` and its origin's, `origin_run_id` being the `run_id` of the attempt the
+sequence began at. That sentence also gives `origin_run_id` the type it has never had — Section 13.1
+REQUIREs the field and states it is never null, and says nothing about what kind of value it is,
+which is why the two could be conflated without contradicting anything written.
+
+The same reply confirms the two claims step 2 turns on, from the build's side: the Section 16.1
+process identity arrives at a sans-io orchestrator as an injected input rather than as something the
+core reads, and the per-process counter behind `run_id` joins that build's existing retry-generation
+counter under Section 14.3's not-closed rule — so the layering step 2 describes costs it no new
+seam.
+
 ## Where the uniqueness comes from, and why it needs a stated source
 
 This is the one part of the repair that does not fall out of the existing precedent, and leaving it

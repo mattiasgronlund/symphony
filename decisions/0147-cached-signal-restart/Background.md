@@ -145,7 +145,7 @@ reading to have been seen: "An implementation MAY distinguish a permanently `UNK
 agent exposes no such interface) from a transiently `UNKNOWN` one (a temporary block)". At startup
 with no store, a never-yet-read signal is indistinguishable from a permanently unavailable one.
 
-**The clause took three drafts, and the two that were discarded are the useful record.**
+**The clause took four drafts, and the three that were discarded are the useful record.**
 
 **First: condition on the configuration.** "An `UNKNOWN` that has never held a reading in this
 process MUST fail open unless an out-of-band refresh path (Section 8.9's poller) is configured." It
@@ -172,7 +172,7 @@ and empty, store unreachable. It has two holes, and neither involves a store:
   held a reading, replaced it in this process, and still deadlocks** — so any rule worded over "has
   this process held a reading" cannot see it.
 
-**Third, and taken: condition on whether a reading can arrive at all.**
+**Third: condition on whether a reading can arrive at all.**
 
 > Where no out-of-band refresh path (Section 8.9's poller) is configured, an `UNKNOWN` MUST fail
 > open: the only source of readings is then an agent update, which a paused dispatch prevents, so a
@@ -186,6 +186,41 @@ operator most wants covered. A poller that reaches nothing pauses a deployment t
 paused, and says why in the snapshot's `error` field, where a dispatch-fed loop pausing itself says
 nothing at all.
 
+**Fourth, and taken: release no more than obtaining a reading requires.**
+
+Raised on the implementation reply to PR #114, against the third draft as captured. The deadlock
+argument justifies releasing *enough to produce a reading*; the third draft releases the whole
+limit. A deployment at `max_concurrent_agents: 20` that configured a fail-closed quota gate goes
+from paused to twenty on a missing reading — at startup and after every idle drain, which is when
+nothing has read the account since before the gap and a burst is least well covered by anything
+else.
+
+> Where no out-of-band refresh path (Section 8.9's poller) is configured, an `UNKNOWN` MUST NOT
+> pause dispatch outright: the gate clamps headroom to one run in flight until a reading arrives.
+> The only source of readings is then an agent update, which a paused dispatch prevents, so a
+> fail-closed policy would never release — and one run is what makes an agent update arrive, which
+> is as far as the deadlock argument reaches.
+
+This is the third draft's rule evaluated on the third draft's condition: same four startup shapes,
+same two holes, same answers about *whether* to release. It differs only in **how much**, and it is
+the amount the derivation actually supports. What it costs is a quantity stated in the gate, which
+the third draft did not have to state.
+
+**The clamp does not sentence anyone to concurrency 1**, because Section 8.9 already carries the
+exit: a provider or agent that exposes no quota interface is a permanently `UNKNOWN` signal, and the
+gate's existing SHOULD defaults that arm to fail-open. Permanence there is a property of the
+provider rather than of a reading, so it is decidable without waiting for one — the clamp governs
+the transient and the not-yet-classified cases, which are exactly the ones a fail-closed operator
+configured the gate for.
+
+**The two halves live in different sections.** The condition is a property of the class — an
+`UNKNOWN` that no configured path can replace MUST NOT be allowed to stop the only path that would
+replace it — and belongs in Section 14.3 beside the permanently-versus-transiently allowance. The
+quantity is a property of the gate, and the concurrency limit it clamps is Section 8.3's, so the
+concrete form belongs in Section 8.9's dispatch-gate bullet with the rest of what the gate does.
+Putting the number in Section 14.3 would state a dispatch policy in the section that classifies
+state.
+
 **The value-conditioning survives the change of job.** "A restored value is a reading; a restore
 that produced none is not" stops being the escape and becomes the input to a distinction Section 8.9
 owes anyway: its gate bullet distinguishes "a permanently `UNKNOWN` signal (a provider/agent that
@@ -196,8 +231,11 @@ reading aged past `stale_after_ms`, and only the second can be a temporary block
 that explicitly, and the sentence above is what decides it.
 
 This is the one clause the two sides of the issue had not converged on when the decision was
-captured; it is recorded here as taken with its full derivation so a reversal has something to argue
-against rather than a preference to overturn.
+captured. The third draft was recorded as taken with its full derivation so that a reversal would
+have something to argue against rather than a preference to overturn, and that is what the reply
+argued against: on the derivation, and on the one axis it was wider than the derivation. The third
+draft is kept above rather than replaced, because the difference between the two is the whole
+question and a later reader weighing a return to the wider form needs both.
 
 ## What the dual class costs, and the column header that stops it being read wrongly
 
@@ -282,10 +320,18 @@ At `22b5194`, against the working tree:
 - **A Core consumer of `provider_rate_limits`.** The reclass rests on there being none — the field
   is observability in Core and enforcement only under Section 8.9. A Core behaviour that branches on
   it would put the `C` class back and reopen edits 1 and 2 together.
-- **An in-band reading source that does not require a running worker.** The fail-open rule's entire
-  justification is that a paused dispatch prevents the only source of readings. A provider interface
-  reachable without a run — or a gate that permits one probe dispatch — would make fail-closed
-  stateable without a poller, and the clause should then be narrowed rather than left broad.
+- **An in-band reading source that does not require a running worker.** The rule's entire
+  justification is that a paused dispatch prevents the only source of readings. This trigger has
+  already fired on its second clause: a gate that permits one probe dispatch is the fourth draft,
+  and the clause is narrowed to it rather than left at the whole limit. What stays reconsiderable is
+  the first clause — a provider interface reachable with nothing running would make fail-closed
+  stateable without a poller and without the clamp.
+- **A deployment where one run cannot produce a reading.** The clamp rests on an agent update
+  following from a run. A provider that reports quota on only some turns, or an agent whose updates
+  carry no rate-limit payload while the signal is not classifiable as permanently `UNKNOWN`, would
+  leave the gate releasing one run indefinitely without resolving the state. The choice would then
+  be between the third draft's whole-limit release and a bounded number of probes, and the four
+  drafts above are what both would be argued from.
 - **A second Core field taking the `Cached external signal` class.** The scoping in edit 2 is stated
   over the class rather than over the field, so it would apply — but the reclass argument in edit 1
   is specific to this field's Core role, and a second field would need its own.

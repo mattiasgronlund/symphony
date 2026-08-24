@@ -62,10 +62,13 @@
    a front-end that completed its sequence reports the result of the operation the sequence ends at
    — `create_pr` for `ship`, `merge` for `land` — and that a caller tests **the operation the result
    names** rather than its proto class, a repository edge being permitted to end a front-end early
-   with a `done`-class result. Ensure the clause does not reach for an `outputs` key: `output_keys`
-   carries the ten keys Section 8.2 fixes and the rest of `outputs` is entry-specific, so a
-   pull-request identifier there is not portably testable. *Done when:* the clause exists, and a
-   consumer can tell a completed `ship` from a truncated one using only the envelope.
+   with a `done`-class result. Ensure the clause does not reach for an `outputs` key: the
+   `output_keys` group carries the keys Section 8.2 fixes and the rest of `outputs` is
+   entry-specific, so a pull-request identifier there is not portably testable. Ensure **no count of
+   that group is written**, here or in `VCSX-SPEC.md`: decision 0141 adds an entry to it, so a
+   number is false on the day that decision lands and the conclusion never needed one. *Done when:*
+   the clause exists, a consumer can tell a completed `ship` from a truncated one using only the
+   envelope, and nothing this step writes has to be re-checked when the group grows.
 7. **`VCSX-SPEC.md` Section 7.1 — the extent sentence is not read as a postcondition.** Ensure that
    section's "drives the change from the current worktree up to and including opening or updating
    the pull request" is not contradicted by step 6, stating if needed that it describes the extent
@@ -99,7 +102,9 @@
 
 ## Ordering
 
-- Independent of decisions 0140, 0141 and 0142; it touches none of the sections they edit.
+- Independent of decisions 0140, 0141 and 0142; it touches none of the sections they edit. The
+  independence from 0141 is a property of step 6's wording: that decision adds an entry to the
+  `output_keys` group, so a step stating the group's size would owe it an ordering. None does.
 - **Before the issue #103 decision.** The landing point this decision defines is the object a
   resumed sequence's cursor names; settling #103 first leaves its cursor pointing at an undefined
   concept.

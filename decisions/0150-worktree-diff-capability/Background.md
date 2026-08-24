@@ -152,6 +152,35 @@ other two do" stays true and stops being the only thing said.
   the same position on the same invocations, so the note is better restated over the position than
   over one capability.
 
+## Confirmed against a build, and two things it learned there
+
+Reported on the implementation reply to PR #114, after this decision was captured and against the
+same pinned text. The pair this record predicts is the pair that engine had — `Dispatch::compose`
+read the worktree diff before the position and `Dispatch::commit` read `worktree_revision()` after
+it — so a `before:commit` unit that writes in the worktree had its writes named by the identity
+taken after them: `commit:worktree_moved` unreachable through that window, content committed that no
+position inspected, and `ok` reported. A `vcsx-cli` test bound to Section 6.5's own `scan-content`
+shape was passing *because* of it. It was repaired there rather than held for the specification
+edit, on the ground that Section 9.1 already fixes `expected_worktree` as the identity answered
+"when the working tree was read at `before:commit`", so the two-read arrangement was a wrong write
+against the pinned text rather than a gap in it. The point that a sequencing rule is one hole short
+held up in the building: two reads disagree in whichever order they are taken.
+
+Two findings came back from it, and both belong in the edit rather than in this record alone:
+
+- **The pairing spends Section 9.1's bookkeeping allowance *less*, not more.** In that backend `add
+  -A` ran twice, once per read, at two moments with a unit between them; paired, it runs once, and
+  `diff --cached` and `write-tree` both read the index it produced. The index is git's atomicity
+  boundary in decision 0079's own argument, and that decision priced `worktree_revision()` at "one
+  extra `write-tree` over an `add -A` that already happens" — so the capability that made 0079
+  nervous about the allowance gets cheaper on it rather than dearer. Step 4 is where that goes,
+  since the note it restates is what the price is attached to.
+- **The undetermined case moves with the read.** A backend that cannot answer now fails from the
+  composition, before the position runs, rather than at the capture after it. Section 9.1's reason
+  for `commit:failed` is unchanged; what changes is that a gate no longer runs over content the
+  operation will not use. It is derivable from the pairing, which is the argument for stating it in
+  Section 9.1 rather than leaving it to be derived — step 3.
+
 ## The network enumeration needs no edit
 
 `worktree_diff()` reads a copy the checkout already holds, takes neither the access parameter nor

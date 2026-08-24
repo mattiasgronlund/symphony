@@ -118,10 +118,13 @@
 - **Independent of decision 0142 in substance** — that decision withdrew the sequence-selecting
   property and settled its fourth refusal condition on the entry point alone, so neither waits on
   the other.
-- **Coupled to decision 0142 in encoding.** Both add a part to the token. Landed together that is
-  one format revision; landed apart it is two, and a token issued between them decodes on no build
-  that has taken either. Whichever of the two is applied second states this in its own record rather
-  than leaving it to be discovered when a tag is bumped twice.
+- **Coupled to decision 0142 in encoding.** This decision adds a part to the token outright; 0142
+  requires it to answer which entry point issued it, which is a part in any engine whose point
+  encoding does not already determine that. Landed together that is one format revision; landed
+  apart it is two, and a token issued between them decodes on no build that has taken either. 0142
+  will plausibly land first, since it orders itself after 0141 while this one waits on 0143 — so
+  **both** records now state the coupling rather than leaving it on whichever is applied second
+  (raised on the implementation reply to PR #114, against 0142's record for not naming it).
 
 ## Anchor check
 

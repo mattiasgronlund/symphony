@@ -16,10 +16,14 @@
    attempts in one deployment share a `run_id`, including across process restarts. Ensure the
    derivation is `Implementation-defined` and MUST be documented, and that the section names the two
    places that falsify the property — Section 13.1's `origin_run_id` and Section 9.11's
-   `lookup_by_run_id`. Ensure the field is not optional and has no null value. *Done when:*
+   `lookup_by_run_id`. Ensure the field is not optional and has no null value. Ensure the section
+   states the relation between the two identifiers in Section 13.1's own terms: a retried attempt
+   carries its own `run_id` **and** its origin's, `origin_run_id` being the `run_id` of the attempt
+   the sequence began at — which is also the type `origin_run_id` has never been given. *Done when:*
    `origin_run_id`, `lookup_by_run_id`, `signal_done` and the guard below all name a field this
-   section defines, and the uniqueness clause is stated over the distinction rather than over a
-   generation scheme.
+   section defines, the uniqueness clause is stated over the distinction rather than over a
+   generation scheme, and no reader can take `origin_run_id` for the value step 7's guard compares —
+   every attempt in one retry sequence carries the same one.
 2. **`SPEC.md` Section 16.1 — a process identity, established before the loop.** Ensure
    `start_service()` establishes an identity for this process, distinct from that of any previous
    process of the same deployment, before `event_loop(state)`, alongside the other functions that

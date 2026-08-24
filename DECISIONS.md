@@ -5488,7 +5488,13 @@ point (`local_vcs`), one named entry (`store_location`), and a condition (`git_a
 that can reach one"; the forge coordinate and `forge_access` "where a forge is configured"), so the
 field admits three shapes. The dependency on issue #103 recorded as firm is **withdrawn with the
 general form**: the entry point is carried by the token, no enumeration is consulted, and nothing
-here waits on that decision.
+here waits on that decision. One coupling the capture did not name is recorded on the implementation
+reply to PR #114: decision 0153 adds a part to the resume token outright and this decision requires
+the token to answer which entry point issued it — a part in any engine whose point encoding does not
+already determine that — so the two are one format revision landed together and two landed apart,
+with a window in which a token issued between them decodes on neither build. This decision plausibly
+lands first, ordering itself after 0141 while 0153 waits on 0143, so both records now carry the
+coupling rather than only the one applied second.
 
 ## 0143 — Where a substituted result lands in a front-end sequence
 
@@ -5538,14 +5544,18 @@ early return, and **that** is the unwritten invariant — `ship` returns `done` 
 `create_pr` and `land` only from `merge`, which is what a caller reads to know the pull request
 exists — so `push:pr_closed → run_op status` violates no rule and silently repurposes the only
 completion signal the envelope has. The replacement test is **the operation the result names**, not
-its class, stated in Section 13.1: `output_keys` carries the ten keys Section 8.2 fixes and says the
-rest of `outputs` is entry-specific, so a pull-request identifier there is not portably testable —
-the draft of this chapter said three, wrong about the count and right about the note it turns on. It
-is merged behaviour rather than a hypothetical — the reporting engine returns `status:ok` for that
-edge today — and the answer leaves that build correct, the repair being a row telling callers what
-to read. The vectors need a **new corpus function**, since `match_edge` stops at edge selection by
-construction, and its `expect` names three things: the disposition, the transfer, and what the
-invocation reports, the third being what tells `status:ok` from the built-in escalation.
+its class, stated in Section 13.1: the `output_keys` group carries the keys Section 8.2 fixes and
+says the rest of `outputs` is entry-specific, so a pull-request identifier there is not portably
+testable. **No count of that group is stated**, and the drafts that stated one are the finding: this
+chapter's first draft said three, its correction said ten, and decision 0141 — same batch — adds an
+eleventh, so a number written into Section 13.1 would be falsified by a decision already in the log
+while the conclusion turns on the group's note either way. Raised on the implementation reply to PR
+#114, against this decision and 0152 together. It is merged behaviour rather than a hypothetical —
+the reporting engine returns `status:ok` for that edge today — and the answer leaves that build
+correct, the repair being a row telling callers what to read. The vectors need a **new corpus
+function**, since `match_edge` stops at edge selection by construction, and its `expect` names three
+things: the disposition, the transfer, and what the invocation reports, the third being what tells
+`status:ok` from the built-in escalation.
 
 ## 0144 — What a concurrency slot counts, and when a run starts occupying one
 
@@ -5631,29 +5641,36 @@ reopens duplicate dispatch with no rule violated. The explicit set is load-beari
 **Folder:** [decisions/0146-run-attempt-identity/](decisions/0146-run-attempt-identity/)
 
 Issue #106. `on_worker_exit` decides whether an exit is owed a retry by testing whether the running
-entry is **present** — and Section 8.4 says, of the sibling function eleven lines below it in the same
-code block, that "Testing only whether an entry is present does not satisfy this: the entry that a
-discarded fire must not consume is present by construction". The same construction produces a
+entry is **present** — and Section 8.4 says, of the sibling function eleven lines below it in the
+same code block, that "Testing only whether an entry is present does not satisfy this: the entry
+that a discarded fire must not consume is present by construction". The same construction produces a
 present-but-wrong entry here: reconciliation terminates run A and removes its entry, a later tick
-dispatches run B under the same key, run A's in-flight exit arrives, the guard does not fire, and the
-orchestrator **converts a live run into a queued retry and loses it** — run B's own exit then arriving
-with no entry and correctly doing nothing. The window is not sub-millisecond: on the stall path the
-re-dispatch happens after a backoff, so the guard fails whenever a killed worker takes longer than one
-backoff to die, and in remote mode the exit crosses a seam whose events are buffered and replayed *by
-design*. **The guard belongs on the channel rather than on the exit callback**, because Section 16.6
-sends agent events keyed by issue alone and a late one from run A lands on run B's entry: it writes
-`last_timestamp`, which is Part A's own stall reference, so a dead run's trailing events keep a
-genuinely stalled replacement alive — the one consequence with no second line of defence, because the
-mechanism that would clean it up is the one the stale events defeat; it overwrites `session_id`; and
-it computes Section 13.5's deltas between two unrelated cumulative series, which Section 8.8's
-`Durable` idempotency is keyed on. The asymmetry is the argument for the channel over the fields: in
-the reporting engine one field on the entry is idempotent under mixing (rate limits order by
-`fetched_at`) and the other is silently wrong (a high-water mark across two series is a value neither
-produced). **The identifier is one already owed in four places, not a fourth identity**: Section 13.1
-REQUIREs `origin_run_id` and states it is never null, Section 9.11 calls `lookup_by_run_id` and
-`signal_done`, Section 14.4 keys the remote run registry by run — and Section 4.1.5 defines no id, so
-an emitter carrying `origin_run_id` as non-optional cannot construct a session reference at all and a
-runtime snapshot's running row reports no session. Its uniqueness is **wider** than Section 8.4's
+dispatches run B under the same key, run A's in-flight exit arrives, the guard does not fire, and
+the orchestrator **converts a live run into a queued retry and loses it** — run B's own exit then
+arriving with no entry and correctly doing nothing. The window is not sub-millisecond: on the stall
+path the re-dispatch happens after a backoff, so the guard fails whenever a killed worker takes
+longer than one backoff to die, and in remote mode the exit crosses a seam whose events are buffered
+and replayed *by design*. **The guard belongs on the channel rather than on the exit callback**,
+because Section 16.6 sends agent events keyed by issue alone and a late one from run A lands on run
+B's entry: it writes `last_timestamp`, which is Part A's own stall reference, so a dead run's
+trailing events keep a genuinely stalled replacement alive — the one consequence with no second line
+of defence, because the mechanism that would clean it up is the one the stale events defeat; it
+overwrites `session_id`; and it computes Section 13.5's deltas between two unrelated cumulative
+series, which Section 8.8's `Durable` idempotency is keyed on. The asymmetry is the argument for the
+channel over the fields: in the reporting engine one field on the entry is idempotent under mixing
+(rate limits order by `fetched_at`) and the other is silently wrong (a high-water mark across two
+series is a value neither produced). **The identifier is one already owed in four places, not a
+fourth identity**: Section 13.1 REQUIREs `origin_run_id` and states it is never null, Section 9.11
+calls `lookup_by_run_id` and `signal_done`, Section 14.4 keys the remote run registry by run — and
+Section 4.1.5 defines no id, so an emitter carrying `origin_run_id` as non-optional cannot construct
+a session reference at all and a runtime snapshot's running row reports no session. That is true of
+the **definition** and says nothing about the **comparison**, so Section 4.1.5 states both, on the
+implementation reply to PR #114: a retried attempt carries its own `run_id` and its origin's,
+`origin_run_id` being the `run_id` of the attempt the sequence began at — which is also the type
+that field has never been given. Every attempt in a retry sequence carries one `origin_run_id`,
+Section 13.1's own reason being that the sequence is a group rather than a linked list, so a guard
+comparing against *it* fails in exactly the case this decision is about, where the retry that
+dispatched run B belongs to run A's sequence. Its uniqueness is **wider** than Section 8.4's
 generation, which is compared only in memory: a `run_id` is written to durable logs and handed to an
 external scheduler, where a per-process counter restarting at 1 collides with the previous process's
 records. That requirement needs a stated source, because it is not a function of state — and the
@@ -5662,14 +5679,14 @@ function that touches the world before the loop starts**, so it establishes a pr
 `Implementation-defined` and documented on the `worktree_revision()` precedent, and `dispatch_issue`
 composes `run_id` from it and a counter. The guarantee is stated over the distinction the value MUST
 make — no two run attempts in one deployment share a `run_id` — because "non-reuse across restarts,
-scheme `Implementation-defined`" reads as satisfiable by a constant until the first test that needs it
-to differ, and a build whose simulated restart reuses the identity has a guard that is never exercised
-and a suite that is green. The **shape** changes with the field: decision 0136 gave `on_retry_timer`
-get-compare-remove "because a comparison that fails after the pop has already taken the entry the fire
-should not have touched", and `on_worker_exit` inherited neither the field nor the shape. Costs stated
-rather than discovered: a Core entity and the worker→orchestrator message shape, plus one
-`Implementation-defined` obligation owing a Section 19 line and a Conformance Statement row — decision
-0128's trap, named from the start.
+scheme `Implementation-defined`" reads as satisfiable by a constant until the first test that needs
+it to differ, and a build whose simulated restart reuses the identity has a guard that is never
+exercised and a suite that is green. The **shape** changes with the field: decision 0136 gave
+`on_retry_timer` get-compare-remove "because a comparison that fails after the pop has already taken
+the entry the fire should not have touched", and `on_worker_exit` inherited neither the field nor
+the shape. Costs stated rather than discovered: a Core entity and the worker→orchestrator message
+shape, plus one `Implementation-defined` obligation owing a Section 19 line and a Conformance
+Statement row — decision 0128's trap, named from the start.
 
 ## 0147 — What a restart restores, and which class the Core field is
 
@@ -5678,47 +5695,56 @@ rather than discovered: a Core entity and the worker→orchestrator message shap
 
 Issue #105. Section 14.3's `Cached external signal` bullet says the last-known-good "MUST be carried
 across both a failed refresh and a process restart"; Section 14.4 says "Only `Durable` state
-introduced by an OPTIONAL extension is restored across a restart"; `provider_rate_limits` is Core and
-carries the class, so it is inside both. **The rest of the corpus already answers it three times, the
-same way** — Section 16.1's `restore_cached_and_durable_state` overlays both classes "when an OPTIONAL
-extension configures one; otherwise the zero/null defaults above stand", Section 17.4's row is
-conditioned on the extension being implemented, and Section 14.3's own closing paragraph says the
-class "is introduced by an OPTIONAL provider-quota extension". So the contract is settled and the two
-sentences are the outliers. Neither half of the issue's ask reaches it alone, which is why this is
-three edits: **reclass `provider_rate_limits`** on the `agent_totals` precedent — `Ephemeral` for
-observability in Core, becoming `Cached external signal` when Section 8.9 enforces on it, which is
-where its staleness bound and `UNKNOWN` policy come from; **scope Section 14.3's restart half to a
-store**, mirroring the `Durable` bullet's existing degradation clause; and **say both restorable
-classes in Section 14.4**, whose "only `Durable`" is false for a quota extension with a store
-independently of the Core-field question. Section 8.9's own Recovery-semantics bullet restates the
-unconditional promise and was not in the ask, so it moves too. The reclass is more than re-labelling
-for a reason that has nothing to do with tidiness: **`Ephemeral` is the one class whose reset
-consequence is a required part of the class**, so reclassing is what makes "the status surface reports
-no rate-limit reading until the next agent update refreshes it" get written down somewhere a consumer
-reads — where the minimal fallback (keep it `C`, say Core has no store) leaves the obligation stated
-in Section 14.3 and reaching no artifact that publishes it, and where a build carrying the class as a
-wrapper type has its compiler demand the sentence. It also closes the issue's second edge as a side
-effect: a Core-only build has no value it is told to age against a bound no Core section defines. The
-third edge is the one the section turns on and **the clause took three drafts, of which the two
-discarded are the record**. Conditioning on the *configuration* cannot see a store configured and
-empty, or unreachable. Conditioning on the *value* — "a restored value is a reading; a restore that
-produced none is not" — covers all four startup shapes and leaves two holes with no store involved: a
-restore whose `fetched_at` is already older than `stale_after_ms` (default `180000`) arrives `UNKNOWN`
-and *is* a reading, and the drained idle needs no restart at all, since Section 8.9's gate leaves
-running workers alone so in-band readings arrive only while a worker runs — three minutes of quiet
-between tickets deadlocks a deployment that held a reading and replaced it in this process. So the
-rule is conditioned on whether a reading can **arrive**: where no out-of-band refresh path is
-configured, an `UNKNOWN` MUST fail open, because the only source of readings is then an agent update
-that a paused dispatch prevents. Fail-closed stays intact for the deployment that configured a poller
-in order to have it, including the startup window, and a poller reaching nothing pauses a deployment
-that asked to be paused and says why in the snapshot's `error`. The value-conditioning survives with a
-different job: it is what decides whether a startup `UNKNOWN` is Section 8.9's permanently-unknown arm
-or its transient one — the pair that carries a SHOULD and a MAY today with nothing to decide between
-them. **This is the one clause the issue thread had not converged on when the decision was captured**,
-recorded with its full derivation so a reversal has something to argue against. The dual-valued
-"Spec default" cell gets a clause on the template's **column header** rather than in either row — it
-states which of the two the implementation ships, not "both" — covering `agent_totals`, which has
-carried the same ambiguity unread only because no generator has read it.
+introduced by an OPTIONAL extension is restored across a restart"; `provider_rate_limits` is Core
+and carries the class, so it is inside both. **The rest of the corpus already answers it three
+times, the same way** — Section 16.1's `restore_cached_and_durable_state` overlays both classes
+"when an OPTIONAL extension configures one; otherwise the zero/null defaults above stand", Section
+17.4's row is conditioned on the extension being implemented, and Section 14.3's own closing
+paragraph says the class "is introduced by an OPTIONAL provider-quota extension". So the contract is
+settled and the two sentences are the outliers. Neither half of the issue's ask reaches it alone,
+which is why this is three edits: **reclass `provider_rate_limits`** on the `agent_totals` precedent
+— `Ephemeral` for observability in Core, becoming `Cached external signal` when Section 8.9 enforces
+on it, which is where its staleness bound and `UNKNOWN` policy come from; **scope Section 14.3's
+restart half to a store**, mirroring the `Durable` bullet's existing degradation clause; and **say
+both restorable classes in Section 14.4**, whose "only `Durable`" is false for a quota extension
+with a store independently of the Core-field question. Section 8.9's own Recovery-semantics bullet
+restates the unconditional promise and was not in the ask, so it moves too. The reclass is more than
+re-labelling for a reason that has nothing to do with tidiness: **`Ephemeral` is the one class whose
+reset consequence is a required part of the class**, so reclassing is what makes "the status surface
+reports no rate-limit reading until the next agent update refreshes it" get written down somewhere a
+consumer reads — where the minimal fallback (keep it `C`, say Core has no store) leaves the
+obligation stated in Section 14.3 and reaching no artifact that publishes it, and where a build
+carrying the class as a wrapper type has its compiler demand the sentence. It also closes the
+issue's second edge as a side effect: a Core-only build has no value it is told to age against a
+bound no Core section defines. The third edge is the one the section turns on and **the clause took
+four drafts, of which the three discarded are the record**. Conditioning on the *configuration*
+cannot see a store configured and empty, or unreachable. Conditioning on the *value* — "a restored
+value is a reading; a restore that produced none is not" — covers all four startup shapes and leaves
+two holes with no store involved: a restore whose `fetched_at` is already older than
+`stale_after_ms` (default `180000`) arrives `UNKNOWN` and *is* a reading, and the drained idle needs
+no restart at all, since Section 8.9's gate leaves running workers alone so in-band readings arrive
+only while a worker runs — three minutes of quiet between tickets deadlocks a deployment that held a
+reading and replaced it in this process. So the rule is conditioned on whether a reading can
+**arrive** — and, on the implementation reply to PR #114, on releasing no more than that: where no
+out-of-band refresh path is configured an `UNKNOWN` MUST NOT pause dispatch outright, and the gate
+clamps headroom to **one run in flight** until a reading arrives. The third draft released the whole
+limit, which takes a fail-closed deployment at `max_concurrent_agents: 20` from paused to twenty on
+a missing reading, at every startup and after every idle drain; one run is what makes an agent
+update arrive, so the deadlock argument reaches no further, and Section 8.9's existing SHOULD for a
+provider exposing no quota interface is the exit that keeps the clamp from being permanent. The
+condition is the class's and the quantity is the gate's, so they land in Sections 14.3 and 8.9
+rather than together. Fail-closed stays intact for the deployment that configured a poller in order
+to have it, including the startup window, and a poller reaching nothing pauses a deployment that
+asked to be paused and says why in the snapshot's `error`. The value-conditioning survives with a
+different job: it is what decides whether a startup `UNKNOWN` is Section 8.9's permanently-unknown
+arm or its transient one — the pair that carries a SHOULD and a MAY today with nothing to decide
+between them. **This is the one clause the issue thread had not converged on when the decision was
+captured**, recorded with its full derivation so a reversal has something to argue against — which
+is what the reply did, on the derivation rather than on a preference, and the third draft is kept in
+the record because the difference between the two is the question. The dual-valued "Spec default"
+cell gets a clause on the template's **column header** rather than in either row — it states which
+of the two the implementation ships, not "both" — covering `agent_totals`, which has carried the
+same ambiguity unread only because no generator has read it.
 
 ## 0148 — Routing keys and the record they route over
 
@@ -5804,39 +5830,47 @@ because three decisions in a row missed the case where it does.
 **State:** Proposed
 **Folder:** [decisions/0150-worktree-diff-capability/](decisions/0150-worktree-diff-capability/)
 
-Issue #110, first of two, split from #102. **The strongest form of the finding is not the derivation —
-it is that an engine has already had to invent all three capabilities**, under the report's own names
-and shapes, months before the report, with two backends behind them and published under Section 13.3
-as that engine's own. So the specification is not being asked whether it might need them. This
-decision takes the one blocked by nothing: Section 10.4 supplies "the commit message and **the diff
-the commit would record** at `before:commit`", Section 9.1's `diff(base_ref)` is the branch delta
-against the resolved base and `worktree_revision()` answers an identity, and nothing in Section 9.1 or
-9.2 answers the question. Section 9.1's own closing paragraph is the better citation than Section
-4.1's "realized through the plugin layer", because it makes the claim rather than implying it —
-"every operation Section 4.1 defines is realizable through it" — and it is false in the section the
-repair edits. This one is **on the documented happy path**: Section 6.5's example policy binds
-`before:commit` → `run` → `scan-content`, so the list is short of something every engine supporting
-the canonical example needs. The load-bearing half was not in the report and is a **live defect**:
-Section 10.4 closes by asserting that `before:create_pr` "needs no identity to condition on where the
-other two do", which stops being true the moment the diff is a second read of the tree — an engine
-reading the diff at T₁ and the identity at T₂ matches `expected_worktree` for a tree that moved in
-between and then held still, and commits content the scan never saw, violating Section 6.6's "a gate
-is only a gate if what it inspected is what proceeds" with every rule satisfied. The reporting engine
-has exactly that pair, its diff read before the position and its identity inside the operation after
-it. **A sequencing rule is one hole short of enough**: take the identity first and a tree that moves
-to B and back to A matches exactly, because `worktree_revision()`'s contract is stated over *content*
-— an editor writing a file and reverting it reaches it, and no ordering can see it. So the capability
-answers a **pair** — the diff, and the identity for the tree it read, which the engine supplies as
-`expected_worktree` — making the wrong shape unwritable rather than writing a rule against it. The
-honest objection, that Section 9.1 has no precedent for a capability answering two things, does not
-hold: `ahead_behind(base_ref)` is that precedent and is there for the same reason, and Section 9.1's
-`commit` bullet **already** binds the identity to "when the working tree was read at `before:commit`",
-so the pair is that sentence's own reading made true by construction. `worktree_diff()` inherits
-`is_dirty()`'s set rather than stating its own — a backend answering a *staged* diff would satisfy a
-loose reading and hand the scan the wrong content, which the pairing does not catch — and
-`worktree_revision()`'s write-to-bookkeeping note is restated over the position, since both are
-consulted there on invocations the gate then blocks. The network enumeration stays at four, checked
-against Section 9.1's list rather than inferred from the signature, which that section forbids.
+Issue #110, first of two, split from #102. **The strongest form of the finding is not the derivation
+— it is that an engine has already had to invent all three capabilities**, under the report's own
+names and shapes, months before the report, with two backends behind them and published under
+Section 13.3 as that engine's own. So the specification is not being asked whether it might need
+them. This decision takes the one blocked by nothing: Section 10.4 supplies "the commit message and
+**the diff the commit would record** at `before:commit`", Section 9.1's `diff(base_ref)` is the
+branch delta against the resolved base and `worktree_revision()` answers an identity, and nothing in
+Section 9.1 or 9.2 answers the question. Section 9.1's own closing paragraph is the better citation
+than Section 4.1's "realized through the plugin layer", because it makes the claim rather than
+implying it — "every operation Section 4.1 defines is realizable through it" — and it is false in
+the section the repair edits. This one is **on the documented happy path**: Section 6.5's example
+policy binds `before:commit` → `run` → `scan-content`, so the list is short of something every
+engine supporting the canonical example needs. The load-bearing half was not in the report and is a
+**live defect**: Section 10.4 closes by asserting that `before:create_pr` "needs no identity to
+condition on where the other two do", which stops being true the moment the diff is a second read of
+the tree — an engine reading the diff at T₁ and the identity at T₂ matches `expected_worktree` for a
+tree that moved in between and then held still, and commits content the scan never saw, violating
+Section 6.6's "a gate is only a gate if what it inspected is what proceeds" with every rule
+satisfied. The reporting engine has exactly that pair, its diff read before the position and its
+identity inside the operation after it — **field-confirmed after capture and repaired there in this
+decision's shape**, the window having made `commit:worktree_moved` unreachable and left a
+conformance test bound to Section 6.5's own `scan-content` shape passing because of it. Two findings
+came back from that build and are carried into the edit: the pairing spends Section 9.1's
+bookkeeping allowance **less**, not more — one staging write at the position where two reads made
+two, which is the price decision 0079 weighed — and the undetermined case moves with the read,
+failing from the composition before the position runs rather than at the capture after it, so a gate
+no longer runs over content the operation will not use. **A sequencing rule is one hole short of
+enough**: take the identity first and a tree that moves to B and back to A matches exactly, because
+`worktree_revision()`'s contract is stated over *content* — an editor writing a file and reverting
+it reaches it, and no ordering can see it. So the capability answers a **pair** — the diff, and the
+identity for the tree it read, which the engine supplies as `expected_worktree` — making the wrong
+shape unwritable rather than writing a rule against it. The honest objection, that Section 9.1 has
+no precedent for a capability answering two things, does not hold: `ahead_behind(base_ref)` is that
+precedent and is there for the same reason, and Section 9.1's `commit` bullet **already** binds the
+identity to "when the working tree was read at `before:commit`", so the pair is that sentence's own
+reading made true by construction. `worktree_diff()` inherits `is_dirty()`'s set rather than stating
+its own — a backend answering a *staged* diff would satisfy a loose reading and hand the scan the
+wrong content, which the pairing does not catch — and `worktree_revision()`'s write-to-bookkeeping
+note is restated over the position, since both are consulted there on invocations the gate then
+blocks. The network enumeration stays at four, checked against Section 9.1's list rather than
+inferred from the signature, which that section forbids.
 
 ## 0151 — Reading and materializing the policy source
 
@@ -5888,37 +5922,43 @@ Issue #111, split from #107 and independent by design. Section 13.1's Front-ends
 bound, a guard property and two convergence properties, and **no lower bound**: nothing says the
 sequence must *reach* anything. The nearest thing to one is in a different row and is scoped to the
 predicate failing to answer — "a `ship` whose `is_dirty()` cannot answer dispatches `commit` and
-yields `commit:failed`" — which makes the omission harder to see rather than easier, because a reader
-hunting the invariant finds a sentence that reads like it and stops. So decision 0143's reading 2
-passes the **whole matrix**: `is_dirty()` answered, `ship` stopped at the pull request, no retry
-misbehaved, and a pull request opened over a tree nothing committed. The plainest exhibit needs no
-repository policy at all — Section 12.2's commit loop ends in a bare `break` while the push loop below
-tests `if r.class != done`, so the block as printed walks from **any** non-`worktree_moved` commit
-result into the push loop, and the invariant is exactly what makes that `break` sound. Three
-invariants, with three corrections to the issue's phrasing, each load-bearing. **Section 13.1 alone is
-not a home**: its lead-in is "A conforming engine SHOULD include tests covering:", so an invariant
-living only there is a test recommendation an engine can decline while conforming — and Sections 7.1
-and 7.2 already carry the same shape one operation over ("It commits the tree it read", "It merges the
-head it read"), which "it pushes what it committed" completes. **Quantify over the flow, not the
-invocation**: a resumed `ship` continuing a resolved `create_pr:blocked` dispatches `create_pr` in an
-invocation containing no push, so the invocation-scoped row would refuse the resume the row above it
-requires, and Section 5.6 supplies the unit. **State it over the sequence's step, not over `ship`**:
-an edge whose `run_op` dispatches `create_pr` is the repository's dispatch, and a row falsifying it
-would take back what 0143 grants. The third invariant is the one the pair pays for: Section 12.2's
-built-in ends `ship` without a pull request on five paths and **every one is non-`done`**, so `ship`
-returns `done` today only from `create_pr` and `land` only from `merge` — what a caller reads to know
-the pull request exists, stated nowhere, and exactly what 0143's permitted `done`-class early return
-spends. The replacement test is **the operation the result names**, not its class, readable from the
-envelope with no new field, because `output_keys` fixes ten keys and notes the rest of `outputs` is
-entry-specific, so a pull-request identifier there is not portably testable. (An earlier statement of
-this, twice, said the group fixes three; it fixes ten, and the conclusion turns on the note rather
-than the count.) The row leans on one clause: `op` is present exactly where a result was decisive and
-null only for the two escalation shapes Section 8.4 nulls, so a caller reading it has an answer on
-every ending. Under 0143's transfer split the first two are **derivable rather than additional** —
-only `push:ok` and `push:up_to_date` reach the push loop's `break` whatever a repository binds — which
-makes them a regression test on the landing rule and is an argument for stating them. The issue argued
-this should precede 0143; that argument was good and its premise is gone, since the rule is chosen. Its
-mechanical half stands: the two edit **one anchor set**, so two decisions, one editing pass.
+yields `commit:failed`" — which makes the omission harder to see rather than easier, because a
+reader hunting the invariant finds a sentence that reads like it and stops. So decision 0143's
+reading 2 passes the **whole matrix**: `is_dirty()` answered, `ship` stopped at the pull request, no
+retry misbehaved, and a pull request opened over a tree nothing committed. The plainest exhibit
+needs no repository policy at all — Section 12.2's commit loop ends in a bare `break` while the push
+loop below tests `if r.class != done`, so the block as printed walks from **any**
+non-`worktree_moved` commit result into the push loop, and the invariant is exactly what makes that
+`break` sound. Three invariants, with three corrections to the issue's phrasing, each load-bearing.
+**Section 13.1 alone is not a home**: its lead-in is "A conforming engine SHOULD include tests
+covering:", so an invariant living only there is a test recommendation an engine can decline while
+conforming — and Sections 7.1 and 7.2 already carry the same shape one operation over ("It commits
+the tree it read", "It merges the head it read"), which "it pushes what it committed" completes.
+**Quantify over the flow, not the invocation**: a resumed `ship` continuing a resolved
+`create_pr:blocked` dispatches `create_pr` in an invocation containing no push, so the
+invocation-scoped row would refuse the resume the row above it requires, and Section 5.6 supplies
+the unit. **State it over the sequence's step, not over `ship`**: an edge whose `run_op` dispatches
+`create_pr` is the repository's dispatch, and a row falsifying it would take back what 0143 grants.
+The third invariant is the one the pair pays for: Section 12.2's built-in ends `ship` without a pull
+request on five paths and **every one is non-`done`**, so `ship` returns `done` today only from
+`create_pr` and `land` only from `merge` — what a caller reads to know the pull request exists,
+stated nowhere, and exactly what 0143's permitted `done`-class early return spends. The replacement
+test is **the operation the result names**, not its class, readable from the envelope with no new
+field, because the `output_keys` group carries the keys Section 8.2 fixes and notes the rest of
+`outputs` is entry-specific, so a pull-request identifier there is not portably testable. **The
+count is no part of that and is not stated**: an earlier statement said the group fixes three, this
+decision's draft corrected it to ten, and the correction reproduced the failure it was repairing —
+decision 0141 adds an eleventh entry, neither this plan nor 0143's orders itself against it, and
+step 3 puts the sentence in Section 13.1. Raised on the implementation reply to PR #114; the repair
+is to cite the group rather than count it, which is what both earlier statements already said the
+conclusion turns on. The row leans on one clause: `op` is present exactly where a result was
+decisive and null only for the two escalation shapes Section 8.4 nulls, so a caller reading it has
+an answer on every ending. Under 0143's transfer split the first two are **derivable rather than
+additional** — only `push:ok` and `push:up_to_date` reach the push loop's `break` whatever a
+repository binds — which makes them a regression test on the landing rule and is an argument for
+stating them. The issue argued this should precede 0143; that argument was good and its premise is
+gone, since the rule is chosen. Its mechanical half stands: the two edit **one anchor set**, so two
+decisions, one editing pass.
 
 ## 0153 — A resume continues the flow, and the token carries the root trigger
 
@@ -5929,36 +5969,38 @@ Issue #103. Section 5.5 says what a resume re-enters and stops there; **no secti
 after that re-entry produces a result**. For a single-operation entry point the question does not
 arise; for a front-end sequence a `ship` that escalated at `push` either reports the re-dispatched
 `push` and stops or carries on to `create_pr`, and two conforming engines then give one caller two
-different results from one token. **The argument that decides it is Section 5.6's accumulation.** Under
-the narrow reading a resumed invocation that re-dispatches successfully ends `done`, so no token is
-issued (Section 8.2 puts `resume_token` in `outputs` only at `needs_caller`), the count is discarded,
-and the caller re-invokes from the top with a fresh budget — so a resolve-and-resume loop never
-exhausts for the interactive front-end while it does for a driver whose resolver returns in process.
-That is precisely the divergence Section 5.6 is written to prevent, and it makes Section 13.1's
-"reaches `flow_exhausted` **across invocations** and not only within one" false for one of the two.
-Verified against a build implementing the narrow reading, which changed position on this argument
-having weighed and not found it. Two supporting arguments: **Section 5.4 already names the
+different results from one token. **The argument that decides it is Section 5.6's accumulation.**
+Under the narrow reading a resumed invocation that re-dispatches successfully ends `done`, so no
+token is issued (Section 8.2 puts `resume_token` in `outputs` only at `needs_caller`), the count is
+discarded, and the caller re-invokes from the top with a fresh budget — so a resolve-and-resume loop
+never exhausts for the interactive front-end while it does for a driver whose resolver returns in
+process. That is precisely the divergence Section 5.6 is written to prevent, and it makes Section
+13.1's "reaches `flow_exhausted` **across invocations** and not only within one" false for one of
+the two. Verified against a build implementing the narrow reading, which changed position on this
+argument having weighed and not found it. Two supporting arguments: **Section 5.4 already names the
 disposition and its name is "continue"**, so the narrow reading is the one needing a fourth
 disposition the section does not provide, and Section 7.1 states `ship`'s contract over what it
-drives. What the narrow reading would have cost is recorded rather than left implicit — Section 5.6's
-paragraph and Section 13.1's row would both have to be weakened — and it was **not unreasonable**: it
-is what Sections 5.5 and 8.2 literally describe, both enumerating a two-element token, so this
-decision changes those sentences rather than correcting a misreading. Section 8.1's opacity paragraph,
-read on the issue as support for the narrow reading, argues the engine will not **publish** a
-spelling, which cuts the other way; what it still argues against is a token whose *size* grows with
-the graph. The token carries three fields: the point, the count, and **the sequence's own `run_op`
-result the chain descends from** — decision 0143's root — where the point is not that dispatch itself.
-Two sharpenings, both 0143's doing. **It is a trigger, not a sequence position**: under 0143 the
-transfer is a property of the trigger and the trigger has exactly one position because the sequence
-tested it, so the position is derived — a token carrying a position would owe the traversal schema
-Section 8.1 says an engine should not publish, while one carrying a trigger owes the trigger
-vocabulary Section 5.1 and the registry already publish, and Section 5.4's tail-replacement keeps it
-fixed-width. **It is the root, not "the trigger an edge replaced"**: Section 12.2 routes
-`push:non_fast_forward` to `integrate` built in, so phrased over substitution the field would be
-absent exactly where a resumed `integrate` needs it. And the trigger is spelled by its **registry
-token** rather than by an ordinal into a generated enumeration, which after a MINOR insert decodes
-into a different trigger, silently, from a record that still looks valid. The `MUST NOT` over
-position-established state is untouched: a trigger is control-flow state of the same kind as the
-count. Easy to miss: `conformance/vcsx/vocabulary.json`'s `resume_token` note restates the two-element
-description **in its own words**, so it moves with the sections — decision 0132's drift class — and
-the format revision is shared with decision 0142, separable in substance and not in encoding.
+drives. What the narrow reading would have cost is recorded rather than left implicit — Section
+5.6's paragraph and Section 13.1's row would both have to be weakened — and it was **not
+unreasonable**: it is what Sections 5.5 and 8.2 literally describe, both enumerating a two-element
+token, so this decision changes those sentences rather than correcting a misreading. Section 8.1's
+opacity paragraph, read on the issue as support for the narrow reading, argues the engine will not
+**publish** a spelling, which cuts the other way; what it still argues against is a token whose
+*size* grows with the graph. The token carries three fields: the point, the count, and **the
+sequence's own `run_op` result the chain descends from** — decision 0143's root — where the point is
+not that dispatch itself. Two sharpenings, both 0143's doing. **It is a trigger, not a sequence
+position**: under 0143 the transfer is a property of the trigger and the trigger has exactly one
+position because the sequence tested it, so the position is derived — a token carrying a position
+would owe the traversal schema Section 8.1 says an engine should not publish, while one carrying a
+trigger owes the trigger vocabulary Section 5.1 and the registry already publish, and Section 5.4's
+tail-replacement keeps it fixed-width. **It is the root, not "the trigger an edge replaced"**:
+Section 12.2 routes `push:non_fast_forward` to `integrate` built in, so phrased over substitution
+the field would be absent exactly where a resumed `integrate` needs it. And the trigger is spelled
+by its **registry token** rather than by an ordinal into a generated enumeration, which after a
+MINOR insert decodes into a different trigger, silently, from a record that still looks valid. The
+`MUST NOT` over position-established state is untouched: a trigger is control-flow state of the same
+kind as the count. Easy to miss: `conformance/vcsx/vocabulary.json`'s `resume_token` note restates
+the two-element description **in its own words**, so it moves with the sections — decision 0132's
+drift class — and the format revision is shared with decision 0142, separable in substance and not
+in encoding: 0142 will plausibly land first, so both records now state the coupling rather than only
+whichever is applied second.

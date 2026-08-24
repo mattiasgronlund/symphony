@@ -192,14 +192,24 @@ has.
 its sequence reports `create_pr`'s result, a `land` that completed reports `merge`'s. That is
 readable from the envelope today and needs no new field. It has to be the operation rather than an
 `outputs` key, and the corpus says why: `vocabulary.json`'s `output_keys` group carries the keys
-Section 8.2 fixes — ten of them, `unperformed_intents`, `unfinished_hooks`, `unanswered_gates`,
+Section 8.2 fixes — `unperformed_intents`, `unfinished_hooks`, `unanswered_gates`,
 `failed_by_policy`, `forge_budget`, the three `pr_state_*` keys, `forge_unavailable_condition` and
-`resume_token` — and says "the rest of `outputs` is entry-specific and is not a shared vocabulary".
-No pull-request identifier is among them, so one there is a front-end's own key and a consumer
-cannot portably test it. (An earlier draft of this decision, and the reply on issue #107 it came
-from, said the group fixes three. It fixes ten; the conclusion turns on the note rather than on the
-count, but the count was wrong in both.) Section 13.1 is where the clause belongs — the same
-row issue #111's invariants go to.
+`resume_token` at `22b5194` — and says "the rest of `outputs` is entry-specific and is not a shared
+vocabulary". No pull-request identifier is among them, so one there is a front-end's own key and a
+consumer cannot portably test it. Section 13.1 is where the clause belongs — the same row issue
+#111's invariants go to.
+
+**Review finding: the count is no part of that argument, and this passage carried one three times.**
+An earlier draft of this decision, and the reply on issue #107 it came from, said the group fixes
+three; the draft that replaced them said ten, which was true at the revision above and is a count
+all the same — the third statement of a number in a passage whose conclusion never needed one, and
+the number is a property of a registry that decisions change. Decision 0141, captured in the batch
+before this reply, adds an eleventh entry for the policy pin, and this plan states itself
+independent of 0141. Raised on the implementation reply to PR #114, together with the same passage
+in decision 0152, whose step puts the sentence into `VCSX-SPEC.md` Section 13.1 where a count would
+be normative text falsified by a decision already in the log. The repair is not another number: the
+group is cited by name, which is what all three statements said the conclusion turns on while
+stating a count anyway.
 
 ## Options considered
 

@@ -131,15 +131,23 @@ repurposing the only completion signal the envelope has.
 **The replacement test is the operation the result names, not its class.** A `ship` that completed
 its sequence reports `create_pr`'s result; a `land` that completed reports `merge`'s. Readable from
 the envelope today, no new field. It has to be the operation rather than an `outputs` key, and the
-corpus says why: `conformance/vcsx/vocabulary.json`'s `output_keys` group carries the ten keys
-Section 8.2 fixes — `unperformed_intents`, `unfinished_hooks`, `unanswered_gates`,
-`failed_by_policy`, `forge_budget`, `forge_unavailable_condition`, the three `pr_state_*` keys and
-`resume_token` — and notes that "the rest of `outputs` is entry-specific and is not a shared
-vocabulary". No pull-request identifier is among them, so one there is a front-end's own key and a
-consumer cannot portably test it. (An earlier statement of this on the issue thread, and in decision
-0143's first draft, said the group fixes three. It fixes ten; the conclusion turns on the note
-rather than on the count, and the count was wrong in both. Corrected here rather than left to be
-re-derived.)
+corpus says why: `conformance/vcsx/vocabulary.json`'s `output_keys` group carries the keys Section
+8.2 fixes — `unperformed_intents`, `unfinished_hooks`, `unanswered_gates`, `failed_by_policy`,
+`forge_budget`, `forge_unavailable_condition`, the three `pr_state_*` keys and `resume_token`, at
+the revision recorded below — and notes that "the rest of `outputs` is entry-specific and is not a
+shared vocabulary". No pull-request identifier is among them, so one there is a front-end's own key
+and a consumer cannot portably test it.
+
+**The count is no part of that argument, and stating one is a defect this passage has now carried
+three times.** An earlier statement on the issue thread, and decision 0143's first draft, said the
+group fixes three; this decision's own draft corrected it to ten. The correction reproduced the
+failure it was repairing, because the number is a property of a registry that decisions change:
+decision 0141 — captured, in the batch before this one — adds an eleventh entry for the policy pin,
+and neither this plan's Ordering nor 0143's couples itself to 0141. So a count written here reaches
+`VCSX-SPEC.md` Section 13.1 through step 3 and is falsified by a decision already in the log. Raised
+on the implementation reply to PR #114, and the repair is not a third number: the group is cited by
+name, which is what both earlier statements said the conclusion turns on while stating a count
+anyway.
 
 **One clause the row should lean on**, because without it the row tells a caller to read a field
 whose nullability they then have to go and establish for themselves: the envelope's `op` is present
@@ -234,9 +242,11 @@ At `22b5194`, against the working tree:
 - Section 5.6 defines the flow across the invocation boundary: "an `escalate` ended and a resume
   continued is one flow".
 - Section 4.3 gives `merge` exactly one `done` reason.
-- `conformance/vcsx/vocabulary.json`'s `output_keys` group carries **ten** entries, listed above,
-  and the note "the rest of `outputs` is entry-specific and is not a shared vocabulary". No
-  pull-request identifier is among them.
+- `conformance/vcsx/vocabulary.json`'s `output_keys` group carries the entries listed above — ten at
+  `22b5194`, which decision 0141 makes eleven — and the note "the rest of `outputs` is
+  entry-specific and is not a shared vocabulary". No pull-request identifier is among them, which is
+  the property the argument uses; the count is a measurement at a revision and is not carried into
+  the text above.
 - `conformance/vcsx/vectors/` carries seven files and none of them is over a sequence — the
   `front_end_sequence` function decision 0143's plan creates does not exist yet.
 - `python3 scripts/validate_spec_consistency.py` reports 0 errors and 0 warnings.

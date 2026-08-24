@@ -175,6 +175,14 @@ loses on the case it would impose: an engine whose unit form is a registered tas
 and every backend would carry a capability that engine's policies never reach. A required capability
 a conforming engine never calls is surface with no reader.
 
+Field cost, from the implementation reply to PR #114: both of that engine's plugins implement
+`export_source` as required today, so the OPTIONAL form with a descriptor field is the one shape
+change this decision asks of that build — reported there as small, and buying a
+`capability_unsupported` raised at validation rather than a failure at first use. The option is
+rejected on the surface-with-no-reader argument rather than on cost; the cost is now measured rather
+than assumed. The reply also confirms the two signatures this decision names, `read_at_source`'s
+three answers included.
+
 ### State the export condition per unit rather than per engine
 
 "Materialization is required only for unit forms that resolve to paths in the source" — narrower,

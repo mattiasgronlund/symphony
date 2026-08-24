@@ -33,15 +33,19 @@
    wording. *Done when:* a store-free implementation can satisfy the `C` bullet, and Section 16.1's
    `restore_cached_and_durable_state` paragraph is a description of the rule rather than an
    exception to it.
-3. **`SPEC.md` Section 14.3 — the fail-open rule for an `UNKNOWN` that cannot be replaced.** Ensure
-   the section states, beside the existing permanently-versus-transiently `UNKNOWN` allowance, that
-   where no out-of-band refresh path is configured an `UNKNOWN` MUST fail open, with the reason
-   given: the only source of readings is then an agent update, which a paused dispatch prevents, so
-   a fail-closed policy would never release. Ensure the rule is stated over whether a reading can
-   arrive rather than over whether one has been held — a rule worded over the latter does not reach
-   a restored value that is already older than its bound, nor an idle deployment whose snapshot aged
-   out with nothing running. *Done when:* no configuration of Section 8.9 admits a deployment that
-   pauses dispatch and thereby prevents the only reading that would release it.
+3. **`SPEC.md` Section 14.3 — an `UNKNOWN` no configured path can replace.** Ensure the section
+   states, beside the existing permanently-versus-transiently `UNKNOWN` allowance, that where no
+   configured refresh path can produce a reading while the consuming extension's response to
+   `UNKNOWN` is in force, that response MUST NOT be allowed to stop the only path that would produce
+   one, and that what the extension then releases MUST be no wider than obtaining a reading
+   requires. Ensure the reason is given: the only source of readings is then the in-band path, which
+   the extension's own response prevents from running. Ensure the rule is stated over whether a
+   reading can arrive rather than over whether one has been held — a rule worded over the latter
+   does not reach a restored value that is already older than its bound, nor an idle deployment
+   whose snapshot aged out with nothing running. Ensure no dispatch quantity is stated here: this
+   section classifies state, and the headroom is the gate's (step 6). *Done when:* no configuration
+   of Section 8.9 admits a deployment that pauses dispatch and thereby prevents the only reading
+   that would release it, and Section 14.3 states no number about dispatch.
 4. **`SPEC.md` Section 14.3 — a restored value is a reading; a restore that produced none is not.**
    Ensure that sentence is stated beside the permanently-versus-transiently `UNKNOWN` distinction
    rather than beside the escape in step 3, since its job is to decide which arm a startup `UNKNOWN`
@@ -55,20 +59,31 @@
    starts `UNKNOWN` and the consuming extension applies its documented `UNKNOWN` policy. *Done
    when:* Section 14.4 is true for a quota extension with a store configured, which Section 16.1
    already reaches.
-6. **`SPEC.md` Section 8.9 — the extension's own bullet is scoped the same way.** Ensure the
-   Recovery-semantics bullet quoted as "the last-known-good value is carried across a failed refresh
-   and a process restart" carries the store condition and the store-free default, so the extension's
-   section does not promise what the class no longer does. Ensure the never-read/aged-out
-   distinction from step 4 is stated here in the extension's own terms, since `stale_after_ms` is
-   what makes the second condition possible and the extension owns it. *Done when:* Sections 8.9,
-   14.3 and 14.4 state one contract, and Section 8.9's SHOULD/MAY pair is evaluable.
+6. **`SPEC.md` Section 8.9 — the extension's own bullets, and the headroom the gate clamps to.**
+   Ensure the Recovery-semantics bullet quoted as "the last-known-good value is carried across a
+   failed refresh and a process restart" carries the store condition and the store-free default, so
+   the extension's section does not promise what the class no longer does. Ensure the
+   never-read/aged-out distinction from step 4 is stated here in the extension's own terms, since
+   `stale_after_ms` is what makes the second condition possible and the extension owns it. Ensure
+   the dispatch-gate bullet quoted as "On `UNKNOWN`, behavior follows a configured policy: fail-open
+   (proceed) or fail-closed (pause)" carries step 3's concrete form: where no out-of-band refresh
+   path is configured, a fail-closed policy MUST NOT pause dispatch outright and the gate clamps
+   headroom to one run in flight until a reading arrives, one run being what makes an agent update
+   arrive. Ensure the clamp is stated as the gate's own headroom rather than as a change to
+   `max_concurrent_agents` (Section 8.3), which it does not alter. Ensure the existing SHOULD for a
+   permanently `UNKNOWN` signal is kept and reads as the exit from the clamp for a provider that
+   exposes no quota interface. *Done when:* Sections 8.9, 14.3 and 14.4 state one contract, Section
+   8.9's SHOULD/MAY pair is evaluable, and a fail-closed deployment with the in-band path alone
+   dispatches one run on a startup `UNKNOWN` rather than none and rather than
+   `max_concurrent_agents`.
 7. **`SPEC.md` Section 17.4 — the conditioned rows still hold, plus one.** Ensure the two existing
    rows naming `Durable` / `Cached external signal` extensions read correctly against the scoped
    class. Ensure a row covers the store-free case: with no store, a `Cached external signal` field
    starts `UNKNOWN` after a restart, `UNKNOWN` is never represented as `0`, and with no out-of-band
-   refresh path configured the gate fails open rather than pausing a deployment that has no way to
-   obtain a reading. *Done when:* the new row fails an implementation that pauses dispatch on a
-   startup `UNKNOWN` with only the in-band path configured.
+   refresh path configured the gate clamps to one run in flight rather than pausing a deployment
+   that has no way to obtain a reading. *Done when:* the new row fails an implementation that pauses
+   dispatch on a startup `UNKNOWN` with only the in-band path configured, and one that releases the
+   whole concurrency limit on it.
 8. **`SPEC.md` Section 19 and `CONFORMANCE-STATEMENT-TEMPLATE.md` Section 4.1 — the new obligation
    gets its row.** Ensure the MUST-document degradation added in step 2 has a row beside the
    existing `Durable-store degradation when no store is configured | 14.3` — either as a second row
@@ -124,9 +139,10 @@
 
 - **Changed:** `provider_rate_limits`'s recovery class in Section 4.1.8 becomes two-valued; Section
   14.3's `C` bullet splits its two carries; Section 14.4's first paragraph and After-restart list
-  name both restorable classes; Section 8.9's Recovery-semantics bullet gains the store condition.
-- **Added:** the fail-open rule (step 3), the reading/no-reading sentence (step 4), a template row
-  (step 8), a column-header clause (step 9).
+  name both restorable classes; Section 8.9's Recovery-semantics bullet gains the store condition
+  and its dispatch-gate bullet gains the clamp.
+- **Added:** the bounded-release rule (step 3), the gate's one-run headroom (step 6), the
+  reading/no-reading sentence (step 4), a template row (step 8), a column-header clause (step 9).
 - **Removed:** in `SPEC.md` Section 14.3 and `SPEC.md` Section 8.9, the unconditional promise that a
   last-known-good value is "carried across" both a failed refresh and "a process restart". Plans
   quoting it are not edited; they record what was true when written.

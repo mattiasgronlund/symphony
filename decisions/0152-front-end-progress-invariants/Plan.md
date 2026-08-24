@@ -38,11 +38,13 @@
    Ensure the clause the test leans on is stated with it: the envelope's `op` is present exactly
    where a result was decisive and null only for the two escalation shapes Section 8.4 nulls, so a
    caller reading `op` has an answer on every ending a sequence produced. Ensure it is stated as an
-   alternative to an `outputs` key with the reason given — `output_keys` fixes ten keys and notes
-   that the rest of `outputs` is entry-specific, so a pull-request identifier there is not portably
-   testable. *Done when:* a consumer can distinguish a completed `ship` from one an edge truncated,
-   using a field that exists today, and the row does not send them to a nullable field without
-   saying when it is null.
+   alternative to an `outputs` key with the reason given — the `output_keys` group carries the keys
+   Section 8.2 fixes and notes that the rest of `outputs` is entry-specific, so a pull-request
+   identifier there is not portably testable. Ensure **no count of that group reaches
+   `VCSX-SPEC.md`**: cite the group by name, since decision 0141 adds an entry to it and a number
+   written here is false on the day that decision lands. *Done when:* a consumer can distinguish a
+   completed `ship` from one an edge truncated, using a field that exists today, and the row does
+   not send them to a nullable field without saying when it is null.
 4. **`VCSX-SPEC.md` Section 13.1 — the Front-ends row mirrors the three invariants.** Ensure the row
    carries the three progress conditions beside its existing upper bound, guard property and two
    convergence properties, marked as mirrors of the normative statements in Sections 7.1 and 7.2
@@ -85,6 +87,10 @@
 - Step 6 depends on 0143's plan step that creates the vector file; if that file does not yet exist
   when this decision is applied, step 6 creates it to 0143's stated shape rather than a different
   one.
+- **Not ordered against decision 0141, and that is a property of step 3's wording rather than of the
+  work.** 0141 adds an entry to the `output_keys` group; nothing here reads that group's size once
+  the count is out of step 3, so the two decisions can land in either order. Restore a count in this
+  plan or in `VCSX-SPEC.md` and this bullet becomes false — an ordering would then be owed.
 
 ## Anchor check
 

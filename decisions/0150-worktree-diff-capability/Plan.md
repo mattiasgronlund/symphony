@@ -42,13 +42,22 @@
    `worktree_revision` at its position then `commit`" accounts for the position where the diff is
    taken. Ensure the existing clause about `worktree_revision()` being unable to determine an
    identity — no `expected_worktree` to supply, `commit:failed` rather than capturing a tree no
-   position inspected — still holds for the paired form. *Done when:* the three passages describe
-   one read rather than two, and the undetermined case has one answer.
+   position inspected — still holds for the paired form, and that the paired form says **where**
+   that case now arises: the answer comes from the composition, before the position runs, rather
+   than from a second read after it, so a gate does not run over content the operation will not use.
+   *Done when:* the three passages describe one read rather than two, the undetermined case has one
+   answer, and a reader does not have to derive from the pairing which side of the position it falls
+   on.
 4. **`VCSX-SPEC.md` Section 9.1 — the allowance note is restated over the position.** Ensure the
    note that the write-to-bookkeeping allowance "bites hardest here, because this capability is
    consulted at a position on invocations the gate then blocks" names the position rather than one
    capability, since `worktree_diff()` is consulted at the same position on the same invocations.
-   *Done when:* the note covers both capabilities without being written twice.
+   Ensure the note states the direction the pairing moves the price: one read at the position where
+   a two-read arrangement writes the backend's bookkeeping state twice, so pairing spends the
+   allowance less rather than more — decision 0079 priced the identity at one extra tree-write over
+   a staging write that already happens, and the pair adds no second one. *Done when:* the note
+   covers both capabilities without being written twice, and a reader weighing the allowance is not
+   left assuming that a second capability at the position doubles its cost.
 5. **`VCSX-SPEC.md` Section 9.1 — the network enumeration is unchanged and checked.** Ensure the
    sentence quoted as "The network-touching capabilities are exactly `ensure_store`, `fetch_base`,
    `fetch_counterpart` and `push`" is untouched and that "Every other capability above is local to
