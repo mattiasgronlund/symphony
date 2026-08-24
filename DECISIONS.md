@@ -5295,3 +5295,215 @@ each embed a section citation, so `check_plan_anchors.py` read them as the plan'
 and returned eleven findings that were all one artifact. A plan quoting a title that contains a
 citation is unparseable to the checker and misleading to a reader; the step now describes the
 convention instead of quoting it.
+
+## 0140 — A dispatch condition no configuration and no record could supply
+
+**State:** Proposed
+**Folder:** [decisions/0140-assignee-routing-condition/](decisions/0140-assignee-routing-condition/)
+
+Issue #100, filed by the `symphony-rs` build. Section 8.2's third eligibility bullet is two
+conditions in one sentence — "routed to this worker by the configured assignee and contains every
+label in `tracker.required_labels`" — and only the second is specified. **There is no configured
+assignee anywhere in the document**: Section 5.3.1's `tracker` object has eight fields and none
+names one, Section 6.4's cheat sheet has no row, Section 4.1.1's record has no field, and `metadata`
+cannot be the channel because that section says "the orchestrator core does not interpret it". The
+word occurs three times in `SPEC.md` and the only field among them is Section 4.1.9's **task**
+assignee, which belongs to an OPTIONAL extension and is a different entity. Section 8.2 is `Daemon
+Conformance` and nothing pins it — `should_dispatch` is called at `SPEC.md:3946` and defined nowhere
+(one of decision 0138's forty-two), and `conformance/vectors/` holds nine files and no
+candidate-eligibility file — so three faithful readings ship: always-true, an invented key whose
+name and comparison two implementations will disagree about, or `metadata`. The reporting build
+carries the condition as `Eligibility::routed_here: bool`, **supplied evidence rather than a
+computed value, because nothing in the record or the config can compute it** — a bullet that looks
+implemented and is not. The bullet is wrong twice: Section 8.2 is evaluated at candidate selection,
+before dispatch, and a `worker` in this document is the per-issue task `dispatch_issue` spawns, so
+**the subject of "this worker" does not exist yet** — it was a query-scope statement written at
+record altitude. The repair specifies it parallel to `required_labels` at every step: `assignees` on
+Section 4.1.1 (OPTIONAL, tracker-dependent, normalized, a list because Forgejo's is plural),
+`tracker.assignee` on Section 5.3.1 with `Default: null`, the bullet split, Section 11.2's Linear
+clause extended, and Section 11.7's descriptor declaring whether the adapter populates the field —
+with a configured filter against an adapter that does not being a Section 6.3 preflight error, the
+shape that section already carries for `tracker.transitions` and `set_state`. **The recommendation
+was first the opposite and was reversed**, which is the part worth preserving: moving the routing
+half adapter-side is what the reviewer argued from `project_slug` and Section 8.7, and it loses
+because Section 11.2 answers the same question for the *sibling half of the same bullet* and answers
+it against query scope — "Required label filtering happens after normalization so refresh can
+observe label removal and stop or release existing work" — because Section 5.3's extension mechanism
+admits "additional **top-level** keys" so a scope key under `tracker` is one a reader SHOULD ignore,
+and because query scope would **foreclose** the continue side rather than defer it: Section 16.3
+iterates `for issue in refreshed` and Section 8.5 Part B has three branches and no absent one, so an
+issue that vanished from a scoped enumeration reaches none of them. One review finding is recorded
+against this decision's own draft and it is the sharpest thing here: **the first design said
+`assignees` is normalized as `labels` are *and* that which identifier the adapter publishes is
+`Implementation-defined`**, which re-imports the hazard it was avoiding — Section 4.2's
+normalization is not opt-in ("Every case-insensitive comparison in this specification is defined
+over this operation"), so a case-significant opaque id gets lowercased, two principals merge, and a
+configured filter matches an issue assigned to someone else with a dispatched issue as the symptom
+rather than an error. The clause therefore lands on the **publication**, not the comparison. The
+report's own premise is recorded as out of scope **and false**: Section 8.7 routes issues to
+repositories rather than to workers, and `running` and `claimed` are `Reconstructable` in-memory
+fields of one orchestrator, so two instances share no claim and the bullet coordinated nothing.
+Eight conditions, one per vector, `expect` naming the refusing condition — Section 8.2 fixes no
+precedence, so a two-condition vector would pin an order the document does not state.
+
+## 0141 — The operation no entry point named and no policy could dispatch
+
+**State:** Proposed
+**Folder:** [decisions/0141-load-policy-entry-and-pin/](decisions/0141-load-policy-entry-and-pin/)
+
+Issue #101. Decision 0134 closed the operation set and put `load_policy` in it, which removed the
+ground `VCSX-SPEC.md` Section 6.11's `unknown_operation` stood on — "an operation the engine does
+not define" — and put nothing in its place. `load_policy` is the one member of the set that raises
+no `<op>:<reason>` trigger and has no Section 4.3 entry, so a `[policy]` edge naming it **validates,
+fires, and disposes of an outcome with a result that cannot take its place**: no edge matches it,
+and it carries no proto class, so none of Section 5.4's three built-in defaults has anything to key
+on and the flow carries on past a push that did not land. Three implementations are faithful and
+incompatible, which is the divergence 0134 closed the set to prevent. The second finding is what
+changes the answer's shape: **`load_policy` is not an entry point in the prose** — Section 8.1 names
+ten operations where Section 4.1 defines eleven — so refusing the edge alone makes the operation
+unreachable while Section 4.1 says a consumer holds its product. Two artifacts already disagree with
+that enumeration: `VCSX-CONTRACT.md` Section 6 lists `load_policy` first, and
+`conformance/vcsx/vocabulary.json`'s `entry_points` group carries thirteen tokens **while citing
+Section 8.1 as its source** — a registry citing the prose it contradicts, against that corpus's own
+"nothing here is invented". The decision is six-sided plus a seventh: Section 8.1 enumerates the
+operation; a `run_op` naming an operation that **runs outside the action-policy machine** is refused
+with a new `operation_not_dispatchable`; Section 5.1's `provision` parenthetical extends to both so
+the trigger side needs no second token; Section 4.3's "every operation has at least one `done` and
+one `error` reason" is scoped to what the machine can dispatch, closing 0134's own
+recorded-not-repaired finding; and Section 8.6's `git_access` paragraph narrows to `integrate`,
+`push` and `pull` once no edge may name `provision`. The property is stated over the bootstrap pair
+rather than over the two names, and it reaches `provision` by the document's own argument — an edge
+read out of the repository `provision` obtains can only fire on the refresh path, "a trigger that
+sometimes exists, which Section 5.4's one-edge-per-trigger rule is written to prevent". **The
+load-bearing correction came from the implementation side**: the property cannot be derived from the
+reason table (that engine refuses today by reading it, and `provision` has three class-bearing
+reasons), so a marker living only in prose makes every engine hardcode two names and makes the
+MINOR-inheritance claim **false for exactly the engines that generate from the corpus** — a MINOR
+adding a third such operation would pass their gate green. The registry therefore carries
+`policy_dispatchable` beside `read_only` and `lifecycle_position`: one flag, two refusals, no second
+prose list. The seventh part settles what the entry-point blessing was blocked on — Section 4.1's
+"the consumer holds it and supplies it to every subsequent invocation, which therefore read no
+repository", a sentence with no invocation shape, since Section 8.1 names no supply-back argument
+and closes the consumer-configuration route. Supply-back is refused on trust: it would let a caller
+hand the engine a document no revision ever held, in the file that declares the host-side hooks. A
+**plain re-read** is coherent and is what ships, and its cost is Section 13.1's Policy-loading row —
+false not everywhere but on the *unresumed continuation*, a `ship`, an edit, a fresh `land`, since
+along a resumed chain the token's own policy fingerprint already refuses. A **revision pin** is what
+the row literally promises and loses three times: a revision does not name the effective surface
+(Section 6.1 states no location and no discovery rule for `vcsx.toml` at all, and a `[[branch]]`
+section is selected by the resolved base), a second notion of "same policy" beside Section 8.1's is
+issue #100's defect, and — the argument neither party made first — **a revision pin lets a caller
+run a policy the repository has withdrawn**, an operator who removes a host-side hook having not
+removed it for anyone holding an older pin. The **fingerprint pin** wins: OPTIONAL, default unset,
+issued by `load_policy`, needed by no resumed invocation, refused with its own precondition reason
+rather than `resume_unusable` because the repairs differ. Section 13.1's row states the mechanism
+instead of being lowered — the surface a unit of work executes is fixed when the unit of work
+begins, and an invocation continuing one whose surface changed is refused rather than run under
+either document, which is falsifiable where the caching phrasing was not. The cost is stated: the
+fingerprint refuses where the revision pin would have proceeded, the same trade Section 8.1 already
+made for the resume. `entry_points` also joins `validate_spec_consistency.py`'s closed groups, or
+the repair holds only until the next edit.
+
+## 0142 — A resume token that named a point and not the invocation it belongs to
+
+**State:** Proposed
+**Folder:** [decisions/0142-resume-bound-to-entry-point/](decisions/0142-resume-bound-to-entry-point/)
+
+Issue #104. `VCSX-SPEC.md` Sections 8.1 and 8.6 fix three things a `resume` is established against —
+a different policy, a different repository, a different major version — and say nothing about the
+entry point that issued it, while Section 13.1's Resuming row names one of the three. So a token a
+`ship` returned may be supplied to `land`, and **a `ship` token can name a point `land` never
+reaches**: `ship` never runs `merge`, `land` never runs `create_pr`. Both readings are faithful, so
+the divergence is *documented rather than prevented* — the Conformance Statement template's
+`resume_token` row is where two conforming engines legitimately disagree about whether a crossed
+token is refused, which is the shape decision 0134 closed for the trigger vocabulary. The decision
+binds, and the argument that decides it is one neither the report nor the first recommendation made:
+binding gives `resume_unusable` a **decidable** judgement where its stated inputs do not exist.
+Section 8.6 judges it "from the invocation's arguments together with what the engine holds
+independently of them — the policy it validated and its own major version", while Section 6.1 calls
+`provision` "the one entry point that runs where no policy could be read" and Section 8.6
+nonetheless places `resume_unusable` inside `provision`'s otherwise-exhaustive list. The entry-point
+field settles it without reaching for the policy: `provision` issues no token, so every token
+supplied to it mismatches on that field alone — and so does every token supplied to `load_policy`
+once decision 0141 makes it an entry point. It costs no new token, no Section 13.3 obligation and no
+Statement row; it **narrows** the existing row to the form question, the move 0134 made three times.
+The condition is stated over the flow the token names being **expressible in the invocation being
+resumed**, which subsumes the entry-point test and reaches a crossing entry-point equality misses —
+an await-branch token supplied to a bare `land`. The converse crossing was raised and **withdrawn**:
+a merge-loop token under `land --await` is not refused, because Section 5.5 re-enters the point
+"rather than beginning at its entry point", so the prefix is never run and refusing would make
+legality depend on a flag that changes nothing. What that case needs is a sentence —
+sequence-selecting arguments are not consulted on a resumed invocation — and the sentence is where
+this decision's own repair reproduced the defect it was repairing: **it quantifies over a class
+Section 8.1 does not define**, which is issue #100's defect one document over, in the same batch.
+Worse, the argument it was written for is not merely unmarked: **`await_first` is not in Section 8.1
+at all.** That section enumerates four await parameters and no sequence selector, so Section 7.2
+cites Section 8.1 for an argument it does not carry while Section 8.1 requires argument names for
+shared concepts to match this specification. The repair is therefore three steps — enumerate the
+argument, fix the property in prose where it has a referent (the parameters of a Section 12
+front-end sequence function, so a future selector inherits it), and let the registry carry the flag
+— and step three costs a **new group**: `vocabulary.json` has twenty-one entry-bearing groups plus
+`task_model` and **no `arguments` group**, so it must be authored against the longest enumeration in
+the document. It is owed anyway, and this is its second demand rather than its first: Section 8.1's
+argument names are normative, the section already keeps per-argument properties as hand-maintained
+prose lists, and decision 0141's pin makes the consumer-configuration exception set four. The group
+is closed from the start, or it inherits the `entry_points` blind spot 0141 found. One dependency is
+firm rather than preferred: "expressible in the invocation being resumed" is decidable only once
+issue #103 enumerates a sequence's points, so until then the condition is written over the entry
+point alone — stating it over a set nobody can enumerate would be the defect, not the repair.
+
+## 0143 — Where a substituted result lands in a front-end sequence
+
+**State:** Proposed
+**Folder:** [decisions/0143-front-end-landing-rule/](decisions/0143-front-end-landing-rule/)
+
+Issue #107, split out of #103 and reachable without a resume. `VCSX-SPEC.md` Sections 12.2 and 12.3
+write the front-end sequences as pseudocode that tests each operation's result itself, and Section
+5.4 says a result a `run_op` edge disposed of is replaced by that edge's own result — "in the
+machine", with nothing said about what the **sequence** is handed. The report offered three readings
+and the review narrowed the field to one, which makes the finding worse rather than better: "edges
+override each step" refuses the both-fire reading, and Section 12.3:3078 — `merge:head_moved`
+"reaches a caller through this sequence only where a repository binds it to an edge that ends the
+flow" — refuses the edges-never-fire reading by presupposing exactly what it denies. **What survives
+is the reading that produces a wrong write, so an implementer does not resolve this by coin flip:
+they resolve it correctly and ship the bug.** Two wrong writes, both under the specification's own
+example edge (`push:non_fast_forward → run_op integrate`, which `match-edge.json`'s first vector is
+also built on): the push loop takes `integrate:ok`, falls through every test, breaks, and **opens a
+pull request on the head the remote already held while reporting success**; and the commit loop
+takes any `done` substitute for `commit:worktree_moved`, falls through, and **pushes a worktree
+nothing committed**. The second reaches the state Section 13.1 says the `is_dirty()` guard prevents
+*without falsifying that row* — the row is scoped to a predicate that cannot answer, and here it
+answered fine — which is worth more than a falsified row: the document asserts the property only
+where the guard is the mechanism and nowhere in general, which is issue #111. Two of the
+pseudocode's names are undefined and inconsistent — `dispatch(` once at 2975, `result_of(` four
+times, all on `return` paths — and under decision 0138's own test they are the only two of Section
+12's dozen called-and-undefined names that fail it. The one-word statement of the gap is that
+Section 5.4 ends "for `done` with no edge, continue" and **nothing says what `continue` continues**;
+the corpus already noticed, inventing the distinction "`continue` and `no_op` are Section 5.4
+outcomes, not Section 5.2 actions". The decision splits what the pseudocode fuses: a repository edge
+replaces the built-in **disposition**; where the disposition returns control the **control
+transfer** is the trigger's and is unchanged; where it ends the flow the invocation ends; where the
+transfer is `return` the sequence reports the result the machine last handed back — with the
+transfer selected by the sequence's own `run_op`, pinned to the root so substitutions inside the
+machine are invisible. That is determinate for all ten branches where the report's own rule ("land
+where the built-in disposition would have landed") is determinate for the three `continue`-shaped
+ones and silent for the five `return`-shaped ones. The middle clause is a review finding against the
+split's first draft, which had the transfer unconditional — **false where the edge ends the flow**,
+since a `push:non_fast_forward → escalate` edge would then continue the push loop, the one thing
+Section 5.6 says an `escalate` does not do: the repair for an under-specified landing point had
+briefly specified one that contradicts an action's own definition. The `done`-class consequence is
+granted rather than merely recorded, and on the built-in's own behaviour rather than on the two
+sentences first put in tension: Section 12.2 **already** ends `ship` without a pull request on five
+paths, so Section 7.1's "up to and including opening or updating the pull request" states the extent
+of the sequence and never was a postcondition. What a repository edge introduces is a `done`-class
+early return, and **that** is the unwritten invariant — `ship` returns `done` today only from
+`create_pr` and `land` only from `merge`, which is what a caller reads to know the pull request
+exists — so `push:pr_closed → run_op status` violates no rule and silently repurposes the only
+completion signal the envelope has. The replacement test is **the operation the result names**, not
+its class, stated in Section 13.1: `output_keys` fixes three keys and says the rest of `outputs` is
+entry-specific, so a pull-request identifier there is not portably testable. It is merged behaviour
+rather than a hypothetical — the reporting engine returns `status:ok` for that edge today — and the
+answer leaves that build correct, the repair being a row telling callers what to read. The vectors
+need a **new corpus function**, since `match_edge` stops at edge selection by construction, and its
+`expect` names three things: the disposition, the transfer, and what the invocation reports, the
+third being what tells `status:ok` from the built-in escalation.
