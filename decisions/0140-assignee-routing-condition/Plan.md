@@ -164,4 +164,6 @@ adding a normalized field changes nothing about the three readings those vectors
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Sections 4.1.1, 4.2, 5.3.1, 6.3, 6.4, 8.2, 11.2, 11.3, 11.7, 17.4,
+18.1.3, 19), `CONFORMANCE-STATEMENT-TEMPLATE.md` (Section 4.1),
+`conformance/vectors/candidate-eligibility.json` and `conformance/README.md`. Issue #100.

@@ -271,6 +271,7 @@ Slice 1 — pure derivations (decision 0046):
 | `vectors/retry-fire-disposition.json` | `retry_fire_disposition` | Daemon | Sections 8.4, 16.7 |
 | `vectors/available-slots.json` | `available_slots` | Daemon | Section 8.3 |
 | `vectors/per-state-concurrency.json` | `per_state_concurrency_limit` | Daemon | Sections 8.3, 4.2 |
+| `vectors/candidate-eligibility.json` | `should_dispatch` | Daemon | Sections 8.2, 16.2 |
 | `vectors/dispatch-ordering.json` | `sort_for_dispatch` | Daemon | Sections 8.2, 16.2 |
 
 Slice 2 — prompt rendering (decision 0048):
@@ -288,7 +289,11 @@ harness with fixtures or live services and belong with the `Real Integration Pro
 - Config **secret-provider resolution** and `$VAR` / `~` expansion (Section 17.1) — I/O-bound.
 - **Workspace safety invariants** (Section 9.5, Invariants 1–2: cwd and root containment) —
   filesystem and process state.
-- **Tracker read/write** surfaces, candidate eligibility over live issues (Section 8.2, 11).
+- **Tracker read/write** surfaces, and the adapter's fetch of the candidate set (Sections 8.2,
+  11). Section 8.2's eligibility predicate itself is no longer deferred: over an
+  already-normalized record (Section 4.1.1) and a resolved configuration it is a pure function,
+  pinned by `vectors/candidate-eligibility.json`. What needs a live tracker is producing the
+  record, not judging it.
 - **Action-policy machine** outcomes and **message formulation** (Sections 9.8–9.12) — engine-side,
   covered by `VCSX-SPEC.md`'s own matrix.
 

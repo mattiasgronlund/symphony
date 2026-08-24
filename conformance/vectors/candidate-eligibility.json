@@ -1,0 +1,225 @@
+{
+  "function": "should_dispatch",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 4.2", "Section 5.3.1", "Section 8.2", "Section 8.3", "Section 16.2"],
+  "description": "Decide whether an issue is dispatch-eligible. Section 8.2 states nine conditions, all of which must hold; the predicate is a pure function of the normalized issue record (Section 4.1.1), the resolved configuration, and the orchestrator's running and claimed sets. Section 16.2 calls it as should_dispatch(issue, state) with the resolved configuration already available to the orchestrator; this file passes that configuration explicitly so no vector depends on an ambient value.",
+  "given": "{ issue: { id, identifier, title, state, labels, assignees, blocked_by }, config: { tracker: { required_labels, assignee, active_states, terminal_states }, agent: { max_concurrent_agents, max_concurrent_agents_by_state } }, state: { running: Array<{ id, state }>, claimed: Array<id> } }",
+  "expect": "{ dispatch: boolean, refused: <condition> | null }",
+  "notes": [
+    "Each refusing vector holds exactly one failing condition, so the reported condition is determined. Section 8.2 fixes no precedence among its conditions, so a vector holding two would pin an evaluation order the specification does not state. The discipline is the one conformance/vcsx/vectors/policy-validation.json already records for validate_policy.",
+    "The refused values are this file's labels for Section 8.2's conditions, one per bullet, not a published vocabulary: SPEC.md names no token for them and conformance/vocabulary.json publishes no group for them. A harness maps them onto its own implementation's refusal reasons.",
+    "A configured tracker.assignee against an adapter that populates no assignees is not exercised here. It is a Section 6.3 dispatch-preflight configuration error rather than a predicate over a normalized record, and validate_dispatch_config has no body in Section 16 for a vector to be a case of. A Section 17.4 check covers it instead (decision 0140).",
+    "state.running carries each running issue's current tracked state because Section 8.3 counts issues by that state for the per-state limit; membership of the map is what Section 8.2's already-in-running condition tests.",
+    "Every value in given is already normalized, as Section 8.2's predicate reads it: labels, assignees and states appear as Lowercase Normalization produced them (Section 4.2). Configured values are not, since Section 5.3.1 states the trimming and the normalization as part of the match."
+  ],
+  "vectors": [
+    {
+      "id": "eligible-null-defaults",
+      "description": "The null defaults gate nothing: no required labels, no configured assignee, nothing running or claimed. An issue carrying no labels and no assignees is eligible.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "todo", "labels": [], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": true, "refused": null }
+    },
+    {
+      "id": "eligible-label-and-assignee-matched",
+      "description": "Both filters configured and both satisfied. Matching ignores surrounding whitespace on both sides and compares under Lowercase Normalization (Sections 4.2, 5.3.1), so the configured '  Alice ' matches the normalized 'alice'.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "todo", "labels": ["symphony", "backend"], "assignees": ["alice"], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": ["Symphony"], "assignee": "  Alice ", "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": true, "refused": null }
+    },
+    {
+      "id": "eligible-null-assignee-does-not-gate",
+      "description": "A null tracker.assignee does not gate, so an issue an adapter published no assignees for is eligible on the remaining conditions.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "in progress", "labels": [], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": true, "refused": null }
+    },
+    {
+      "id": "eligible-todo-with-terminal-blocker",
+      "description": "The Todo blocker rule refuses only a non-terminal blocker; a terminal one leaves the issue eligible.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "todo", "labels": [], "assignees": [], "blocked_by": [{ "id": "b1", "identifier": "ABC-9", "state": "done" }] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": true, "refused": null }
+    },
+    {
+      "id": "refused-missing-required-field",
+      "description": "Section 8.2's first condition: the record must have id, identifier, title and state. Here title is absent.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": null, "state": "todo", "labels": [], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": false, "refused": "missing_required_field" }
+    },
+    {
+      "id": "refused-state-not-active",
+      "description": "The state is not in active_states, tested as Normalized Issue State.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "backlog", "labels": [], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": false, "refused": "state_not_active" }
+    },
+    {
+      "id": "refused-required-label-missing",
+      "description": "One configured label is absent from the issue's labels.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "todo", "labels": ["backend"], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": ["symphony"], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": false, "refused": "required_label_missing" }
+    },
+    {
+      "id": "refused-blank-configured-label",
+      "description": "A blank configured label matches no issue (Section 5.3.1), including one carrying every other configured label.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "todo", "labels": ["symphony"], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": ["symphony", "   "], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": false, "refused": "required_label_missing" }
+    },
+    {
+      "id": "refused-assignee-not-matched",
+      "description": "A configured assignee the issue's assignees do not contain. The issue is assigned, but to someone else.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "todo", "labels": [], "assignees": ["bob"], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": "alice", "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": false, "refused": "assignee_not_matched" }
+    },
+    {
+      "id": "refused-assignee-absent",
+      "description": "A configured assignee against an issue the adapter published no assignees for. The adapter populates the field for other issues, so this is an eligibility refusal rather than the Section 6.3 preflight error the notes above exclude.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "todo", "labels": [], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": "alice", "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": false, "refused": "assignee_not_matched" }
+    },
+    {
+      "id": "refused-blank-configured-assignee",
+      "description": "A blank configured assignee matches no issue (Section 5.3.1), including one assigned to every principal the tracker knows.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "todo", "labels": [], "assignees": ["alice", "bob"], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": "   ", "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": false, "refused": "assignee_not_matched" }
+    },
+    {
+      "id": "refused-already-running",
+      "description": "The issue is already in the running map.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "in progress", "labels": [], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [{ "id": "i1", "state": "in progress" }], "claimed": ["i1"] }
+      },
+      "expect": { "dispatch": false, "refused": "already_running" }
+    },
+    {
+      "id": "refused-already-claimed",
+      "description": "The issue is claimed but not running - reserved for a queued retry. A claim is not a running entry and takes no concurrency slot (Section 8.3), so this refusal is independent of the two slot conditions below.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "todo", "labels": [], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": ["i1"] }
+      },
+      "expect": { "dispatch": false, "refused": "already_claimed" }
+    },
+    {
+      "id": "refused-global-slots-exhausted",
+      "description": "available_slots is 0 (Section 8.3): one running agent against max_concurrent_agents 1.",
+      "given": {
+        "issue": { "id": "i2", "identifier": "ABC-2", "title": "t", "state": "todo", "labels": [], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 1, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [{ "id": "i1", "state": "in progress" }], "claimed": ["i1"] }
+      },
+      "expect": { "dispatch": false, "refused": "global_slots_exhausted" }
+    },
+    {
+      "id": "refused-per-state-slots-exhausted",
+      "description": "Global headroom remains, but the per-state limit for the candidate's state is reached. The map key and the state are compared as Normalized Issue State (Sections 4.2, 8.3).",
+      "given": {
+        "issue": { "id": "i3", "identifier": "ABC-3", "title": "t", "state": "todo", "labels": [], "assignees": [], "blocked_by": [] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": { "Todo": 2 } }
+        },
+        "state": { "running": [{ "id": "i1", "state": "todo" }, { "id": "i2", "state": "todo" }], "claimed": ["i1", "i2"] }
+      },
+      "expect": { "dispatch": false, "refused": "per_state_slots_exhausted" }
+    },
+    {
+      "id": "refused-todo-blocker-non-terminal",
+      "description": "A Todo issue with a blocker whose state is not in terminal_states.",
+      "given": {
+        "issue": { "id": "i1", "identifier": "ABC-1", "title": "t", "state": "todo", "labels": [], "assignees": [], "blocked_by": [{ "id": "b1", "identifier": "ABC-9", "state": "in progress" }] },
+        "config": {
+          "tracker": { "required_labels": [], "assignee": null, "active_states": ["todo", "in progress"], "terminal_states": ["closed", "done"] },
+          "agent": { "max_concurrent_agents": 10, "max_concurrent_agents_by_state": {} }
+        },
+        "state": { "running": [], "claimed": [] }
+      },
+      "expect": { "dispatch": false, "refused": "todo_blocker_non_terminal" }
+    }
+  ]
+}
