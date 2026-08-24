@@ -1537,7 +1537,25 @@ request, and **stops at the pull request** — it does not merge. Its sequence (
 `integrate` and retry, per policy), then `create_pr`. Each step passes through its lifecycle position
 and its result re-enters the machine, so repository policy governs the sequence. It commits the tree
 it read: where the working tree changes between the `before:commit` position and the capture, nothing
-is committed, and `ship` re-reads and retries within the flow bound (Sections 5.6, 12.2).
+is committed, and `ship` re-reads and retries within the flow bound (Sections 5.6, 12.2). It also
+makes each step's progress before it takes the next: where the guard read the working tree dirty,
+the sequence dispatches no `push` step unless a `commit` in the flow returned a `done`-class result;
+and it dispatches no `create_pr` step unless a `push` in the flow returned a `done`-class result. A
+tree the guard read as clean dispatches no `commit` and owes none.
+
+Both are stated over the **flow** (Section 5.6) rather than over the invocation, so a resumed `ship`
+continuing a resolved `create_pr:blocked` is not refused by them — the `push` whose `done` the
+second requires was made in the invocation the resume continues. Both are stated over the
+**sequence's own steps** rather than over `ship` as a whole, so a repository edge whose `run_op`
+dispatches `create_pr` is the repository's dispatch and falsifies neither: policy may end a
+front-end early or reach past it, and what these fix is what the sequence itself does
+(Sections 12.1, 12.2).
+
+A step the sequence may not advance past ends the invocation rather than being skipped. Where a
+repository edge disposed of a `commit` or a `push` result and the step did not report a `done`-class
+result, the sequence dispatches nothing further and the invocation reports the result the machine
+last handed back (`result_of`, Section 12.1) — the same ending a `return` transfer produces
+(Section 12.2), and what makes the bare transfer out of Section 12.2's commit loop sound.
 
 The first sentence states the **extent** of the sequence rather than a postcondition on every
 invocation. The built-in sequence already ends `ship` without a pull request on five paths — the
@@ -1553,7 +1571,12 @@ configured strategy and, for a squash, the `pr_to_squash` transform (Section 10.
 **transforms** message content; it never authors a message. It refuses to merge a pull request that
 is not open or whose required checks have not passed, surfacing the corresponding `merge:*` reason.
 It merges the head it read: where the pull request's head advances between the read and the merge,
-nothing is merged, and `land` re-reads and retries within the flow bound (Sections 5.6, 12.3).
+nothing is merged, and `land` re-reads and retries within the flow bound (Sections 5.6, 12.3). And
+it returns a `done`-class result only where a `merge` in the flow reported `merge:ok` — so a `land`
+whose built-in re-read-and-retry an edge disabled cannot report success without having merged. The
+reason test and the class test coincide here rather than by construction: Section 4.3 gives `merge`
+exactly one `done` reason, so the rule needs no phrase an engine has to interpret. It is stated over
+the flow, as Section 7.1's two are, so a resumed `land` is not refused by it.
 
 `land` MAY be invoked to await first. Under `--await` — or whatever the front-end's encoding for it
 is (Section 8.1) — it dispatches `await_checks` and then the `merge` it already runs, continuing
@@ -3492,7 +3515,18 @@ A conforming engine SHOULD include tests covering:
   tests **the operation the result names** rather than its proto class, a repository edge being
   permitted to end a front-end early with a `done`-class result and `outputs` carrying no portable
   pull-request identifier to test instead, the keys Section 8.2 fixes being the `output_keys` group
-  and the rest of `outputs` being entry-specific (Sections 7.1, 7.2, 8.2, 12.2, 12.3).
+  and the rest of `outputs` being entry-specific (Sections 7.1, 7.2, 8.2, 12.2, 12.3); the operation
+  the caller reads is `op` in the envelope, which is null only where the run had no decisive
+  operation result — a parked flow, one stopped at the flow bound, a `fail` on anything other than
+  an `error`-class result, and an `ok` with no operation at all (Section 8.2) — so a sequence that
+  dispatched anything leaves the caller an answer; and, mirroring the normative statements in
+  Sections 7.1 and 7.2 rather than stating them here, a `ship` dispatches no `push` step unless a
+  `commit` in the flow returned a `done`-class result where its guard read the working tree dirty,
+  dispatches no `create_pr` step unless a `push` in the flow returned one, and a `land` returns a
+  `done`-class result only where a `merge` in the flow reported `merge:ok` — the two statements
+  about classes here being about different classes, the one a sequence tests of its own step's
+  result and the one a caller would wrongly read the invocation's ending by (Sections 4.3, 5.6, 7.1,
+  7.2).
 - Invocation contract: exit codes mirror proto classes; `escalation` is present exactly for
   `needs_caller`; a parked flow is `needs_caller` with the `intervention` need and null
   `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed, while one
@@ -3603,6 +3637,11 @@ A conforming engine SHOULD include tests covering:
   sequence's own dispatch — except where the disposition ended the flow, in which case there is
   nothing to transfer. Report a completed front-end as the result of the operation its sequence ends
   at, so a consumer can tell it from one an edge ended early.
+- Advance a front-end sequence only on progress it made: dispatch `push` only after a `commit` in
+  the flow returned `done` where the guard read the tree dirty, dispatch `create_pr` only after a
+  `push` in the flow returned `done`, and return `done` from `land` only after a `merge` in the flow
+  reported `merge:ok`. Hold each over the flow, so a resume is not refused, and over the sequence's
+  own steps, so a repository edge is not.
 - The action-policy machine: triggers, actions, the `#class` fallback,
   fail-safe-on-undisposed-outcome, no-op-on-unmatched-position, determinism, and a flow bounded over
   `run_op` dispatches and resume re-entries — the bound over the flow, so a resumed

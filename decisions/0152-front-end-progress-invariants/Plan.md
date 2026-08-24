@@ -115,4 +115,19 @@
 
 ## Status
 
-Not started.
+Applied to `VCSX-SPEC.md` (Sections 7.1, 7.2, 13.1, 13.2) and
+`conformance/vcsx/vectors/front-end-sequence.json`, in one editing pass with decision 0143
+and on top of it.
+
+One site beyond the Scope list, in Section 7.1, which is already in it. A prohibition with no
+stated alternative is not a rule an engine can implement: the invariants forbid dispatching
+the next step, and a reader needs to know what happens instead. Section 7.1 now says the
+invocation ends and reports the result the machine last handed back — the ending a `return`
+transfer already produces under decision 0143, not a new one — which is what step 1 means by
+the bare transfer out of Section 12.2's commit loop being sound. The vector
+`commit_blocked_policy_run_op_status` pins it, and it is the case a `commit:blocked → run_op
+status` edge reaches: 0143's rule alone would transfer out of the commit loop and dispatch
+`push` after a commit that committed nothing.
+
+No count of the `output_keys` group reached `VCSX-SPEC.md`; the group is cited by name, so
+the independence from decision 0141 recorded above holds. Issue #111.
