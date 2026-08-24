@@ -134,4 +134,12 @@ anchors here are described rather than quoted.
 
 ## Status
 
-Not started.
+Applied to `VCSX-SPEC.md` (Sections 5.4, 7.1, 12.1, 12.2, 12.3, 13.1, 13.2),
+`VCSX-CONTRACT.md` (Section 3), `conformance/vcsx/vectors/front-end-sequence.json` and
+`conformance/vcsx/README.md`.
+
+Step 1 resolved by spelling `dispatch` out of existence rather than by defining both names:
+every dispatch site is now `run_op`, and Section 12.1 defines it, `result_of` and
+`disposed_by_policy` — the third being what lets the pseudocode show which block is the
+built-in disposition an edge replaces, which is step 3's requirement that the rule be visible
+in the block rather than only in the prose beneath it. Issue #107.

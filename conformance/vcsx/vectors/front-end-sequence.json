@@ -1,0 +1,206 @@
+{
+  "function": "front_end_sequence",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 5.2 \"Actions\"",
+    "VCSX-SPEC.md Section 5.4 \"Unmatched Policy and Determinism\"",
+    "VCSX-SPEC.md Section 5.6 \"Flow Bound and Termination\"",
+    "VCSX-SPEC.md Section 7.1 \"`ship`\"",
+    "VCSX-SPEC.md Section 7.2 \"`land`\"",
+    "VCSX-SPEC.md Section 8.2 \"Result Envelope\"",
+    "VCSX-SPEC.md Section 12.1 \"Match a Trigger\"",
+    "VCSX-SPEC.md Section 12.2 \"`ship` Sequence\"",
+    "VCSX-SPEC.md Section 12.3 \"`land` Sequence\""
+  ],
+  "description": "Decide where one step of a front-end sequence lands. A repository edge replaces the built-in disposition of the trigger - what is done with the result - and not the sequence's control transfer, which is selected by the result of the sequence's own dispatch. Where the disposition ends the flow the invocation ends inside the dispatch and no transfer applies. Where the transfer is return, the invocation reports the result the machine last handed back rather than the operation the sequence dispatched.",
+  "given": "{ entry: 'ship' | 'land', step: <the operation the sequence dispatched>, result: '<op>:<reason>' (that operation's own result), edges: [ { on, do, op?, reason? } ] }",
+  "expect": "{ disposition: { source: 'builtin' | 'policy', action: <Section 5.2 action, or 'continue' for the done-class default>, op: <operation | null> }, transfer: 'continue' | 'break' | 'return' | 'none', reports: { op, reason } | null }",
+  "notes": [
+    "transfer 'none' is the middle clause of the rule: the disposition ended the flow (escalate, park, fail; Section 5.6), so the invocation ended inside the dispatch and there is no control to transfer. It is not a fourth transfer the sequences write.",
+    "reports is what the invocation reports when it ends at this step, and is null where the step does not end it - a continue or a break. Under transfer 'return' it is the result the machine last handed back, which is the substituted operation's where an edge substituted; under 'none' it is the decisive operation result the envelope carries for the escalation (Section 8.2).",
+    "The negative property this file is written to hold: no vector's expect names create_pr after a push that did not report done. A harness may assert it over the file as a whole as well as vector by vector.",
+    "Each vector holds one step and one edge set, so the disposition and the transfer are both determined. The flow bound is not modelled: every vector is a step the executor reached, and Section 5.6's bound is exercised by the sequences' own guards rather than by this function.",
+    "edges uses Section 6.5's spelling for a [policy] edge. An empty list is a repository that bound nothing on the trigger, which is what makes the built-in disposition apply."
+  ],
+  "vectors": [
+    {
+      "id": "push_non_fast_forward_builtin",
+      "description": "No edge. The built-in disposition integrates and the push loop retries.",
+      "given": {
+        "entry": "ship",
+        "step": "push",
+        "result": "push:non_fast_forward",
+        "edges": []
+      },
+      "expect": {
+        "disposition": { "source": "builtin", "action": "run_op", "op": "integrate" },
+        "transfer": "continue",
+        "reports": null
+      }
+    },
+    {
+      "id": "push_non_fast_forward_policy_run_op_integrate",
+      "description": "Section 6.5's own example edge. The disposition is the edge's, so integrate runs once rather than twice, and the transfer is the trigger's: the push is retried. An implementation that lands the substituted integrate:ok result instead falls through to create_pr and opens a pull request on the head the remote already held.",
+      "given": {
+        "entry": "ship",
+        "step": "push",
+        "result": "push:non_fast_forward",
+        "edges": [{ "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" }]
+      },
+      "expect": {
+        "disposition": { "source": "policy", "action": "run_op", "op": "integrate" },
+        "transfer": "continue",
+        "reports": null
+      }
+    },
+    {
+      "id": "push_non_fast_forward_policy_escalate",
+      "description": "The middle clause. The edge ends the flow, so the invocation ends inside the dispatch and nothing continues the push loop. Without the clause the rule would say an escalate edge continues it, which is the one thing an escalate does not do (Section 5.6).",
+      "given": {
+        "entry": "ship",
+        "step": "push",
+        "result": "push:non_fast_forward",
+        "edges": [{ "on": "push:non_fast_forward", "do": "escalate", "reason": "integrate_then_retry" }]
+      },
+      "expect": {
+        "disposition": { "source": "policy", "action": "escalate", "op": null },
+        "transfer": "none",
+        "reports": { "op": "push", "reason": "non_fast_forward" }
+      }
+    },
+    {
+      "id": "commit_worktree_moved_builtin",
+      "description": "No edge. The commit loop re-reads the working tree and re-dispatches commit.",
+      "given": {
+        "entry": "ship",
+        "step": "commit",
+        "result": "commit:worktree_moved",
+        "edges": []
+      },
+      "expect": {
+        "disposition": { "source": "builtin", "action": "continue", "op": null },
+        "transfer": "continue",
+        "reports": null
+      }
+    },
+    {
+      "id": "commit_worktree_moved_policy_run_op_status",
+      "description": "A done-class substitution on the trigger the commit loop tests. The transfer stays continue, so the loop re-reads worktree_dirty() and re-dispatches commit. An implementation that lands status:ok instead falls through and pushes a worktree it did not commit.",
+      "given": {
+        "entry": "ship",
+        "step": "commit",
+        "result": "commit:worktree_moved",
+        "edges": [{ "on": "commit:worktree_moved", "do": "run_op", "op": "status" }]
+      },
+      "expect": {
+        "disposition": { "source": "policy", "action": "run_op", "op": "status" },
+        "transfer": "continue",
+        "reports": null
+      }
+    },
+    {
+      "id": "merge_head_moved_builtin",
+      "description": "No edge. The merge loop re-dispatches merge, which re-runs before:merge and re-reads the head.",
+      "given": {
+        "entry": "land",
+        "step": "merge",
+        "result": "merge:head_moved",
+        "edges": []
+      },
+      "expect": {
+        "disposition": { "source": "builtin", "action": "continue", "op": null },
+        "transfer": "continue",
+        "reports": null
+      }
+    },
+    {
+      "id": "merge_head_moved_policy_run_op_status",
+      "description": "The same substitution under land. The transfer stays continue, so the built-in re-read-and-retry is not silently disabled by an edge that only meant to observe.",
+      "given": {
+        "entry": "land",
+        "step": "merge",
+        "result": "merge:head_moved",
+        "edges": [{ "on": "merge:head_moved", "do": "run_op", "op": "status" }]
+      },
+      "expect": {
+        "disposition": { "source": "policy", "action": "run_op", "op": "status" },
+        "transfer": "continue",
+        "reports": null
+      }
+    },
+    {
+      "id": "push_pr_closed_builtin",
+      "description": "No edge. The built-in disposition escalates with the reason's default need, which ends the flow, and the envelope reports the decisive operation result.",
+      "given": {
+        "entry": "ship",
+        "step": "push",
+        "result": "push:pr_closed",
+        "edges": []
+      },
+      "expect": {
+        "disposition": { "source": "builtin", "action": "escalate", "op": null },
+        "transfer": "none",
+        "reports": { "op": "push", "reason": "pr_closed" }
+      }
+    },
+    {
+      "id": "push_pr_closed_policy_run_op_status",
+      "description": "The discriminating case, on a return-shaped branch. No escalation is raised, the transfer is return, and ship reports status:ok - a done-class ending before create_pr. Odd policy, determinate outcome, edge honoured. It is why a caller tests the operation the result names rather than its class (Section 13.1).",
+      "given": {
+        "entry": "ship",
+        "step": "push",
+        "result": "push:pr_closed",
+        "edges": [{ "on": "push:pr_closed", "do": "run_op", "op": "status" }]
+      },
+      "expect": {
+        "disposition": { "source": "policy", "action": "run_op", "op": "status" },
+        "transfer": "return",
+        "reports": { "op": "status", "reason": "ok" }
+      }
+    },
+    {
+      "id": "push_ok_breaks_to_create_pr",
+      "description": "A done-class push with no edge. The transfer is break: the push loop ends and the sequence dispatches create_pr.",
+      "given": {
+        "entry": "ship",
+        "step": "push",
+        "result": "push:ok",
+        "edges": []
+      },
+      "expect": {
+        "disposition": { "source": "builtin", "action": "continue", "op": null },
+        "transfer": "break",
+        "reports": null
+      }
+    },
+    {
+      "id": "create_pr_ok_completes_ship",
+      "description": "The completed ship, beside the truncated one above: the sequence ends at create_pr and reports create_pr's result. That is the ending a caller reads to know the pull request exists.",
+      "given": {
+        "entry": "ship",
+        "step": "create_pr",
+        "result": "create_pr:ok",
+        "edges": []
+      },
+      "expect": {
+        "disposition": { "source": "builtin", "action": "continue", "op": null },
+        "transfer": "return",
+        "reports": { "op": "create_pr", "reason": "ok" }
+      }
+    },
+    {
+      "id": "merge_ok_completes_land",
+      "description": "The completed land: the sequence ends at merge and reports merge's result.",
+      "given": {
+        "entry": "land",
+        "step": "merge",
+        "result": "merge:ok",
+        "edges": []
+      },
+      "expect": {
+        "disposition": { "source": "builtin", "action": "continue", "op": null },
+        "transfer": "return",
+        "reports": { "op": "merge", "reason": "ok" }
+      }
+    }
+  ]
+}
