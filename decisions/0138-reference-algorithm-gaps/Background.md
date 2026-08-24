@@ -166,3 +166,48 @@ the count of gaps three rather than two and puts the retry in one place. The def
 by this decision's own repair for a previous one, which is the recurrence the `decision-record` skill
 asks be counted rather than smoothed over: the first repair moved a responsibility without moving
 the work, and the second had to name where the work went.
+
+### Logged finding: the magnitude recorded for the old behaviour does not hold (decision 0144)
+
+**What is wrong.** This decision's `DECISIONS.md` chapter records, of the pre-repair Part B
+behaviour, that "`available_slots` counts against `claimed`, so closing an issue whose worker is
+running costs a concurrency slot for up to `agent.max_retry_backoff_ms`, default five minutes, per
+closure". That is false. `SPEC.md` Section 8.3 computes
+`available_slots = max(max_concurrent_agents - running_count, 0)`, and
+`conformance/vectors/available-slots.json` pins the function to `{ max_concurrent_agents,
+running_count }` across four vectors. `claimed` does not enter it. The sentence traces to Section
+8.5's rationale paragraph — "because `claimed` counts against `available_slots` (Section 8.3)" —
+which entered `SPEC.md` in `87abf10`, this decision's own commit, and which decision 0144 settles
+against: that reading livelocks a `max_concurrent_agents: 1` deployment, because `on_retry_timer`
+removes the retry entry before it tests headroom while the claim is still held, so the issue blocks
+its own re-dispatch at every fire.
+
+**What actually followed from the old behaviour.** A wasted timer and a claim held on that one
+issue until the retry fired and released it — up to `agent.max_retry_backoff_ms` — so an issue
+closed and reopened inside that window was skipped by every tick in between (Section 8.2). Other
+issues' dispatch was unaffected. The chapter's own earlier clause, "the cost is a wasted timer and a
+held claim rather than corruption", was right; the magnitude appended to it was not.
+
+**It reached a third artifact.** `conformance/README.md`'s entry for this decision restates the same
+claim — a retry queued for a closed issue "holds a claim, and therefore a concurrency slot, for up to
+`agent.max_retry_backoff_ms`". It was found by `scripts/check_plan_anchors.py` reporting it as a site
+carrying the quoted phrase that decision 0144's plan did not name, which is worth recording: a false
+claim in a chapter propagates into the derived artifacts that summarize it, and correcting the
+chapter alone would have left the corpus README asserting it.
+
+**What survives.** Everything else. The repair is correct on its other grounds — a retry queued for
+a closed issue is wrong whatever it costs, the double-schedule race is real, and the ownership rule
+fixes both — and none of the options considered above turned on the concurrency-slot figure. The
+`DECISIONS.md` chapter's magnitude sentence is corrected in place naming decision 0144, and this
+decision's **State** carries the parenthetical `DECISIONS.md`'s legend provides for a decision
+revisited in part rather than replaced.
+
+**The shape of the finding**, which is the part worth keeping: a claim about a consequence, correct
+in the reasoning that reached it and false against an artifact that mechanizes the thing it
+quantifies over. This decision checked the pseudocode and the prose — carefully, and the review
+finding above is evidence of that — and did not check the vector corpus, where the answer already
+was. It is the same class as the finding above it, one artifact over rather than one step over: a
+consequence carried forward past the premise that supported it, and a check that would have caught
+it sitting in a file the reasoning never opened. Two recurrences in one decision, recorded rather
+than smoothed over. Decision 0145 records the third, which is this decision's removal of the only
+producer of the claim release Section 17.4 asserts.

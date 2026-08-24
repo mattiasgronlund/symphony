@@ -118,6 +118,15 @@
 - **After decision 0141.** Step 9's `arguments` group must carry the policy pin among the
   consumer-configuration exceptions, and step 6's Resuming row names `load_policy` as an entry that
   issues no token — both of which 0141 creates.
+- **Coupled to decision 0153 in encoding, not in substance.** That decision adds the root trigger to
+  the token outright. This one adds no part where an engine's point encoding already determines the
+  entry that issued it — which is the argument step 4 rests on, `ship` never running `merge` — and
+  one where it does not, since step 4's condition must be evaluable from the token alone. So the two
+  are one format revision landed together and two landed apart, with a window in which a token
+  issued between them decodes on neither build. This decision will plausibly land first, since it
+  orders itself after 0141 while 0153 orders itself after 0143, so the obligation 0153's record puts
+  on whichever of the two is applied second is stated here as well, rather than left to whichever
+  record a reader opens first. Raised on the implementation reply to PR #114.
 - **Independent of the issue #103 decision.** An earlier draft made step 4 wait on that decision's
   enumeration of sequence points, because the condition was stated in the general form. It is not:
   the condition is the entry point, which the token carries, so no enumeration is consulted and
@@ -140,7 +149,8 @@ touched.
   conditions to four; `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`'s `resume_token` row narrows in
   wording while keeping its subject. Plans citing the three-item phrasing are not edited; they
   record what was true when written.
-- No token is renamed or removed.
+- No token is renamed or removed. Whether the resume token itself gains a part is an engine's
+  question rather than this plan's — see Ordering, and decision 0153, which adds one outright.
 
 ## Status
 

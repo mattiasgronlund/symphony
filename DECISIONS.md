@@ -5203,7 +5203,7 @@ records it.
 
 ## 0138 — The function five call sites named and no section defined
 
-**State:** Accepted
+**State:** Accepted (magnitude corrected by 0144; a consequence it removed is repaired by 0145)
 **Folder:** [decisions/0138-reference-algorithm-gaps/](decisions/0138-reference-algorithm-gaps/)
 
 Reported by neither issue; found checking #95's claims against the corpus, and kept as its own
@@ -5228,9 +5228,12 @@ double-schedule decision 0136's race needs. The document says neither, so both d
 an implementation picks one by accident. Part B is worse in kind: a worker terminated *because its
 issue went terminal* reaches `on_worker_exit` with an abnormal reason and unconditionally schedules
 a retry for a closed issue. It self-cancels one backoff later via `find_by_id -> null ->
-claimed.remove`, so the cost is a wasted timer and a held claim rather than corruption — but
-**`available_slots` counts against `claimed`, so closing an issue whose worker is running costs a
-concurrency slot for up to `agent.max_retry_backoff_ms`, default five minutes, per closure**. Both
+claimed.remove`, so the cost is a wasted timer and a held claim rather than corruption — **and the
+claim is what it costs: the issue is skipped by every tick until the retry fires, up to
+`agent.max_retry_backoff_ms`, while other issues' dispatch is unaffected, `available_slots` counting
+running sessions rather than claims** (corrected by decision 0144; this chapter previously recorded
+the cost as a concurrency slot per closure, following a Section 8.5 sentence that decision strikes —
+see this decision's `Background.md`, "Logged finding"). Both
 are #95's shape: a message arriving for state that has moved. **One rule fixes both**: reconciliation
 that terminates a worker removes the running entry and accounts for that run's runtime at the point
 of termination, and `on_worker_exit` is authoritative only for exits the orchestrator did not cause,
@@ -5485,7 +5488,13 @@ point (`local_vcs`), one named entry (`store_location`), and a condition (`git_a
 that can reach one"; the forge coordinate and `forge_access` "where a forge is configured"), so the
 field admits three shapes. The dependency on issue #103 recorded as firm is **withdrawn with the
 general form**: the entry point is carried by the token, no enumeration is consulted, and nothing
-here waits on that decision.
+here waits on that decision. One coupling the capture did not name is recorded on the implementation
+reply to PR #114: decision 0153 adds a part to the resume token outright and this decision requires
+the token to answer which entry point issued it — a part in any engine whose point encoding does not
+already determine that — so the two are one format revision landed together and two landed apart,
+with a window in which a token issued between them decodes on neither build. This decision plausibly
+lands first, ordering itself after 0141 while 0153 waits on 0143, so both records now carry the
+coupling rather than only the one applied second.
 
 ## 0143 — Where a substituted result lands in a front-end sequence
 
@@ -5535,11 +5544,463 @@ early return, and **that** is the unwritten invariant — `ship` returns `done` 
 `create_pr` and `land` only from `merge`, which is what a caller reads to know the pull request
 exists — so `push:pr_closed → run_op status` violates no rule and silently repurposes the only
 completion signal the envelope has. The replacement test is **the operation the result names**, not
-its class, stated in Section 13.1: `output_keys` carries the ten keys Section 8.2 fixes and says the
-rest of `outputs` is entry-specific, so a pull-request identifier there is not portably testable —
-the draft of this chapter said three, wrong about the count and right about the note it turns on. It
-is merged behaviour rather than a hypothetical — the reporting engine returns `status:ok` for that
-edge today — and the answer leaves that build correct, the repair being a row telling callers what
-to read. The vectors need a **new corpus function**, since `match_edge` stops at edge selection by
-construction, and its `expect` names three things: the disposition, the transfer, and what the
-invocation reports, the third being what tells `status:ok` from the built-in escalation.
+its class, stated in Section 13.1: the `output_keys` group carries the keys Section 8.2 fixes and
+says the rest of `outputs` is entry-specific, so a pull-request identifier there is not portably
+testable. **No count of that group is stated**, and the drafts that stated one are the finding: this
+chapter's first draft said three, its correction said ten, and decision 0141 — same batch — adds an
+eleventh, so a number written into Section 13.1 would be falsified by a decision already in the log
+while the conclusion turns on the group's note either way. Raised on the implementation reply to PR
+#114, against this decision and 0152 together. It is merged behaviour rather than a hypothetical —
+the reporting engine returns `status:ok` for that edge today — and the answer leaves that build
+correct, the repair being a row telling callers what to read. The vectors need a **new corpus
+function**, since `match_edge` stops at edge selection by construction, and its `expect` names three
+things: the disposition, the transfer, and what the invocation reports, the third being what tells
+`status:ok` from the built-in escalation.
+
+## 0144 — What a concurrency slot counts, and when a run starts occupying one
+
+**State:** Proposed
+**Folder:** [decisions/0144-slot-accounting-and-provisioning-phase/](decisions/0144-slot-accounting-and-provisioning-phase/)
+
+Issue #109, split out of #108 because that issue's severity could not be stated without picking one
+of two sentences. Section 8.3 computes headroom from `running_count` and
+`conformance/vectors/available-slots.json` pins that signature — two inputs, four vectors, `claimed`
+nowhere in the file; Section 8.5's rationale says "because `claimed` counts against
+`available_slots`", 107 lines away in the same document. **The reading that loses livelocks a
+deployment, and Section 16.7 shows it**: `on_retry_timer` removes the retry entry *before* it tests
+headroom while the claim is still held, so a `max_concurrent_agents: 1` deployment with one issue in
+backoff computes `1 - |{X}| = 0`, requeues X at `attempt + 1`, and repeats until the backoff saturates
+at `agent.max_retry_backoff_ms` — X blocking its own re-dispatch forever with nothing running. The
+general form is worse and is reached by ordinary operation rather than by a failure: claims are held
+across backoff, and a **normal** exit schedules a continuation retry and keeps its claim, so a
+deployment at its limit stays there after every run completes. It also contradicts what Section 8.3
+says the limit is *for* ("it counts agent sessions, not where they run" — a `RetryQueued` issue is
+none), and it collapses two conditions Section 8.2 lists separately, making each claimed issue spend
+global capacity to prevent its own duplicate dispatch. So the formula and the vector stand, Section
+8.5's clause is struck and its **conclusion survives** — Part B still schedules no retry — with the
+cost restated as the one that follows: the issue holds its own claim and is skipped by every tick
+until the retry fires, other issues unaffected. **Decision 0138's chapter records the same
+magnitude**, so it is corrected there as a logged review finding rather than quietly, its repair being
+correct on its other grounds; the finding's shape is one 0138 itself recorded one step over — a
+consequence correct in the reasoning that reached it and false against an artifact that mechanizes
+what it quantifies over. The settlement exposes a second edge that fails the *other* way and is
+unbounded: Section 9.11 says a `Provisioning` dispatch "holds a dispatch slot but is not yet
+`Running`", which under `running_count` is true only if it is in the `running` map, while Section
+7.1 state 4 reads as a membership test — so the natural implementation is a second collection the
+formula does not count, and since acquisition is asynchronous every tick sees the same headroom and
+requests another node. Section 16.4 already writes the entry immediately after `spawn_worker`, so
+what is missing is the sentence: **a dispatched run occupies `running` from dispatch until it ends,
+and `Provisioning` and `Running` are phases of one entry rather than membership tests.** That is a
+data-structure decision rather than a wording one, which is why it is stated in those terms; it also
+removes a special case from 0145, since a provisioning run that never reached an agent then has an
+entry `terminate_running_issue` releases. Stating the formula over `claimed` instead is steelmanned
+— one set answering both of Section 8.2's questions is a simpler object, and bounding commitments
+rather than sessions is a real want — and loses on the livelock, on Section 8.3's own statement of
+purpose, and on requiring a pinned vector to be regenerated to buy a property the document does not
+claim; if that want returns it returns as a **second** bound, not a redefinition of this one.
+
+## 0145 — The claim nothing released
+
+**State:** Proposed
+**Folder:** [decisions/0145-claim-lifetime/](decisions/0145-claim-lifetime/)
+
+Issue #108. Section 7.1 defines a `Released` claim state and Section 17.4 requires the release to
+happen "without waiting for a backoff to elapse", while Section 16 removes an issue from `claimed` in
+exactly one place — `on_retry_timer`'s not-a-candidate branch — and Section 8.5 Part B schedules no
+retry. `terminate_running_issue`, the function both Part B branches and Part A's stall path call,
+removes the running entry, accounts for the runtime, terminates the worker and never touches
+`claimed`. **The release was a side effect of the retry decision 0138 correctly removed**: that
+decision records the old retry self-cancelling "via `find_by_id -> null -> claimed.remove`", which was
+the release's only producer, and `git log -S` puts the removal and the Section 17.4 row asserting the
+release in one commit, `87abf10`. It is 0138's own recorded review finding one step over — that one
+kept Part A's retry while removing its only producer, this one keeps a release whose only producer it
+removed. What it costs: the issue is **permanently un-dispatchable**, since Section 8.2 tests
+`claimed`, so a ticket closed while its worker ran and later reopened is fetched every tick and
+skipped every tick until a restart clears the `Reconstructable` set — a symptom that reads as a
+tracker-adapter problem rather than a scheduler one — and `claimed` grows monotonically. It costs
+**no** concurrency slot; the earlier claim that it did is withdrawn on decision 0144's settlement. A
+second edge sits in the same place: Section 16.4's spawn-failure early return arms a retry *above*
+`state.claimed.add(issue.id)`, so the next tick re-dispatches with `attempt=null` and a repeatedly
+failing spawn retries every `polling.interval_ms` (default `30000`) instead of escalating toward
+`agent.max_retry_backoff_ms` — no double dispatch, but the backoff lost on the path whose whole
+purpose is to back off. The repair is two clauses — `terminate_running_issue` releases the claim it is
+removing the running entry for, `schedule_retry` takes it so `RetryQueued` is claimed by construction
+— **stated as a partition rather than as two edits**: after them, every site that removes a running
+entry either releases the claim or hands it to a retry entry, and there is no third, with the three
+sites named so a site added later has to say which side it is on. Stated as two rules, a third removal
+site added later is a new leak with no rule against it, which is the shape this defect has. The
+derived view `claimed = keys(running) ∪ keys(retry_attempts)` — which Section 4.1.8 already describes
+for restart — is the first thing a reader reaches for and would make the release unfalsifiable rather
+than merely required; it loses because it makes duplicate-dispatch prevention a consequence of two
+other collections' contents, so any future path writing a run without a `running` entry silently
+reopens duplicate dispatch with no rule violated. The explicit set is load-bearing for remote mode.
+
+## 0146 — Run-attempt identity and the messages a replaced run keeps sending
+
+**State:** Proposed
+**Folder:** [decisions/0146-run-attempt-identity/](decisions/0146-run-attempt-identity/)
+
+Issue #106. `on_worker_exit` decides whether an exit is owed a retry by testing whether the running
+entry is **present** — and Section 8.4 says, of the sibling function eleven lines below it in the
+same code block, that "Testing only whether an entry is present does not satisfy this: the entry
+that a discarded fire must not consume is present by construction". The same construction produces a
+present-but-wrong entry here: reconciliation terminates run A and removes its entry, a later tick
+dispatches run B under the same key, run A's in-flight exit arrives, the guard does not fire, and
+the orchestrator **converts a live run into a queued retry and loses it** — run B's own exit then
+arriving with no entry and correctly doing nothing. The window is not sub-millisecond: on the stall
+path the re-dispatch happens after a backoff, so the guard fails whenever a killed worker takes
+longer than one backoff to die, and in remote mode the exit crosses a seam whose events are buffered
+and replayed *by design*. **The guard belongs on the channel rather than on the exit callback**,
+because Section 16.6 sends agent events keyed by issue alone and a late one from run A lands on run
+B's entry: it writes `last_timestamp`, which is Part A's own stall reference, so a dead run's
+trailing events keep a genuinely stalled replacement alive — the one consequence with no second line
+of defence, because the mechanism that would clean it up is the one the stale events defeat; it
+overwrites `session_id`; and it computes Section 13.5's deltas between two unrelated cumulative
+series, which Section 8.8's `Durable` idempotency is keyed on. The asymmetry is the argument for the
+channel over the fields: in the reporting engine one field on the entry is idempotent under mixing
+(rate limits order by `fetched_at`) and the other is silently wrong (a high-water mark across two
+series is a value neither produced). **The identifier is one already owed in four places, not a
+fourth identity**: Section 13.1 REQUIREs `origin_run_id` and states it is never null, Section 9.11
+calls `lookup_by_run_id` and `signal_done`, Section 14.4 keys the remote run registry by run — and
+Section 4.1.5 defines no id, so an emitter carrying `origin_run_id` as non-optional cannot construct
+a session reference at all and a runtime snapshot's running row reports no session. That is true of
+the **definition** and says nothing about the **comparison**, so Section 4.1.5 states both, on the
+implementation reply to PR #114: a retried attempt carries its own `run_id` and its origin's,
+`origin_run_id` being the `run_id` of the attempt the sequence began at — which is also the type
+that field has never been given. Every attempt in a retry sequence carries one `origin_run_id`,
+Section 13.1's own reason being that the sequence is a group rather than a linked list, so a guard
+comparing against *it* fails in exactly the case this decision is about, where the retry that
+dispatched run B belongs to run A's sequence. Its uniqueness is **wider** than Section 8.4's
+generation, which is compared only in memory: a `run_id` is written to durable logs and handed to an
+external scheduler, where a per-process counter restarting at 1 collides with the previous process's
+records. That requirement needs a stated source, because it is not a function of state — and the
+answer is not "the host supplies it", `SPEC.md` having no host in it: **Section 16.1 is already the
+function that touches the world before the loop starts**, so it establishes a process identity,
+`Implementation-defined` and documented on the `worktree_revision()` precedent, and `dispatch_issue`
+composes `run_id` from it and a counter. The guarantee is stated over the distinction the value MUST
+make — no two run attempts in one deployment share a `run_id` — because "non-reuse across restarts,
+scheme `Implementation-defined`" reads as satisfiable by a constant until the first test that needs
+it to differ, and a build whose simulated restart reuses the identity has a guard that is never
+exercised and a suite that is green. The **shape** changes with the field: decision 0136 gave
+`on_retry_timer` get-compare-remove "because a comparison that fails after the pop has already taken
+the entry the fire should not have touched", and `on_worker_exit` inherited neither the field nor
+the shape. Costs stated rather than discovered: a Core entity and the worker→orchestrator message
+shape, plus one `Implementation-defined` obligation owing a Section 19 line and a Conformance
+Statement row — decision 0128's trap, named from the start.
+
+## 0147 — What a restart restores, and which class the Core field is
+
+**State:** Proposed
+**Folder:** [decisions/0147-cached-signal-restart/](decisions/0147-cached-signal-restart/)
+
+Issue #105. Section 14.3's `Cached external signal` bullet says the last-known-good "MUST be carried
+across both a failed refresh and a process restart"; Section 14.4 says "Only `Durable` state
+introduced by an OPTIONAL extension is restored across a restart"; `provider_rate_limits` is Core
+and carries the class, so it is inside both. **The rest of the corpus already answers it three
+times, the same way** — Section 16.1's `restore_cached_and_durable_state` overlays both classes
+"when an OPTIONAL extension configures one; otherwise the zero/null defaults above stand", Section
+17.4's row is conditioned on the extension being implemented, and Section 14.3's own closing
+paragraph says the class "is introduced by an OPTIONAL provider-quota extension". So the contract is
+settled and the two sentences are the outliers. Neither half of the issue's ask reaches it alone,
+which is why this is three edits: **reclass `provider_rate_limits`** on the `agent_totals` precedent
+— `Ephemeral` for observability in Core, becoming `Cached external signal` when Section 8.9 enforces
+on it, which is where its staleness bound and `UNKNOWN` policy come from; **scope Section 14.3's
+restart half to a store**, mirroring the `Durable` bullet's existing degradation clause; and **say
+both restorable classes in Section 14.4**, whose "only `Durable`" is false for a quota extension
+with a store independently of the Core-field question. Section 8.9's own Recovery-semantics bullet
+restates the unconditional promise and was not in the ask, so it moves too. The reclass is more than
+re-labelling for a reason that has nothing to do with tidiness: **`Ephemeral` is the one class whose
+reset consequence is a required part of the class**, so reclassing is what makes "the status surface
+reports no rate-limit reading until the next agent update refreshes it" get written down somewhere a
+consumer reads — where the minimal fallback (keep it `C`, say Core has no store) leaves the
+obligation stated in Section 14.3 and reaching no artifact that publishes it, and where a build
+carrying the class as a wrapper type has its compiler demand the sentence. It also closes the
+issue's second edge as a side effect: a Core-only build has no value it is told to age against a
+bound no Core section defines. The third edge is the one the section turns on and **the clause took
+four drafts, of which the three discarded are the record**. Conditioning on the *configuration*
+cannot see a store configured and empty, or unreachable. Conditioning on the *value* — "a restored
+value is a reading; a restore that produced none is not" — covers all four startup shapes and leaves
+two holes with no store involved: a restore whose `fetched_at` is already older than
+`stale_after_ms` (default `180000`) arrives `UNKNOWN` and *is* a reading, and the drained idle needs
+no restart at all, since Section 8.9's gate leaves running workers alone so in-band readings arrive
+only while a worker runs — three minutes of quiet between tickets deadlocks a deployment that held a
+reading and replaced it in this process. So the rule is conditioned on whether a reading can
+**arrive** — and, on the implementation reply to PR #114, on releasing no more than that: where no
+out-of-band refresh path is configured an `UNKNOWN` MUST NOT pause dispatch outright, and the gate
+clamps headroom to **one run in flight** until a reading arrives. The third draft released the whole
+limit, which takes a fail-closed deployment at `max_concurrent_agents: 20` from paused to twenty on
+a missing reading, at every startup and after every idle drain; one run is what makes an agent
+update arrive, so the deadlock argument reaches no further, and Section 8.9's existing SHOULD for a
+provider exposing no quota interface is the exit that keeps the clamp from being permanent. The
+condition is the class's and the quantity is the gate's, so they land in Sections 14.3 and 8.9
+rather than together. Fail-closed stays intact for the deployment that configured a poller in order
+to have it, including the startup window, and a poller reaching nothing pauses a deployment that
+asked to be paused and says why in the snapshot's `error`. The value-conditioning survives with a
+different job: it is what decides whether a startup `UNKNOWN` is Section 8.9's permanently-unknown
+arm or its transient one — the pair that carries a SHOULD and a MAY today with nothing to decide
+between them. **This is the one clause the issue thread had not converged on when the decision was
+captured**, recorded with its full derivation so a reversal has something to argue against — which
+is what the reply did, on the derivation rather than on a preference, and the third draft is kept in
+the record because the difference between the two is the question. The dual-valued "Spec default"
+cell gets a clause on the template's **column header** rather than in either row — it states which
+of the two the implementation ships, not "both" — covering `agent_totals`, which has carried the
+same ambiguity unread only because no generator has read it.
+
+## 0148 — Routing keys and the record they route over
+
+**State:** Proposed
+**Folder:** [decisions/0148-issue-routing-substrate/](decisions/0148-issue-routing-substrate/)
+
+Issue #113, the sibling of #100 rather than a restatement: that one is about one dispatch bullet's
+computability, this is about whether a whole section's mechanism has a substrate. Section 8.7 routes
+each polled issue through "an explicit, tracker-implementation-specific mapping in the policy config"
+and names the keys by example — the `linear` adapter by project, team, label or assignee, the
+`forgejo` adapter by repository and issue tags/state — while Section 4.1.1 declares its record "the
+only issue the orchestrator, the prompt renderer and the observability output ever see" and carries
+`labels`, `state`, and (after decision 0140) `assignees`. **`project`, `team` and the `forgejo`
+adapter's `repository` are in no field at all**, and `metadata` is what Section 8.7's own last sentence
+rules out — an opaque adapter-owned map *is* untrusted free-form content, and Section 4.1.1 says the
+core does not interpret it. The two readings put the mapping in different components and only one is a
+policy-config mapping: after normalization it is a pure function of the config and the record, and
+Section 8.7's own example is unimplementable; before normalization the mapping is adapter-private,
+"tracker-implementation-specific" becomes "tracker-implementation-*private*", and Section 17.4's two
+checks assert a property of a mapping the orchestrator never sees. The `linear` example's first key is
+**unreachable twice over**, which says the two sections were written against different pictures:
+Section 5.3.1 carries a single `project_slug` and Section 11.1 fetches "for a configured project", so
+every polled Linear issue is in one project and routing by project selects everything or nothing. The
+decision routes **after** normalization, adds `project` and `team` to Section 4.1.1 as OPTIONAL,
+tracker-dependent and normalized like `labels` — `project` being the tracker's container, which for
+`forgejo` is the owning repository, named once rather than twice — has Section 11.7's descriptor
+declare which the adapter populates so a mapping keyed on an unpopulated field is a Section 6.3
+preflight error rather than a deployment that silently routes nothing, restates Section 8.7's bullet
+over the record's fields, and **refuses an issue two rules claim** rather than picking, stated over
+the issue because two rules can be disjoint over every issue that exists today: a dispatch grants an
+agent commit and pull-request authority, and picking the first match sends it into a codebase the
+operator did not point it at. 0140's publication clause is inherited rather than re-derived, since
+Section 4.2's normalization is not something an adapter opts into. Routing before normalization is
+steelmanned — every key exists in the raw payload, identity semantics stay where the knowledge is, and
+Section 11.1's `project_slug` is the existing precedent — and loses on four counts, of which the
+fourth is the one 0140 already paid for: a routing attribute can change while a run is in flight, and
+Section 16.3 iterates `for issue in refreshed` while Section 8.5 Part B has **no absent branch**, so an
+issue moved between projects mid-run reaches none of the three cases and its run continues against a
+repository the mapping no longer selects. **What this decision does not fix is named rather than
+missed**: the mapping has no configuration key and neither does the managed-repository list — Section
+5.3's six top-level keys include neither while Section 6.4 and Section 8.7 assert both, and Section
+8.1 says "each tracker" where Section 5.3.1 defines one. That schema is its own decision, nothing here
+depends on it, and a single-repository deployment is fully expressible today.
+
+## 0149 — The column that said who provides and not who requires
+
+**State:** Proposed
+**Folder:** [decisions/0149-capability-required-by-column/](decisions/0149-capability-required-by-column/)
+
+Issue #102. Decision 0134 rewrote `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` Section 6.1 to infer, from
+the operation set being closed, that "a capability beyond the list is a backend's own rather than an
+engine's", and moved the columns from `Capability | Required by (operation) | Signature and result` to
+`Capability beyond Section 9.1 | Provided by (backend) | Signature and result`. The premise is right
+and **the inference fails structurally rather than because two capabilities happen to be missing**:
+the premise licenses only "not an engine-added operation's", because `Required by` and `Provided by`
+answer different questions — the engine requires, the backend provides, and a floor being met says
+nothing about who wanted what sits above it. That holds even with Section 9.1 complete, since Section
+6.6 leaves host-side unit resolution `Implementation-defined` and an engine may need a capability for
+whichever mechanism it documents. So 0134 removed the column that carried the fact and added one that
+does not, where it should have added — and the section's original question now has **no row anywhere
+in the template**, while every engine that implements Section 4.1 has an answer to it. The harm is
+concrete: Section 13.3's tables are a declaration a consumer relies on, and the reader the row serves
+is a backend author deciding whether a capability above the floor is optional (drop it and the engine
+still conforms) or load-bearing (drop it and the engine cannot implement Section 4.1 or Section 6.6).
+Field-verified rather than hypothetical — the reporting engine's Statement already carries the
+four-column form with a paragraph above the table naming which template inference it is contradicting
+and why, because filling it as directed would publish three engine requirements as backend extras.
+The repair rewords the inference and restores `Required by` at position two, **unqualified** rather
+than as 0134's `Required by (operation)`: the three real requirers are an operation (`load_policy`), a
+lifecycle position (`before:commit`) and a declaration in the document (a `[hooks.engine]` unit), and
+the qualified form excludes two of them. It is owed **independently of decisions 0150 and 0151**,
+whose additions should eventually empty this table — an argument for it rather than against, since
+until then the reworded row is the only artifact saying *this engine requires them of every backend*
+rather than *some backend happened to bring them*, and the rows do not disappear when those land, they
+move from prose into a declared descriptor field with a test behind it. Two mechanical facts checked
+rather than assumed: `check_obligations` scans only the **second** cell for section numbers and this
+table's number lives in the first, so the insert is invisible to the parser; and the reword adds no
+`Implementation-defined` behaviour, so 0128's trap does not fire — stated rather than left silent,
+because three decisions in a row missed the case where it does.
+
+## 0150 — The diff a commit would record, and the identity that comes with it
+
+**State:** Proposed
+**Folder:** [decisions/0150-worktree-diff-capability/](decisions/0150-worktree-diff-capability/)
+
+Issue #110, first of two, split from #102. **The strongest form of the finding is not the derivation
+— it is that an engine has already had to invent all three capabilities**, under the report's own
+names and shapes, months before the report, with two backends behind them and published under
+Section 13.3 as that engine's own. So the specification is not being asked whether it might need
+them. This decision takes the one blocked by nothing: Section 10.4 supplies "the commit message and
+**the diff the commit would record** at `before:commit`", Section 9.1's `diff(base_ref)` is the
+branch delta against the resolved base and `worktree_revision()` answers an identity, and nothing in
+Section 9.1 or 9.2 answers the question. Section 9.1's own closing paragraph is the better citation
+than Section 4.1's "realized through the plugin layer", because it makes the claim rather than
+implying it — "every operation Section 4.1 defines is realizable through it" — and it is false in
+the section the repair edits. This one is **on the documented happy path**: Section 6.5's example
+policy binds `before:commit` → `run` → `scan-content`, so the list is short of something every
+engine supporting the canonical example needs. The load-bearing half was not in the report and is a
+**live defect**: Section 10.4 closes by asserting that `before:create_pr` "needs no identity to
+condition on where the other two do", which stops being true the moment the diff is a second read of
+the tree — an engine reading the diff at T₁ and the identity at T₂ matches `expected_worktree` for a
+tree that moved in between and then held still, and commits content the scan never saw, violating
+Section 6.6's "a gate is only a gate if what it inspected is what proceeds" with every rule
+satisfied. The reporting engine has exactly that pair, its diff read before the position and its
+identity inside the operation after it — **field-confirmed after capture and repaired there in this
+decision's shape**, the window having made `commit:worktree_moved` unreachable and left a
+conformance test bound to Section 6.5's own `scan-content` shape passing because of it. Two findings
+came back from that build and are carried into the edit: the pairing spends Section 9.1's
+bookkeeping allowance **less**, not more — one staging write at the position where two reads made
+two, which is the price decision 0079 weighed — and the undetermined case moves with the read,
+failing from the composition before the position runs rather than at the capture after it, so a gate
+no longer runs over content the operation will not use. **A sequencing rule is one hole short of
+enough**: take the identity first and a tree that moves to B and back to A matches exactly, because
+`worktree_revision()`'s contract is stated over *content* — an editor writing a file and reverting
+it reaches it, and no ordering can see it. So the capability answers a **pair** — the diff, and the
+identity for the tree it read, which the engine supplies as `expected_worktree` — making the wrong
+shape unwritable rather than writing a rule against it. The honest objection, that Section 9.1 has
+no precedent for a capability answering two things, does not hold: `ahead_behind(base_ref)` is that
+precedent and is there for the same reason, and Section 9.1's `commit` bullet **already** binds the
+identity to "when the working tree was read at `before:commit`", so the pair is that sentence's own
+reading made true by construction. `worktree_diff()` inherits `is_dirty()`'s set rather than stating
+its own — a backend answering a *staged* diff would satisfy a loose reading and hand the scan the
+wrong content, which the pairing does not catch — and `worktree_revision()`'s write-to-bookkeeping
+note is restated over the position, since both are consulted there on invocations the gate then
+blocks. The network enumeration stays at four, checked against Section 9.1's list rather than
+inferred from the signature, which that section forbids.
+
+## 0151 — Reading and materializing the policy source
+
+**State:** Proposed
+**Folder:** [decisions/0151-policy-source-capabilities/](decisions/0151-policy-source-capabilities/)
+
+Issue #110, second of two: the capabilities that turn on `load_policy`. Section 9.1's realization
+paragraph maps five operations onto capabilities and **`load_policy` maps onto none**, in Section 9.1
+or 9.2, while Section 4.1 says each operation "is realized through the plugin layer" and Section 9.1's
+closing paragraph claims every one is realizable through the list. Section 4.1's excuse — "it is why
+no capability of Section 9.1 reads a file at a revision — one operation does it once, rather than a
+capability doing it per read" — explains the absence of a *per-read* capability and does not supply
+the one read the operation makes; and **decision 0141 removes its premise**, since under the
+fingerprint pin every entry point reads and validates the document, making it the read every entry
+point makes once per invocation, which is exactly the per-read shape that sentence denies. So
+`read_at_source(remote, branch, path)` joins the list, with three answers rather than two because
+Section 6.1 distinguishes `policy_source_unreadable` from `policy_not_found`. The second half of the
+same read is that **`vcsx.toml` has no address**: Section 6.1 fixes `repo.policy.toml`'s path and its
+`Implementation-defined` discovery precedence, and states neither for the file it says is "merged into
+the same surface" — a build put it at the repository root beside the first, "one constant next to
+another, decided by nobody, documented nowhere". The harm is not a differing fingerprint (two engines
+never compare pins; the value is opaque and only its issuer reads it) but that **two conforming
+engines merge different documents from one revision and execute different policies**, of which a
+differing pin is a symptom nobody can see — so the repair is owed on Section 6.1's own terms, on the
+sibling's precedent. `export_source(remote, branch, into)` realizes Section 6.6's host-side unit
+resolution, a revision not being a directory, with `into` earning its place because backends
+materialize differently enough that the engine cannot own the mechanism but each can be handed a
+location. It is **OPTIONAL with a descriptor field**, parallel to "derives more than one working tree
+from one store", because an engine whose unit form is a registered task materializes nothing and a
+required capability a conforming engine never calls is worse surface than none — and the condition is
+stated **per engine rather than per unit**, because a command-line unit form carries no statement of
+whether it names a path in the source, so a per-unit condition is not evaluable from the specified
+configuration, which is issue #100's test one document over. That keeps the `capability_unsupported`
+refusal on Section 9.3's determinable half with both halves static, widening its "What remains on the
+first-use side is an OPTIONAL capability (Section 9.2)" sentence, this being the first OPTIONAL
+capability in Section 9.1. The ordering that makes both credential-free is written down rather than
+implied, since Section 9.1 says a capability's context is "read off this list and never inferred from
+its arguments": a read of the policy branch acquires nothing **only because `provision` precedes it**,
+placing the copy in the store, a consequence Section 13.1 already accepts. What the addition buys is
+Section 9.3's descriptor discipline and a reported refusal at validation instead of three engines
+naming one requirement three ways.
+
+## 0152 — What a front-end sequence must reach, not only where it stops
+
+**State:** Proposed
+**Folder:** [decisions/0152-front-end-progress-invariants/](decisions/0152-front-end-progress-invariants/)
+
+Issue #111, split from #107 and independent by design. Section 13.1's Front-ends row states an upper
+bound, a guard property and two convergence properties, and **no lower bound**: nothing says the
+sequence must *reach* anything. The nearest thing to one is in a different row and is scoped to the
+predicate failing to answer — "a `ship` whose `is_dirty()` cannot answer dispatches `commit` and
+yields `commit:failed`" — which makes the omission harder to see rather than easier, because a
+reader hunting the invariant finds a sentence that reads like it and stops. So decision 0143's
+reading 2 passes the **whole matrix**: `is_dirty()` answered, `ship` stopped at the pull request, no
+retry misbehaved, and a pull request opened over a tree nothing committed. The plainest exhibit
+needs no repository policy at all — Section 12.2's commit loop ends in a bare `break` while the push
+loop below tests `if r.class != done`, so the block as printed walks from **any**
+non-`worktree_moved` commit result into the push loop, and the invariant is exactly what makes that
+`break` sound. Three invariants, with three corrections to the issue's phrasing, each load-bearing.
+**Section 13.1 alone is not a home**: its lead-in is "A conforming engine SHOULD include tests
+covering:", so an invariant living only there is a test recommendation an engine can decline while
+conforming — and Sections 7.1 and 7.2 already carry the same shape one operation over ("It commits
+the tree it read", "It merges the head it read"), which "it pushes what it committed" completes.
+**Quantify over the flow, not the invocation**: a resumed `ship` continuing a resolved
+`create_pr:blocked` dispatches `create_pr` in an invocation containing no push, so the
+invocation-scoped row would refuse the resume the row above it requires, and Section 5.6 supplies
+the unit. **State it over the sequence's step, not over `ship`**: an edge whose `run_op` dispatches
+`create_pr` is the repository's dispatch, and a row falsifying it would take back what 0143 grants.
+The third invariant is the one the pair pays for: Section 12.2's built-in ends `ship` without a pull
+request on five paths and **every one is non-`done`**, so `ship` returns `done` today only from
+`create_pr` and `land` only from `merge` — what a caller reads to know the pull request exists,
+stated nowhere, and exactly what 0143's permitted `done`-class early return spends. The replacement
+test is **the operation the result names**, not its class, readable from the envelope with no new
+field, because the `output_keys` group carries the keys Section 8.2 fixes and notes the rest of
+`outputs` is entry-specific, so a pull-request identifier there is not portably testable. **The
+count is no part of that and is not stated**: an earlier statement said the group fixes three, this
+decision's draft corrected it to ten, and the correction reproduced the failure it was repairing —
+decision 0141 adds an eleventh entry, neither this plan nor 0143's orders itself against it, and
+step 3 puts the sentence in Section 13.1. Raised on the implementation reply to PR #114; the repair
+is to cite the group rather than count it, which is what both earlier statements already said the
+conclusion turns on. The row leans on one clause: `op` is present exactly where a result was
+decisive and null only for the two escalation shapes Section 8.4 nulls, so a caller reading it has
+an answer on every ending. Under 0143's transfer split the first two are **derivable rather than
+additional** — only `push:ok` and `push:up_to_date` reach the push loop's `break` whatever a
+repository binds — which makes them a regression test on the landing rule and is an argument for
+stating them. The issue argued this should precede 0143; that argument was good and its premise is
+gone, since the rule is chosen. Its mechanical half stands: the two edit **one anchor set**, so two
+decisions, one editing pass.
+
+## 0153 — A resume continues the flow, and the token carries the root trigger
+
+**State:** Proposed
+**Folder:** [decisions/0153-resume-continues-the-flow/](decisions/0153-resume-continues-the-flow/)
+
+Issue #103. Section 5.5 says what a resume re-enters and stops there; **no section says what happens
+after that re-entry produces a result**. For a single-operation entry point the question does not
+arise; for a front-end sequence a `ship` that escalated at `push` either reports the re-dispatched
+`push` and stops or carries on to `create_pr`, and two conforming engines then give one caller two
+different results from one token. **The argument that decides it is Section 5.6's accumulation.**
+Under the narrow reading a resumed invocation that re-dispatches successfully ends `done`, so no
+token is issued (Section 8.2 puts `resume_token` in `outputs` only at `needs_caller`), the count is
+discarded, and the caller re-invokes from the top with a fresh budget — so a resolve-and-resume loop
+never exhausts for the interactive front-end while it does for a driver whose resolver returns in
+process. That is precisely the divergence Section 5.6 is written to prevent, and it makes Section
+13.1's "reaches `flow_exhausted` **across invocations** and not only within one" false for one of
+the two. Verified against a build implementing the narrow reading, which changed position on this
+argument having weighed and not found it. Two supporting arguments: **Section 5.4 already names the
+disposition and its name is "continue"**, so the narrow reading is the one needing a fourth
+disposition the section does not provide, and Section 7.1 states `ship`'s contract over what it
+drives. What the narrow reading would have cost is recorded rather than left implicit — Section
+5.6's paragraph and Section 13.1's row would both have to be weakened — and it was **not
+unreasonable**: it is what Sections 5.5 and 8.2 literally describe, both enumerating a two-element
+token, so this decision changes those sentences rather than correcting a misreading. Section 8.1's
+opacity paragraph, read on the issue as support for the narrow reading, argues the engine will not
+**publish** a spelling, which cuts the other way; what it still argues against is a token whose
+*size* grows with the graph. The token carries three fields: the point, the count, and **the
+sequence's own `run_op` result the chain descends from** — decision 0143's root — where the point is
+not that dispatch itself. Two sharpenings, both 0143's doing. **It is a trigger, not a sequence
+position**: under 0143 the transfer is a property of the trigger and the trigger has exactly one
+position because the sequence tested it, so the position is derived — a token carrying a position
+would owe the traversal schema Section 8.1 says an engine should not publish, while one carrying a
+trigger owes the trigger vocabulary Section 5.1 and the registry already publish, and Section 5.4's
+tail-replacement keeps it fixed-width. **It is the root, not "the trigger an edge replaced"**:
+Section 12.2 routes `push:non_fast_forward` to `integrate` built in, so phrased over substitution
+the field would be absent exactly where a resumed `integrate` needs it. And the trigger is spelled
+by its **registry token** rather than by an ordinal into a generated enumeration, which after a
+MINOR insert decodes into a different trigger, silently, from a record that still looks valid. The
+`MUST NOT` over position-established state is untouched: a trigger is control-flow state of the same
+kind as the count. Easy to miss: `conformance/vcsx/vocabulary.json`'s `resume_token` note restates
+the two-element description **in its own words**, so it moves with the sections — decision 0132's
+drift class — and the format revision is shared with decision 0142, separable in substance and not
+in encoding: 0142 will plausibly land first, so both records now state the coupling rather than only
+whichever is applied second.
