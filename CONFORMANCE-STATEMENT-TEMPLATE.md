@@ -81,6 +81,8 @@ obligation not listed here rather than omitting its resolution.
 
 | Obligation | Section | Resolution |
 |------------|---------|------------|
+| Identifier the tracker adapter publishes in `assignees` | 4.1.1 | `<which identifier — login / handle / opaque id — and how it distinguishes the tracker's principals under Lowercase Normalization>` |
+| Identifier the tracker adapter publishes in `project` and `team` | 4.1.1 | `<which identifier — key / slug / opaque id — and how it distinguishes the tracker's containers under Lowercase Normalization>` |
 | Operator policy config format and discovery path | 5 | `<...>` |
 | Workflow/template error classes defined beyond Section 5.5's five | 5.5 | `<token + dispatch gating behavior for each, or none>` |
 | `agent.default_agent` default | 5.3.5 | `<which agent>` |

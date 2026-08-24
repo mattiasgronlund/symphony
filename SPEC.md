@@ -271,6 +271,30 @@ Fields:
 - `url` (string or null)
 - `labels` (list of strings)
   - Normalized with `Lowercase Normalization` (Section 4.2).
+- `assignees` (list of strings)
+  - The tracker principals the issue is assigned to; a list because a tracker MAY assign several.
+    OPTIONAL and tracker-dependent: an adapter whose tracker has no assignee model leaves it empty
+    and declares that it populates none (Section 11.7), so no assignee filter is configurable
+    against it (Section 6.3) and assignee-gated dispatch (Section 8.2) does not gate.
+  - Normalized with `Lowercase Normalization` (Section 4.2), as `labels` are.
+  - The identifier an adapter publishes here MUST distinguish the tracker's principals under
+    `Lowercase Normalization`: an adapter whose stable identifier does not — a case-significant
+    opaque id, two of which can normalize to one value — publishes the tracker's login or handle
+    instead. Which identifier it publishes is `Implementation-defined` and MUST be documented
+    (Section 19).
+- `project` (string or null)
+  - The tracker container the issue belongs to: a Linear project, and for the `forgejo` adapter the
+    owning repository. OPTIONAL and tracker-dependent: an adapter whose tracker has no such model
+    leaves it null.
+  - Normalized with `Lowercase Normalization` (Section 4.2), as `labels` are.
+  - The identifier an adapter publishes here MUST distinguish the tracker's containers under
+    `Lowercase Normalization`: an adapter whose stable identifier does not publishes the
+    human-facing key or slug instead. Which identifier it publishes is `Implementation-defined` and
+    MUST be documented (Section 19).
+- `team` (string or null)
+  - The tracker's owning group for the issue, where its model has one distinct from `project` — a
+    Linear team. OPTIONAL and tracker-dependent: an adapter whose tracker has no such model leaves
+    it null. Normalized, published, and documented as `project` is.
 - `blocked_by` (list of blocker refs)
   - OPTIONAL and tracker-dependent: an adapter whose tracker has no dependency model leaves it
     empty, and blocker-gated dispatch (Section 8.2) then observes no blockers.
@@ -448,7 +472,8 @@ Fields:
     mapping produces, so two spellings of the same name that differ only in normalization form do
     not compare equal.
   - Every case-insensitive comparison in this specification is defined over this operation:
-    `Normalized Issue State` below, and label normalization (Sections 4.1.1, 5.3.1, 11.3).
+    `Normalized Issue State` below, and label and assignee normalization (Sections 4.1.1, 5.3.1,
+    11.3).
 - `Normalized Issue State`
   - Compare states after `Lowercase Normalization`.
   - The normalized value is a comparison key, not a display string. `active_states` and
@@ -602,6 +627,15 @@ Fields:
   - Matching ignores surrounding whitespace on both sides, and compares under
     `Lowercase Normalization` (Section 4.2).
   - A blank configured label matches no issue.
+- `assignee` (string)
+  - Default: `null` (no assignee filter; assignment does not gate).
+  - An issue MUST be assigned to the configured assignee to dispatch or continue: its `assignees`
+    (Section 4.1.1) contain the configured value.
+  - Matching ignores surrounding whitespace on both sides, and compares under
+    `Lowercase Normalization` (Section 4.2).
+  - A blank configured assignee matches no issue.
+  - A non-null value REQUIRES a tracker adapter that populates `assignees`; dispatch preflight
+    refuses one that does not (Sections 6.3, 11.7).
 - `active_states` (list of strings)
   - Default: `Todo`, `In Progress`
 - `terminal_states` (list of strings)
@@ -943,6 +977,10 @@ Validation checks:
 - `tracker.project_slug` is present when REQUIRED by the selected tracker kind.
 - When `tracker.transitions` is non-empty, the selected tracker adapter declares the `set_state`
   capability (Section 11.7); otherwise configuration error.
+- When `tracker.assignee` is non-null, the selected tracker adapter declares that it populates
+  `assignees` (Section 11.7); otherwise configuration error.
+- Every record field a routing mapping keys on (Section 8.7) is one the selected tracker adapter
+  declares it populates (Section 11.7); otherwise configuration error.
 - Every `tracker.transitions` entry's `on` value is in the trigger vocabulary (Section 11.6);
   otherwise configuration error. The VCS engine cannot make this check on Symphony's behalf: a bare
   token is a well-formed signal to the engine, whose signal set is open because the consumer raises
@@ -959,8 +997,9 @@ not require recognizing or validating extension fields unless that extension is 
 Configuration lives in three artifacts (Section 5): the operator policy config, the repository's
 `repo.policy.toml` (Way of Working), and `WORKFLOW.md` (in-sandbox). Each field below is tagged with
 its owner. The operator policy config MAY define multiple repositories, each with its own `vcs` and
-`agent` settings and a pointer to that repository's `repo.policy.toml`, plus a tracker-specific
-issue→repo mapping (Section 8.7).
+`agent` settings and a pointer to that repository's `repo.policy.toml`, plus an issue→repo mapping
+keyed on the normalized record's `project`, `team`, `labels`, `assignees` and `state` (Sections
+4.1.1, 8.7) — which of those an adapter populates is tracker-specific and declared (Section 11.7).
 
 Operator policy config:
 
@@ -969,6 +1008,7 @@ Operator policy config:
 - `tracker.api_key`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env (Section 15.3)
 - `tracker.project_slug`: string, REQUIRED when `tracker.kind=linear`
 - `tracker.required_labels`: list of strings, default `[]`
+- `tracker.assignee`: string, default `null` (no assignee filter); REQUIRES an adapter that populates `assignees` (Sections 6.3, 11.7)
 - `tracker.active_states`: list of strings, default `["Todo", "In Progress"]`
 - `tracker.terminal_states`: list of strings, default `["Closed", "Cancelled", "Canceled", "Duplicate", "Done"]`
 - `polling.interval_ms`: integer, default `30000`
@@ -1192,8 +1232,9 @@ An issue is dispatch-eligible only if all are true:
 - It has `id`, `identifier`, `title`, and `state`.
 - Its state is in `active_states` and not in `terminal_states`, both tested as
   `Normalized Issue State` (Section 4.2).
-- It is routed to this worker by the configured assignee and contains every
-  label in `tracker.required_labels`.
+- It contains every label in `tracker.required_labels`.
+- It is assigned to `tracker.assignee`: its `assignees` contain the configured value, matched as
+  Section 5.3.1 states. A null `tracker.assignee` does not gate.
 - It is not already in `running`.
 - It is not already in `claimed`.
 - Global concurrency slots are available.
@@ -1347,10 +1388,26 @@ Issue-to-repository routing:
 
 - Each polled issue is routed to exactly one repository. An issue maps to one repository only;
   cross-repository changes are handled as separate issues.
-- Routing uses an explicit, tracker-implementation-specific mapping in the policy config. For
-  example, the `linear` adapter maps by project, team, label, or assignee; the `forgejo` adapter
-  maps by repository and issue tags/state. Routing MUST NOT depend on untrusted free-form issue
-  content beyond what the mapping names.
+- Routing is a pure function of the normalized issue record (Section 4.1.1) and an explicit mapping
+  in the policy config, evaluated after normalization (Section 4.2) rather than over the tracker
+  payload the adapter read it from.
+- The mapping's key space is the record's own comparable fields — `project`, `team`, `labels`,
+  `assignees`, and `state` — rather than per-tracker key names, so one mapping grammar serves every
+  adapter and what varies per tracker is which of those fields an adapter populates (Section 11.7).
+  For example, the `linear` adapter populates `project` and `team` and maps issue assignment into
+  `assignees`; the `forgejo` adapter populates `project` with the owning repository, leaves `team`
+  null, and maps issue tags into `labels` and open/closed status into `state`.
+- Routing MUST NOT depend on untrusted free-form issue content beyond what the mapping names: the
+  mapping names the fields above, and `title`, `description` and `metadata` — which the
+  orchestrator core does not interpret (Section 4.1.1) — are not among them.
+- Where the mapping matches an issue to more than one repository, that issue is not routed and not
+  dispatched, and the condition is reported to the operator. Two rules naming the same repository
+  are not an ambiguity: what must be unique is the repository, not the rule that reached it. The
+  rule is stated over the issue rather than over the configuration, because two rules may be
+  disjoint over every issue that exists today and overlap on one filed tomorrow, so no configuration
+  check stands in for it. A dispatch grants an agent commit and pull-request authority in the
+  repository it routes to, so an implementation that picked a match would be choosing where to grant
+  that.
 
 Shared polling:
 
@@ -2725,9 +2782,10 @@ Linear-specific requirements for `tracker.kind == "linear"`:
 - Auth token sent in `Authorization` header
 - `tracker.project_slug` maps to Linear project `slugId`
 - Candidate issue query filters project using `project: { slugId: { eq: $projectSlug } }`
-- Candidate and issue-state refresh queries include issue labels. Required
-  label filtering happens after normalization so refresh can observe label
-  removal and stop or release existing work.
+- Candidate and issue-state refresh queries include issue labels and assignees, and the routing
+  fields the adapter populates (`project`, `team`). Required-label, configured-assignee and routing
+  filtering happens after normalization so refresh can observe a label removal, an assignment
+  change, or an issue moved between projects or teams, and stop or release existing work.
 - Issue-state refresh query uses GraphQL issue IDs with variable type `[ID!]`
 - Pagination REQUIRED for candidate issues
 - Page size default: `50`
@@ -2750,6 +2808,9 @@ Additional normalization details:
 - Label names are trimmed, then normalized with `Lowercase Normalization` (Section 4.2).
 
 - `labels` -> strings normalized per `Lowercase Normalization` (Section 4.2)
+- `assignees` -> strings normalized per `Lowercase Normalization` (Section 4.2); empty where the
+  tracker has no assignee model. Which identifier the adapter publishes is its documented choice
+  (Section 4.1.1)
 - `blocked_by` -> for `linear`, derived from inverse relations where relation type is `blocks`; an
   adapter whose tracker has no dependency model leaves it empty
 - `branch_name` -> tracker-provided when available, otherwise null or adapter-synthesized
@@ -2897,6 +2958,14 @@ the core assuming them. This mirrors the agent adapter capability descriptor (Se
   `secret`-mode adapters, and dispatch preflight (Section 6.3) requires `tracker.api_key` only then.
   `linear` and `forgejo` are `secret`-mode; a `none`-mode adapter is admissible as an OPTIONAL
   extension.
+- The descriptor also declares whether the adapter populates `assignees` (Section 4.1.1). An adapter
+  whose tracker has no assignee model, or that does not query the assignment, publishes none, and an
+  issue with no `assignees` matches no configured assignee — so the declaration is what lets an
+  operator tell a tracker with no assignee model from a filter that matches nothing.
+- The descriptor also declares whether the adapter populates `project` and whether it populates
+  `team` (Section 4.1.1) — with `labels`, `assignees` and `state`, the key space Section 8.7's
+  routing mapping draws on. An operator can then tell from the descriptor whether a routing key is
+  available before configuring a mapping on it.
 - The descriptor MAY depend on resolved config and is fixed for the run. For example, a tracker on a
   plan tier without a comment API declares `add_comment` unsupported, determined once at adapter
   initialization.
@@ -2910,6 +2979,12 @@ the core assuming them. This mirrors the agent adapter capability descriptor (Se
 - A non-empty `tracker.transitions` (Section 5.3.1, Section 11.6) requires the `set_state`
   capability; dispatch preflight (Section 6.3) treats configured transitions on a tracker that does
   not support `set_state` as a configuration error.
+- A non-null `tracker.assignee` (Section 5.3.1, Section 8.2) requires an adapter that populates
+  `assignees`; dispatch preflight (Section 6.3) treats a configured assignee on a tracker whose
+  adapter does not populate the field as a configuration error.
+- A routing mapping (Section 8.7) keyed on a record field the descriptor says the adapter does not
+  populate is a configuration error on the same terms: dispatch preflight (Section 6.3) refuses it
+  rather than admitting a deployment that routes nothing.
 
 ### 11.8 State Transition Write Semantics
 
@@ -4533,11 +4608,26 @@ These checks are `Daemon Conformance`.
 - One instance can manage multiple repositories; each issue routes to exactly one repository via the
   policy mapping
 - A tracker shared by several repositories is polled once per cycle and its issues are routed
+- Routing evaluates the mapping over the normalized record's own fields (Section 4.1.1) rather than
+  over the raw tracker payload, so an issue whose tracker spelling differs only in case routes the
+  same way
+- An issue two repositories' rules both match is not routed and not dispatched, and the condition is
+  reported
+- A routing mapping keyed on a record field the selected tracker adapter does not populate is
+  refused at dispatch preflight rather than routing nothing quietly
 - Workspace and concurrency identity are keyed by (repository, issue)
 - Dispatch sort order is priority then oldest creation time
 - `Todo` issue with non-terminal blockers is not eligible
 - `Todo` issue with terminal blockers is eligible
+- An issue whose `assignees` do not contain a configured `tracker.assignee` is not eligible, and an
+  issue whose `assignees` contain it is
+- A null `tracker.assignee` does not gate: an issue with no `assignees` at all is eligible on the
+  remaining conditions
+- A configured `tracker.assignee` against an adapter whose descriptor does not declare that it
+  populates `assignees` fails dispatch preflight rather than silently matching no issue
 - Active-state issue refresh updates running entry state
+- An assignment removed while a run is in flight is observed on the issue-state refresh and stops or
+  releases that run, as a removed required label is
 - Non-active state stops running agent without workspace cleanup
 - Terminal state stops running agent and cleans workspace
 - Reconciliation with no running issues is a no-op
@@ -4848,8 +4938,17 @@ Required of the `daemon` topology only.
   per-issue overrides
 - `fetch_candidate_issues` enumerates the complete matching set (adapter paginates internally); a
   silent partial result is non-conformant
+- Candidate eligibility evaluated over the normalized record and the resolved configuration: every
+  label in `tracker.required_labels` present, and the issue assigned to a configured
+  `tracker.assignee`, both compared under `Lowercase Normalization`; a null configured assignee does
+  not gate (Sections 4.2, 8.2)
+- Dispatch preflight refuses a configured `tracker.assignee` on a tracker adapter whose capability
+  descriptor does not declare that it populates `assignees` (Sections 6.3, 11.7)
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
   polling; workspace/concurrency keyed by (repository, issue)
+- The routing mapping is evaluated over the normalized record's own fields (`project`, `team`,
+  `labels`, `assignees`, `state`) rather than over a raw tracker payload, and an issue more than one
+  repository's rule claims is left unrouted (Sections 4.1.1, 8.7)
 - Strict prompt rendering with `issue` and `attempt` variables, failing `template_render_error`
   whatever stage the engine resolves the unknown name at (Section 5.5), and map iteration in
   ascending key order with a two-element key/value entry (Section 12.2)
@@ -4994,9 +5093,10 @@ The Statement MUST record:
 - The engine `version_floor` the deployment declares (Section 18.1.4) and the agent-runner protocol
   floor the implementation advertises at bring-up (Section 10).
 - A resolution for every `Implementation-defined` behavior and every other "MUST document" obligation
-  in this specification, including: the agent sandbox profile, the effective egress policy, and the
-  composed environment set an agent receives
-  (Section 9.6); whether the deployment scopes outward credentials per repository (Section 15.3);
+  in this specification, including: the identifiers a tracker adapter publishes in `assignees`,
+  `project` and `team` (Section 4.1.1); the agent sandbox profile, the effective egress policy, and
+  the composed environment set an agent receives (Section 9.6); whether the deployment scopes
+  outward credentials per repository (Section 15.3);
   the carrier by which an issue names its pull-request target, where a deployment admits one
   (Section 9.7);
   the bounds handed to the engine's bounded check wait and the forge budget guard's enablement
