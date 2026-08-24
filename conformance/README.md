@@ -269,6 +269,7 @@ Slice 1 — pure derivations (decision 0046):
 | `vectors/config-defaults.json` | `resolve_config_defaults` | Core | Sections 6.4, 17.1 |
 | `vectors/retry-backoff.json` | `retry_backoff_delay_ms` | Daemon | Section 8.4 |
 | `vectors/retry-fire-disposition.json` | `retry_fire_disposition` | Daemon | Sections 8.4, 16.7 |
+| `vectors/worker-exit-disposition.json` | `worker_exit_disposition` | Daemon | Sections 8.5, 16.7 |
 | `vectors/available-slots.json` | `available_slots` | Daemon | Section 8.3 |
 | `vectors/per-state-concurrency.json` | `per_state_concurrency_limit` | Daemon | Sections 8.3, 4.2 |
 | `vectors/candidate-eligibility.json` | `should_dispatch` | Daemon | Sections 8.2, 16.2 |
@@ -438,12 +439,17 @@ guessed-at vector or entry:
   where `on_retry_timer`, eleven lines away, had one, and two paths reached it with the entry
   already gone — a stall (Section 8.5 Part A terminates and queues a retry, then the terminated
   worker's own exit queues a second) and a terminal issue (Part B terminates, and the abnormal exit
-  queues a retry for an issue the tracker has closed, which holds a claim, and therefore a
-  concurrency slot, for up to `agent.max_retry_backoff_ms`). Section 8.5 now states that
-  reconciliation owns the runs it terminates and that an exit for an issue with no running entry is
-  a no-op. No vector is owed: both repairs fix which state transition happens and in what order, not
-  a value computed from inputs, and every file in `vectors/` is a one-shot pure function. Found while
-  checking issue #95; reported by neither open issue.
+  queues a retry for an issue the tracker has closed, which holds that issue's claim — and so skips
+  it on every tick — until the retry fires, up to `agent.max_retry_backoff_ms`; a claim is not a
+  running entry and costs no concurrency slot, so no other issue's dispatch is affected, which is
+  the magnitude decision 0144 corrected here and in decision 0138's own chapter). Section 8.5 now
+  states that reconciliation owns the runs it terminates and that an exit for an issue with no
+  running entry is a no-op — which decision 0146 later made the narrow case of a rule over run
+  identity, no entry still meaning no match, and pinned in
+  `vectors/worker-exit-disposition.json`. This decision's own repairs owe no vector: both fix which
+  state transition happens and in what order, not a value computed from inputs, and every file in
+  `vectors/` is a one-shot pure function. Found while checking issue #95; reported by neither open
+  issue.
 - **A retry timer fire could not name the arming it came from — resolved (decision 0136).** Section
   8.4 required retry entry creation to "Cancel any existing retry timer for the same issue", which
   makes cancel-then-replace in-contract; Section 16.7 then identified an arriving fire by `issue_id`

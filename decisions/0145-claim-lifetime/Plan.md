@@ -97,4 +97,7 @@ matched nothing — the check's Q finding, and the reason the step now says so e
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Sections 7.1, 8.5, 16.3, 16.4, 16.7, 17.4, 18.1.3). Step 3 needed no
+edit of its own: `schedule_retry`'s new comment names the spawn-failure early return, and the
+`ensure_object_store` comment already said what the step requires. No vector file, as the
+Scope records. Issue #108.

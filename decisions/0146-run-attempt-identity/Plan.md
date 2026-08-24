@@ -132,4 +132,21 @@
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Sections 4.1.5, 4.1.8, 7.3, 8.5, 13.1, 14.3, 16.1, 16.4, 16.6, 16.7,
+17.4, 18.1.3, 19), `CONFORMANCE-STATEMENT-TEMPLATE.md` (Sections 4.1, 5),
+`conformance/vectors/worker-exit-disposition.json` and `conformance/README.md`.
+
+Two sites beyond the Scope list. Section 13.1 gives `origin_run_id` its type in one clause,
+the type step 1 says it has never been given; stating it only in Section 4.1.5 would leave
+the two sites disagreeing about what the field holds. Section 14.3's `not closed` note
+enumerates the Core state Section 4.1.8 does not list, and the process identity and
+per-process counter join that enumeration rather than relying on the template's Section 5
+prose alone — the note is what governs them, and an enumeration that omits them is the
+stale-restatement shape `scripts/validate_spec_consistency.py` exists for.
+
+Two `Implementation-defined` obligations were added, not one: the `run_id` derivation
+(Section 4.1.5) and the process identity it composes from (Section 16.1). Both have template
+rows, since step 11's check is per section. Section 16.1's is stated in prose beneath the
+block, as Section 16.5's object-store obligation is, because the consistency script blanks
+fenced content and an obligation stated only in a pseudocode comment is invisible to it.
+Issue #106.

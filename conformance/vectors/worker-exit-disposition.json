@@ -1,0 +1,43 @@
+{
+  "function": "worker_exit_disposition",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 4.1.5", "Section 8.5", "Section 16.7"],
+  "description": "Decide what an arriving worker-lifecycle message does. A run the orchestrator terminated and replaced keeps sending, and it sends for an issue that has a running entry - the new one. A message is accounted only when its run_id equals the run_id of the issue's current running entry; otherwise it is discarded and that entry and its worker are left in place. Testing only whether a running entry is present is not sufficient, because after a reconciliation-initiated termination and a re-dispatch the entry a stale message must not consume is present by construction.",
+  "given": "{ entry: { run_id: string } | null, exit_run_id: string }",
+  "expect": "{ disposition: 'account' | 'discard', entry_retained: boolean }",
+  "notes": [
+    "The file mirrors retry-fire-disposition.json's one-shot pure-function shape: one arriving message, one entry, one decision. Nothing here is a live invocation.",
+    "The rule is stated over the worker-orchestrator channel rather than over the exit alone (Section 8.5), so the same three cases decide an agent update. An agent update writes last_timestamp, which is Part A's own stall reference (Section 16.3); the disposition is what keeps a dead run's trailing events from holding a stalled replacement alive. account means the message is accounted to that entry - for an exit, removing it and taking the retry decision; for an update, writing the live-session fields.",
+    "entry_retained on the stale case is the assertion a remove-first implementation fails: it takes the entry before it compares, so the live run's entry is gone and its worker is left with nothing tracking it.",
+    "run_id values are opaque strings here. SPEC.md Section 4.1.5 leaves the derivation Implementation-defined and fixes only the distinction the value makes, so no vector depends on a format."
+  ],
+  "vectors": [
+    {
+      "id": "exit-run-id-matches",
+      "description": "The live run's own message. It is accounted and, for an exit, the entry is consumed.",
+      "given": {
+        "entry": { "run_id": "run-7" },
+        "exit_run_id": "run-7"
+      },
+      "expect": { "disposition": "account", "entry_retained": false }
+    },
+    {
+      "id": "exit-run-id-stale",
+      "description": "A run reconciliation terminated has been replaced by a re-dispatch, and the terminated run's message arrives afterwards. It is discarded, and the live entry and its worker stand untouched.",
+      "given": {
+        "entry": { "run_id": "run-8" },
+        "exit_run_id": "run-7"
+      },
+      "expect": { "disposition": "discard", "entry_retained": true }
+    },
+    {
+      "id": "exit-with-no-entry",
+      "description": "A message for an issue that has no running entry - the case Section 8.5 already stated, now the case where there is nothing to match rather than a rule of its own. Reached whenever reconciliation terminated the run and nothing has been dispatched since.",
+      "given": {
+        "entry": null,
+        "exit_run_id": "run-7"
+      },
+      "expect": { "disposition": "discard", "entry_retained": false }
+    }
+  ]
+}
