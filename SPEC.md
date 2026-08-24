@@ -1118,8 +1118,13 @@ claim state.
    - Worker is not running, but a retry timer exists in `retry_attempts`.
 
 6. `Released`
-   - Claim removed because issue is terminal, non-active, missing, or retry path completed without
-     re-dispatch.
+   - The claim is removed where the run it was held for ends and no retry takes it over
+     (Section 8.5). Each listed cause has a producer in Section 16:
+   - Terminal or non-active issue: reconciliation terminates the run and `terminate_running_issue`
+     releases the claim with the running entry (Sections 8.5, 16.3).
+   - Issue missing from the candidate set, or a retry path that completed without re-dispatch:
+     `on_retry_timer` releases it on the branch where the fired retry's issue is no longer a
+     candidate (Section 16.7).
 
 Important nuance:
 
@@ -1375,6 +1380,23 @@ reference algorithms in Section 16:
   running. The cost falls on that issue rather than on the deployment: a claim is not a running
   entry and takes no concurrency slot (Section 8.3), so other issues dispatch unaffected, while an
   issue closed and reopened inside that window is skipped by every tick in between (Section 8.2).
+
+The claim follows the same ownership, as a partition rather than as a rule per site: every site that
+ends a dispatched run either releases the claim or hands it to a retry entry, and there is no third.
+
+- `terminate_running_issue` (Section 16.3) releases it with the entry. Both branches of Part B and
+  Part A's stall path reach it; Part A then arms a retry, which takes the claim back, which is why
+  it terminates first and arms second.
+- `on_worker_exit` (Section 16.7) removes the entry itself and arms a retry, and arming takes the
+  claim.
+- `dispatch_issue`'s spawn-failure early return (Section 16.4) writes no entry and arms a retry,
+  which takes the claim. Its `ensure_object_store` failure writes no entry and arms no retry, and
+  leaves the issue unclaimed so a later tick retries it — the case that makes the partition complete
+  rather than an exception to it.
+
+A site added later MUST state which side of that partition it is on. So stated, Section 7.1's
+`Released` state is derivable from Section 16 rather than asserted beside it, and a reader can check
+the coverage without enumerating call sites.
 
 ### 8.6 Startup Terminal Workspace Cleanup
 
@@ -4103,6 +4125,12 @@ function terminate_running_issue(state, issue_id, cleanup_workspace):
   # it every reconciliation-terminated run would drop out of agent_totals.
   state = add_runtime_seconds_to_totals(state, running_entry)
 
+  # The claim was held for the run whose entry was just removed, so it comes off with it
+  # (Section 8.5). Where a caller arms a retry for the same issue - Part A's stall path above -
+  # schedule_retry takes the claim back, which is why that path terminates first and arms second.
+  # The early return above releases nothing, so a second call releases nothing it did not hold.
+  state.claimed.remove(issue_id)
+
   terminate_worker(running_entry.worker)
   if cleanup_workspace:
     cleanup_workspace_for(issue_id)
@@ -4309,8 +4337,11 @@ function schedule_retry(state, issue_id, attempt, opts):
     error: opts.error
   }
 
-  # The issue is already in state.claimed from dispatch_issue and stays claimed while it is
-  # queued for retry (Section 4.1.8); on_retry_timer releases it if it is no longer a candidate.
+  # Arming a retry takes the claim, so a RetryQueued issue is claimed by construction rather than
+  # by inheritance from dispatch_issue - whose spawn-failure early return arms a retry for an issue
+  # it never claimed (Section 16.4). Idempotent: the issue may already be claimed from dispatch.
+  # on_retry_timer releases it if it is no longer a candidate.
+  state.claimed.add(issue_id)
   return state
 ```
 
@@ -4668,7 +4699,11 @@ These checks are `Daemon Conformance`.
 - Stall detection kills stalled sessions and schedules retry
 - A stalled run schedules exactly one retry, not a second from the exit its termination causes
 - A run stopped because its issue reached a terminal or non-active state schedules no retry, and its
-  claim is released without waiting for a backoff to elapse
+  claim is released without waiting for a backoff to elapse — an issue closed and reopened while its
+  worker was running is dispatched again as soon as it is a candidate, with no restart
+- A repeatedly failing worker spawn escalates its backoff toward `agent.max_retry_backoff_ms` rather
+  than restarting at the first attempt every `polling.interval_ms`, the retry it arms holding the
+  claim that keeps the next tick from re-dispatching the issue underneath it
 - A dispatched run occupies one concurrency slot from dispatch, through its `Provisioning` phase,
   until it ends, so a slow node acquire does not admit a second dispatch of the same headroom
 - An issue that is claimed and queued for retry occupies no slot: a `max_concurrent_agents: 1`
@@ -4979,6 +5014,8 @@ Required of the `daemon` topology only.
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)
 - Concurrency headroom computed from the `running` map alone: a claim with no running entry — an
   issue queued for retry — is not counted against it (Sections 4.1.8, 8.3)
+- The claim has one lifetime: taken at dispatch or at retry arming, released where the run it was
+  held for ends without a retry taking it over (Sections 7.1, 8.5)
 - Reconciliation that stops runs on terminal/non-active tracker states, owning the removal and
   runtime accounting for the runs it terminates so a worker exit it caused queues no retry
   (Section 8.5)
