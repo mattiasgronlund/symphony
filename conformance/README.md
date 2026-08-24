@@ -438,8 +438,11 @@ guessed-at vector or entry:
   where `on_retry_timer`, eleven lines away, had one, and two paths reached it with the entry
   already gone — a stall (Section 8.5 Part A terminates and queues a retry, then the terminated
   worker's own exit queues a second) and a terminal issue (Part B terminates, and the abnormal exit
-  queues a retry for an issue the tracker has closed, which holds a claim, and therefore a
-  concurrency slot, for up to `agent.max_retry_backoff_ms`). Section 8.5 now states that
+  queues a retry for an issue the tracker has closed, which holds that issue's claim — and so skips
+  it on every tick — until the retry fires, up to `agent.max_retry_backoff_ms`; a claim is not a
+  running entry and costs no concurrency slot, so no other issue's dispatch is affected, which is
+  the magnitude decision 0144 corrected here and in decision 0138's own chapter). Section 8.5 now
+  states that
   reconciliation owns the runs it terminates and that an exit for an issue with no running entry is
   a no-op. No vector is owed: both repairs fix which state transition happens and in what order, not
   a value computed from inputs, and every file in `vectors/` is a one-shot pure function. Found while

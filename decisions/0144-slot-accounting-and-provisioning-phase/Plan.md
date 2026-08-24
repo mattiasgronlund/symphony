@@ -129,4 +129,8 @@ so a later reader does not re-investigate them:
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Sections 7.1, 8.3, 8.5, 9.11, 16.4, 17.4, 18.1.3) and
+`conformance/README.md`. Steps 8 and 9 needed no edit here: `available-slots.json` is
+unchanged as the step requires, and decision 0138's `Background.md` and `DECISIONS.md`
+chapter already carried the logged finding and the corrected magnitude, recorded when this
+decision was captured. Issue #109.

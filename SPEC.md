@@ -1102,12 +1102,17 @@ claim state.
 
 3. `Provisioning` (remote executor only, Section 9.11)
    - The issue is claimed and a remote executor is being acquired — a node requested and the executor
-     brought up — but its turn loop has not started. It holds a dispatch slot but is not yet
+     brought up — but its turn loop has not started. The entry `dispatch_issue` wrote is already in
+     the `running` map (Section 16.4), so the run holds a dispatch slot but is not yet
      `Running`. A local (in-process) executor has no distinct provisioning window and goes straight to
      `Running`.
 
 4. `Running`
-   - Worker task exists and the issue is tracked in `running` map.
+   - Worker task exists and its turn loop is under way.
+   - A dispatched run occupies one entry in the `running` map from the point `dispatch_issue` writes
+     it until the run ends. `Provisioning` and `Running` name phases of that one entry rather than
+     membership tests against the map: both are counted by `running_count` (Section 8.3), and an
+     implementation holds one collection for dispatched runs rather than two.
 
 5. `RetryQueued`
    - Worker is not running, but a retry timer exists in `retry_attempts`.
@@ -1254,6 +1259,11 @@ Sorting order (stable intent):
 Global limit:
 
 - `available_slots = max(max_concurrent_agents - running_count, 0)`
+- `running_count` is the number of entries in the `running` map (Section 4.1.8) — one agent session
+  each, which is what the placement-opaque rule below counts. `claimed` does not enter the
+  computation: an issue reserved but not running, such as one queued for retry (`RetryQueued`,
+  Section 7.1), occupies no slot. That is what makes Section 8.2's `claimed` condition and its two
+  concurrency conditions independent tests rather than one condition stated twice.
 
 Per-state limit:
 
@@ -1360,10 +1370,11 @@ reference algorithms in Section 16:
   that termination causes queues nothing.
 - A run stopped because its issue reached a terminal or non-active state schedules no retry at all.
   Without the invariant its worker's abnormal exit would queue one for an issue the tracker has
-  already closed, and because `claimed` counts against `available_slots` (Section 8.3) that issue
-  would hold a concurrency slot until the retry fired and released it — up to
-  `agent.max_retry_backoff_ms`, default `300000`, for every issue closed while its worker was
-  running.
+  already closed, and that issue would hold its own claim until the retry fired and released it — up
+  to `agent.max_retry_backoff_ms`, default `300000`, for every issue closed while its worker was
+  running. The cost falls on that issue rather than on the deployment: a claim is not a running
+  entry and takes no concurrency slot (Section 8.3), so other issues dispatch unaffected, while an
+  issue closed and reopened inside that window is skipped by every tick in between (Section 8.2).
 
 ### 8.6 Startup Terminal Workspace Cleanup
 
@@ -2230,8 +2241,10 @@ Boundary travel (REQUIRED for `remote`):
 Acquisition and lifecycle:
 
 - Acquiring a node is asynchronous: while a node is requested and the executor is brought up, the
-  issue is in the `Provisioning` orchestration state (Section 7.1). It holds a dispatch slot but is
-  not yet `Running`, so a slow acquire does not block the poll tick.
+  issue is in the `Provisioning` orchestration state (Section 7.1). It holds a dispatch slot because
+  the entry `dispatch_issue` wrote into the `running` map exists from dispatch onward and
+  `Provisioning` is a phase of it (Sections 7.1, 8.3, 16.4) — no second counter is involved — and it
+  is not yet `Running`, so a slow acquire does not block the poll tick.
 - `signal_done` is emitted when a run completes and when reconciliation stops a run for a terminal or
   non-active issue (Sections 8.5, 8.6). Reclaiming a leaked node is the scheduler's responsibility;
   Symphony only signals.
@@ -4128,6 +4141,10 @@ function dispatch_issue(issue, state, attempt):
       error: "failed to spawn agent"
     })
 
+  # This entry exists from here until the run ends, including through a remote node acquisition
+  # performed inside the worker (Section 16.6): `Provisioning` is a phase of it, not a state before
+  # it (Section 7.1). It is what running_count counts (Section 8.3), so the slot is held from
+  # dispatch rather than from the first agent turn.
   state.running[issue.id] = {
     worker_handle,
     monitor_handle,
@@ -4652,6 +4669,10 @@ These checks are `Daemon Conformance`.
 - A stalled run schedules exactly one retry, not a second from the exit its termination causes
 - A run stopped because its issue reached a terminal or non-active state schedules no retry, and its
   claim is released without waiting for a backoff to elapse
+- A dispatched run occupies one concurrency slot from dispatch, through its `Provisioning` phase,
+  until it ends, so a slow node acquire does not admit a second dispatch of the same headroom
+- An issue that is claimed and queued for retry occupies no slot: a `max_concurrent_agents: 1`
+  deployment with one issue in backoff still dispatches a different eligible issue
 - Slot exhaustion requeues retries with explicit error reason
 - A repository provisioning failure returned by the engine (`repository_provisioning_failures`)
   skips that repository's dispatches for the tick and is retried on a later tick, leaving other
@@ -4956,6 +4977,8 @@ Required of the `daemon` topology only.
   matched to its arming by `generation` and discarded when it does not match, so a cancelled timer
   that fired anyway cannot collapse a backoff (Section 8.4)
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)
+- Concurrency headroom computed from the `running` map alone: a claim with no running entry — an
+  issue queued for retry — is not counted against it (Sections 4.1.8, 8.3)
 - Reconciliation that stops runs on terminal/non-active tracker states, owning the removal and
   runtime accounting for the runs it terminates so a worker exit it caused queues no retry
   (Section 8.5)
