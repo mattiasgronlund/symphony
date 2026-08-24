@@ -83,6 +83,8 @@ obligation not listed here rather than omitting its resolution.
 |------------|---------|------------|
 | Identifier the tracker adapter publishes in `assignees` | 4.1.1 | `<which identifier — login / handle / opaque id — and how it distinguishes the tracker's principals under Lowercase Normalization>` |
 | Identifier the tracker adapter publishes in `project` and `team` | 4.1.1 | `<which identifier — key / slug / opaque id — and how it distinguishes the tracker's containers under Lowercase Normalization>` |
+| `run_id` derivation for a run attempt | 4.1.5 | `<how the value is composed, and how no two run attempts in the deployment share one, including across restarts>` |
+| Process identity `run_id` composes from | 16.1 | `<how the value is derived, and how it differs from that of any previous process of the same deployment>` |
 | Operator policy config format and discovery path | 5 | `<...>` |
 | Workflow/template error classes defined beyond Section 5.5's five | 5.5 | `<token + dispatch gating behavior for each, or none>` |
 | `agent.default_agent` default | 5.3.5 | `<which agent>` |
@@ -127,7 +129,8 @@ Section 14.3 requires every Orchestrator Runtime State field (Section 4.1.8) —
 extension introduces, and any state Core behavior requires beyond the fields Section 4.1.8
 enumerates — to be assigned exactly one recovery class and the assignment documented. The
 enumeration is not closed: a park record for either park-versus-retry choice Section 14.2 leaves
-open, and a counter satisfying the generation non-reuse requirement (Section 8.4),
+open, a counter satisfying the generation non-reuse requirement (Section 8.4), and the process
+identity and per-process counter `run_id` composes from (Sections 4.1.5, 16.1),
 are Core state this specification creates without listing, and each belongs in the table below if
 the implementation holds it. Classes: `Reconstructable`, `Ephemeral`, `Cached external signal`, `Durable`. The
 "Spec default" column is the assignment `SPEC.md` states; fill "As implemented" and note any

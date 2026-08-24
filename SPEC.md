@@ -348,6 +348,22 @@ One execution attempt for one issue.
 
 Fields (logical):
 
+- `run_id`
+  - Identifies this run attempt. REQUIRED and never null: an attempt has one from the point it is
+    dispatched (Section 16.4), before its first message.
+  - No two run attempts in one deployment share a `run_id`, including across process restarts. The
+    property is stated over the distinction the value makes rather than over a generation scheme:
+    two consumers read an identifier a previous process may have issued — Section 13.1's
+    `origin_run_id`, which groups the records of a retry sequence, and Section 9.11's
+    `lookup_by_run_id`, which reattaches to an in-flight remote run after a restart — and either is
+    falsified by a value a second process reissues.
+  - How the value is derived is `Implementation-defined` and MUST be documented (Section 19).
+    Section 16.1 establishes a process identity and Section 16.4 composes the `run_id` from it and a
+    per-process counter; that is the reference composition, not the only admissible one.
+  - `origin_run_id` (Section 13.1) is a `run_id`: the one belonging to the attempt its retry
+    sequence began at. A retried attempt therefore carries both — its own and its origin's — and
+    every attempt in one sequence carries the same `origin_run_id`, which is why it is not the value
+    a worker-lifecycle message is judged against (Section 8.5).
 - `issue_id`
 - `issue_identifier`
 - `attempt` (integer or null, `null` for first run, `>=1` for retries/continuation)
@@ -408,7 +424,9 @@ Fields (with recovery class):
 - `max_concurrent_agents` (current effective global concurrency limit) — `Reconstructable` (re-read
   from config).
 - `running` (map `issue_id -> running entry`) — `Reconstructable` (rebuilt from tracker state and
-  workspaces during reconciliation).
+  workspaces during reconciliation). The map is keyed by the issue; each entry carries the `run_id`
+  of the run attempt it holds (Sections 4.1.5, 16.4), so the key and the entry's identity are
+  different things and a message can be decided against the entry rather than against the key.
 - `claimed` (set of issue IDs reserved/running/retrying) — `Reconstructable` (re-derived from
   `running` and `retry_attempts`).
 - `retry_attempts` (map `issue_id -> RetryEntry`) — `Ephemeral` (timers are not restored; backoff
@@ -1186,10 +1204,16 @@ Note:
 
   Note: both worker-exit triggers fire for an exit the orchestrator did not initiate. Where
   reconciliation terminated the worker it has already removed the running entry and updated the
-  totals (Section 8.5), so the exit arrives with no running entry and triggers nothing.
+  totals (Section 8.5), so the exit arrives with no running entry and triggers nothing. More
+  generally, an exit whose `run_id` does not equal the issue's current running entry's fires
+  nothing (Sections 4.1.5, 8.5): a run the orchestrator replaced keeps sending, and neither trigger
+  is decided on issue identity alone.
 
 - `Agent Update Event`
   - Update live session fields, token counters, and rate limits.
+  - An update whose `run_id` does not equal the issue's current running entry's fires nothing
+    (Sections 4.1.5, 8.5). Without the condition a replaced run's trailing events keep refreshing
+    `last_timestamp` for the entry that replaced it, which is the reference stall detection reads.
 
 - `Retry Timer Fired`
   - Re-fetch active candidates and attempt re-dispatch, or release claim if no longer eligible.
@@ -1367,6 +1391,21 @@ removes that issue's running entry and adds that run's runtime to the aggregate 
 of termination. The terminated worker's own exit then arrives with no running entry, and a worker
 exit for an issue with no running entry is a no-op — so a termination the orchestrator initiated
 never produces a retry the orchestrator did not ask for.
+
+That is the narrow case of a rule stated over identity, and the rule is over the
+worker→orchestrator channel rather than over the exit alone. A worker-lifecycle message — a worker
+exit or an agent update — whose `run_id` (Section 4.1.5) does not equal the `run_id` of the issue's
+current running entry MUST be discarded, leaving that entry and its worker untouched. Testing only
+whether a running entry is present does not satisfy this: after a reconciliation-initiated
+termination and a re-dispatch the entry a stale message must not consume is present by construction
+— the same shape Section 8.4 states for a retry timer fire, where a replaced entry is present too.
+An exit arriving with no running entry is then the case where there is nothing to match rather than
+a rule of its own.
+
+The agent-update half is not covered by the exit half: a late `agent_update` writes
+`last_timestamp`, which is Part A's own stall reference (Section 16.3), so a dead run's trailing
+events would keep a stalled replacement alive — the one consequence with no second line of defence,
+since nothing downstream re-checks whose run produced the timestamp.
 
 Two consequences follow, and they are why the invariant is stated here rather than left to the
 reference algorithms in Section 16:
@@ -3104,9 +3143,10 @@ REQUIRED context fields for issue-related logs:
 REQUIRED context for coding-agent session lifecycle logs:
 
 - `session_id`
-- `origin_run_id` — the run attempt whose failure produced this one (Sections 7.2, 8.4). It names
-  the **origin** of a retry sequence rather than the immediate predecessor, so every attempt in the
-  sequence carries one value and the sequence is a group rather than a linked list: a record missing
+- `origin_run_id` — the run attempt whose failure produced this one (Sections 4.1.5, 7.2, 8.4); its
+  value is that attempt's `run_id`. It names the **origin** of a retry sequence rather than the
+  immediate predecessor, so every attempt in the sequence carries one value and the sequence is a
+  group rather than a linked list: a record missing
   from the middle loses one member instead of severing the tail, and "everything that came from this
   run" is a filter on one field rather than a traversal. The first attempt of a run is its own
   origin, so the field is always present — a nullable one would invite a consumer to branch on an
@@ -3680,8 +3720,9 @@ documented in the implementation's Conformance Statement (Section 19).
 
 Note: the enumeration in Section 4.1.8 is not closed. Core behavior defined elsewhere in this
 document MAY require state it does not list — a park record for either park-versus-retry choice
-Section 14.2 leaves open, and a counter satisfying the generation non-reuse requirement in Section
-8.4, are the cases this document creates today. Such state is governed by
+Section 14.2 leaves open, a counter satisfying the generation non-reuse requirement in Section
+8.4, and the process identity and per-process counter `run_id` composes from (Sections 4.1.5, 16.1,
+16.4), are the cases this document creates today. Such state is governed by
 this section on the same terms as a listed field: exactly one class, documented, and where the class
 is `Ephemeral`, its reset consequence documented with it. The class governs what happens
 to the value across a process restart and when a current value is unavailable.
@@ -4001,6 +4042,14 @@ function start_service():
   start_observability_outputs()
   start_workflow_watch(on_change=reload_and_reapply_workflow)
 
+  # Establish an identity for this process, distinct from that of any previous process of the same
+  # deployment. run_id (Section 4.1.5) composes from it, so this is where its across-restart
+  # uniqueness comes from: an orchestrator whose own state cannot see the process boundary still
+  # satisfies the property. How the value is derived is Implementation-defined and MUST be
+  # documented (Section 19); the specification fixes the distinction it must make, not the
+  # mechanism.
+  establish_process_identity()
+
   state = {
     poll_interval_ms: get_config_poll_interval_ms(),
     max_concurrent_agents: get_config_max_concurrent_agents(),
@@ -4028,6 +4077,15 @@ function start_service():
 `restore_cached_and_durable_state` overlays class `Cached external signal` and `Durable` fields
 (Section 14.3) from their store when an OPTIONAL extension configures one; otherwise the zero/null
 defaults above stand.
+
+`establish_process_identity` fixes a value for this process that MUST differ from that of any
+previous process of the same deployment. How it is derived is `Implementation-defined` and
+implementations MUST document it (Section 19); the specification fixes the distinction the value
+must make and not the mechanism, so no host, runtime, or framework property is required. It is what
+`run_id` (Section 4.1.5) composes with a per-process counter, which is how a `run_id` an
+orchestrator issues is distinct from every `run_id` an earlier process of the same deployment
+issued — the property Section 9.11's `lookup_by_run_id` and Section 13.1's `origin_run_id` both rest
+on, and one that state held only in memory cannot supply.
 
 ### 16.2 Poll-and-Dispatch Tick
 
@@ -4159,8 +4217,16 @@ function dispatch_issue(issue, state, attempt):
   # (compute.kind != local, Section 9.11), dispatch first acquires a node (request_node) and brings up
   # the executor; the issue is `Provisioning` (Section 7.1) until it is ready, and node-provisioning
   # or bring-up failures are recovered per Section 14.2 rather than as a per-worker spawn failure.
+
+  # The run attempt's identity, composed before the worker exists so the entry below carries it
+  # from the moment it is written rather than from a value reported back later: no window remains
+  # in which a message from this run cannot be decided (Section 8.5). next_run_id() composes the
+  # process identity established in Section 16.1 with a per-process counter; that counter is Core
+  # state Section 4.1.8 does not enumerate and Section 14.3's note governs.
+  run_id = next_run_id()
+
   worker = spawn_worker(
-    fn -> run_agent_attempt(issue, attempt, parent_orchestrator_pid) end
+    fn -> run_agent_attempt(issue, attempt, run_id, parent_orchestrator_pid) end
   )
 
   if worker spawn failed:
@@ -4174,6 +4240,7 @@ function dispatch_issue(issue, state, attempt):
   # it (Section 7.1). It is what running_count counts (Section 8.3), so the slot is held from
   # dispatch rather than from the first agent turn.
   state.running[issue.id] = {
+    run_id,
     worker_handle,
     monitor_handle,
     identifier: issue.identifier,
@@ -4234,7 +4301,11 @@ and not a requirement.
 ### 16.6 Worker Attempt (Workspace + Prompt + Agent)
 
 ```text
-function run_agent_attempt(issue, attempt, orchestrator_channel):
+function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
+  # Every message this function sends the orchestrator carries run_id, so a message from a run the
+  # orchestrator has already replaced is distinguishable from one belonging to the live entry
+  # (Section 8.5). That covers the agent_update sends below and the exit notification fail_worker
+  # and exit_normal produce.
   # This is the executor's run (Section 3.1). Locally it runs in-process in the orchestrator's host;
   # remotely it runs on a node reached across the orchestrator↔executor seam (Section 9.11), where
   # `orchestrator_channel` is the network up-channel (buffered and replayed on reconnect) instead of
@@ -4246,7 +4317,7 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
   # is a bare directory.
   workspace = workspace_manager.provision_for_issue(issue)
   if workspace failed:
-    fail_worker("workspace error")
+    fail_worker(run_id, "workspace error")
 
   # Bring the work branch up to date with base; postpone if it would conflict (resolved later
   # only if a push is rejected). This is the engine's back-merge operation (Sections 9.7, 9.8);
@@ -4254,7 +4325,7 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
   engine.integrate(issue, workspace)
 
   if run_hook("before_run", workspace.path) failed:
-    fail_worker("before_run hook error")
+    fail_worker(run_id, "before_run hook error")
 
   max_turns = config.agent.max_turns
   turn_number = 1
@@ -4268,20 +4339,20 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
     if prompt failed:
       agent.release(continuation_ref)
       run_hook_best_effort("after_run", workspace.path)
-      fail_worker("prompt error")
+      fail_worker(run_id, "prompt error")
 
     turn_result = agent.run_turn(
       workspace=workspace.path,
       prompt=prompt,
       issue=issue,
       continuation_ref=continuation_ref,
-      on_event=(msg) -> send(orchestrator_channel, {agent_update, issue.id, msg})
+      on_event=(msg) -> send(orchestrator_channel, {agent_update, issue.id, run_id, msg})
     )
 
     if turn_result failed:
       agent.release(continuation_ref)
       run_hook_best_effort("after_run", workspace.path)
-      fail_worker("agent turn error")
+      fail_worker(run_id, "agent turn error")
 
     continuation_ref = turn_result.continuation_ref
 
@@ -4289,7 +4360,7 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
     if refreshed_issue failed:
       agent.release(continuation_ref)
       run_hook_best_effort("after_run", workspace.path)
-      fail_worker("issue state refresh error")
+      fail_worker(run_id, "issue state refresh error")
 
     issue = refreshed_issue[0] or issue
 
@@ -4304,7 +4375,7 @@ function run_agent_attempt(issue, attempt, orchestrator_channel):
   agent.release(continuation_ref)
   run_hook_best_effort("after_run", workspace.path)
 
-  exit_normal()
+  exit_normal(run_id)
 ```
 
 ### 16.7 Worker Exit and Retry Handling
@@ -4346,12 +4417,21 @@ function schedule_retry(state, issue_id, attempt, opts):
 ```
 
 ```text
-on_worker_exit(issue_id, reason, state):
-  running_entry = state.running.remove(issue_id)
+on_worker_exit(issue_id, run_id, reason, state):
+  running_entry = state.running.get(issue_id)
   if missing:
     # The orchestrator terminated this run itself and has already removed the entry, accounted
-    # for its runtime, and decided what happens next (Section 8.5). Nothing is owed here.
+    # for its runtime, and decided what happens next (Section 8.5). Nothing is owed here: no entry
+    # is the case where there is nothing to match.
     return state
+
+  # Get, compare, then remove. A run the orchestrator replaced keeps sending, and its exit must
+  # leave the live entry and its worker untouched - a comparison made after the removal has already
+  # taken the entry it must not touch. Same shape as on_retry_timer below (Section 8.4).
+  if run_id != running_entry.run_id:
+    return state
+
+  state.running.remove(issue_id)
 
   state = add_runtime_seconds_to_totals(state, running_entry)
 
@@ -4684,6 +4764,10 @@ These checks are `Daemon Conformance`.
 - A retry timer fire whose `generation` does not match the current retry entry's is discarded
   without dispatching, and leaves that entry and its armed timer in place; a fire arriving when the
   issue has no retry entry is likewise a no-op
+- A worker-lifecycle message whose `run_id` does not match the current running entry's is discarded
+  without accounting and without scheduling a retry, and leaves that entry and its worker in place;
+  the check covers an agent update as well as an exit, a late update otherwise refreshing
+  `last_timestamp` for the run that replaced it
 - A `merge:checks_pending` dispatches the engine's `await_checks` with the configured bounds rather
   than a Symphony-side poll loop; `await_checks:still_pending` and `await_checks:budget_floor` park
   the issue rather than entering the Section 8.4 backoff or failing the run; `await_checks:no_checks`
@@ -5011,6 +5095,9 @@ Required of the `daemon` topology only.
 - Exponential retry queue with continuation retries after normal exit; a retry timer fire is
   matched to its arming by `generation` and discarded when it does not match, so a cancelled timer
   that fired anyway cannot collapse a backoff (Section 8.4)
+- Every worker-lifecycle message decided against the current running entry's `run_id` before it is
+  accounted, so a run the orchestrator replaced cannot consume the entry that replaced it
+  (Sections 4.1.5, 8.5)
 - Configurable retry backoff cap (`agent.max_retry_backoff_ms`, default 5m)
 - Concurrency headroom computed from the `running` map alone: a claim with no running entry — an
   issue queued for retry — is not counted against it (Sections 4.1.8, 8.3)
@@ -5158,7 +5245,7 @@ The Statement MUST record:
   the composed environment set an agent receives (Section 9.6); whether the deployment scopes
   outward credentials per repository (Section 15.3);
   the carrier by which an issue names its pull-request target, where a deployment admits one
-  (Section 9.7);
+  (Section 9.7); how the process identity `run_id` composes from is derived (Section 16.1);
   the bounds handed to the engine's bounded check wait and the forge budget guard's enablement
   (Sections 8.11, 9.10); the approval, sandbox, operator-confirmation, and user-input-required policy
   (Section 10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the log
