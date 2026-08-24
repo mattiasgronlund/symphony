@@ -5301,7 +5301,7 @@ convention instead of quoting it.
 
 ## 0140 — A dispatch condition no configuration and no record could supply
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0140-assignee-routing-condition/](decisions/0140-assignee-routing-condition/)
 
 Issue #100, filed by the `symphony-rs` build. Section 8.2's third eligibility bullet is two
@@ -5356,7 +5356,7 @@ would pin an order the document does not state.
 
 ## 0141 — The operation no entry point named and no policy could dispatch
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0141-load-policy-entry-and-pin/](decisions/0141-load-policy-entry-and-pin/)
 
 Issue #101. Decision 0134 closed the operation set and put `load_policy` in it, which removed the
@@ -5427,7 +5427,7 @@ until the next edit.
 
 ## 0142 — A resume token that named a point and not the invocation it belongs to
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0142-resume-bound-to-entry-point/](decisions/0142-resume-bound-to-entry-point/)
 
 Issue #104. `VCSX-SPEC.md` Sections 8.1 and 8.6 fix three things a `resume` is established against —
@@ -5498,7 +5498,7 @@ coupling rather than only the one applied second.
 
 ## 0143 — Where a substituted result lands in a front-end sequence
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0143-front-end-landing-rule/](decisions/0143-front-end-landing-rule/)
 
 Issue #107, split out of #103 and reachable without a resume. `VCSX-SPEC.md` Sections 12.2 and 12.3
@@ -5559,7 +5559,7 @@ things: the disposition, the transfer, and what the invocation reports, the thir
 
 ## 0144 — What a concurrency slot counts, and when a run starts occupying one
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0144-slot-accounting-and-provisioning-phase/](decisions/0144-slot-accounting-and-provisioning-phase/)
 
 Issue #109, split out of #108 because that issue's severity could not be stated without picking one
@@ -5601,7 +5601,7 @@ claim; if that want returns it returns as a **second** bound, not a redefinition
 
 ## 0145 — The claim nothing released
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0145-claim-lifetime/](decisions/0145-claim-lifetime/)
 
 Issue #108. Section 7.1 defines a `Released` claim state and Section 17.4 requires the release to
@@ -5637,7 +5637,7 @@ reopens duplicate dispatch with no rule violated. The explicit set is load-beari
 
 ## 0146 — Run-attempt identity and the messages a replaced run keeps sending
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0146-run-attempt-identity/](decisions/0146-run-attempt-identity/)
 
 Issue #106. `on_worker_exit` decides whether an exit is owed a retry by testing whether the running
@@ -5690,7 +5690,7 @@ Statement row — decision 0128's trap, named from the start.
 
 ## 0147 — What a restart restores, and which class the Core field is
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0147-cached-signal-restart/](decisions/0147-cached-signal-restart/)
 
 Issue #105. Section 14.3's `Cached external signal` bullet says the last-known-good "MUST be carried
@@ -5748,7 +5748,7 @@ same ambiguity unread only because no generator has read it.
 
 ## 0148 — Routing keys and the record they route over
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0148-issue-routing-substrate/](decisions/0148-issue-routing-substrate/)
 
 Issue #113, the sibling of #100 rather than a restatement: that one is about one dispatch bullet's
@@ -5791,7 +5791,7 @@ depends on it, and a single-repository deployment is fully expressible today.
 
 ## 0149 — The column that said who provides and not who requires
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0149-capability-required-by-column/](decisions/0149-capability-required-by-column/)
 
 Issue #102. Decision 0134 rewrote `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` Section 6.1 to infer, from
@@ -5827,7 +5827,7 @@ because three decisions in a row missed the case where it does.
 
 ## 0150 — The diff a commit would record, and the identity that comes with it
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0150-worktree-diff-capability/](decisions/0150-worktree-diff-capability/)
 
 Issue #110, first of two, split from #102. **The strongest form of the finding is not the derivation
@@ -5874,7 +5874,7 @@ inferred from the signature, which that section forbids.
 
 ## 0151 — Reading and materializing the policy source
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0151-policy-source-capabilities/](decisions/0151-policy-source-capabilities/)
 
 Issue #110, second of two: the capabilities that turn on `load_policy`. Section 9.1's realization
@@ -5915,7 +5915,7 @@ naming one requirement three ways.
 
 ## 0152 — What a front-end sequence must reach, not only where it stops
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0152-front-end-progress-invariants/](decisions/0152-front-end-progress-invariants/)
 
 Issue #111, split from #107 and independent by design. Section 13.1's Front-ends row states an upper
@@ -5962,7 +5962,7 @@ decisions, one editing pass.
 
 ## 0153 — A resume continues the flow, and the token carries the root trigger
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0153-resume-continues-the-flow/](decisions/0153-resume-continues-the-flow/)
 
 Issue #103. Section 5.5 says what a resume re-enters and stops there; **no section says what happens
