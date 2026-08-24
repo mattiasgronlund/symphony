@@ -114,7 +114,14 @@
     does not state — the reasoning `conformance/vcsx/vectors/policy-validation.json` already records
     for `validate_policy`. *Done when:* the file validates against the corpus's own schema
     conventions, and no vector holds two failing conditions.
-14. **`conformance/README.md` — the table gains a row and the deferral narrows.** Ensure the vector
+14. **The Section 6.3 case is deliberately not vector-pinned.** Ensure no vector file is authored
+    for `validate_dispatch_config`: it is called at Section 16.1 and Section 16.2 and defined
+    nowhere, and `config-defaults.json` pins `resolve_config_defaults`, which defaults a
+    configuration rather than judging one. The configured-assignee-against-a-non-populating-adapter
+    case is covered by step 9's Section 17.4 row and waits for the decision that gives that function
+    a body. *Done when:* the omission is recorded in this decision's `Background.md` rather than
+    being silent, and no vector asserts against an undefined function.
+15. **`conformance/README.md` — the table gains a row and the deferral narrows.** Ensure the vector
     table lists `vectors/candidate-eligibility.json` / `should_dispatch` / `Daemon` / Sections 8.2,
     16.2, and ensure that file's deferral bullet quoted as "candidate eligibility over live issues"
     is narrowed so what remains deferred is the adapter's fetch, the predicate over an

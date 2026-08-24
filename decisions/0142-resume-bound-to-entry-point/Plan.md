@@ -21,29 +21,37 @@
    use. Ensure Section 7.2's citation of Section 8.1 for it now resolves. *Done when:* Section 8.1
    names the argument, the default matches Section 12.3's branch, and no argument Section 12's
    signatures take is missing from Section 8.1.
-2. **`VCSX-SPEC.md` Section 8.1 — the sequence-selecting property is fixed.** Ensure the section
-   states which of its arguments select among an entry point's sequences, derived rather than
-   asserted: an argument that appears as a parameter of a Section 12 front-end sequence function.
-   Ensure the derivation is stated, so a future selector inherits the property instead of needing a
-   judgement. *Done when:* a reader can decide of any argument in Section 8.1 whether it selects a
-   sequence, using only Sections 8.1 and 12.
-3. **`VCSX-SPEC.md` Section 5.5 or Section 8.1 — a resumed invocation does not consult a sequence
-   selector.** Ensure one sentence states that arguments selecting among an entry point's sequences
-   are not consulted on a resumed invocation, and that a caller wanting the prefix dispatches the
-   operation itself — which is the composition Section 7.2 already describes. Place it where the
-   resume's re-entry is described — beside `VCSX-SPEC.md` Section 8.1's "rather than beginning at
-   its entry point", which is where that phrase occurs, Section 5.5 stating the same rule in its own
-   words. *Done when:* a merge-loop token supplied to an awaiting `land` has a stated outcome, and
-   that outcome is not a refusal.
+2. **Removed.** This step fixed a sequence-selecting property in prose, derived from Section 12's
+   signatures. The derivation is wrong — `ship` takes two parameters, one of which the commit loop
+   reads at every turn — and the property is withdrawn entirely (`Background.md`, "The property that
+   this decision's Background records under the property that was the wrong shape three times).
+   Nothing replaces it in Section 8.1; step 3 states the rule
+   positionally instead. *Done when:* no clause in Section 8.1 classifies an argument by what it
+   selects.
+3. **`VCSX-SPEC.md` Section 5.5 or Section 8.1 — a resumed invocation does not run the flow ahead of
+   the point it re-enters.** Ensure one sentence states that consequence and what follows from it:
+   an argument the flow reads only ahead of the re-entered point has no effect on a resumed
+   invocation, so a resumed `land` does not consult `await_first` (Section 12.3) while a resumed
+   `ship` does consult `message`, which Section 12.2's commit loop reads at every turn. Ensure the
+   sentence quantifies over where the flow reads an argument rather than over a class of arguments,
+   and that a caller wanting the prefix dispatches the operation itself — the composition Section
+   7.2 already describes. Place it where the resume's re-entry is described — beside `VCSX-SPEC.md`
+   Section 8.1's "rather than beginning at its entry point", Section 5.5 stating the same rule in
+   its own words. *Done when:* a merge-loop token supplied to an awaiting `land` and an await-branch
+   token supplied to a bare `land` both have a stated outcome, neither is a refusal, and no argument
+   had to be classified to reach either.
 4. **`VCSX-SPEC.md` Section 8.1 — the refusal list gains the fourth condition.** Ensure the
    `VCSX-SPEC.md` sentence quoted as "one issued under a different policy, against a different
-   repository, or by a different major version" carries a fourth condition — a `resume` whose flow
-   the invocation being resumed cannot express — of which the entry point named on the resuming
-   invocation differing from the one that issued the token is the case an engine can always decide.
-   Ensure `VCSX-SPEC.md` Section 8.1's existing justification sentence ("a refused resume costs a
-   re-invocation from the entry point") still reads as the reason for the direction. *Done when:*
-   the list names four conditions and the fourth is stated over the invocation rather than over
-   `ship` and `land` by name.
+   repository, or by a different major version" carries a fourth condition: a `resume` issued by a
+   different entry point — the entry point named on the resuming invocation differing from the one
+   that issued the token. Ensure the condition is **not** stated in the general form (the flow the
+   token names being expressible in the invocation being resumed): that form quantifies over a
+   sequence-point enumeration no section provides, and with step 3 in place it reaches no case the
+   entry-point test misses. Ensure `VCSX-SPEC.md` Section 8.1's existing justification sentence ("a
+   refused resume costs a re-invocation from the entry point") still reads as the reason for the
+   direction. *Done when:* the list names four conditions, the fourth is stated over the entry point
+   named on the invocation rather than over `ship` and `land` by name, and an engine can evaluate it
+   from the token alone.
 5. **`VCSX-SPEC.md` Section 8.6 — the `resume_unusable` row mirrors it.** Ensure the `VCSX-SPEC.md`
    row quoted as "issued under a different policy, against a different repository, or by a different
    major version (Sections 5.5, 8.1)" carries the fourth condition in the same words as Section
@@ -73,10 +81,16 @@
 9. **`conformance/vcsx/vocabulary.json` — an `arguments` group.** Ensure a closed group exists
    carrying every argument Section 8.1 enumerates, each with the properties that section states:
    whether it is OPTIONAL, whether it is excepted from the consumer configuration (the two read
-   validators, `resume`, and decision 0141's policy pin), and whether it selects among an entry
-   point's sequences. Ensure the group's `spec_refs` cite Section 8.1 and its note states that
-   membership is closed there. *Done when:* every Section 8.1 argument has an entry, no entry is
-   invented, and the group's membership equals the section's enumeration.
+   validators, `resume`, and decision 0141's policy pin), and its requiredness. Ensure requiredness
+   carries the three shapes Section 8.1 states rather than a boolean — required at every entry point
+   (`local_vcs`), required at named entry points keyed against the `entry_points` group
+   (`store_location` for `provision`), or conditional with a `spec_ref` to where the condition is
+   stated — the shape `VCSX-SPEC.md` Section 8.1 uses for `git_access`, for the forge repository
+   coordinate and for `forge_access`, none of which is required per entry point. Ensure **no**
+   `selects_sequence` field is added: the property is withdrawn (step 2). Ensure the group's
+   `spec_refs` cite Section 8.1 and its note states that membership is closed there. *Done when:*
+   every Section 8.1 argument has an entry, no entry is invented, no entry carries a property
+   Section 8.1 does not state, and the group's membership equals the section's enumeration.
 10. **`scripts/validate_spec_consistency.py` — the new group is checked.** Ensure `CLOSED_GROUPS`
     names `arguments`, reading its membership from Section 8.1, so the group and the prose cannot
     drift in either direction. *Done when:* the check walks the group, and removing an argument from
@@ -104,13 +118,11 @@
 - **After decision 0141.** Step 9's `arguments` group must carry the policy pin among the
   consumer-configuration exceptions, and step 6's Resuming row names `load_policy` as an entry that
   issues no token — both of which 0141 creates.
-- **Steps 1, 2, 4, 5, 9, 10 and 11 are applicable now.** Step 4's general phrasing — the flow the
-  token names being expressible in the invocation being resumed — is decidable only once the issue
-  #103 decision enumerates a sequence's points; until then the condition is written over the entry
-  point alone, which is the case an engine can always decide, and the general form replaces it in
-  the same words when that enumeration exists. Do not state the general form over an enumeration
-  that does not exist: a condition an engine cannot evaluate is the defect decision 0140 repairs,
-  not the repair.
+- **Independent of the issue #103 decision.** An earlier draft made step 4 wait on that decision's
+  enumeration of sequence points, because the condition was stated in the general form. It is not:
+  the condition is the entry point, which the token carries, so no enumeration is consulted and
+  nothing here waits. Do not restore the general form when that enumeration arrives — see step 4 and
+  `Background.md`.
 
 ## Anchor check
 
@@ -122,7 +134,8 @@ touched.
 ## Anchor changes
 
 - **Added:** `await_first` as a Section 8.1 argument (step 1), and the `arguments` registry group
-  (step 9).
+  (step 9). No `selects_sequence` field is added; an earlier draft of this plan proposed one and it
+  is withdrawn.
 - **Changed:** Section 8.1's refusal sentence and Section 8.6's `resume_unusable` row go from three
   conditions to four; `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`'s `resume_token` row narrows in
   wording while keeping its subject. Plans citing the three-item phrasing are not edited; they

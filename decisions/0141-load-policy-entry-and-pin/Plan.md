@@ -75,13 +75,21 @@
    invocation supplying none makes no continuation claim and runs whatever it reads. Ensure it is
    excepted from the consumer configuration for the reason the two read validators and `resume`
    already are (the engine holds nothing between invocations), which makes that excepted set four.
-   Ensure the engine holds it opaque as it holds the `resume_token`. *Done when:* the argument
-   exists with its default, the consumer-configuration sentence names four exceptions, and no clause
-   admits a caller-authored policy surface as an argument.
-8. **`VCSX-SPEC.md` Section 8.2 — `load_policy` returns the pin in `outputs`.** Ensure the fixed
-   `outputs` keys carry the pin, in the shape `resume_token` already uses, and that Section 8.2 says
-   which invocations carry it. *Done when:* the key is documented beside `resume_token` and the
-   `output_keys` group (step 11) matches.
+   Ensure the engine holds it opaque as it holds the `resume_token`, and that the reason given is
+   the pin's own rather than borrowed: a value form would oblige this specification to fix a
+   canonicalization of the effective surface, over a document Section 6.1 does not place on disk.
+   Section 8.1 calls the resume token's opacity "a choice rather than a necessity"; this one is not
+   a choice, and the clause says so. *Done when:* the argument exists with its default, the
+   consumer-configuration sentence names four exceptions, no clause admits a caller-authored policy
+   surface as an argument, and the opacity clause states a reason that does not depend on the resume
+   token's.
+8. **`VCSX-SPEC.md` Section 8.2 — an invocation that validated a surface returns the pin in
+   `outputs`.** Ensure the fixed `outputs` keys carry the pin, in the shape `resume_token` already
+   uses, and that Section 8.2 says which invocations carry it: every invocation that validated a
+   policy surface, and no other — which leaves `provision` as the one entry where it is absent, for
+   the reason Section 6.1 already gives. Ensure the key is not scoped to `load_policy`. *Done when:*
+   the key is documented beside `resume_token`, the absent case is stated as a condition rather than
+   as an entry-point list, and the `output_keys` group (step 11) matches.
 9. **`VCSX-SPEC.md` Section 8.6 — a supplied pin that does not match is a precondition failure.**
    Ensure a row exists for a supplied policy pin the engine cannot match against the surface it
    validated, with its own precondition reason rather than `resume_unusable`; the repairs differ,
@@ -134,8 +142,10 @@
 16. **`VCSX-SPEC.md` Sections 13.1 and 13.2 — the matrix and the checklist.** Ensure Section 13.1
     carries rows for: a `run_op` edge naming either bootstrap operation refused with
     `operation_not_dispatchable` before anything runs; an `on` naming one of them refused as
-    `unknown_trigger`; `load_policy` invoked as an entry point returning the surface and the pin;
-    and a supplied pin that no longer matches refused with the new reason. Ensure the Policy-loading
+    `unknown_trigger`; `load_policy` invoked as an entry point returning the surface and the pin; a
+    pin returned by an entry other than `load_policy` and accepted by a later invocation, which is
+    the unresumed continuation the pin exists for; and a supplied pin that no longer matches refused
+    with the new reason. Ensure the Policy-loading
     row is restated to say what the pin makes observable — the surface a unit of work executes is
     fixed when the unit of work begins, and an invocation continuing one whose surface has since
     changed is refused rather than run under either document — rather than the current unobservable
@@ -178,7 +188,11 @@
 97617c2` reports one quote-fidelity finding and it is an artifact: a step header names its section
 by title, and a title lives in a heading rather than in the section body the checker searches. The
 reach findings it reports are answered above, in the scope list and in the checked-and-unaffected
-section.
+section — with one addition after step 7 gained its opacity clause. The checker reports
+`VCSX-SPEC.md` Section 9.1 as a reach site for the phrase step 7 quotes from Section 8.1, on a
+four-word prefix. It is not a twin: Section 9.1's sentence contrasts a choice with an omission,
+about a predicate that fails closed, where Section 8.1's contrasts a choice with a necessity, about
+holding a value opaque. Section 9.1 moves for no reason this decision has.
 
 ## Anchor changes
 

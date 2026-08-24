@@ -191,10 +191,14 @@ has.
 **The replacement test is the operation the result names, not its class**: a `ship` that completed
 its sequence reports `create_pr`'s result, a `land` that completed reports `merge`'s. That is
 readable from the envelope today and needs no new field. It has to be the operation rather than an
-`outputs` key, and the corpus says why: `vocabulary.json`'s `output_keys` note fixes
-`unperformed_intents`, `unfinished_hooks` and `unanswered_gates` and says "the rest of `outputs` is
-entry-specific and is not a shared vocabulary", so a pull-request identifier there is a front-end's
-own key and a consumer cannot portably test it. Section 13.1 is where the clause belongs — the same
+`outputs` key, and the corpus says why: `vocabulary.json`'s `output_keys` group carries the keys
+Section 8.2 fixes — ten of them, `unperformed_intents`, `unfinished_hooks`, `unanswered_gates`,
+`failed_by_policy`, `forge_budget`, the three `pr_state_*` keys, `forge_unavailable_condition` and
+`resume_token` — and says "the rest of `outputs` is entry-specific and is not a shared vocabulary".
+No pull-request identifier is among them, so one there is a front-end's own key and a consumer
+cannot portably test it. (An earlier draft of this decision, and the reply on issue #107 it came
+from, said the group fixes three. It fixes ten; the conclusion turns on the note rather than on the
+count, but the count was wrong in both.) Section 13.1 is where the clause belongs — the same
 row issue #111's invariants go to.
 
 ## Options considered

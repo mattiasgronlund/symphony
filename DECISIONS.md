@@ -5339,12 +5339,17 @@ against this decision's own draft and it is the sharpest thing here: **the first
 normalization is not opt-in ("Every case-insensitive comparison in this specification is defined
 over this operation"), so a case-significant opaque id gets lowercased, two principals merge, and a
 configured filter matches an issue assigned to someone else with a dispatched issue as the symptom
-rather than an error. The clause therefore lands on the **publication**, not the comparison. The
-report's own premise is recorded as out of scope **and false**: Section 8.7 routes issues to
-repositories rather than to workers, and `running` and `claimed` are `Reconstructable` in-memory
-fields of one orchestrator, so two instances share no claim and the bullet coordinated nothing.
-Eight conditions, one per vector, `expect` naming the refusing condition — Section 8.2 fixes no
-precedence, so a two-condition vector would pin an order the document does not state.
+rather than an error. The clause therefore lands on the **publication**, not the comparison —
+phrased over the operation rather than over case, because Section 4.2 supplies the counterexample
+itself: the mapping "is not one-to-one, so `İ` (U+0130) normalizes to `i` followed by U+0307", which
+a case-worded clause does not catch. The reverse direction — one principal spelled two ways, Section
+4.2 applying no Unicode normalization form — is recorded as inherited from `required_labels` rather
+than introduced here, and closing it would be a decision about Section 4.2. The report's own premise
+is recorded as out of scope **and false**: Section 8.7 routes issues to repositories rather than to
+workers, and `running` and `claimed` are `Reconstructable` in-memory fields of one orchestrator, so
+two instances share no claim and the bullet coordinated nothing. Eight conditions, one per vector,
+`expect` naming the refusing condition — Section 8.2 fixes no precedence, so a two-condition vector
+would pin an order the document does not state.
 
 ## 0141 — The operation no entry point named and no policy could dispatch
 
@@ -5395,14 +5400,27 @@ section is selected by the resolved base), a second notion of "same policy" besi
 issue #100's defect, and — the argument neither party made first — **a revision pin lets a caller
 run a policy the repository has withdrawn**, an operator who removes a host-side hook having not
 removed it for anyone holding an older pin. The **fingerprint pin** wins: OPTIONAL, default unset,
-issued by `load_policy`, needed by no resumed invocation, refused with its own precondition reason
-rather than `resume_unusable` because the repairs differ. Section 13.1's row states the mechanism
-instead of being lowered — the surface a unit of work executes is fixed when the unit of work
-begins, and an invocation continuing one whose surface changed is refused rather than run under
-either document, which is falsifiable where the caching phrasing was not. The cost is stated: the
-fingerprint refuses where the revision pin would have proceeded, the same trade Section 8.1 already
-made for the resume. `entry_points` also joins `validate_spec_consistency.py`'s closed groups, or
-the repair holds only until the next edit.
+needed by no resumed invocation, refused with its own precondition reason rather than
+`resume_unusable` because the repairs differ. It is reported by **every invocation that validated a
+surface** rather than by `load_policy` alone — a first draft had that entry issue it, on the ground
+that it "finally gives that entry point a purpose beyond inspection", which is a reason to want it
+and not a reason for it: the gap the pin exists for is the unresumed continuation, and
+`load_policy`-only issuance would make a consumer invoke an entry it did not need in order to obtain
+a value the invocation it did make had already computed. `provision` is the one entry where the key
+is absent, being "the one entry point that runs where no policy could be read", which is
+`output_keys`'s own absent-where-the-condition-did-not-occur rule. The pin is an **opaque handle**,
+and here that is a necessity where Section 8.1 calls the resume token's opacity "a choice": a value
+form would oblige this specification to fix a canonicalization of the effective surface, over a
+document Section 6.1 does not place on disk. That last gap — `vcsx.toml` has no stated location or
+discovery rule — is recorded as **not** the pin's defect, since two engines never compare pins; what
+it costs is that two conforming engines merge different documents from one revision, and it is
+repaired with issue #110's capability decision. Section 13.1's row states the mechanism instead of
+being lowered — the surface a unit of work executes is fixed when the unit of work begins, and an
+invocation continuing one whose surface changed is refused rather than run under either document,
+which is falsifiable where the caching phrasing was not. The cost is stated: the fingerprint refuses
+where the revision pin would have proceeded, the same trade Section 8.1 already made for the resume.
+`entry_points` also joins `validate_spec_consistency.py`'s closed groups, or the repair holds only
+until the next edit.
 
 ## 0142 — A resume token that named a point and not the invocation it belongs to
 
@@ -5427,30 +5445,47 @@ field settles it without reaching for the policy: `provision` issues no token, s
 supplied to it mismatches on that field alone — and so does every token supplied to `load_policy`
 once decision 0141 makes it an entry point. It costs no new token, no Section 13.3 obligation and no
 Statement row; it **narrows** the existing row to the form question, the move 0134 made three times.
-The condition is stated over the flow the token names being **expressible in the invocation being
-resumed**, which subsumes the entry-point test and reaches a crossing entry-point equality misses —
-an await-branch token supplied to a bare `land`. The converse crossing was raised and **withdrawn**:
-a merge-loop token under `land --await` is not refused, because Section 5.5 re-enters the point
-"rather than beginning at its entry point", so the prefix is never run and refusing would make
-legality depend on a flag that changes nothing. What that case needs is a sentence —
-sequence-selecting arguments are not consulted on a resumed invocation — and the sentence is where
-this decision's own repair reproduced the defect it was repairing: **it quantifies over a class
-Section 8.1 does not define**, which is issue #100's defect one document over, in the same batch.
-Worse, the argument it was written for is not merely unmarked: **`await_first` is not in Section 8.1
-at all.** That section enumerates four await parameters and no sequence selector, so Section 7.2
-cites Section 8.1 for an argument it does not carry while Section 8.1 requires argument names for
-shared concepts to match this specification. The repair is therefore three steps — enumerate the
-argument, fix the property in prose where it has a referent (the parameters of a Section 12
-front-end sequence function, so a future selector inherits it), and let the registry carry the flag
-— and step three costs a **new group**: `vocabulary.json` has twenty-one entry-bearing groups plus
-`task_model` and **no `arguments` group**, so it must be authored against the longest enumeration in
-the document. It is owed anyway, and this is its second demand rather than its first: Section 8.1's
-argument names are normative, the section already keeps per-argument properties as hand-maintained
-prose lists, and decision 0141's pin makes the consumer-configuration exception set four. The group
-is closed from the start, or it inherits the `entry_points` blind spot 0141 found. One dependency is
-firm rather than preferred: "expressible in the invocation being resumed" is decidable only once
-issue #103 enumerates a sequence's points, so until then the condition is written over the entry
-point alone — stating it over a set nobody can enumerate would be the defect, not the repair.
+The condition was first stated over the flow the token names being **expressible in the invocation
+being resumed**, to reach a crossing entry-point equality misses — an await-branch token supplied to
+a bare `land`. **That general form is withdrawn and the condition is the entry point alone**, for
+the reason below. The converse crossing was raised and **withdrawn**: a merge-loop token under `land
+--await` is not refused, because Section 5.5 re-enters the point "rather than beginning at its entry
+point", so the prefix is never run and refusing would make legality depend on a flag that changes
+nothing. What that case needs is a sentence, and **the sentence took four attempts, of which the
+first three are the useful record**. First: "sequence-selecting arguments are not consulted on a
+resumed invocation" quantifies over a class Section 8.1 does not define — issue #100's defect one
+document over, in the same batch, inside the repair for a different one. Second: deriving that class
+from Section 12's signatures marks `message`, because `VCSX-SPEC.md:2969` is `function
+ship(identity, message)` and not `ship()`, so the derivation says a resumed invocation does not
+consult the commit message — false in the same code block, where the commit loop reads it at every
+turn. Third: narrowing the test to a parameter appearing in a *condition* in the body is syntactic
+where the property is positional, and a future `land(squash_mode)` branched on inside the merge loop
+would satisfy it while being consulted on every resume that re-enters that loop. Fourth, and taken:
+**the property is not needed at all.** Section 5.5 re-enters the point "rather than beginning at its
+entry point", so a resumed invocation does not run the flow ahead of that point and an argument the
+flow reads only ahead of it has no effect — `await_first` read once before `land`'s first dispatch,
+`message` read at every turn of a loop a resume can re-enter. Both crossings fall out with nothing
+classified, the await-branch one **reclassified as not a refusal** rather than uncovered, and the
+fourth condition reduces to the entry point: a token names a point in the flow its entry point
+began, and the only way a point can be missing from the flow being resumed is that a different entry
+began it. Along the way the step-zero finding stands: **`await_first` is not in Section 8.1 at
+all.** That section enumerates four await parameters and no sequence selector, so Section 7.2 cites
+Section 8.1 for an argument it does not carry while Section 8.1 requires argument names for shared
+concepts to match this specification. Enumerating the argument is owed regardless, and the registry
+group survives the property that prompted it, costing a **new group**: `vocabulary.json` has
+twenty-one entry-bearing groups plus `task_model` and **no `arguments` group**, so it must be
+authored against the longest enumeration in the document. It is owed anyway, and this is its second
+demand rather than its first: Section 8.1's argument names are normative, the section already keeps
+per-argument properties as hand-maintained prose lists, and decision 0141's pin makes the
+consumer-configuration exception set four. The group is closed from the start, or it inherits the
+`entry_points` blind spot 0141 found — and it carries optionality, the consumer-configuration
+exception and requiredness rather than a `selects_sequence` flag, which goes with the property.
+**Requiredness is neither a boolean nor a list of entries**: Section 8.1 states it as every entry
+point (`local_vcs`), one named entry (`store_location`), and a condition (`git_access` for "an entry
+that can reach one"; the forge coordinate and `forge_access` "where a forge is configured"), so the
+field admits three shapes. The dependency on issue #103 recorded as firm is **withdrawn with the
+general form**: the entry point is carried by the token, no enumeration is consulted, and nothing
+here waits on that decision.
 
 ## 0143 — Where a substituted result lands in a front-end sequence
 
@@ -5500,10 +5535,11 @@ early return, and **that** is the unwritten invariant — `ship` returns `done` 
 `create_pr` and `land` only from `merge`, which is what a caller reads to know the pull request
 exists — so `push:pr_closed → run_op status` violates no rule and silently repurposes the only
 completion signal the envelope has. The replacement test is **the operation the result names**, not
-its class, stated in Section 13.1: `output_keys` fixes three keys and says the rest of `outputs` is
-entry-specific, so a pull-request identifier there is not portably testable. It is merged behaviour
-rather than a hypothetical — the reporting engine returns `status:ok` for that edge today — and the
-answer leaves that build correct, the repair being a row telling callers what to read. The vectors
-need a **new corpus function**, since `match_edge` stops at edge selection by construction, and its
-`expect` names three things: the disposition, the transfer, and what the invocation reports, the
-third being what tells `status:ok` from the built-in escalation.
+its class, stated in Section 13.1: `output_keys` carries the ten keys Section 8.2 fixes and says the
+rest of `outputs` is entry-specific, so a pull-request identifier there is not portably testable —
+the draft of this chapter said three, wrong about the count and right about the note it turns on. It
+is merged behaviour rather than a hypothetical — the reporting engine returns `status:ok` for that
+edge today — and the answer leaves that build correct, the repair being a row telling callers what
+to read. The vectors need a **new corpus function**, since `match_edge` stops at edge selection by
+construction, and its `expect` names three things: the disposition, the transfer, and what the
+invocation reports, the third being what tells `status:ok` from the built-in escalation.

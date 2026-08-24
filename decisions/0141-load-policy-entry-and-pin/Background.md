@@ -108,9 +108,10 @@ survive the decision that refused it as an action.
 
 And, resolving what the entry-point blessing was blocked on:
 
-7. **A policy-surface pin, as a fingerprint.** OPTIONAL, default unset; `load_policy` issues it; an
-   invocation supplying one is refused where the surface it validated does not match. Section 4.1's
-   sentence is rewritten with it.
+7. **A policy-surface pin, as a fingerprint.** OPTIONAL, default unset; every invocation that
+   validated a surface reports it; an invocation supplying one is refused where the surface it
+   validated does not match. The engine holds it opaque, and here that is a necessity rather than
+   the choice it is for the resume token. Section 4.1's sentence is rewritten with it.
 
 ### Which property the refusal is stated over
 
@@ -225,8 +226,26 @@ reads the document anyway and compares what it read against what the consumer wa
 - The pin is **OPTIONAL**, default unset. An invocation supplying none makes no continuation claim
   and runs whatever it reads, so a single-invocation consumer — Symphony's own `ship` — is
   untouched.
-- **`load_policy` issues it**, which is what finally gives that entry point a purpose beyond
-  inspection.
+- **Every invocation that validated a surface reports it**, not `load_policy` alone. The gap the pin
+  exists for is the *unresumed continuation* — a `ship`, an edit, a fresh `land` — and under
+  `load_policy`-only issuance a consumer wanting continuity has to make an invocation it did not
+  otherwise need, to obtain a value the invocation it did make had already computed: every entry
+  reads and validates the surface. It lands on `output_keys`'s own rule — absent where the condition
+  did not occur — because there is exactly one entry that validates no surface, `provision`, "the
+  one entry point that runs where no policy could be read". An earlier draft of this decision had
+  `load_policy` issue it, on the ground that this "finally gives that entry point a purpose beyond
+  inspection". That was a reason to want it, not a reason for it, and the entry-point blessing does
+  not need it: the blessing is owed because Section 8.1 never named an operation Section 4.1,
+  `VCSX-CONTRACT.md` Section 6 and the `entry_points` group all carry. What `load_policy` is for
+  stays what it honestly is — the surface for inspection, plus the assurance that it validates.
+- **The pin is an opaque handle the issuing engine establishes**, and the reason is stronger than
+  the parallel with the resume token. Section 8.1 says of that token that holding it opaque "is a
+  choice rather than a necessity". A pin specified as a *value* would make this specification fix a
+  canonicalization of the effective surface for every engine — over a document Section 6.1 does not
+  place on disk, since it states no location and no discovery rule for `vcsx.toml` at all. The
+  handle form inherits none of that, and Section 8.1's existing sentence about a token "issued under
+  a different policy" already describes the comparison. So a consumer that inspects a pin has a bug,
+  and that is derivable rather than a rule a reader has to be told.
 - **A resumed invocation needs none**: the token already carries the same fingerprint. The pin is
   that check promoted to a standalone argument for the case with no token.
 - **A new precondition reason, not `resume_unusable`.** Section 6.11's separation rule again: a
@@ -251,6 +270,20 @@ policy mid-unit-of-work trades a silent behaviour change for a stop and a re-inv
 same trade Section 8.1 already made for the resume, in the same direction, with the same sentence
 justifying it: "a refused resume costs a re-invocation from the entry point, where an accepted stale
 one runs an operation the policy no longer routes."
+
+## Recorded as out of scope: `vcsx.toml` has no location
+
+Section 6.1 fixes `repo.policy.toml`'s path relative to the repository root and its discovery
+precedence as `Implementation-defined` and MUST document, and for `vcsx.toml` states neither — only
+"when present, is merged". That surfaced against this decision, as the observation that two engines
+would compute different pins from one revision. **It is not a defect in the pin, and recording why
+is what keeps it from being folded in here.** Two engines never compare pins: the value is opaque
+and engine-established, and the only party that reads one is the engine that issued it. The harm is
+one layer up and worse — two conforming engines merge different documents from one revision and
+therefore execute different policies, of which a differing pin is a symptom no one can see. So the
+repair is owed on Section 6.1's own terms, in the decision that adds `read_at_source` (issue #110),
+and the minimal form is the treatment the sibling already has plus the row modelled on
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`'s existing "`repo.policy.toml` discovery precedence | 6.1".
 
 ## Why not "define the dispatch"
 

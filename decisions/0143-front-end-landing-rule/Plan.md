@@ -63,9 +63,9 @@
    — `create_pr` for `ship`, `merge` for `land` — and that a caller tests **the operation the result
    names** rather than its proto class, a repository edge being permitted to end a front-end early
    with a `done`-class result. Ensure the clause does not reach for an `outputs` key: `output_keys`
-   fixes three keys and the rest of `outputs` is entry-specific, so a pull-request identifier there
-   is not portably testable. *Done when:* the clause exists, and a consumer can tell a completed
-   `ship` from a truncated one using only the envelope.
+   carries the ten keys Section 8.2 fixes and the rest of `outputs` is entry-specific, so a
+   pull-request identifier there is not portably testable. *Done when:* the clause exists, and a
+   consumer can tell a completed `ship` from a truncated one using only the envelope.
 7. **`VCSX-SPEC.md` Section 7.1 — the extent sentence is not read as a postcondition.** Ensure that
    section's "drives the change from the current worktree up to and including opening or updating
    the pull request" is not contradicted by step 6, stating if needed that it describes the extent
@@ -103,8 +103,14 @@
 - **Before the issue #103 decision.** The landing point this decision defines is the object a
   resumed sequence's cursor names; settling #103 first leaves its cursor pointing at an undefined
   concept.
-- **Independent of issue #111's invariants**, which stay a separate report. Under this rule they are
-  derivable rather than additional, which makes them a regression test on it.
+- **A separate decision from issue #111's invariants, applied in the same editing pass.** They stay
+  separate records: under this rule the first two are derivable rather than additional, which makes
+  them a regression test on it rather than a new constraint on policy, and the third — that `ship`
+  returns a `done` class only from `create_pr` and `land` only from `merge` — is the invariant this
+  decision spends. But both edit one anchor set — Section 12.2's block, Section 12.3's block,
+  Section 13.1's Front-ends row, and Sections 7.1/7.2 — so applying them in series with a gap
+  between them is where a plan's quoted spans go stale. This record is written first, because #111's
+  derivation cites this rule as its premise.
 
 ## Anchor check
 

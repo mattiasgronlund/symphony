@@ -41,14 +41,15 @@ operation the policy no longer routes."
 
 ## Decision
 
-**Bind the token to the entry point that issued it**, and state the condition in the general form
-that subsumes the entry-point test:
+**Bind the token to the entry point that issued it**:
 
 1. **Section 8.1's refusal list gains a fourth condition**, mirrored in Section 8.6's
-   `resume_unusable` row: a `resume` whose flow is not expressible in the invocation being resumed.
-   The entry-point crossing is the case that decides it — the entry point named on the resuming
-   invocation differing from the one that issued the token, so `ship`→`ship` and `push`→`push` pass
-   and every crossing fails, with no dependence on what the point happens to name.
+   `resume_unusable` row: a `resume` issued by a different entry point. The condition is the entry
+   point named on the resuming invocation differing from the one that issued the token, so
+   `ship`→`ship` and `push`→`push` pass and every crossing fails, with no dependence on what the
+   point happens to name. It was first drafted in the general form — the flow the token names being
+   expressible in the invocation being resumed — and that form is withdrawn; see "The property that
+   was the wrong shape three times" below.
 2. **Section 13.1's Resuming row stops naming one of the conditions and names the set**, or it
    drifts again the next time one is added.
 3. **The Conformance Statement row narrows to the form question.** What stays is a real question —
@@ -58,12 +59,16 @@ that subsumes the entry-point test:
    is refused*, which was never a form question.
 4. **Section 8.1 enumerates `await_first`**, with its default (unset — `land` merges without
    awaiting), like every other argument in that section.
-5. **The sequence-selecting property is fixed in prose where it has a referent**, and one sentence
-   states what a resumed invocation does with such an argument: it is not consulted.
+5. **One sentence states which arguments a resumed invocation does not consult**, quantified over
+   where the flow reads an argument rather than over a class of arguments: a resumed invocation does
+   not run the flow ahead of the point it re-enters, so an argument the flow reads only ahead of
+   that point has no effect on it.
 6. **The registry gains an `arguments` group**, closed from the start, carrying Section 8.1's
-   argument names and the per-argument properties that section already states as prose.
+   argument names and the per-argument properties that section already states as prose —
+   optionality, the consumer-configuration exception, and requiredness.
 
-Parts 4–6 are what make part 1 statable; the reasoning for each is below.
+Part 4 is owed regardless of this issue. Parts 5 and 6 are what the first three drafts of this
+decision got wrong; the reasoning is below.
 
 ### The argument that decides it, which neither the report nor the first recommendation made
 
@@ -121,9 +126,11 @@ Two crossings were raised that entry-point equality does not catch, both under `
 `await_first`. One is uncovered; the other was withdrawn, and the withdrawal is worth keeping
 because the reasoning generalizes.
 
-- **Await-branch token → bare `land`** — genuinely uncovered. The point is not in the sequence being
-  run, so there is nothing to re-enter, and `resume_unusable` is right. This is what "expressible in
-  the invocation being resumed" reaches and the bare entry-point test does not.
+- **Await-branch token → bare `land`** — recorded as genuinely uncovered: the point is not in the
+  sequence being run, so there is nothing to re-enter, and `resume_unusable` is right. This is what
+  "expressible in the invocation being resumed" was written to reach. **Reclassified — see "The
+  property that was the wrong shape three times": under the same mechanism that withdrew the other
+  crossing, this one is not a refusal either.**
 - **Merge-loop token → `land --await`** — **not** refused. Section 5.5 re-enters the point that
   raised the need "rather than beginning at its entry point", so the sequence's prefix is not run
   and the wait is not skipped so much as never entered. Refusing it would refuse a token for an
@@ -132,6 +139,63 @@ because the reasoning generalizes.
   not a refusal: arguments that select among an entry point's sequences are not consulted on a
   resumed invocation — and a caller that wants a wait dispatches `await_checks` itself, which is
   exactly the composition Section 7.2 already says `--await` is.
+
+## The property that was the wrong shape three times
+
+The sentence part 5 now states was reached on the fourth attempt. The first three are recorded here
+rather than repaired quietly, because two of them are the defect this batch was repairing reproduced
+inside its own repair, and the count is the useful part.
+
+**First — stated over a class the document does not define.** See the step-zero finding below: the
+sentence quantified over "arguments that select among an entry point's sequences", and Section 8.1
+marks no such set, so two engines deciding differently are both conforming. That is issue #100's
+defect, one document over, in the same batch.
+
+**Second — the derivation over-approximates.** The repair for the first was to derive the set from
+the pinned document: "the parameters of Section 12's front-end sequence functions", on the claim
+that `ship()` takes none. It takes two — `VCSX-SPEC.md:2969` is `function ship(identity, message)`,
+and both are Section 8.1 arguments in the ordinary sense. So the derivation marks `message` a
+sequence selector, which says a resumed invocation does not consult the commit message — false in
+the same code block, since Section 12.2 passes it into every turn of the commit loop, including a
+turn a resume re-enters. A marking that changes what `ship` and `land` do is not a marking.
+
+**Third — the narrowing over-approximates the other way.** The repair for the second was to narrow
+the test to where the parameter is *used*: necessary that it appear in a Section 12 signature,
+sufficient that it appear in a **condition** in the body rather than as an input to a dispatched
+operation. Today that is exactly one, `if await_first:`. But the test is syntactic and the property
+is positional: a future `land(squash_mode)` branched on *inside* the merge loop appears in a
+condition and **is** consulted on a resumed invocation that re-enters that loop. The two coincide
+today only because `if await_first:` happens to sit above the first dispatch.
+
+**Fourth — the property is not needed at all.** What decided the withdrawn crossing was never the
+marking; it was the mechanism. Section 5.5 re-enters the point "rather than beginning at its entry
+point", so the flow ahead of that point does not run, and `--await` is not skipped so much as never
+reached. Stated positionally the sentence needs nothing marked:
+
+> A resumed invocation does not run the flow ahead of the point it re-enters, so an argument the
+> flow reads only ahead of that point has no effect on it.
+
+`await_first` is read once, before `land`'s first dispatch (Section 12.3); `message` is read at
+every turn of `ship`'s commit loop (Section 12.2), which a resume can re-enter. Both answers fall
+out, no argument is classified, and the next selector inherits the rule whether or not anyone
+notices it is one.
+
+**Two consequences, both of which shrink this decision.**
+
+- **The await-branch crossing is not a refusal.** A token naming a point in `land`'s await branch,
+  supplied to a bare `land`, re-enters `await_checks` and continues into the merge loop, because the
+  flag was not consulted. Nothing was skipped and nothing is inexpressible. Section 7.2 already says
+  a `land` that awaits and a `land` preceded by a separate `await_checks` "reach `merge` in the same
+  state".
+- **So the fourth condition is the entry point, and not as a decidable special case of a general
+  one.** A token names a point in the flow its entry point began, and the only way a point can be
+  absent from the flow being resumed is that a different entry began it — `ship` never runs `merge`,
+  `land` never runs `create_pr`. The general form catches nothing the entry-point test misses, and
+  stating it would quantify over a sequence-point enumeration that does not exist: the first failure
+  above, a fourth time.
+
+`selects_sequence` leaves the `arguments` group with it. What the group carries is what Section 8.1
+already states and maintains by hand.
 
 ## The step-zero finding: the replacement sentence had issue #100's defect
 
@@ -156,15 +220,12 @@ match. There is nothing to mark today.
 That makes the repair three steps rather than one, and the first is owed regardless of this issue:
 
 1. **Section 8.1 enumerates it**, with its default.
-2. **The property is fixed in prose, where it has a referent**: an argument that selects among an
-   entry point's sequences. Today that set is derivable without a new concept — it is the parameters
-   of Section 12's front-end sequence functions: `ship()` takes none, `land(await_first)` takes one.
-   That derivation is what makes the condition *evaluable*, and it inherits a future selector
-   automatically, because a parameter that does not appear in a Section 12 signature cannot select a
-   sequence.
-3. **The registry carries the flag**, so an engine that generates from the corpus inherits it
-   instead of transcribing a judgement — the two-layer arrangement decision 0141 landed on for
-   operations: prose fixes the property, the registry derives it.
+2. ~~The property is fixed in prose, where it has a referent~~ — the derivation this step proposed
+   is the second failure recorded above, and the property is withdrawn. What replaces it is the
+   positional sentence, which needs no set.
+3. **The registry gains the group anyway**, for the properties Section 8.1 does state — the
+   two-layer arrangement decision 0141 landed on for operations: prose fixes the property, the
+   registry derives it. `selects_sequence` is not one of them.
 
 ### The cost of step 3, stated rather than discovered
 
@@ -187,17 +248,29 @@ It is owed anyway, and this issue is the second demand for it rather than the fi
   third hand-maintained membership in the same section inside one batch of issues.
 
 Create the group and let it carry the properties Section 8.1 already states — optionality, the
-consumer-configuration exception, and `selects_sequence` — rather than creating it for one flag. It
-must be **closed** from the start: `validate_spec_consistency.py`'s check 6 walks closed groups
-only, and `entry_points` not being one is what let decision 0141's drift stand.
+consumer-configuration exception, and requiredness — rather than creating it for one flag. It must
+be **closed** from the start: `validate_spec_consistency.py`'s check 6 walks closed groups only, and
+`entry_points` not being one is what let decision 0141's drift stand.
 
-## The dependency, which is firm rather than preferred
+**Requiredness has structure, and it is not a list of entry points either.** Section 8.1 states it
+three ways: `local_vcs` is "REQUIRED for every entry point"; `store_location` is REQUIRED for
+`provision` and "carrying no meaning for any other entry"; `git_access` is "REQUIRED for an entry
+that can reach one", which is a class rather than a list; and the forge repository coordinate and
+`forge_access` are REQUIRED "where a forge is configured", which is a condition on another
+*argument*. A `required: bool` is wrong for most of the section and a list-of-entries field is wrong
+for the last two, so the field admits three shapes — always, a set of entry points keyed against
+`entry_points`, or conditional with a `spec_ref` to where the condition is stated. Knowing that
+before the group is authored is what keeps it from being authored twice.
 
-"Expressible in the invocation being resumed" is decidable only once issue #103 enumerates the
-sequence points. Today there is no enumeration to test membership against, so the condition would be
-a rule an engine could not evaluate — issue #100's defect a third time. The entry-point half, the
-Section 8.1 enumeration of `await_first` and the `arguments` group are applicable now; the general
-phrasing waits on #103's decision and is stated in its terms.
+## The dependency on issue #103, recorded as firm and then withdrawn
+
+While the condition was stated in the general form, it carried a firm ordering: "expressible in the
+invocation being resumed" is decidable only once issue #103 enumerates the sequence points, and
+until then it is a rule an engine could not evaluate — issue #100's defect a third time. That
+reasoning was right about the general form and is the reason the general form is gone. With the
+condition stated over the entry point, nothing here waits on #103: the entry point is carried by the
+token, and no enumeration is consulted. Every part of this decision is applicable once 0141 has
+landed.
 
 The strength of the answer also depends on #103, though not its direction. If a resume continues the
 front-end sequence, binding is close to forced: the token names a point in a *sequence*, so a `ship`
@@ -218,6 +291,12 @@ At `97617c2`, against the working tree:
 - Section 8.1 enumerates four await parameters and no sequence selector; `await_first` occurs in
   `VCSX-SPEC.md` only at Section 12.3's signature and its inline comment, and `--await` only in
   Section 7.2's prose and one Section 13.1 row.
+- `VCSX-SPEC.md:2969` is `function ship(identity, message)`; `message` reaches
+  `run_op("commit", message)` inside the commit loop and `identity` appears nowhere in Section
+  12.2's body. `if await_first:` is Section 12.3's only branch on a signature parameter.
+- Section 8.1 states requiredness in three shapes — every entry point (`local_vcs`), one named entry
+  (`store_location` for `provision`), and a condition (`git_access` for "an entry that can reach
+  one"; the forge coordinate and `forge_access` "where a forge is configured").
 - `conformance/vcsx/vocabulary.json` carries twenty-one entry-bearing groups plus `task_model`, and
   no `arguments` group. `precondition_reasons` carries fifteen tokens including `resume_unusable`.
 - `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` carries one `resume_token` row, citing Sections 8.1, 8.2
@@ -229,9 +308,15 @@ At `97617c2`, against the working tree:
 - **Issue #103 landing narrow** — a resume that re-dispatches the point and stops. The binding still
   holds, but the "no coherent behaviour" argument weakens to a cost argument, and a later reader
   re-opening this should know which argument they are re-opening.
-- **An entry point gaining a second sequence-selecting parameter.** The prose derivation (parameters
-  of a Section 12 signature) is what should absorb it; if a selector ever appears that is *not* a
-  Section 12 parameter, the derivation is wrong rather than incomplete.
+- **An entry point gaining a parameter read both ahead of and after a re-enterable point.** The
+  positional sentence answers per argument today because each of Section 12's parameters is read in
+  one place. An argument read in two would make "the flow reads it only ahead of that point" false
+  of the argument while still true of one of its reads, and the sentence would need to be stated per
+  read rather than per argument.
+- **A resumed invocation being wanted to consult an argument the flow reads only in its prefix** — a
+  caller who supplies `--await` with a merge-loop token and expects a wait. The answer is that they
+  dispatch `await_checks` themselves (Section 7.2); if that composition ever stops being equivalent,
+  this sentence is what has to move.
 - **A consumer with a legitimate reason to cross entry points** — a driver that composes its own
   sequence and wants to resume a `ship`-issued point under a bare operation. Section 8.1's trade is
   what it would have to argue against.

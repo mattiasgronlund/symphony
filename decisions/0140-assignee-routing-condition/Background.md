@@ -199,9 +199,38 @@ configured-and-absent is an eligibility refusal and belongs in the new file; a c
 `tracker.assignee` against an adapter that populates no `assignees` is a Section 6.3 failure and
 belongs with config validation, since it is not a predicate over a normalized record.
 
+**Only the first half is pinned by this decision, and the reason belongs here rather than in a
+corpus that is one file short.** There is no function for the second to be a case of:
+`validate_dispatch_config` is called twice and defined nowhere, and `config-defaults.json` pins
+`resolve_config_defaults`, which *defaults* a configuration rather than judging one. So the
+preflight case gets its Section 17.4 row here and its vector in the decision that gives that
+function a body. Inventing a corpus function for an undefined one would pin a shape the
+specification has not chosen.
+
 `conformance/README.md`'s deferral is amended in the same decision rather than later: the adapter's
 fetch is genuinely not deterministic from inputs alone, and Section 8.2's predicate over an
 already-normalized record plus resolved config is.
+
+## Two notes on the publication clause, recorded after the draft
+
+**It is an injectivity requirement rather than a case-insensitivity one, and the specification
+supplies the counterexample.** Section 4.2 defines `Lowercase Normalization` as the Unicode Default
+Case Conversion "using the full mappings rather than the simple ones" and states the consequence
+itself: "the mapping is not one-to-one, so `İ` (U+0130) normalizes to `i` followed by U+0307". So a
+clause worded "two principals differing only in case" is falsified by the example in the definition
+it depends on — two identifiers can collide after normalization while differing in length before
+it. Phrasing the clause over the operation ("MUST distinguish the tracker's principals under
+`Lowercase Normalization`") catches that; the case-worded version reads as equivalent and is not.
+Keeping the wording is therefore checkable against the document rather than a matter of care.
+
+**The reverse direction is inherited, not introduced, and is deliberately not closed here.** Section
+4.2 also says "No Unicode normalization form is applied ... two spellings of the same name that
+differ only in normalization form do not compare equal". That is one principal spelled two ways,
+matching nothing — the same exposure `tracker.required_labels` has carried since it was written,
+where a configured label copied out of a tracker UI in another normalization form matches no issue
+today. Closing it means changing `Lowercase Normalization` for every comparison in the document,
+which is a decision about Section 4.2 rather than about the assignee. Recorded so a later reader
+finds the answer rather than the question.
 
 ## Reconsideration triggers
 
