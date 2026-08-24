@@ -721,7 +721,11 @@ applies to typed operation results alone: a lifecycle position has no outcome to
   flow with the operation's proto reason surfaced. It MUST NOT be silently dropped, because a dropped
   operation outcome would strand a flow. The built-in default for the `error` class is `fail`; for
   `needs_caller`, `escalate` carrying the reason's default need (Section 4.3); for `done` with no
-  edge, continue.
+  edge, continue — which names where control goes: back to whatever made the dispatch, at the point
+  it made it. That is a front-end sequence (Section 12) or, for a bare entry point, the driver
+  (Sections 7.3, 8.1), and it is the same place a `run_op` edge's own result returns to when its
+  chain of substitutions ends. `continue` is an outcome of the machine rather than an action a
+  policy can bind (Section 5.2).
 - An outcome is **disposed of** by an action that ends the flow — `escalate`, `park`, `fail`
   (Section 5.6) — or by a `run_op`, whose own result takes its place in the machine. The remaining
   actions emit a consumer-effected intent or run a hook and return (Section 5.2), leaving the
@@ -1533,7 +1537,32 @@ request, and **stops at the pull request** — it does not merge. Its sequence (
 `integrate` and retry, per policy), then `create_pr`. Each step passes through its lifecycle position
 and its result re-enters the machine, so repository policy governs the sequence. It commits the tree
 it read: where the working tree changes between the `before:commit` position and the capture, nothing
-is committed, and `ship` re-reads and retries within the flow bound (Sections 5.6, 12.2).
+is committed, and `ship` re-reads and retries within the flow bound (Sections 5.6, 12.2). It also
+makes each step's progress before it takes the next: where the guard read the working tree dirty,
+the sequence dispatches no `push` step unless a `commit` in the flow returned a `done`-class result;
+and it dispatches no `create_pr` step unless a `push` in the flow returned a `done`-class result. A
+tree the guard read as clean dispatches no `commit` and owes none.
+
+Both are stated over the **flow** (Section 5.6) rather than over the invocation, so a resumed `ship`
+continuing a resolved `create_pr:blocked` is not refused by them — the `push` whose `done` the
+second requires was made in the invocation the resume continues. Both are stated over the
+**sequence's own steps** rather than over `ship` as a whole, so a repository edge whose `run_op`
+dispatches `create_pr` is the repository's dispatch and falsifies neither: policy may end a
+front-end early or reach past it, and what these fix is what the sequence itself does
+(Sections 12.1, 12.2).
+
+A step the sequence may not advance past ends the invocation rather than being skipped. Where a
+repository edge disposed of a `commit` or a `push` result and the step did not report a `done`-class
+result, the sequence dispatches nothing further and the invocation reports the result the machine
+last handed back (`result_of`, Section 12.1) — the same ending a `return` transfer produces
+(Section 12.2), and what makes the bare transfer out of Section 12.2's commit loop sound.
+
+The first sentence states the **extent** of the sequence rather than a postcondition on every
+invocation. The built-in sequence already ends `ship` without a pull request on five paths — the
+flow bound twice, `integrate:merge_conflicts`, `push:pr_closed`, and a push whose class is not
+`done` (Section 12.2) — so a repository edge that ends the flow early does nothing the built-in does
+not. What a repository edge can add is an ending of class `done` before `create_pr`, which is why
+the test a caller applies is the operation the result names rather than its class (Section 13.1).
 
 ### 7.2 `land`
 
@@ -1542,7 +1571,12 @@ configured strategy and, for a squash, the `pr_to_squash` transform (Section 10.
 **transforms** message content; it never authors a message. It refuses to merge a pull request that
 is not open or whose required checks have not passed, surfacing the corresponding `merge:*` reason.
 It merges the head it read: where the pull request's head advances between the read and the merge,
-nothing is merged, and `land` re-reads and retries within the flow bound (Sections 5.6, 12.3).
+nothing is merged, and `land` re-reads and retries within the flow bound (Sections 5.6, 12.3). And
+it returns a `done`-class result only where a `merge` in the flow reported `merge:ok` — so a `land`
+whose built-in re-read-and-retry an edge disabled cannot report success without having merged. The
+reason test and the class test coincide here rather than by construction: Section 4.3 gives `merge`
+exactly one `done` reason, so the rule needs no phrase an engine has to interpret. It is stated over
+the flow, as Section 7.1's two are, so a resumed `land` is not refused by it.
 
 `land` MAY be invoked to await first. Under `--await` — or whatever the front-end's encoding for it
 is (Section 8.1) — it dispatches `await_checks` and then the `merge` it already runs, continuing
@@ -2963,6 +2997,23 @@ function ladder(trigger):
     return [ "op:reason", "op:#class", "#class" ]  # substituting op/reason/class
 ```
 
+The front-end sequences in Sections 12.2 and 12.3 dispatch through three names, defined here so one
+spelling is used at every call site and no site reads as one where policy is not consulted:
+
+- `run_op(op, arguments…)` runs the operation's `before:<op>` lifecycle position, performs the
+  operation, and hands the operation's result to the machine, which applies the matched edge or the
+  built-in default (Sections 5.3, 5.4). Policy is consulted at every dispatch. What it returns to
+  the sequence is the result of **the operation the sequence dispatched** — `push`'s own result for
+  `run_op("push")` — so every substitution the machine made inside that dispatch is invisible to
+  the sequence, which is what pins the control transfer to the root rather than to the last link of
+  a substitution chain.
+- `result_of(r)` is the result the machine last handed back within the dispatch `r` came from: `r`
+  itself where no repository edge substituted, and the substituted operation's result where one did.
+  It is what a `return` transfer reports.
+- `disposed_by_policy(r)` is true where a repository `[policy]` edge matched the trigger `r` names
+  (Section 5.3), so the machine applied that edge's action in place of the built-in disposition the
+  sequence writes out. It is false where the built-in default applied.
+
 ### 12.2 `ship` Sequence
 
 ```text
@@ -2972,34 +3023,63 @@ function ship(identity, message):
       return flow_exhausted()               # needs_caller, need = flow_exhausted
     if worktree_dirty() is clean:           # neither dirty nor undetermined (Section 9.1)
       break
-    c = dispatch(run_op("commit", message)) # runs before:commit, then commits the tree that
+    c = run_op("commit", message)         # runs before:commit, then commits the tree that
                                             # position read; commit:* re-enters the machine
     if c is commit:worktree_moved:
-      continue                              # re-read, re-gate, retry
-    break
+      continue                              # transfer: continue - re-read, re-gate, retry
+    break                                   # transfer: break
   loop:
     if flow_bound_reached():
       return flow_exhausted()
     r = run_op("push")                      # runs before:push, then pushes
     if r is push:non_fast_forward:
-      # policy typically routes this to integrate
-      i = run_op("integrate")
-      if i is integrate:merge_conflicts:
-        return escalate("resolve_conflicts")
-      continue                              # retry push
+      if not disposed_by_policy(r):         # built-in disposition; an edge replaces this block
+        i = run_op("integrate")
+        if i is integrate:merge_conflicts:
+          return escalate("resolve_conflicts")
+      continue                              # transfer: continue - retry the push, edge or no edge
     if r is push:pr_closed:
-      return escalate("human_review")
+      if not disposed_by_policy(r):
+        return escalate("human_review")     # built-in disposition, which ends the flow
+      return result_of(r)                   # transfer: return - reports what the edge produced
     if r.class != done:
-      return result_of(r)                    # e.g. push:blocked; class default (Section 5.4)
-    break                                    # push:ok / up_to_date
-  p = run_op("create_pr")                    # runs before:create_pr, then composes (Section 10.2)
-  return result_of(p)                        # stops at the pull request
+      return result_of(r)                   # e.g. push:blocked; class default (Section 5.4)
+    break                                   # transfer: break - push:ok / up_to_date
+  p = run_op("create_pr")                   # runs before:create_pr, then composes (Section 10.2)
+  return result_of(p)                       # transfer: return - stops at the pull request
 ```
 
 The routing above is the built-in default; a repository's `[policy]` edges override each step. `ship`
 never runs `merge`. The sequence runs no position of its own: each `run_op` above runs its operation's
 `before:<op>` position (Section 4.1), so a working tree the guard reads as clean enters no
 `before:commit`.
+
+**What an edge replaces, and what it does not.** A repository edge replaces the built-in
+**disposition** of the trigger — what is done with the result. It does not replace the sequence's
+**control transfer** — where the sequence goes next:
+
+- Where the disposition returns control to the sequence, the transfer is a property of the trigger
+  and is unchanged. A policy-bound `push:non_fast_forward` therefore retries the push rather than
+  breaking to `create_pr`, and its `integrate` runs once rather than twice: the edge replaced the
+  built-in disposition written out above, and `continue` is what the trigger transfers to either
+  way. A policy-bound `commit:worktree_moved` re-reads `worktree_dirty()` and re-dispatches `commit`
+  rather than falling through to the push loop.
+- Where the disposition ends the flow — `escalate`, `park`, `fail` (Section 5.6), or a substituted
+  result whose own default is one of those — the invocation ends inside the dispatch and no transfer
+  applies. Without this clause the rule above would say a `push:non_fast_forward → escalate` edge
+  continues the push loop, which is the one thing an `escalate` does not do.
+- Where the transfer is `return`, the sequence reports the result the machine last handed back:
+  `result_of` (Section 12.1), not the operation the sequence dispatched. A
+  `push:pr_closed → run_op status` edge raises no escalation, transfers `return`, and `ship` reports
+  `status:ok` — an odd policy with a determinate outcome, and the edge is honoured. Section 13.1
+  states the test a caller applies to tell that ending from a completed one.
+
+The transfer is selected by the result of the sequence's own `run_op` and by nothing else
+(Section 12.1). Pinning it to that root is what keeps it determinate where a repository binds
+`integrate:ok` as well as `push:non_fast_forward`: the substituted result then replaced
+`integrate:ok`, which replaced `push:non_fast_forward`, and "the trigger it replaced" would name two
+different things. This is the same "the trigger is the whole of the key" discipline Section 5.4
+already states for matching.
 
 `worktree_dirty()` is the `is_dirty()` capability (Section 9.1), so the guard and the operation
 share one predicate: a change made only of content the VCS has not yet recorded is dirty, and `ship`
@@ -3038,7 +3118,8 @@ function land(await_first):
       return flow_exhausted()                # needs_caller, need = flow_exhausted
     a = run_op("await_checks")               # one dispatch, however many reads (Sections 4.1, 8.1)
     if a.class != done:
-      return result_of(a)                    # class default (Section 5.4); every done reason merges
+      return result_of(a)                    # transfer: return; class default (Section 5.4);
+                                             # every done reason merges
   loop:
     if flow_bound_reached():                 # Section 5.6; counts every run_op
       return flow_exhausted()                # needs_caller, need = flow_exhausted
@@ -3047,12 +3128,22 @@ function land(await_first):
                                              # pr_to_squash for a squash strategy — then merges the
                                              # head that position read (Sections 9.2, 10.3)
     if m is merge:head_moved:
-      continue                               # re-dispatch: re-read, re-gate, retry
-    return result_of(m)                      # merge:not_open / checks_pending -> needs_caller
+      continue                               # transfer: continue - re-dispatch: re-read, re-gate
+    return result_of(m)                      # transfer: return - merge:not_open / checks_pending
 ```
 
 The routing above is the built-in default, as Section 12.2's is; a repository's `[policy]` edges
 override it.
+
+**What an edge replaces here is the same as in Section 12.2**, and the split matters for one branch.
+A repository edge replaces the built-in **disposition** of the trigger and not this sequence's
+**control transfer**: where the disposition returns control, the transfer is a property of the
+trigger and is unchanged; where it ends the flow, the invocation ends inside the dispatch and no
+transfer applies; and where the transfer is `return`, the sequence reports the result the machine
+last handed back (`result_of`, Section 12.1). So a policy-bound `merge:head_moved` keeps its
+`continue` and the merge is retried — the built-in re-read-and-retry below is not silently disabled
+by an edge that only meant to observe. The transfer is selected by the result of this sequence's own
+`run_op` and by nothing else, so a substitution chain inside the machine cannot move it.
 
 The await branch is Section 7.2's composition written out, and it adds no rule: it dispatches the
 operation and applies the class default Section 5.4 gives every operation result, which is why the
@@ -3414,7 +3505,28 @@ A conforming engine SHOULD include tests covering:
   `commit:blocked` re-runs the gate rather than committing past it, the re-entered position reads the
   working tree and the pull-request head again rather than reusing the identity taken before the
   escalation, and a resolver that resolves every time ends at `needs_caller` with the
-  `flow_exhausted` need because every re-entry counts against the bound (Sections 5.5, 5.6, 6.6).
+  `flow_exhausted` need because every re-entry counts against the bound (Sections 5.5, 5.6, 6.6); a
+  repository edge replaces a step's built-in disposition and not the sequence's control transfer, so
+  a policy-bound `push:non_fast_forward` retries the push rather than reaching `create_pr` on the
+  remote's prior head and a policy-bound `commit:worktree_moved` re-reads the working tree rather
+  than pushing one it did not commit, while a policy-bound `merge:head_moved` keeps its retry
+  (Sections 5.4, 12.1, 12.2, 12.3); a front-end that completed its sequence reports the result of
+  the operation the sequence ends at — `create_pr` for `ship`, `merge` for `land` — so a caller
+  tests **the operation the result names** rather than its proto class, a repository edge being
+  permitted to end a front-end early with a `done`-class result and `outputs` carrying no portable
+  pull-request identifier to test instead, the keys Section 8.2 fixes being the `output_keys` group
+  and the rest of `outputs` being entry-specific (Sections 7.1, 7.2, 8.2, 12.2, 12.3); the operation
+  the caller reads is `op` in the envelope, which is null only where the run had no decisive
+  operation result — a parked flow, one stopped at the flow bound, a `fail` on anything other than
+  an `error`-class result, and an `ok` with no operation at all (Section 8.2) — so a sequence that
+  dispatched anything leaves the caller an answer; and, mirroring the normative statements in
+  Sections 7.1 and 7.2 rather than stating them here, a `ship` dispatches no `push` step unless a
+  `commit` in the flow returned a `done`-class result where its guard read the working tree dirty,
+  dispatches no `create_pr` step unless a `push` in the flow returned one, and a `land` returns a
+  `done`-class result only where a `merge` in the flow reported `merge:ok` — the two statements
+  about classes here being about different classes, the one a sequence tests of its own step's
+  result and the one a caller would wrongly read the invocation's ending by (Sections 4.3, 5.6, 7.1,
+  7.2).
 - Invocation contract: exit codes mirror proto classes; `escalation` is present exactly for
   `needs_caller`; a parked flow is `needs_caller` with the `intervention` need and null
   `op`/`reason`/`class`; a `version_floor` above the running version refuses fail-closed, while one
@@ -3520,6 +3632,16 @@ A conforming engine SHOULD include tests covering:
 ### 13.2 Implementation Checklist
 
 - One policy-graph executor run by both front-ends; `ship`/`land` and the embedded-driver contract.
+- The disposition/transfer split in the front-end sequences: a repository edge replaces what is done
+  with a step's result, while where the sequence goes next is selected by the result of the
+  sequence's own dispatch — except where the disposition ended the flow, in which case there is
+  nothing to transfer. Report a completed front-end as the result of the operation its sequence ends
+  at, so a consumer can tell it from one an edge ended early.
+- Advance a front-end sequence only on progress it made: dispatch `push` only after a `commit` in
+  the flow returned `done` where the guard read the tree dirty, dispatch `create_pr` only after a
+  `push` in the flow returned `done`, and return `done` from `land` only after a `merge` in the flow
+  reported `merge:ok`. Hold each over the flow, so a resume is not refused, and over the sequence's
+  own steps, so a repository edge is not.
 - The action-policy machine: triggers, actions, the `#class` fallback,
   fail-safe-on-undisposed-outcome, no-op-on-unmatched-position, determinism, and a flow bounded over
   `run_op` dispatches and resume re-entries — the bound over the flow, so a resumed

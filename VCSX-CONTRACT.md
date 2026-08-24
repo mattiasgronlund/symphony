@@ -75,7 +75,10 @@ to the shared contract and MUST be reflected in both documents (see Section 12).
 Entry points:
 
 - `ship` — drive the policy from the current change up to and including opening/updating the pull
-  request; `ship` stops at the pull request and does not merge.
+  request; `ship` stops at the pull request and does not merge. That names the extent of the
+  sequence rather than a guarantee about every invocation: a `ship` ends before the pull request
+  wherever an operation result or a repository edge ends the flow, and a completed `ship` is told
+  from a truncated one by the operation the result names (`VCSX-SPEC.md` Sections 7.1, 13.1).
 - `land` — drive the merge of an already-open pull request. `land` transforms message content
   (Section 9); it never authors a message. `land` MAY be invoked to await required checks first,
   which composes the two operations below and introduces no sequencing of its own.

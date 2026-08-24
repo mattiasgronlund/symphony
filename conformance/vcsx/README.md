@@ -231,8 +231,9 @@ Two interpretation notes apply:
 | `vectors/identity-precondition.json` | `requires_commit_identity` | Sections 8.1, 8.6, 12.2, 12.3 |
 | `vectors/base-precondition.json` | `requires_base_branch` | Sections 6.4, 8.1, 8.6, 12.3 |
 | `vectors/compose-envelope.json` | `compose_envelope` | Sections 4.3, 5.2, 5.4, 8.2, 8.4 |
+| `vectors/front-end-sequence.json` | `front_end_sequence` | Sections 5.2, 5.4, 5.6, 7.1, 7.2, 8.2, 12.1, 12.2, 12.3 |
 
-113 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
+126 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
 filesystem. (The slice was authored at 49 and grew by four as decisions 0054–0056 resolved its
 findings, each turning an unassertable behavior into an asserted one, by three more as decision
 0057 added the universal reasons and redefined `merge:blocked`, by four more as decision 0066 gave
@@ -256,7 +257,10 @@ a `[messages.squash]` transform its bound-unit condition, by one more as decisio
 `context` key ignored rather than refused, and by sixteen more as decision 0101 scoped the base
 precondition and base resolution to the policy source. Two decisions have taken vectors away: 0122
 removed the five signal vectors and added `unknown_trigger_token_is_refused` in their place, and 0129
-removed the five that exercised the from-context.)
+removed the five that exercised the from-context. Thirteen more arrived with decisions 0143 and
+0152, which fixed where a substituted result lands in a front-end sequence and what such a sequence
+must reach; that file is per *step* rather than per invocation, so it stays pure over its inputs
+like the rest.)
 
 ### Fault-injection vectors (schema only)
 
