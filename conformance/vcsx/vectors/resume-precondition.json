@@ -1,0 +1,123 @@
+{
+  "function": "establish_resume",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 8.6 \"Invocation Preconditions\"",
+    "VCSX-SPEC.md Section 8.1 \"Entry Points and Arguments\"",
+    "VCSX-SPEC.md Section 5.5 \"Escalation Binding\"",
+    "VCSX-SPEC.md Section 12.2 \"`ship` Sequence\"",
+    "VCSX-SPEC.md Section 12.3 \"`land` Sequence\""
+  ],
+  "description": "Whether a supplied `resume` is established as the engine's own and current, whose failure refuses the run with `resume_unusable` before the policy runs.",
+  "given": "the entry point the invocation names, and what the supplied token carries: the entry point that issued it, the policy it was issued under, the repository it was issued against, and the major version that issued it",
+  "expect": "whether the precondition is established, and the reason a refusal carries",
+  "notes": [
+    "A `resume_token` is opaque and the engine's own (Section 8.1), so no vector can carry a value. `token.policy`, `token.repository` and `token.entry` carry labels standing for what the engine bound the token to, and `token.major` a major version; a vector asserts the comparison the engine makes rather than an encoding this specification does not fix. `engine.policy`, `engine.repository` and `engine.major` are what this invocation holds to compare against — the policy it validated and its own major version (Section 8.6).",
+    "The entry-point condition is the one judged from the invocation's arguments alone, which is what makes this reason decidable where no policy was validated: neither `provision` nor `load_policy` runs a policy, so neither issues a token, and a token supplied to either fails on that condition and on nothing else (Sections 4.1, 6.1). `engine.policy` is null in those vectors for that reason, and no vector pairs a null `engine.policy` with a passing expectation.",
+    "Each failing vector holds exactly one failing condition, so the reported reason is determined; all four failures carry one reason, so which condition failed is not a distinction this registry draws. Which condition an engine reports first where several hold is not exercised.",
+    "The crossings that are *not* refused are exercised too, because they are the half a general condition over the points a flow contains would have got wrong. A resume re-enters the point rather than beginning at the entry point (Section 8.1), so a token naming a point inside `land`'s merge loop is established at a `land` whether or not that invocation names `await_first`: the branch ahead of the re-entered point is never run. That is why no vector inputs the point the token names — no condition here reads it."
+  ],
+  "vectors": [
+    {
+      "id": "same_entry_same_bindings_is_established",
+      "description": "The ordinary resume: the caller re-invokes the entry that escalated.",
+      "given": {
+        "entry": "ship",
+        "token": { "entry": "ship", "policy": "policy_a", "repository": "repo_a", "major": 1 },
+        "engine": { "policy": "policy_a", "repository": "repo_a", "major": 1 }
+      },
+      "expect": { "established": true }
+    },
+    {
+      "id": "ship_token_supplied_to_land_is_refused",
+      "description": "`ship` never runs `merge` and `land` never runs `create_pr` (Sections 12.2, 12.3), so a `ship` token names a point `land` does not reach. Refused on the entry point rather than on the point, which is evaluable from the token alone.",
+      "given": {
+        "entry": "land",
+        "token": { "entry": "ship", "policy": "policy_a", "repository": "repo_a", "major": 1 },
+        "engine": { "policy": "policy_a", "repository": "repo_a", "major": 1 }
+      },
+      "expect": { "error": "resume_unusable" }
+    },
+    {
+      "id": "sequence_token_supplied_to_a_bare_operation_entry_is_refused",
+      "description": "The crossing runs both ways between a front-end sequence and an individual operation: a `ship` token supplied to a bare `push` names a point that invocation's flow does not contain (Sections 8.1, 12.2).",
+      "given": {
+        "entry": "push",
+        "token": { "entry": "ship", "policy": "policy_a", "repository": "repo_a", "major": 1 },
+        "engine": { "policy": "policy_a", "repository": "repo_a", "major": 1 }
+      },
+      "expect": { "error": "resume_unusable" }
+    },
+    {
+      "id": "token_supplied_to_provision_is_refused_on_the_entry_point_alone",
+      "description": "`provision` is the one entry point that runs where no policy could be read (Section 6.1), so it issues no token and validates none to compare one against. The entry-point condition settles it without reaching for the policy — which is what places `resume_unusable` inside `provision`'s otherwise exhaustive precondition list (Section 8.6).",
+      "given": {
+        "entry": "provision",
+        "token": { "entry": "ship", "policy": "policy_a", "repository": "repo_a", "major": 1 },
+        "engine": { "policy": null, "repository": "repo_a", "major": 1 }
+      },
+      "expect": { "error": "resume_unusable" }
+    },
+    {
+      "id": "token_supplied_to_load_policy_is_refused_on_the_entry_point_alone",
+      "description": "The other entry that runs outside the action-policy machine (Section 4.1). It escalates nothing and issues no token, so every token supplied to it mismatches on the entry point.",
+      "given": {
+        "entry": "load_policy",
+        "token": { "entry": "land", "policy": "policy_a", "repository": "repo_a", "major": 1 },
+        "engine": { "policy": "policy_a", "repository": "repo_a", "major": 1 }
+      },
+      "expect": { "error": "resume_unusable" }
+    },
+    {
+      "id": "token_issued_under_a_different_policy_is_refused",
+      "description": "The first of the four conditions, unchanged: re-entering a point the policy no longer routes (Section 8.1).",
+      "given": {
+        "entry": "ship",
+        "token": { "entry": "ship", "policy": "policy_a", "repository": "repo_a", "major": 1 },
+        "engine": { "policy": "policy_b", "repository": "repo_a", "major": 1 }
+      },
+      "expect": { "error": "resume_unusable" }
+    },
+    {
+      "id": "token_issued_against_a_different_repository_is_refused",
+      "description": "The second condition (Section 8.1).",
+      "given": {
+        "entry": "ship",
+        "token": { "entry": "ship", "policy": "policy_a", "repository": "repo_a", "major": 1 },
+        "engine": { "policy": "policy_a", "repository": "repo_b", "major": 1 }
+      },
+      "expect": { "error": "resume_unusable" }
+    },
+    {
+      "id": "token_issued_by_a_different_major_version_is_refused",
+      "description": "The third condition. A MAJOR release may change what a point means, so a token from another major names nothing this engine can re-enter (Sections 8.1, 8.5).",
+      "given": {
+        "entry": "ship",
+        "token": { "entry": "ship", "policy": "policy_a", "repository": "repo_a", "major": 1 },
+        "engine": { "policy": "policy_a", "repository": "repo_a", "major": 2 }
+      },
+      "expect": { "error": "resume_unusable" }
+    },
+    {
+      "id": "land_token_resumed_at_an_awaiting_land_is_established",
+      "description": "The crossing that is not a refusal. A resume re-enters the point rather than beginning at the entry point, so the await branch ahead of the merge loop is never run and `await_first` changes nothing about whether the token is usable (Sections 8.1, 12.3).",
+      "given": {
+        "entry": "land",
+        "await_first": true,
+        "token": { "entry": "land", "policy": "policy_a", "repository": "repo_a", "major": 1 },
+        "engine": { "policy": "policy_a", "repository": "repo_a", "major": 1 }
+      },
+      "expect": { "established": true }
+    },
+    {
+      "id": "land_token_resumed_at_a_bare_land_is_established",
+      "description": "The same crossing the other way: an invocation naming no `await_first` establishes a token an awaiting `land` issued. Legality does not depend on a flag that changes nothing about the point being re-entered.",
+      "given": {
+        "entry": "land",
+        "await_first": false,
+        "token": { "entry": "land", "policy": "policy_a", "repository": "repo_a", "major": 1 },
+        "engine": { "policy": "policy_a", "repository": "repo_a", "major": 1 }
+      },
+      "expect": { "established": true }
+    }
+  ]
+}

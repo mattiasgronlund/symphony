@@ -50,8 +50,11 @@ claim. Mark each complete.
 - [ ] The action-policy machine: triggers, actions, the `#class` fallback, fail-safe on an
       undisposed outcome, no-op on an unmatched lifecycle position, determinism (Section 5)
 - [ ] The operation set and the four lifecycle positions (Section 4.1), neither extended by this
-      engine, including `provision` — which has none, is validated against no policy document, and
-      establishes no precondition that reads a checkout (Sections 6.1, 6.11, 8.6)
+      engine, including the two that run outside the action-policy machine: `provision` — which has
+      no position, is validated against no policy document, and establishes no precondition that
+      reads a checkout — and `load_policy`, which has no position and no reason-registry entry, its
+      four outcomes being configuration reasons; a `run_op` edge naming either is refused with
+      `operation_not_dispatchable` (Sections 4.3, 6.1, 6.11, 8.6)
 - [ ] The reason-token registry with its stable proto classes (Sections 4.2, 4.3)
 - [ ] `repo.policy.toml` loader and validation, with the `vcsx.toml` merge, the refusal of a policy
       that is not well formed, base resolution, and execution-context labeling (Sections 3.2, 6)
@@ -89,7 +92,8 @@ concrete choice; do not leave a row blank.
 | Where a backend writes its own bookkeeping state to answer a capability | 9.1 | `<which capabilities, and what they write>` |
 | Bound a forge backend imposes on its search for a work branch's pull request | 9.2 | `<per backend: the bound, or none — a search that reached it determines no state>` |
 | The default `network_bound_ms`, and any per-capability values the engine applies | 8.1, 9 | `<default duration; any per-capability values; whether a deployment may configure them>` |
-| Form of the `resume_token`, and how the engine establishes that one it is handed is its own and current | 8.1, 8.2, 8.6 | `<what the token encodes; what it is bound to; how a stale one is detected>` |
+| Form of the `resume_token`: what it encodes, whether it is signed, and the mechanism by which the four conditions Section 8.1 fixes are judged | 8.1, 8.2, 8.6 | `<the point and the spent flow-bound count; how the policy, repository, major-version and entry-point bindings are carried and compared; signed or not>` |
+| Form of the `policy_pin`, and how the engine establishes that one it is handed names the surface it validated | 8.1, 8.2, 8.6 | `<what the handle encodes; over what of the effective surface; how a mismatch is detected>` |
 | Where a forge backend declares conditional-read support, the mechanism it realizes the `pr_state` and `checks_state` validators with | 9.2 | `<per backend: ETag / Last-Modified / cursor / not supported>` |
 | Which budget buckets each forge backend observes, and where it reads them from | 9.2 | `<per backend: bucket names, and the response headers or fields they come from>` |
 

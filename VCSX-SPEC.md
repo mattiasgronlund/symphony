@@ -199,8 +199,9 @@ and nothing about the forge.
 
 ### 4.1 Operation Set
 
-Operations are the unit `run_op` runs (Section 5.2). Each is realized through the plugin layer and
-returns a typed result (Section 4.2). Read-only operations carry no lifecycle position.
+Operations are the unit `run_op` runs (Section 5.2), less the two below that run outside the
+action-policy machine. Each is realized through the plugin layer and returns a typed result
+(Section 4.2). Read-only operations carry no lifecycle position.
 
 An operation marked **Read-only** below changes none of three things: the content a `commit` would
 capture, the commits reachable from the work branch or the resolved base (Sections 6.3, 6.4), and
@@ -214,13 +215,16 @@ work branch reaches, rather than leaving the arrangement to each backend.
 
 - `load_policy` — obtain the merged host-side policy surface, once, for a unit of work. It reads
   `repo.policy.toml` from the policy source (Sections 6.1, 8.1), merges any `vcsx.toml`, and returns
-  the surface; the consumer holds it and supplies it to every subsequent invocation, which therefore
-  read no repository. This is the operation that makes Section 3.2's "the consumer sources config by
-  trust" literally true, and it is why no capability of Section 9.1 reads a file at a revision — one
-  operation does it once, rather than a capability doing it per read. Like `provision`, it has no
-  lifecycle position and raises no `<op>:<reason>` trigger, for the same reason: the edges that
-  would gate or route it are in the document it exists to obtain. Its failures are the four
-  Section 6.1 names, reported as configuration errors. Read-only.
+  the surface for the consumer to inspect, together with the assurance that it validates. What the
+  consumer holds between invocations is that surface and the `policy_pin` naming it (Sections 8.1,
+  8.2): every invocation reads and validates the document itself, and the pin is how a later one
+  claims that what it read is the surface this unit of work began under (Section 8.6). This is the
+  operation that makes Section 3.2's "the consumer sources config by trust" literally true, and it
+  is why no capability of Section 9.1 reads a file at a revision — one operation does it once,
+  rather than a capability doing it per read. Like `provision`, it has no lifecycle position and
+  raises no `<op>:<reason>` trigger, and for the same reason no `run_op` edge may name it: the edges
+  that would gate, route or dispatch it are in the document it exists to obtain. Its failures are
+  the four Section 6.1 names, reported as configuration errors. Read-only.
 - `provision` — ensure the repository is present and current: create the store where
   `store_location` holds none, refresh it where it holds one, and, where the invocation names a
   `tree_location`, derive the working tree there from that store (Section 8.1). An invocation naming
@@ -309,6 +313,24 @@ work branch reaches, rather than leaving the arrangement to each backend.
   acquisition the engine could not complete is not that no-op and reports `pull:failed`
   (Sections 4.3, 9.1).
 
+Two operations run **outside the action-policy machine**: an operation the machine cannot route,
+because it runs before the document the machine is read from can itself be read. `load_policy`
+and `provision` are the pair today — one produces that document and the other produces the repository the document
+is in (Sections 6.1, 6.11) — and it is the property rather than the pair this specification fixes,
+so an operation a `MINOR` release adds with it inherits what follows (Section 8.5). Two things
+follow. Neither raises an `<op>:<reason>` trigger an `on` may name (Section 5.1). And no `run_op`
+edge may name either: a policy carrying one is refused with `operation_not_dispatchable` before
+anything runs (Section 6.11).
+
+The argument is the one `provision`'s entry above already makes, and it reaches the edge as it
+reaches the trigger. An edge dispatching one of the pair was read out of what that operation
+produces, so it can fire only where the product was already there — absent on the invocation that
+creates the checkout and present on one that refreshes it, a trigger that sometimes exists, which
+Section 5.4's one-edge-per-trigger rule is written to prevent. What an accepted edge would do is
+worse than dead. `load_policy` carries no reason token and therefore no proto class (Section 4.3),
+so a `run_op` naming it **disposes of** the outcome that fired it (Section 5.4) with a result none
+of the three built-in defaults can key on, and the flow carries on past an outcome nothing acted on.
+
 This specification fixes the operation set and the lifecycle positions; an engine defines neither of
 its own. The operations above are the set, and `before:commit`, `before:push`, `before:create_pr`,
 `before:merge` are the lifecycle positions; both are extended only by a `MINOR` release (Section
@@ -347,9 +369,10 @@ without credentials (Section 3.2). A caller that needs current figures runs `int
 
 ### 4.2 Operation Result Envelope and Proto Classes
 
-Every operation completes with a typed result of the form `<op>:<reason>`. Every reason carries a proto
-**outcome class** — one of `done`, `needs_caller`, `error` — which is part of the public contract
-because policy branches on it through the `#class` fallback (Section 5.3):
+Every operation the reason registry covers completes with a typed result of the form
+`<op>:<reason>` (Section 4.3). Every reason carries a proto **outcome class** — one of `done`,
+`needs_caller`, `error` — which is part of the public contract because policy branches on it
+through the `#class` fallback (Section 5.3):
 
 - `done` — the operation reached its intended effect (including a benign no-op).
 - `needs_caller` — the operation cannot proceed without a decision or action from the caller (the
@@ -368,8 +391,19 @@ document any reason it adds beyond this registry and MUST NOT change a listed re
 major version.
 
 Four reasons are **universal**, carried in the table with `(any)` in place of an operation and listed
-once rather than repeated per operation: `failed` and `unsupported` are defined for every operation,
-and `blocked` and `hook_unanswered` for every operation gated at a lifecycle position (Section 4.1).
+once rather than repeated per operation: `failed` and `unsupported` are defined for every operation
+this registry covers, and `blocked` and `hook_unanswered` for every such operation gated at a
+lifecycle position (Section 4.1).
+
+What the registry covers is stated as an invariant rather than as the list of operations it happens
+to reach: an operation whose every outcome this specification reports as a configuration error
+carries no reason here, and no universal reason reaches it. `load_policy` is that operation today —
+its four outcomes are the ones Section 6.1 names, and giving them operation reasons as well would
+register one condition twice (Sections 4.1, 6.11) — and an operation a `MINOR` release adds on the
+same footing needs no exception written for it (Section 8.5). Every other operation is covered,
+`provision` included: its result does not re-enter the machine as a trigger, which is a fact about
+routing rather than about reporting, and the consumer classifies a typed result like any other
+(Section 4.1).
 
 Two further reasons are carried with `(any forge)` in place of an operation: `rate_limited` and
 `forge_unavailable` are defined for every operation that **acts** on a forge call the condition
@@ -612,12 +646,13 @@ carry the same disposition — the operation does not act — so one reason serv
 second token carrying an identical repair. Which unit it was is what `unanswered_gates` names
 (Section 8.2), alongside the condition.
 
-Every operation therefore has at least one `done` reason and at least one `error` reason, so an
-`error`-class result is expressible for every operation including the read-only ones; every gated
-operation additionally has a `needs_caller` reason. The converse is the invariant rather than the
-list of operations it happens to cover: an operation with no `before:<op>` position carries neither
-`blocked` nor `hook_unanswered` (Section 4.1). An operation a `MINOR` release introduces takes the
-same universal reasons on the same terms, gated or not (Section 8.5).
+Every operation this registry covers therefore has at least one `done` reason and at least one
+`error` reason, so an `error`-class result is expressible for every one of them including the
+read-only ones; every gated operation additionally has a `needs_caller` reason. The converse is the
+invariant rather than the list of operations it happens to cover: an operation with no
+`before:<op>` position carries neither `blocked` nor `hook_unanswered` (Section 4.1). An operation a
+`MINOR` release introduces takes the same universal reasons on the same terms, gated or not
+(Section 8.5).
 
 ## 5. The Action-Policy Machine
 
@@ -626,8 +661,8 @@ same universal reasons on the same terms, gated or not (Section 8.5).
 A trigger is one of two kinds:
 
 - **Lifecycle positions** around an operation: `before:commit`, `before:push`, `before:create_pr`,
-  `before:merge`. A lifecycle position is matched exactly; it has no class form. `provision` has no
-  position and raises no trigger (Section 4.1).
+  `before:merge`. A lifecycle position is matched exactly; it has no class form. `load_policy` and
+  `provision` have no position and raise no trigger, running outside the machine (Section 4.1).
 - **Typed operation results** `<op>:<reason>` (Section 4.3).
 
 There is no third kind, and an event that is neither of these does not enter the executor. An event
@@ -1405,6 +1440,7 @@ the result envelope (Section 8.2), so a caller can branch on the cause without p
 | An edge's `on` is not a trigger the engine recognizes (Section 6.5) | `unknown_trigger` |
 | An edge's `do` is not a known action (Section 5.2) | `unknown_action` |
 | A `run_op` names an operation the engine does not define (Section 4.1) | `unknown_operation` |
+| A `run_op` names an operation that runs outside the action-policy machine (Section 4.1) | `operation_not_dispatchable` |
 | A `run` names a hook the `[hooks]` table does not declare (Section 6.6) | `unknown_hook` |
 | A duplicate policy edge — two edges bound to one trigger, non-determinism (Section 5.4) | `duplicate_edge` |
 | Two `[[branch]]` sections with the same `match` — non-determinism one level up (Section 6.11) | `duplicate_branch_section` |
@@ -1505,6 +1541,10 @@ different repairs — a newer engine, and a corrected file. `unknown_operation` 
 likewise name an argument the engine resolved and did not recognize, while an argument that is
 absent is `malformed_policy`; that condition is stated over the actions rather than per argument,
 because `set_state` with no target has the same shape and no reason of its own.
+`operation_not_dispatchable` is the third of that group and is not `unknown_operation` widened: the
+operation is one this specification defines, and the repairs differ — `unknown_operation` says
+correct the spelling, and this one says dispatch the operation from its own entry point, which
+Section 8.1 gives it.
 
 `position_cycle` names a policy that cannot run rather than one that might not converge, which is the
 boundary against Section 5.6's bound. A lifecycle position is matched exactly, has no class fallback
@@ -1617,8 +1657,9 @@ structured input and output. The contract is the same either way; only the encod
 The entry points are the front-end sequences and the individual operations:
 
 - `ship`, `land` — the front-end sequences (Section 7).
-- `provision`, `status`, `diff`, `commit`, `integrate`, `push`, `create_pr`, `merge`, `pull`,
-  `await_checks` — individual operations (Section 4.1), for a driver that composes its own sequence.
+- `load_policy`, `provision`, `status`, `diff`, `commit`, `integrate`, `push`, `create_pr`,
+  `merge`, `pull`, `await_checks` — individual operations (Section 4.1), for a driver that composes
+  its own sequence.
 
 Common arguments: the identity the work branch is derived from (Section 6.3), the commit identity
 the commits an entry writes are attributed to (Section 10.1), a message input for
@@ -1813,6 +1854,18 @@ holders of the same credential are spending concurrently — neither of which is
 one invocation. Remove the arguments and there is no loop; supply different ones and the same engine
 waits differently.
 
+One further argument selects what a front-end sequence runs rather than bounding an operation:
+
+- `await_first` (OPTIONAL) — supplied to `land`, it dispatches `await_checks` before the `merge`
+  the sequence already runs, continuing to the merge where the await's result is class `done` and
+  ending on it otherwise (Sections 7.2, 12.3). It carries no meaning at any other entry point.
+  - Default: unset — `land` merges without awaiting.
+
+It is named here because Section 7.2 cites this section for it — "`--await`, or whatever the
+front-end's encoding for it is" — and because the encoding is the front-end's while the name is not.
+It is not one of the four above: those bound a wait the operation makes, and this one decides
+whether the sequence dispatches the operation at all.
+
 A **network bound** names how long the engine waits for one network call (Section 9):
 
 - `network_bound_ms` (OPTIONAL) — the bound applied to each network call an invocation makes. It
@@ -1881,11 +1934,16 @@ invocations rather than only within one, which is the case that matters: a consu
 `still_pending` and resumes later reads again in a new invocation, and a validator it could not carry
 forward would leave the conditional read serving only the loop that was already cheap.
 
-A consumer MAY supply `forge_parameters`, an OPTIONAL per-backend parameter set the engine carries to
-the selected forge backend uninterpreted. A backend MUST document the keys it reads, which are
-`Implementation-defined` per backend (Section 13.3). A key the backend does not recognize is that
-backend's own disposition rather than a shape the engine judged, on the same ground: the engine reads
-no key of the set, so it holds nothing to judge one against.
+A consumer MAY supply a per-backend **parameter set** the engine carries to the selected forge
+backend uninterpreted:
+
+- `forge_parameters` (OPTIONAL) — the parameter set, carried through untouched. A backend MUST
+  document the keys it reads, which are `Implementation-defined` per backend (Section 13.3).
+  - Default: unset — the engine carries none.
+
+A key the backend does not recognize is that backend's own disposition rather than a shape the
+engine judged, on the same ground: the engine reads no key of the set, so it holds nothing to
+judge one against.
 
 Two arguments declare **what the consumer can do**, which is what the last two of validation's five
 inputs are (Section 6.11):
@@ -1917,6 +1975,14 @@ A consumer MAY supply `resume`, an OPTIONAL token continuing a flow a previous i
   beginning at its entry point, and the flow bound continues from the count the token carries.
   - Default: unset — the invocation begins at its entry point.
 
+A resumed invocation therefore does not run the flow ahead of the point it re-enters, and an
+argument the flow reads only ahead of that point has no effect on it. A resumed `land` consults no
+`await_first`: the await branch runs once, before the merge loop a resume re-enters (Section 12.3).
+A resumed `ship` does consult `message`, which the commit loop reads at every turn (Section 12.2).
+The property is where the flow reads an argument and not what kind of argument it is, and a caller
+that wants the prefix dispatches the operation itself, which is the composition Section 7.2 already
+describes.
+
 The engine holds it opaque, as it holds the base ref and the forge repository coordinate opaque, and
 here that is a choice rather than a necessity: the value is the engine's own rather than another
 party's, and an engine that published its structure would owe a stable spelling for "the point that
@@ -1926,10 +1992,57 @@ the reason the read validators do: the engine holds nothing between invocations,
 readable from the consumer configuration either.
 
 An engine MUST refuse a `resume` it cannot establish as its own and current — one issued under a
-different policy, against a different repository, or by a different major version — before the policy
-runs (Section 8.6), rather than re-entering a point that no longer means what it meant. The direction
-is deliberate: a refused resume costs a re-invocation from the entry point, where an accepted stale
-one runs an operation the policy no longer routes.
+different policy, against a different repository, by a different major version, or by an entry point
+other than the one the resuming invocation names — before the policy runs (Section 8.6), rather than
+re-entering a point that no longer means what it meant. The direction is deliberate: a refused
+resume costs a re-invocation from the entry point, where an accepted stale one runs an operation
+the policy no longer routes.
+
+The fourth condition is the entry point and not the point the token names. A token names a point in
+the flow its own entry point began, so the only way a point can be missing from the flow being
+resumed is that a different entry began it: `ship` never runs `merge` and `land` never runs
+`create_pr` (Sections 12.2, 12.3), and a `ship` token supplied to a `land` names a point that `land`
+does not reach. Stated that way the condition is evaluable from the token alone, needing no
+enumeration of the points a flow contains — and it is what makes this refusal decidable at the two
+entry points that validate no policy to judge one against: neither `provision` nor `load_policy`
+runs a policy, so neither issues a token, and every token supplied to either fails on this condition
+and on nothing else (Sections 4.1, 6.1, 8.6). The converse crossing is not a refusal. A token naming
+a point inside `land`'s merge loop is usable at a `land` whether or not that invocation names
+`await_first`, because the resume re-enters the point rather than beginning at the entry point, so
+the branch ahead of it is never run.
+
+A consumer MAY supply `policy_pin`, an OPTIONAL handle naming the policy surface a unit of work
+began under (Sections 4.1, 6.1):
+
+- `policy_pin` (OPTIONAL) — the `policy_pin` a previous invocation returned in `outputs`
+  (Section 8.2). Supplied, the invocation is refused where the surface it validated is not the one
+  the pin names (Section 8.6).
+  - Default: unset — the invocation makes no continuation claim and runs the surface it read.
+
+It is what makes a unit of work a span a consumer can check rather than a span it describes. Every
+invocation reads and validates the document itself (Section 4.1), so nothing else holds the surface
+fixed across the invocations one unit of work is made of: a consumer that shipped, edited its
+policy, and landed would otherwise have run two documents under one unit of work with nothing saying
+so. A resumed invocation needs no pin — the refusal of a `resume` "issued under a different policy"
+above is this same judgement, made along a chain the engine can see — so the argument is that check
+standing alone for the case with no token.
+
+The engine holds it opaque, as it holds the `resume` token opaque, and here that is a **necessity**
+rather than the choice it is there. A pin specified as a value would oblige this specification to
+fix a canonicalization of the effective surface — over a document Section 6.1 places nowhere,
+stating no location and no discovery rule for `vcsx.toml` at all — where a handle inherits none
+of that: the value is the issuing engine's own, no two engines compare pins, and the only party
+that reads one is the engine that established it. A consumer that inspects a pin therefore has a
+bug, which follows from the form rather than needing a rule of its own. It round-trips through the consumer for the
+reason the read validators and `resume` do: the engine holds nothing between invocations
+(Section 1.3), so it is not readable from the consumer configuration either.
+
+No argument carries a policy surface the other way. The consumer holds the surface `load_policy`
+returned for inspection and the pin for continuity, and the engine reads the document itself on
+every invocation, which is what makes Section 3.2's "the consumer sources config by trust" literal
+rather than a property of one operation. An argument accepting a surface back would let a caller
+hand the engine a document no revision ever held, in the file that declares the host-side units
+Section 11's trust model exists to keep outside the working tree's reach.
 
 The consumer supplies two credentials:
 
@@ -1943,14 +2056,18 @@ Credentials reach the plugins for the duration of an invocation (Section 1.3); t
 neither beyond it.
 
 The consumer-supplied values this section names — `local_vcs` and `forge`, the forge repository
-coordinate, the `remote`, `policy_branch`, `base_branch` and `base_branch_allowed`, `provision`'s
-two locations, the two access parameters, `network_bound_ms`, the four await parameters,
-`forge_parameters`, `effectable_actions`, `bound_units` and the credential
-pair — the two read validators and `resume` excepted, for the reason their entries state — MAY be read
-by the engine from a **consumer configuration**: a consumer-owned file, distinct from
-`repo.policy.toml` and never sourced from the repository. Its discovery precedence is
-`Implementation-defined` and MUST be documented (Section 13.3). It carries no key `repo.policy.toml`
-carries, so the two are disjoint and neither shadows the other (Section 6.1). It MAY carry a
+coordinate, the `remote`, `policy_source` and `policy_branch`, `base_branch` and
+`base_branch_allowed`, `provision`'s two locations, the two access parameters, `network_bound_ms`,
+the four await parameters, `await_first`, `forge_parameters`, `effectable_actions`, `bound_units`
+and the credential pair — the two read validators, `resume` and `policy_pin` excepted, for the
+reason their entries state — MAY be read by the engine from a **consumer configuration**: a
+consumer-owned file, distinct from `repo.policy.toml` and never sourced from the repository. The
+excepted set is closed by the reason its members share rather than by enumeration: each is a value a
+previous invocation returned, which the engine holds nothing to reissue and a configured copy of
+which would be stale by construction (Section 1.3). Every other value this section names is
+outside it. Its discovery precedence is `Implementation-defined` and MUST be documented
+(Section 13.3). It carries no key `repo.policy.toml` carries, so the two are disjoint and neither
+shadows the other (Section 6.1). It MAY carry a
 credential directly or a reference the consumer resolves, so a consumer holding its secrets in a
 provider of its own need not write one to disk to use this engine; under either form the engine
 persists no credential beyond the invocation.
@@ -2083,6 +2200,15 @@ Every invocation returns one structured result:
   presence therefore agrees with the need's resolvability, so a front-end reads Section 8.4's
   prohibition off the envelope rather than off the policy that produced it. The token carries the
   point and the count and nothing a lifecycle position established (Section 5.5).
+- `outputs` carries `policy_pin` where the invocation **validated a policy surface**: an opaque
+  handle naming that surface, which a later invocation supplies as `policy_pin` to claim the two are
+  one unit of work (Sections 4.1, 8.1, 8.6). The key is absent where no surface was validated, which
+  is the rule every key here is under rather than an entry-point list — and it leaves exactly one
+  entry point where it is always absent, `provision`, "the one entry point that runs where no policy
+  could be read" (Sections 6.1, 8.6), together with any run refused before validation. It is not
+  scoped to `load_policy`: every other entry reads and validates the document in order to run it, so
+  the pin names a surface the invocation had already established, and a consumer wanting continuity
+  invokes nothing it did not otherwise need.
 - `message` is human-readable prose. Nothing parses it: every fact a consumer branches on has a field
   or a token of its own, so a consumer reading `message` for structure reads a surface no engine holds
   stable, and an engine putting structure there is spending a field that has no schema on one that
@@ -2269,12 +2395,14 @@ are gated.
 
 `git_access` is scoped by that same rule. For an entry that can reach a remote — `provision`,
 `integrate`, `push`, `pull`, and a front-end sequence that dispatches one — it is REQUIRED and its
-absence is refused here; an entry outside the set that reaches such an operation through a `run_op`
-edge reports that operation's own `failed` (Section 4.3), which is the disposition this section
-already gives an identity the precondition does not cover. Neither access parameter is judged for
-shape, because the engine interprets neither (Section 8.1): a parameter a backend cannot use is that
-backend's first-use `failed` rather than a precondition this registry names, exactly as a coordinate
-it cannot use is.
+absence is refused here; an entry outside the set that reaches `integrate`, `push` or `pull` through
+a `run_op` edge reports that operation's own `failed` (Section 4.3), which is the disposition this
+section already gives an identity the precondition does not cover. Those three are the whole of what
+an edge can reach here: `provision` runs outside the action-policy machine, so a policy naming it is
+refused at validation (Sections 4.1, 6.11) rather than reaching a dispatch. Neither access
+parameter is judged for shape, because the engine interprets neither (Section 8.1): a parameter a
+backend cannot use is that backend's first-use `failed` rather than a precondition this registry
+names, exactly as a coordinate it cannot use is.
 
 Under `policy_source = "policy_branch"` the base is scoped by the same rule as `git_access`. For an
 entry that needs one — `integrate`, `create_pr`, and a front-end sequence that dispatches one — a
@@ -2300,9 +2428,15 @@ same shape as the commit identity, whose *malformedness* is judged whatever the 
 
 `resume_unusable` is judged the same way: wherever a `resume` was supplied, whatever the entry, and
 from the invocation's arguments together with what the engine holds independently of them — the
-policy it validated and its own major version (Section 8.5). It is a precondition rather than a
-configuration error because the artifact at fault is the invocation: the policy is well formed, and
-what is wrong is a value the caller carried forward past the point it described anything. An absent
+policy it validated and its own major version (Section 8.5). The fourth condition is judged from
+the arguments alone, the entry point being one of them, which is what makes this reason decidable
+at the two entry points that validate no policy for the first condition to compare against:
+Section 6.1 calls `provision` "the one entry point that runs where no policy could be read", and
+neither it nor `load_policy` runs a policy or issues a token, so a `resume` supplied to either is
+refused on the entry point alone (Sections 4.1, 8.1).
+It is a precondition rather than a configuration error because the artifact at fault is the
+invocation: the policy is well formed, and what is wrong is a value the caller carried forward
+past the point it described anything. An absent
 `resume` is no failure and reaches no row here, an invocation supplying none beginning at its entry
 point as every invocation did before the argument existed.
 
@@ -2314,6 +2448,19 @@ wait nothing authorized to read twice, and no entry point makes that combination
 (Section 8.1). It is not one of the rows naming a missing argument below: nothing here is required
 and absent, and an invocation supplying no await parameter at all is refused by nothing, making the
 single read Section 4.1 gives it.
+
+`policy_pin_unmatched` is judged wherever a `policy_pin` was supplied, whatever the entry, from the
+surface this invocation validated against the handle the caller carried forward. It carries a reason
+of its own rather than `resume_unusable` because the repairs differ, which is Section 6.11's
+separation rule read on this side: a `resume_unusable` says re-invoke from the entry point, and this
+says re-read the policy and decide whether this is still one unit of work. An absent `policy_pin` is
+no failure and reaches no row here, and a resumed invocation is not required to supply one, its
+token carrying the same judgement (Section 8.1). Its input is the surface this invocation
+validated, as `resume_unusable`'s policy condition is — and the absence of one is as determinate
+as a mismatch, which is what makes the row decidable at `provision`: that entry validates no
+surface (Sections 6.1, 6.11), so a pin supplied to it names one this invocation did not
+establish, and every such invocation is refused. A consumer holds a pin from an invocation that read
+a policy, and `provision` precedes every invocation in a unit of work that did.
 
 `provision` needs no base under either mode, and the list below is exhaustive for it. It is the one
 entry point that runs where no policy could be read, being the operation that obtains the repository
@@ -2327,13 +2474,13 @@ reads a checkout this operation exists to produce — so `no_current_branch`, `w
 `identity_invalid` and `checkout_unreadable` are unreachable for it, and a `provision` into a
 location holding no repository is refused by none of them. What remains is the set judged from the
 arguments alone: `arguments_unreadable`, `local_vcs_missing`, `git_access_missing` and
-`store_location_missing`, together with the forge pair where a forge is configured, and the three
+`store_location_missing`, together with the forge pair where a forge is configured, and the four
 judged wherever their argument is supplied whatever the entry — `base_branch_not_permitted`,
-`resume_unusable` and `await_bound_missing`. Those three reach `provision` for the reason they reach
-every entry: what they judge is a value the invocation named, and the scoping rule that exempts
-`provision` from needing a base does not license it to name one outside the permitted set. This is
-the Section 6.11 exemption's counterpart on the precondition side and rests on the same sentence:
-the engine cannot read a repository it has not yet obtained.
+`resume_unusable`, `policy_pin_unmatched` and `await_bound_missing`. Those four reach `provision`
+for the reason they reach every entry: what they judge is a value the invocation named, and the
+scoping rule that exempts `provision` from needing a base does not license it to name one outside
+the permitted set. This is the Section 6.11 exemption's counterpart on the precondition side and
+rests on the same sentence: the engine cannot read a repository it has not yet obtained.
 
 A precondition the engine cannot establish is not an operation result. No operation ran, so the
 Section 4.3 registry does not apply, no proto class is assigned, and there is no `<op>:<reason>` for
@@ -2358,7 +2505,8 @@ run in which the policy did not run.
 | The derived work branch name is not a legal branch name for the VCS backend | `work_branch_invalid` |
 | The caller-supplied commit identity is absent where the entry requires one, or is malformed as the VCS backend judges it whatever the entry (Section 10.1) | `identity_invalid` |
 | A VCS backend capability consulted before the first dispatch could not answer — the checkout could not be read (Sections 3.3, 9.1) | `checkout_unreadable` |
-| A supplied `resume` the engine cannot establish as its own and current — issued under a different policy, against a different repository, or by a different major version (Sections 5.5, 8.1) | `resume_unusable` |
+| A supplied `resume` the engine cannot establish as its own and current — issued under a different policy, against a different repository, by a different major version, or by an entry point other than the one this invocation names (Sections 5.5, 8.1) | `resume_unusable` |
+| A supplied `policy_pin` the engine cannot establish as naming the policy surface it validated (Sections 4.1, 8.1) | `policy_pin_unmatched` |
 | An await parameter that only ends a wait was supplied with neither `await_bound_ms` nor `await_max_reads` (Section 8.1) | `await_bound_missing` |
 
 Precondition reasons carry no proto class, for the same reason configuration reasons do not
@@ -3368,9 +3516,16 @@ A conforming engine SHOULD include tests covering:
   entry point, so a resolved `commit:blocked` re-runs the gate rather than committing past it; the
   re-entered position reads the working tree and the pull-request head again rather than reusing what
   the token was issued beside; a resolver that resolves every time reaches `flow_exhausted` **across
-  invocations** and not only within one, the bound being over the flow; and a token issued under a
-  different policy is refused with `resume_unusable` before the policy runs (Sections 5.5, 5.6, 8.1,
-  8.2, 8.6).
+  invocations** and not only within one, the bound being over the flow; a token the engine cannot
+  establish as its own and current is refused with `resume_unusable` before the policy runs on any
+  of the four conditions — a different policy, a different repository, a different major version, or
+  an entry point other than the one the resuming invocation names — so a `ship` token supplied to a
+  `land` is refused, and a token supplied to an entry that issues none, `provision` or
+  `load_policy`, is refused on the entry point alone and with no policy consulted; and a resumed
+  invocation does not run the flow ahead of the point it re-enters, so a `land` resuming into its
+  merge loop consults no `await_first` whether or not the invocation names one, while a resumed
+  `ship` consults `message` at every turn of the commit loop it re-enters (Sections 5.5, 5.6, 7.2,
+  8.1, 8.2, 8.6, 12.2, 12.3).
 - Consumer capability declarations: a `set_state` edge against a consumer whose `effectable_actions`
   omits `set_state` is refused with `set_state_unbound` before any operation runs, while a
   `create_task` edge against the same consumer validates, emits, and is reported in
@@ -3430,14 +3585,28 @@ A conforming engine SHOULD include tests covering:
   not at all (Sections 8.1, 8.6); a `capability_unsupported` turning on the selected VCS backend's
   descriptor is still reported at validation for a `provision`, the selection being an input the
   consumer supplied rather than one read from the repository (Sections 6.11, 9.3).
-- Policy loading and unusability: the policy is obtained once per unit of work through
-  `load_policy`, and a change to the policy source after that does not take effect until the next
-  unit of work; each of the four unusable conditions — source unreadable, file absent, unparseable,
-  invalid — refuses with `usage_or_config` and its own reason, so a consumer branching on the status
-  handles all four alike while the reason distinguishes the repair; `policy_source_unreadable`
-  covers an absent branch, an unreachable remote and a refused credential without distinguishing
-  them; under `policy_source = "target_branch"` a `policy_branch` equal to the target is not an
-  error and `policy_branch` is not required (Sections 6.1, 6.11, 8.1).
+- Policy loading and unusability: the surface a unit of work executes is fixed when the unit of work
+  begins — every invocation reads and validates the document itself, and one continuing a unit of
+  work whose surface has since changed is refused with `policy_pin_unmatched` before the policy runs
+  rather than run under either document; a `ship`, an edit to the policy source, then a `land`
+  supplying the `ship`'s pin is that case, and the pin the `ship` returned is what makes it visible,
+  no token having been issued; an invocation supplying no pin makes no continuation claim and runs
+  the surface it read; each of the four unusable conditions — source unreadable, file absent,
+  unparseable, invalid — refuses with `usage_or_config` and its own reason, so a consumer branching
+  on the status handles all four alike while the reason distinguishes the repair;
+  `policy_source_unreadable` covers an absent branch, an unreachable remote and a refused
+  credential without distinguishing them; under `policy_source = "target_branch"` a `policy_branch`
+  equal to the target is not an error and `policy_branch` is not required (Sections 6.1, 6.11, 8.1,
+  8.2, 8.6).
+- The bootstrap pair: a `[policy]` edge whose `run_op` names `load_policy` and one whose `run_op`
+  names `provision` are each refused with `operation_not_dispatchable` before anything runs, while
+  the same edge naming `integrate` validates; an edge keyed `on = "load_policy:#error"` and one
+  keyed `on = "provision:ok"` are each refused with `unknown_trigger`, the trigger side taking no
+  reason of its own; `load_policy` invoked as an entry point returns the merged surface and a
+  `policy_pin`; a pin returned by an entry other than `load_policy` — a `ship` — is accepted by a
+  later invocation, so a consumer obtains one without invoking an entry it did not need; and a
+  `provision` returns none, being the one entry point that validates no surface (Sections 4.1, 5.1,
+  6.1, 6.11, 8.1, 8.2).
 - The policy branch: a `policy_branch` naming the same branch as the resolved base is refused with
   `policy_branch_is_target` and runs no operation, in particular no `commit` and no `push`; an
   invocation supplying no `policy_branch` yields `policy_branch_missing`, and yields it in
@@ -3698,8 +3867,22 @@ A conforming engine SHOULD include tests covering:
   the three `*_unbound` reasons judged from them before the policy runs.
 - A resume carried across the invocation boundary: an opaque token returned for a resolvable need and
   withheld for a hold, supplied back to re-enter the point that raised the need, carrying the spent
-  flow-bound count and nothing a lifecycle position established, and refused where the engine cannot
-  establish it as its own and current.
+  flow-bound count and nothing a lifecycle position established, and established against four
+  conditions — the policy, the repository, the major version and the entry point that issued it —
+  the last of which an engine judges from the token and the invocation alone, and which is therefore
+  the one available where no policy was validated. A resumed invocation runs none of the flow ahead
+  of the point it re-enters, so an argument the flow reads only ahead of it is not consulted and no
+  class of arguments has to be recognized to know that.
+- The two operations that run outside the action-policy machine, marked by the property rather than
+  by name: no `run_op` edge naming either, no trigger an `on` may name, both reached as entry points
+  instead, and the reason registry scoped to what it covers — so an operation whose every outcome is
+  a configuration error sits outside the universal reasons rather than standing as a counterexample
+  to them.
+- The policy-surface pin carried across the invocation boundary: an opaque handle returned by every
+  invocation that validated a surface and by no other, supplied back to claim that a later
+  invocation continues one unit of work, and refused where the surface this invocation validated is
+  not the one the pin names — the surface being read and validated on every invocation rather than
+  held by the engine or handed back by the caller.
 - The forge budget snapshot on every forge-touching operation, reported on success as on failure,
   carrying each bucket under the forge's own name and in the forge's own unit, with no engine
   behavior conditioned on it.
@@ -3743,9 +3926,12 @@ The Statement MUST record:
   discovery precedence, the backend's default remote where the consumer supplies none, the
   entry-point argument encodings and how a front-end derives the forge repository coordinate where
   it does, the default `network_bound_ms` and any per-capability values the engine applies
-  (Sections 8.1, 9), the form of the `resume_token` and how the engine establishes that one it is
-  handed is its own and current (Sections 8.1, 8.2, 8.6), the `detail` field of an `unanswered_gates`
-  entry (Section 8.2), and the escalation `detail` field (Section 8.4).
+  (Sections 8.1, 9), the form of the `resume_token` — what it encodes, whether it is signed, and the
+  mechanism by which the four conditions Section 8.1 fixes are judged, those conditions themselves
+  being specified rather than declared — the form of the `policy_pin` and how the engine establishes
+  that one it is handed names the surface it validated (Sections 8.1, 8.2, 8.6), the `detail`
+  field of an `unanswered_gates` entry (Section 8.2), and the escalation `detail` field
+  (Section 8.4).
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class and,
   where that class is `needs_caller`, its default `need` (Section 4.3), a configuration reason
   (Section 6.11), or a precondition reason (Section 8.6).

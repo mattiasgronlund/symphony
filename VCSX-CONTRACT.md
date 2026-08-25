@@ -224,15 +224,22 @@ front-end. A need naming a **hold** rather than a request carries no token and i
 
 `run_op` (Section 5.2) runs an engine operation. The engine's plugin layer realizes each operation
 against the selected backends — the VCS backend, and a code host such as GitHub or Forgejo; the
-operation set and its result classing are host-neutral. The named operations are:
+operation set and its result classing are host-neutral.
+
+Two of the operations run **outside the action-policy machine** — `load_policy` and `provision` —
+and a `run_op` edge may name neither. The edges that would route either are in the document the pair
+exists to obtain, so a policy naming one is refused before it runs, and neither raises a trigger an
+`on` may name for the same reason. A consumer reaches both as entry points, which is how it reaches
+any operation here. The named operations are:
 
 - `load_policy` — obtain the merged host-side policy surface once for a unit of work, from the
-  policy source the consumer names. The consumer holds the result and supplies it to subsequent
-  invocations, so no other operation reads the repository's configuration. Like `provision` it has
-  no lifecycle position and raises no trigger, the edges that would gate it being in the document it
-  obtains. Four conditions leave it without a usable policy — the source unreadable, the file
-  absent, unparseable, or invalid — and all four are configuration errors differing in reason
-  rather than in disposition.
+  policy source the consumer names. The consumer holds the surface for inspection and an opaque pin
+  naming it; every invocation reads and validates the document itself, and one supplying the pin is
+  refused where what it read is not the surface the unit of work began under. Like `provision` it
+  has no lifecycle position and raises no trigger, the edges that would gate it being in the
+  document it obtains. Four conditions leave it without a usable policy — the source unreadable,
+  the file absent, unparseable, or invalid — and all four are configuration errors differing in
+  reason rather than in disposition.
 - `provision` — ensure the repository is present and current: create the store where absent, refresh
   it where present, and, where the invocation names a place for one, derive a working tree from it.
   The store and the tree are named by the consumer, as a store location and an OPTIONAL tree
