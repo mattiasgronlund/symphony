@@ -154,4 +154,37 @@ touched.
 
 ## Status
 
-Not started.
+Applied to `VCSX-SPEC.md` (Sections 8.1, 8.6, 13.1, 13.2, 13.3),
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (Section 3), `conformance/vcsx/vocabulary.json`,
+`conformance/vcsx/README.md`, the new `conformance/vcsx/vectors/resume-precondition.json`, and
+`scripts/validate_spec_consistency.py` — in one editing pass with decision 0141, applied after it.
+
+Step 3's sentence sits in Section 8.1 beside the `resume` bullet's "rather than beginning at its
+entry point"; Section 5.5 was left alone, the rule reading there as a property of an argument that
+section does not otherwise discuss.
+
+Two things the plan did not name were carried with it, both forced by step 9's requirement that the
+group be closed and complete against Section 8.1:
+
+- **`forge_parameters` was prose and is now a bullet.** It was the one argument Section 8.1 named
+  outside the section's own field-documentation pattern, so a membership check reading that
+  pattern would report it missing while the section did name it. Nothing about the argument
+  changed.
+- **`policy_source` and `await_first` join the consumer-configuration enumeration.** That sentence
+  says which values an engine MAY read from the consumer configuration and excepts four; every
+  argument the section names has to sit on one side of it, or the group carries a null where the
+  specification should carry an answer. `policy_source` was absent from both sides before this
+  decision — an omission rather than a decision, the exception's stated reason ("a value a previous
+  invocation returned, which a configured copy would make stale by construction") not touching it —
+  and `await_first` is new here. The sentence now states that the excepted set is closed by that
+  shared reason rather than by enumeration, so a later argument lands on a side without a fifth
+  edit.
+
+The group carries `null` where Section 8.1 genuinely states nothing rather than guessing:
+`git_credential`'s optionality and requiredness, which the section marks neither way and no
+precondition names. Four things Section 8.1 names and fixes no token for — the forge repository
+coordinate, the identity the work branch is derived from, the commit identity, and the execution
+context — are outside the group, recorded in its note and in the check's own stated limits, a
+registry being unable to publish a token the specification does not spell.
+
+Issue #104.

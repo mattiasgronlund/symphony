@@ -96,15 +96,19 @@ The registry is a faithful view, not a byte-for-byte transcription. Three places
 
 - **`reasons`** is keyed one entry per `(operation, reason)`. Section 4.3's combined rows expand: the
   `status` / `diff` row to `status:ok` and `diff:ok`, the four universal rows to one entry per
-  operation they cover — `failed` and `unsupported` for every operation, `blocked` and
-  `hook_unanswered` for every gated one, each marked `universal: true` — and the two `(any forge)`
-  rows to one entry per operation whose forge call the condition prevented (`push`, `create_pr`,
-  `merge`, `await_checks`), each marked `forge_universal: true`. So 44 table rows yield 75
-  entries. Section 4.3's `Default need` column expands with them: `blocked`'s one row becomes four
-  entries carrying the same need, so 19 rows with a need yield 28 entries with one. The two markers
-  are separate fields rather than one scope enum, because they answer different questions — whether
-  a reason is defined for every operation, and whether it is defined for the ones that reach a
-  forge — and a consumer generating a per-operation enum reads both.
+  operation they cover — `failed` and `unsupported` for every operation the registry covers,
+  `blocked` and `hook_unanswered` for every gated one, each marked `universal: true` — and the two
+  `(any forge)` rows to one entry per operation whose forge call the condition prevented (`push`,
+  `create_pr`, `merge`, `await_checks`), each marked `forge_universal: true`. So 44 table rows
+  yield 75 entries. Section 4.3's `Default need` column expands with them: `blocked`'s one row
+  becomes four entries carrying the same need, so 19 rows with a need yield 28 entries with one.
+  The two markers are separate fields rather than one scope enum, because they answer different
+  questions — whether a reason is defined for every operation the registry covers, and whether it
+  is defined for the ones that reach a forge — and a consumer generating a per-operation enum
+  reads both. What the
+  registry covers is Section 4.3's own invariant: an operation whose every outcome the specification
+  reports as a configuration error carries no reason there, which is `load_policy` and is why
+  `reasons` has no entry for it. `provision` is covered.
 - **`operations`** carries `lifecycle_position: null` for every operation Section 4.1 gives no
   position, rather than omitting the field. The null is what a generator reads to apply Section
   4.3's invariant from the other side: an operation with no `before:<op>` position carries neither
@@ -230,10 +234,12 @@ Two interpretation notes apply:
 | `vectors/policy-validation.json` | `validate_policy` | Sections 4.1, 5.4, 5.6, 6.1, 6.4, 6.6, 6.7, 6.11, 8.5, 10.2 |
 | `vectors/identity-precondition.json` | `requires_commit_identity` | Sections 8.1, 8.6, 12.2, 12.3 |
 | `vectors/base-precondition.json` | `requires_base_branch` | Sections 6.4, 8.1, 8.6, 12.3 |
+| `vectors/policy-pin-precondition.json` | `establish_policy_pin` | Sections 4.1, 6.1, 8.1, 8.2, 8.6 |
+| `vectors/resume-precondition.json` | `establish_resume` | Sections 5.5, 8.1, 8.6, 12.2, 12.3 |
 | `vectors/compose-envelope.json` | `compose_envelope` | Sections 4.3, 5.2, 5.4, 8.2, 8.4 |
 | `vectors/front-end-sequence.json` | `front_end_sequence` | Sections 5.2, 5.4, 5.6, 7.1, 7.2, 8.2, 12.1, 12.2, 12.3 |
 
-126 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
+147 vectors. All are pure over their inputs: no repository, network, forge, subprocess, or
 filesystem. (The slice was authored at 49 and grew by four as decisions 0054–0056 resolved its
 findings, each turning an unassertable behavior into an asserted one, by three more as decision
 0057 added the universal reasons and redefined `merge:blocked`, by four more as decision 0066 gave
@@ -260,7 +266,12 @@ removed the five signal vectors and added `unknown_trigger_token_is_refused` in 
 removed the five that exercised the from-context. Thirteen more arrived with decisions 0143 and
 0152, which fixed where a substituted result lands in a front-end sequence and what such a sequence
 must reach; that file is per *step* rather than per invocation, so it stays pure over its inputs
-like the rest.)
+like the rest. Twenty-one more arrived with decisions 0141 and 0142: four in
+`policy-validation.json` for the two operations that run outside the action-policy machine, and two
+new files for the preconditions those decisions added — the policy-surface pin, and the resume
+token's binding to the entry point that issued it. Both new files model an opaque engine-issued
+value as a label, which is what a pure file can honestly assert about a value this specification
+fixes no encoding for; each says so in its own notes.)
 
 ### Fault-injection vectors (schema only)
 
@@ -360,7 +371,11 @@ Conformance-relevant but not deterministic from inputs alone, so they need fixtu
   (`identity_missing`, Section 4.3) needs a backend and stays here. `base-precondition.json` covers
   the same half for the base, which the policy source scopes rather than the entry point alone:
   under `target_branch` the base is what locates the policy, so every entry but `provision` requires
-  one and requires it before validation (Sections 6.4, 8.6).
+  one and requires it before validation (Sections 6.4, 8.6). `policy-pin-precondition.json` and
+  `resume-precondition.json` cover the two judged wherever their argument is supplied whatever the
+  entry, which is a comparison rather than a requirement: each models the engine-issued value it
+  compares as a label, because both are opaque and this specification fixes no encoding for either
+  (Sections 8.1, 8.6).
 - **Base-ref resolution and the acquire/use split** (Sections 6.4, 9.1) — which copy of the base a
   checkout holds, whether it holds one at all, and whether an acquisition failed are properties of a
   real checkout with a real remote. That covers the multi-remote read, `base_unavailable` from a failed

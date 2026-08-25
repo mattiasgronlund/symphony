@@ -526,6 +526,58 @@
         "effectable_actions": []
       },
       "expect": { "error": "malformed_policy" }
+    },
+    {
+      "id": "run_op_naming_load_policy_is_not_dispatchable",
+      "description": "`load_policy` runs outside the action-policy machine (Section 4.1): the edges that would dispatch it are in the document it exists to obtain. Refused with its own reason rather than `unknown_operation`, which names an operation the engine does not define — this one it does (Section 6.11).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "edges": [{ "on": "push:non_fast_forward", "do": "run_op", "op": "load_policy" }]
+        },
+        "engine_version": "1.3",
+        "effectable_actions": []
+      },
+      "expect": { "error": "operation_not_dispatchable" }
+    },
+    {
+      "id": "run_op_naming_provision_is_not_dispatchable",
+      "description": "The other member of the pair, refused on the same property rather than on its name (Sections 4.1, 6.11). It carries reasons and a proto class, so the refusal cannot be read off the reason registry.",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "edges": [{ "on": "push:non_fast_forward", "do": "run_op", "op": "provision" }]
+        },
+        "engine_version": "1.3",
+        "effectable_actions": []
+      },
+      "expect": { "error": "operation_not_dispatchable" }
+    },
+    {
+      "id": "run_op_naming_a_dispatchable_operation_is_valid",
+      "description": "The boundary: the same edge naming an operation inside the machine validates, so the refusal above turns on the property and not on `run_op` (Sections 4.1, 6.5).",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "edges": [{ "on": "push:non_fast_forward", "do": "run_op", "op": "integrate" }]
+        },
+        "engine_version": "1.3",
+        "effectable_actions": []
+      },
+      "expect": { "valid": true }
+    },
+    {
+      "id": "trigger_naming_load_policy_is_an_unknown_trigger",
+      "description": "An operation that runs outside the machine raises no `<op>:<reason>` trigger, so an `on` naming one is unrecognized (Sections 4.1, 5.1). The trigger side takes no reason of its own; `provision` behaves the same way and did before this condition had a name.",
+      "given": {
+        "policy": {
+          "base": { "branch": "main" },
+          "edges": [{ "on": "load_policy:#error", "do": "escalate" }]
+        },
+        "engine_version": "1.3",
+        "effectable_actions": []
+      },
+      "expect": { "error": "unknown_trigger" }
     }
   ]
 }

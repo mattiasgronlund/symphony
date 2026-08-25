@@ -206,4 +206,35 @@ holding a value opaque. Section 9.1 moves for no reason this decision has.
 
 ## Status
 
-Not started.
+Applied to `VCSX-SPEC.md` (Sections 4.1, 4.2, 4.3, 5.1, 6.11, 8.1, 8.2, 8.6, 13.1, 13.2, 13.3),
+`VCSX-CONTRACT.md` (Section 6), `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (Sections 2, 3),
+`conformance/vcsx/vocabulary.json`, `conformance/vcsx/README.md`,
+`conformance/vcsx/vectors/policy-validation.json`, `conformance/vcsx/vectors/match-edge.json`, the
+new `conformance/vcsx/vectors/policy-pin-precondition.json`, and
+`scripts/validate_spec_consistency.py` — in one editing pass with decision 0142, applied first as
+that plan's Ordering requires. The pin is `policy_pin`, an argument and an `outputs` key of the same
+name; its precondition reason is `policy_pin_unmatched`.
+
+Three things the plan did not name were carried with it:
+
+- **Step 5 reaches Section 4.2 as well.** "Every operation completes with a typed result of the
+  form `<op>:<reason>`" is the same universal claim, false for `load_policy` for the same reason,
+  two paragraphs above one of the two sentences the plan does name. Scoping those two and leaving
+  it would have left the repair contradicted inside its own chapter. The scope is written as the
+  invariant step 5 asks for — an operation whose every outcome this specification reports as a
+  configuration error carries no reason in Section 4.3 — which reaches `load_policy` and leaves
+  `provision` covered, since `provision` has three class-bearing reasons and only its *routing*
+  is exceptional.
+- **A supplied pin reaches `provision` and is always refused there.** Step 9 states the reason over
+  the surface the engine validated, and `provision` validates none, so the row is decidable at that
+  entry rather than exempt from it — the argument decision 0142 makes for `resume_unusable` one row
+  up, reached here from the same place. `provision`'s exhaustive precondition list is now four.
+- **Step 12 needed check 6's second direction.** The check compared the section against the registry
+  and not the registry against the section, so the defect this decision found — a group publishing
+  thirteen entries while citing a section that named ten — would still not have been reported with
+  `entry_points` in `CLOSED_GROUPS`. The check now runs both ways over every closed group, and a
+  `CLOSED_GROUPS` entry gained an OPTIONAL region pattern so a group can be read from one
+  enumeration inside a section that spells hundreds of other tokens. Reverting step 1 now produces
+  an error, which is step 12's own done-condition and was verified by doing it.
+
+Issue #101.

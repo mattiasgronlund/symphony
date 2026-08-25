@@ -1,0 +1,63 @@
+{
+  "function": "establish_policy_pin",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 8.6 \"Invocation Preconditions\"",
+    "VCSX-SPEC.md Section 8.1 \"Entry Points and Arguments\"",
+    "VCSX-SPEC.md Section 8.2 \"Result Envelope\"",
+    "VCSX-SPEC.md Section 4.1 \"Operation Set\"",
+    "VCSX-SPEC.md Section 6.1 \"File Discovery and `vcsx.toml` Merge\""
+  ],
+  "description": "Whether a supplied `policy_pin` is established against the policy surface this invocation validated, whose failure refuses the run with `policy_pin_unmatched` before the policy runs.",
+  "given": "an entry point, the `policy_pin` the invocation supplied, and the pin the engine establishes for the surface this invocation validated — null where the entry validated none",
+  "expect": "whether the precondition is established, and the reason a refusal carries",
+  "notes": [
+    "A pin is an opaque handle the issuing engine establishes (Section 8.1), so no vector can carry a value. `supplied_policy_pin` and `validated_surface_pin` carry labels standing for handles, and a vector asserts the comparison the engine makes rather than an encoding this specification does not fix. Two labels are equal exactly where the engine would establish the supplied pin against the surface it validated.",
+    "Judged wherever a pin was supplied, whatever the entry (Section 8.6), so the entry point is an input only for the one thing it decides: whether a surface was validated at all. `validated_surface_pin` is null exactly at `provision`, the one entry point that runs where no policy could be read (Section 6.1), and every pin supplied there names a surface this invocation did not establish.",
+    "The input is the surface this invocation validated, which is what `validated_surface_pin` carries. Whether validation succeeded is `validate_policy`'s question and is covered by `policy-validation.json`; a run refused there returns its own reason and reaches no vector here.",
+    "A resumed invocation is not required to supply a pin, its token carrying the same judgement (Section 8.1). Whether a `resume` is established is `resume-precondition.json`'s question; the two are separate arguments with separate reasons, because the repairs differ."
+  ],
+  "vectors": [
+    {
+      "id": "no_pin_supplied_makes_no_continuation_claim",
+      "description": "The default. An invocation supplying none runs the surface it read (Section 8.1).",
+      "given": { "entry": "ship", "supplied_policy_pin": null, "validated_surface_pin": "surface_a" },
+      "expect": { "established": true }
+    },
+    {
+      "id": "matching_pin_is_established",
+      "description": "The surface this invocation validated is the one the pin names, so the unit of work continues under the document it began under.",
+      "given": { "entry": "land", "supplied_policy_pin": "surface_a", "validated_surface_pin": "surface_a" },
+      "expect": { "established": true }
+    },
+    {
+      "id": "pin_from_a_surface_that_has_since_changed_is_refused",
+      "description": "The unresumed continuation the pin exists for: a `ship`, an edit to the policy source, then a `land` supplying the `ship`'s pin. Refused rather than run under either document (Sections 8.1, 8.6).",
+      "given": { "entry": "land", "supplied_policy_pin": "surface_a", "validated_surface_pin": "surface_b" },
+      "expect": { "error": "policy_pin_unmatched" }
+    },
+    {
+      "id": "pin_supplied_to_a_bare_operation_entry_is_judged_the_same_way",
+      "description": "Judged wherever a pin was supplied, whatever the entry — the shape `base_branch_not_permitted` and `resume_unusable` already have (Section 8.6).",
+      "given": { "entry": "push", "supplied_policy_pin": "surface_a", "validated_surface_pin": "surface_b" },
+      "expect": { "error": "policy_pin_unmatched" }
+    },
+    {
+      "id": "pin_supplied_to_provision_is_refused",
+      "description": "`provision` validates no surface, so a pin supplied to it names one this invocation did not establish. A consumer holds a pin from an invocation that read a policy, and `provision` precedes every invocation in a unit of work that did (Sections 4.1, 6.1).",
+      "given": { "entry": "provision", "supplied_policy_pin": "surface_a", "validated_surface_pin": null },
+      "expect": { "error": "policy_pin_unmatched" }
+    },
+    {
+      "id": "provision_supplying_no_pin_is_established",
+      "description": "The ordinary `provision`: it validates no surface and claims no continuation, so nothing here refuses it (Sections 6.11, 8.6).",
+      "given": { "entry": "provision", "supplied_policy_pin": null, "validated_surface_pin": null },
+      "expect": { "established": true }
+    },
+    {
+      "id": "load_policy_entry_establishes_a_matching_pin",
+      "description": "`load_policy` is an entry point (Section 8.1) and validates a surface like any other entry that reads one, so it neither issues the pin alone nor is excepted from the check.",
+      "given": { "entry": "load_policy", "supplied_policy_pin": "surface_a", "validated_surface_pin": "surface_a" },
+      "expect": { "established": true }
+    }
+  ]
+}

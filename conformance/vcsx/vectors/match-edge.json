@@ -112,7 +112,7 @@
     },
     {
       "id": "undeclared_capability_is_error_on_a_read_only_operation",
-      "description": "The universal `unsupported` reason is class error and is defined for every operation, including the read-only ones (Sections 4.3, 9.3).",
+      "description": "The universal `unsupported` reason is class error and is defined for every operation the reason registry covers, including the read-only ones (Sections 4.3, 9.3).",
       "given": { "edges": [], "trigger": "diff:unsupported" },
       "expect": { "matched": null, "action": "fail" }
     },

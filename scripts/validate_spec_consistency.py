@@ -21,10 +21,12 @@ Checks:
   5. The await enumeration: every await parameter is named where VCSX-SPEC.md fixes the set and in
      the engine registry, and VCSX-SPEC.md and VCSX-CONTRACT.md state the same number of terminal
      conditions for `await_checks`.
-  6. The reverse of check 4, over the groups whose membership the prose closes: every token the
-     governing section defines occurs in the registry.
+  6. Both directions over the groups whose membership the prose closes: every token the governing
+     section enumerates occurs in the registry, and every token the group publishes is enumerated
+     there. The second direction is what check 4 cannot see — that check reads the whole corpus, so
+     a token the prose spells anywhere passes whether or not the section the group cites is where.
 
-Four limits are deliberate and stated here rather than left to be discovered:
+Five limits are deliberate and stated here rather than left to be discovered:
 
   * Check 2 matches per *section*, not per obligation. A section with three obligations and two
     rows is reported as a shortfall; a section with one obligation and one row that answers a
@@ -39,9 +41,13 @@ Four limits are deliberate and stated here rather than left to be discovered:
     repaired; it cannot catch a set that grows in both artifacts and leaves this constant behind,
     and it says nothing about what any parameter or condition *means*. A parameter added to
     VCSX-SPEC.md without being added here passes.
-  * Check 6 runs over a table of two groups rather than over every group, because closedness is a
+  * Check 6 runs over a table of four groups rather than over every group, because closedness is a
     property of the prose that no general rule reads off it: a group this table does not name is
-    unchecked in that direction, as every group was before decision 0134.
+    unchecked in both directions, as every group was before decision 0134.
+  * The `arguments` group is read from Section 8.1's argument bullets, which is that section's
+    enumeration of the arguments it names. It is not the whole of the section's argument surface:
+    the forge repository coordinate, the two identities and the execution context are named there
+    in prose and carry no token, so nothing here can check them.
 
 Run from the repository root. Exit 0 if no error, 1 otherwise; warnings are printed either way.
 """
@@ -76,13 +82,20 @@ OBLIGATION_EXEMPT_SECTIONS = {
 NAMESPACE_RULES = {"hooks": ("hooks.workspace.", "hooks.engine.")}
 
 # The groups whose membership the governing prose closes, and where check 6 reads that membership
-# from: the registry group, the document, the sections that fix it, and the pattern that spells a
-# token there. Section 4.1 lists the operations as column-0 bullets and both sections write the
-# lifecycle positions as `before:<op>` literals.
+# from: the registry group, the document, the sections that fix it, the pattern that spells a token
+# there, and an OPTIONAL region pattern narrowing the section body before the token pattern runs.
+# Section 4.1 lists the operations as column-0 bullets and both sections write the lifecycle
+# positions as `before:<op>` literals, so neither needs a region. Section 8.1 spells hundreds of
+# other tokens, so `entry_points` is read from its opening enumeration alone (decision 0141: that
+# group carried thirteen entries citing a section that named ten, and nothing compared them), and
+# `arguments` from that section's own argument bullets (decision 0142).
 CLOSED_GROUPS = {
     "conformance/vcsx/vocabulary.json": {
-        "operations": ("VCSX-SPEC.md", ("4.1",), r"^- `([a-z_]+)` —"),
-        "lifecycle_positions": ("VCSX-SPEC.md", ("4.1", "5.1"), r"`(before:[a-z_]+)`"),
+        "operations": ("VCSX-SPEC.md", ("4.1",), r"^- `([a-z_]+)` —", None),
+        "lifecycle_positions": ("VCSX-SPEC.md", ("4.1", "5.1"), r"`(before:[a-z_]+)`", None),
+        "entry_points": ("VCSX-SPEC.md", ("8.1",), r"`([a-z_]+)`",
+                         r"The entry points are[^\n]*:\n\n((?:(?:- |  )[^\n]*\n)+)"),
+        "arguments": ("VCSX-SPEC.md", ("8.1",), r"^- `([a-z_]+)`(?: \(OPTIONAL\))? — ", None),
     },
 }
 
@@ -397,7 +410,7 @@ def check_await_enumeration(texts):
 def check_registry_completeness(texts):
     for path, groups in sorted(CLOSED_GROUPS.items()):
         registry = json.loads(read(path))
-        for group, (doc, sections, pattern) in sorted(groups.items()):
+        for group, (doc, sections, pattern, region) in sorted(groups.items()):
             if group not in registry:
                 error(f"{path} publishes no `{group}` group, which {doc} closes")
                 continue
@@ -408,11 +421,21 @@ def check_registry_completeness(texts):
                 if body is None:
                     error(f"{doc} has no Section {number}, which fixes `{group}`")
                     continue
+                if region is not None:
+                    found = re.search(region, body, re.M)
+                    if found is None:
+                        error(f"{doc} Section {number} carries no enumeration for `{group}` in "
+                              f"the form this check reads")
+                        continue
+                    body = found.group(1)
                 fixed |= set(re.findall(pattern, body, re.M))
             where = " and ".join(f"Section {n}" for n in sections)
             for token in sorted(fixed - published):
                 error(f"{path}: `{group}` omits `{token}`, which {doc} defines in {where} — a "
                       f"generator reading the group gets a set that is short and says so nowhere")
+            for token in sorted(published - fixed):
+                error(f"{path}: `{group}` publishes `{token}`, which {doc} does not enumerate in "
+                      f"{where} — the group cites the prose it disagrees with as its source")
 
 
 # --------------------------------------------------------------------------- main
