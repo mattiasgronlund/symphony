@@ -391,6 +391,21 @@ guessed-at vector or entry:
   reach. Three vectors pin it: `iterate-metadata-map`, `iterate-issue-object`, and
   `iterate-metadata-map-non-ascii`, whose keys separate code-point order from a locale collation —
   measured, `en_US.UTF-8` and `sv_SE.UTF-8` both collate them in the other order.
+- **The record grew and the vector enumerating it did not — resolved (decision 0154).**
+  `iterate-issue-object` was authored under decision 0135 as a derived enumeration of Section 4.1.1,
+  its `Plan.md` requiring that "its `given.issue` carries every Section 4.1.1 field and no other".
+  Decision 0140 then added `assignees` and decision 0148 added `project` and `team`, and neither
+  re-derived the vector: the cross-cutting sync rules name Sections 6.4, 17 and 18 and the
+  Conformance Statement template, and nothing named the corpus. The vector was left expecting
+  thirteen keys where the record has sixteen, so a build following Section 12.2 failed it and a
+  build passing it withheld three fields from the template context — reported from `symphony-rs` as
+  issue #120, which could satisfy one or the other and not both. Both halves were stale, not only
+  the expectation: `given.issue` carried thirteen too, which is what made the vector's outcome
+  depend on whether a harness maps the input into its own record type or renders the decoded object
+  verbatim, the one vector in the corpus that can tell those apart. Both now carry the sixteen
+  fields, and `scripts/validate_spec_consistency.py` check 7 compares Section 4.1.1's field bullets
+  against the vector's supplied keys, its expected keys and their ascending order, so the next field
+  added to the record fails the check rather than the corpus.
 - **Section 17.3 requires four RECOMMENDED tracker categories by name (open).** Section 11.4
   declares its eleven error categories RECOMMENDED, but Section 17.3's `Core Conformance` checks
   name `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict` and
