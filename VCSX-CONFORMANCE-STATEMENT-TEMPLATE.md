@@ -177,14 +177,16 @@ A backend that does not declare the last column is refused at validation with
 (Sections 4.3, 6.11, 9.3) — the other half of Section 9.3's split, and determinable because the
 consumer's selection fixes whose descriptor is read.
 
-Section 9.1's required capabilities are a minimum for a backend, not a maximum: the operation set is
+Section 9.1's required capabilities are a minimum for a backend, not a maximum. The operation set is
 the specification's and this engine adds none to it (Sections 4.1, 8.5), so a capability beyond the
-list is a backend's own rather than an engine's. List each one a shipped VCS backend provides; leave
-empty where none does.
+list is not an engine-added operation's — but it may still be the engine's, because Section 9.1 is a
+minimum for the operations the specification defines rather than a complete account of what they
+need. List each capability beyond the list, what requires it, and which shipped backends provide it;
+leave empty where none does.
 
-| Capability beyond Section 9.1 | Provided by (backend) | Signature and result |
-|-------------------------------|-----------------------|----------------------|
-| `<...>` | `<...>` | `<...>` |
+| Capability beyond Section 9.1 | Required by | Provided by (backend) | Signature and result |
+|-------------------------------|-------------|-----------------------|----------------------|
+| `<...>` | `<...>` | `<...>` | `<...>` |
 
 ### 6.2 Forge Backends (Section 9.2)
 
