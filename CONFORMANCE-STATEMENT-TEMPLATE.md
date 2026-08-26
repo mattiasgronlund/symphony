@@ -105,6 +105,7 @@ obligation not listed here rather than omitting its resolution.
 | `engine_invocation_failures` — unusable-policy per-repository backoff schedule | 14.2 | `<schedule>` |
 | Additional failure categories defined by a shipped extension | 14.1 | `<token + recovery disposition for each, or none>` |
 | Durable-store degradation when no store is configured | 14.3 | `<decline enforcement / fall back to Ephemeral / …>` |
+| `Cached external signal` degradation when no store backs the field | 14.3 | `<what governs decisions until the first reading of a new process arrives>` |
 | Secret-redaction mechanism and substituted marker for captured subprocess text | 15.3 | `<known-value replacement + marker; any matching added above the floor>` |
 | How it is established that no route beyond the two Section 15.4 closes can write the policy branch | 15.4 | `<branch protection / repository permissions / a mirror the service alone writes>` |
 | How a host-side hook's unit is resolved from the policy branch | 15.4 | `<how the unit is addressed; what working directory it is given>` |
@@ -136,6 +137,12 @@ the implementation holds it. Classes: `Reconstructable`, `Ephemeral`, `Cached ex
 "Spec default" column is the assignment `SPEC.md` states; fill "As implemented" and note any
 divergence in Section 7.
 
+Two "Spec default" cells are dual-valued, because `SPEC.md` gives the field one class in Core and
+another under a named OPTIONAL extension. A dual-valued cell is not a claim that the implementation
+holds both: "As implemented" MUST name **which one of the two this implementation ships**, and a
+consumer or generator reading the row takes that cell — never the "Spec default" cell — as the
+field's class.
+
 Section 14.3 also requires the **reset consequence** of each `Ephemeral` field to be documented —
 what a restart costs, for example that retry backoff restarts from the first attempt. Fill the last
 column for every field whose implemented class is `Ephemeral`; leave it `n/a` for the others.
@@ -150,7 +157,7 @@ column for every field whose implemented class is `Ephemeral`; leave it `n/a` fo
 | `completed` | `Ephemeral` | `<...>` | `<...>` |
 | `agent_totals` | `Ephemeral` (`Durable` under a budgeting extension) | `<...>` | `<...>` |
 | `repository_backoff` | `Ephemeral` | `<...>` | `<...>` |
-| `provider_rate_limits` | `Cached external signal` | `<...>` | `<n/a>` |
+| `provider_rate_limits` | `Ephemeral` (`Cached external signal` under a provider-quota extension) | `<...>` | `<...>` |
 | `<additional state field — Core or extension>` | `<n/a>` | `<class>` | `<... / n/a>` |
 
 ## 6. Trust and Safety Posture
