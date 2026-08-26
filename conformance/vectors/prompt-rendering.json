@@ -48,13 +48,13 @@
     },
     {
       "id": "iterate-issue-object",
-      "description": "The issue object is itself a map a template may name whole (Section 12.2), so it iterates in ascending key order too. The expected keys are the fields Section 4.1.1 defines, and the vector rests on those being the normalized record's members: an implementation exposing a template field beyond Section 4.1.1 renders an entry this vector does not expect.",
+      "description": "The issue object is itself a map a template may name whole (Section 12.2), so it iterates in ascending key order too. The expected keys are the fields Section 4.1.1 defines, and the vector rests on those being the normalized record's members: an implementation exposing a template field beyond Section 4.1.1 renders an entry this vector does not expect. The two are held in agreement by scripts/validate_spec_consistency.py, which reads Section 4.1.1's field bullets and compares them against this vector's given and expected keys and against their order, so a field added to the record without being added here is an error rather than a divergence (decision 0154).",
       "given": {
         "template": "{% for kv in issue %}[{{ kv[0] }}]{% endfor %}",
-        "issue": { "id": "issue-1001", "identifier": "ENG-42", "title": "Fix the login bug", "description": "The login form rejects valid credentials.", "priority": 2, "state": "In Progress", "branch_name": null, "url": "https://tracker.example/ENG-42", "labels": ["bug"], "blocked_by": [], "created_at": "2026-01-02T03:04:05Z", "updated_at": "2026-01-02T03:04:05Z", "metadata": {} },
+        "issue": { "id": "issue-1001", "identifier": "ENG-42", "title": "Fix the login bug", "description": "The login form rejects valid credentials.", "priority": 2, "state": "In Progress", "branch_name": null, "url": "https://tracker.example/ENG-42", "labels": ["bug"], "assignees": ["alice"], "project": "web-platform", "team": "core", "blocked_by": [], "created_at": "2026-01-02T03:04:05Z", "updated_at": "2026-01-02T03:04:05Z", "metadata": {} },
         "attempt": null
       },
-      "expect": { "rendered": "[blocked_by][branch_name][created_at][description][id][identifier][labels][metadata][priority][state][title][updated_at][url]" }
+      "expect": { "rendered": "[assignees][blocked_by][branch_name][created_at][description][id][identifier][labels][metadata][priority][project][state][team][title][updated_at][url]" }
     },
     {
       "id": "iterate-metadata-map-non-ascii",

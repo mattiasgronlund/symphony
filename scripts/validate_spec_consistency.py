@@ -25,8 +25,12 @@ Checks:
      section enumerates occurs in the registry, and every token the group publishes is enumerated
      there. The second direction is what check 4 cannot see — that check reads the whole corpus, so
      a token the prose spells anywhere passes whether or not the section the group cites is where.
+  7. The corpus against the section it enumerates: a vector whose `expect` restates a set a
+     section fixes agrees with that section, with its own `given`, and with the order the section
+     states. Added by decision 0154, whose defect was Section 4.1.1 growing three fields while the
+     vector enumerating it kept thirteen.
 
-Five limits are deliberate and stated here rather than left to be discovered:
+Six limits are deliberate and stated here rather than left to be discovered:
 
   * Check 2 matches per *section*, not per obligation. A section with three obligations and two
     rows is reported as a shortfall; a section with one obligation and one row that answers a
@@ -44,6 +48,10 @@ Five limits are deliberate and stated here rather than left to be discovered:
   * Check 6 runs over a table of four groups rather than over every group, because closedness is a
     property of the prose that no general rule reads off it: a group this table does not name is
     unchecked in both directions, as every group was before decision 0134.
+  * Check 7 runs over a table of one vector, because the corpus holds one whose expectation is an
+    enumeration rather than a computed value. A vector the table does not name is unchecked, as
+    every vector was before decision 0154, and the table is where a second one is registered rather
+    than special-cased beside the first.
   * The `arguments` group is read from Section 8.1's argument bullets, which is that section's
     enumeration of the arguments it names. It is not the whole of the section's argument surface:
     the forge repository coordinate, the two identities and the execution context are named there
@@ -98,6 +106,18 @@ CLOSED_GROUPS = {
         "arguments": ("VCSX-SPEC.md", ("8.1",), r"^- `([a-z_]+)`(?: \(OPTIONAL\))? — ", None),
     },
 }
+
+# The behavior vectors whose `expect` enumerates a set a section fixes rather than computing a value
+# from the vector's inputs: the vector's file and id, the document and section the set is read from,
+# the pattern that spells a member there, the key under `given` holding the container, the key under
+# `expect` holding the rendering, and the pattern that spells a member in it. One row, because the
+# corpus holds one enumeration-shaped vector (decision 0154); every other file expects a computed
+# value, and `config-defaults.json` states that unlisted paths are unconstrained.
+VECTOR_ENUMERATIONS = {
+    ("conformance/vectors/prompt-rendering.json", "iterate-issue-object"): (
+        "SPEC.md", "4.1.1", r"^- `([a-z_]+)` \(", "issue", "rendered", r"\[([a-z_]+)\]"),
+}
+
 
 # VCSX-SPEC.md Section 8.1 fixes the await parameters and Section 4.1 the terminal conditions the
 # operation exits at; VCSX-CONTRACT.md Section 6 restates the count. Decision 0133 repaired the
@@ -438,6 +458,46 @@ def check_registry_completeness(texts):
                       f"{where} — the group cites the prose it disagrees with as its source")
 
 
+# --------------------------------------------------------------------------- check 7
+
+def check_vector_enumerations(texts):
+    for (path, vector_id), row in sorted(VECTOR_ENUMERATIONS.items()):
+        doc, number, member, given_key, expect_key, spelling = row
+        if not os.path.exists(path):
+            error(f"{path} not found, and `{vector_id}` is read from it")
+            continue
+        found = [v for v in json.loads(read(path)).get("vectors", []) if v.get("id") == vector_id]
+        if not found:
+            error(f"{path} carries no `{vector_id}` vector, which {doc} Section {number} governs")
+            continue
+        vector = found[0]
+        body = section_body(texts[doc], number)
+        if body is None:
+            error(f"{doc} has no Section {number}, which fixes what `{vector_id}` expects")
+            continue
+
+        fixed = set(re.findall(member, body, re.M))
+        supplied = set(vector.get("given", {}).get(given_key, {}))
+        rendered = re.findall(spelling, vector.get("expect", {}).get(expect_key, ""))
+
+        for name in sorted(fixed - supplied):
+            error(f"{path}: `{vector_id}` supplies no `{name}` in `given.{given_key}`, which {doc} "
+                  f"Section {number} defines — a harness that maps the input into its own record "
+                  f"type renders a member the vector does not supply")
+        for name in sorted(supplied - fixed):
+            error(f"{path}: `{vector_id}` supplies `{name}` in `given.{given_key}`, which {doc} "
+                  f"Section {number} does not define")
+        for name in sorted(supplied - set(rendered)):
+            error(f"{path}: `{vector_id}` expects no `{name}`, which its own `given.{given_key}` "
+                  f"supplies — the expectation is short and passes only a harness that drops it")
+        for name in sorted(set(rendered) - supplied):
+            error(f"{path}: `{vector_id}` expects `{name}`, which its own `given.{given_key}` does "
+                  f"not supply")
+        if rendered != sorted(rendered):
+            error(f"{path}: `{vector_id}` expects its members out of ascending code-point order, "
+                  f"which is the order the section it cites fixes")
+
+
 # --------------------------------------------------------------------------- main
 
 def main():
@@ -455,6 +515,7 @@ def main():
     check_registries(texts)
     check_await_enumeration(texts)
     check_registry_completeness(texts)
+    check_vector_enumerations(texts)
 
     for line in warnings:
         print(f"warning: {line}")

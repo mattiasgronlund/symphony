@@ -6004,3 +6004,56 @@ the two-element description **in its own words**, so it moves with the sections 
 drift class — and the format revision is shared with decision 0142, separable in substance and not
 in encoding: 0142 will plausibly land first, so both records now state the coupling rather than only
 whichever is applied second.
+
+## 0154 — The record grew three fields and the vector that enumerates it did not
+
+**State:** Accepted
+**Folder:** [decisions/0154-issue-record-drift/](decisions/0154-issue-record-drift/)
+
+Issue #120, filed by the `symphony-rs` build. Section 12.2 fixes the maps a template may name whole
+as "the `issue` object, whose members are the fields Section 4.1.1 defines, and `metadata`", Section
+4.1.1 defines sixteen fields, and `conformance/vectors/prompt-rendering.json`'s
+`iterate-issue-object` expects thirteen — the three absent being `assignees` (decision 0140),
+`project` and `team` (decision 0148), both landing after decision 0135 authored the vector. **No
+implementation satisfies both**: a build following Section 12.2 renders sixteen keys and fails the
+vector, a build passing the vector withholds three fields from the template context, and the
+reporter chose the latter and said why — turning a green vector red would make "red" mean both work
+owed and a vector believed wrong, and those have to stay distinguishable. **The corpus is what
+moves, and its own decision says so**: 0135's `Plan.md` requires that the vector's "`given.issue`
+carries every Section 4.1.1 field and no other", so this is a done-condition the artifact stopped
+meeting rather than a second rule to reconcile. **The half the issue does not ask for is `given`**,
+which carried thirteen too. `conformance/README.md`'s harness contract is one line — "Invoke the
+implementation's realization of `function` with `given`" — and a harness that maps the input into
+its own record type and one that renders the decoded object verbatim disagree on this vector and on
+no other, `iterate-issue-object` being the only one in the corpus that iterates the container rather
+than naming fields by path; repairing `expect` alone would fix one harness and break the other. Both
+halves now carry the sixteen fields, `branch_name` still null so a null-valued member stays pinned
+and the three new ones populated so a context carrying `project` only where routing consumed it is
+caught. **The subset reading is steelmanned and loses**: `project` and `team` entered as routing
+keys with no evident use in a prompt, but strict variable checking makes a hidden field a
+`template_render_error` and so a failed run attempt (Sections 5.5, 12.4) rather than a blank, and
+the subset would owe a membership rule, a dispatch-preflight check, and a reason a template may read
+adapter-owned `metadata` and not the name of the project the issue sits in — for no confidentiality
+gain over fields already rendered. **The larger half is that nothing was going to catch this.** Two
+decisions added three fields and neither re-derived the vector, because the cross-cutting sync rules
+name Sections 6.4, 17 and 18 and the Conformance Statement template and nothing names the corpus.
+`scripts/validate_spec_consistency.py` exists for that exact shape — "a specification sentence
+enumerates something, a second artifact restates that enumeration, the two disagree, and nothing
+notices because each artifact is complete against itself" — and missed it, its six checks reading
+registries, templates and prose and never `conformance/vectors/`. Check 7 adds the corpus as the
+third derived artifact, comparing three spellings of one set (the section's fields, the keys `given`
+supplies, the keys `expect` renders) plus the ascending code-point order Section 12.2 fixes, and it
+is table-driven in check 6's shape with **one row**: all twelve vector files were surveyed and one
+carries an enumeration-shaped expectation, every other expecting a computed value and
+`config-defaults.json` declaring unlisted paths unconstrained. A `CLAUDE.md` bullet in place of the
+check was rejected on measured grounds — decision 0128 records three consecutive decisions missing a
+Conformance Statement row that `CLAUDE.md` already demanded in writing — so the rule lives in the
+script's docstring instead. No `SPEC.md` change, no token added, renamed or removed, and no
+`Implementation-defined` or "MUST document" obligation, so no Conformance Statement row is owed.
+Reconsider on a second enumeration-shaped vector, which pays for the table's shape; on Section 4.1.1
+gaining a field an implementation must not put in a prompt, which reopens the subset question on a
+ground today's fields do not supply; or on a harness contract fixing whether `given` is mapped into
+an implementation's types or fed verbatim, which would make pinning `given` belt-and-braces rather
+than the thing that makes the vector well-defined. Relates to 0128, 0135, 0140 and 0148. Accepted
+and applied to `conformance/vectors/prompt-rendering.json`, `scripts/validate_spec_consistency.py`
+and `conformance/README.md`.
