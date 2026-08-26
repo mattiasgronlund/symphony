@@ -6057,3 +6057,69 @@ an implementation's types or fed verbatim, which would make pinning `given` belt
 than the thing that makes the vector well-defined. Relates to 0128, 0135, 0140 and 0148. Accepted
 and applied to `conformance/vectors/prompt-rendering.json`, `scripts/validate_spec_consistency.py`
 and `conformance/README.md`.
+
+## 0155 — The conditions that keep holding, and the repository nothing recorded
+
+**State:** Accepted
+**Folder:** [decisions/0155-standing-conditions/](decisions/0155-standing-conditions/)
+
+Issue #121, filed by the `symphony-rs` build against `4d610da`: reconciliation's
+stop-on-attribute-loss rule is stated in Section 11.2 — the **Linear adapter's** section — and
+nowhere Section 8.5 Part B can be read from. Investigation widened it three ways. **The rule already
+exists for two of the four attributes.** Section 5.3.1 requires an issue to satisfy
+`tracker.required_labels` and `tracker.assignee` "to dispatch or continue", the only two such
+clauses in the document and Core today, and Part B honours neither; routing never had one at all,
+decision 0148 having stopped at making a mid-run move *visible* to the refresh without saying what
+reconciliation does with it. **Three sites agree reconciliation is state-only**, and #121 reported
+one of the three: Part B, Section 16.3's pseudocode, and Section 17.3's row "Issue state refresh by
+ID returns minimal normalized issues", which actively licenses an adapter to return the least it
+can. **Nothing ties a run to a repository**: Section 16.4's entry literal has eighteen members and
+no repository, `repo_of(issue)` being computed twice there and stored nowhere, while Section 8.7
+keys workspace, object store and concurrency by `(repository, issue)` and states that "A dispatch
+grants an agent commit and pull-request authority in the repository it routes to" — so a mapping
+edit under Section 6.2's live reload leaves a run holding that authority in a repository the mapping
+no longer selects, and recomputing `repo_of` catches nothing, both sides evaluating the new mapping
+and agreeing with each other. **The class rather than the instance**: 0140 and 0148 each added an
+attribute, each extended Section 11.2, and neither touched Part B, because nothing tells a dispatch
+gate it owes a continue arm. **The rule.** Section 8.2's conditions over the issue record are
+*standing* — re-evaluated on every issue-state refresh for as long as the run is in flight — while
+its four orchestrator-state conditions are dispatch-time only and **false by construction** for a
+run already in flight, stated explicitly because an implementation that re-ran `should_dispatch`
+wholesale would stop every run it checked; the `Todo` blocker rule stays dispatch-time only rather
+than put an issue's dependency graph in every refresh, on every tick, for every running issue; and
+field presence is a well-formedness test on what the adapter returned, not a stop. Routing is
+standing too but stated in Section 8.7 over the **run**, an issue-side phrasing being circular at
+dispatch, where routing is what selects the repository. Each rule keeps one home and Part B
+*evaluates* them, the relationship it already has with `active_states` and `terminal_states`.
+**The disposition** — stop the worker, release the claim, arm no retry, leave the workspace — has
+its claim and retry halves forced by 0145, 0138 and 0144, and Section 8.5's "A site added later MUST
+state which side of that partition it is on." makes saying so an obligation rather than a courtesy.
+Cleanup is the open half, and Part B's existing split has **no stated rationale anywhere**: the
+decision supplies one, that cleanup means the work is finished while a standing-condition loss is
+reversible and may be an operator's own mapping typo, where deleting a workspace is an unrecoverable
+answer to a mistake about to be corrected. The cost is named rather than absorbed — Section 9.1 keys
+the workspace by `repo_key`, so a re-routed issue's workspace is a permanent orphan. **The state**:
+the running entry gains a `repository` recorded at dispatch, and Section 14.4's remote-mode run
+registry gains it too, or a reattached run has no left-hand side. `running` stays `Reconstructable`,
+and **no `runtime_state_fields` token and no Conformance Statement row are owed** — both
+enumerations are over Section 4.1.8's nine top-level fields and a member of a field's value is not a
+field — which is a judgement rather than a checker result, since an extension row citing `8.x`
+collapses to `8` and a green `scripts/validate_spec_consistency.py` answers a different question.
+**The stop is operator-visible**, naming which condition failed: the two branches beside it are
+self-explaining, and this one is not, the issue still being `In Progress` while the cause may be a
+third party's label edit or an operator's mapping change. **The adapter obligation**: Section 11.2
+gains a "Refresh completeness" block beside "Candidate enumeration" — the refresh returns the fields
+the standing conditions read, for every id it was given, and a silently partial result is
+non-conformant — and the Linear bullet loses its behavioural half and keeps the GraphQL specifics.
+`fetch_issue_states_by_ids` **keeps its name**, the rename declined not on cost, the behavior corpus
+not naming it at all, but on standing: renaming the adapter contract's surface is not settled in
+passing by a decision whose subject is a missing branch. Left open and named rather than closed
+quietly: genuine absence from the refresh, which the completeness MUST does not cover, and decision
+0140's match-field trigger, unfired because routing's predicate compares against the run's recorded
+repository rather than against a configured value — a different left-hand side. Reconsider on a
+workspace-orphan sweep landing elsewhere in the document, on a tracker adapter that cannot
+distinguish a missing field from an incomplete fetch, on genuine tracker-side deletion becoming a
+live failure mode, or on a decision already touching Sections 11.1, 16.3 or 16.6 that can fold the
+rename in. Relates to 0128, 0137, 0138, 0140, 0144, 0145, 0148. Accepted; the record is written and
+reviewed, and its application to `SPEC.md`, `conformance/vectors/standing-conditions.json` and
+`conformance/README.md` is owed as a separate pass.
