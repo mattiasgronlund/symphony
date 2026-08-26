@@ -158,7 +158,7 @@
 `python3 scripts/check_plan_anchors.py decisions/0153-resume-continues-the-flow/Plan.md --rev
 22b5194` reports reach findings at four sites. One is load-bearing and is now step 8 —
 `VCSX-CONTRACT.md:217`, where the contract restates the resume and stops at the re-entry exactly as
-`VCSX-SPEC.md` does. The other three are benign. Line numbers below are refreshed to `d78d7af`; the
+`VCSX-SPEC.md` does. The other three are benign. Line numbers below are refreshed to `b7912f6`; the
 assessments are the original ones and are unchanged.
 
 - `VCSX-SPEC.md:2440` (Section 8.6) carries "beginning at its entry", which is the precondition
@@ -169,8 +169,9 @@ assessments are the original ones and are unchanged.
 - `conformance/vcsx/vectors/identity-precondition.json:10` carries "entry point and the" in a
   `given`, which is decision 0142's territory rather than this one's.
 
-Re-run at `d78d7af`, after decisions 0140–0148 and 0152 landed, reports **three** findings. All
-three are artifacts decision 0142 wrote after this plan was drafted, and all three are now named:
+Re-run at `d78d7af`, after decisions 0140–0146, 0148 and 0152 landed, reported **three** findings.
+All three are artifacts decision 0142 wrote after this plan was drafted, and all three are now
+named:
 
 - `conformance/vcsx/vocabulary.json:352` (`arguments`) carries "and the flow bound" — in fact the
   whole of Section 8.1's `resume` bullet. This one is **load-bearing** rather than benign: step 5
@@ -185,6 +186,12 @@ Two silences in the re-run were checked rather than assumed. `conformance/vcsx/v
 names it. `conformance/vcsx/vectors/identity-precondition.json:10` still carries its fragment and
 still does not report, because the list above names it through the group `given` — silence there is
 this record working, not the site having gone away.
+
+Re-run again at `b7912f6`, after decisions 0147 and 0149 landed, reports **no** finding from 19
+quoted spans, and every address above resolves unchanged. That pair edited `SPEC.md`,
+`CONFORMANCE-STATEMENT-TEMPLATE.md`, `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` and
+`conformance/vocabulary.json`, none of which this plan addresses — each site was re-read at that
+revision rather than inferred from the file list.
 
 ## Anchor changes
 
