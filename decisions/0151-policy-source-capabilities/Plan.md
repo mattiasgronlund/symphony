@@ -126,19 +126,47 @@
 22b5194` reports reach findings at eight sites. Three are load-bearing and are now named in
 Cross-cutting sync — `SPEC.md` Sections 15.4, 18.1.2 and 19, which carry Symphony's parallel
 host-side-unit obligation that step 5 must not touch. The rest are benign and are recorded so a
-later reader does not re-investigate:
+later reader does not re-investigate. Line numbers below are refreshed to `b7912f6`; the site
+assessments are the original ones and are unchanged.
 
-- `conformance/vcsx/README.md:108` matches on the fragment "every operation Section 4.1", but its
+- `conformance/vcsx/README.md:112` matches on the fragment "every operation Section 4.1", but its
   sentence is about operations Section 4.1 gives **no lifecycle position**, not about realizability
   through the capability list. Step 4's sentence has no twin there.
-- `VCSX-SPEC.md:504` (Section 4.3) and `VCSX-SPEC.md:190` (Section 3.3) carry the
+- `VCSX-SPEC.md:538` (Section 4.3) and `VCSX-SPEC.md:190` (Section 3.3) carry the
   more-than-one-working-tree phrasing step 2 quotes from Section 9.1's descriptor list. They are the
   same property stated for a reason and for a checkout mode; neither is edited.
-- `VCSX-CONTRACT.md:238` (Section 6) carries the `provision`-precedes-everything phrasing step 3
+- `VCSX-CONTRACT.md:248` (Section 6) carries the `provision`-precedes-everything phrasing step 3
   quotes from Section 4.1. That is the contract restating the ordering, which step 3 relies on
   rather than changes; if step 3's wording moves, check that the contract still agrees.
-- `VCSX-SPEC.md:994` (Section 6.4) carries the copy-belonging-to-the-resolved-remote phrasing, which
-  is Section 6.4 stating the same resolution for a base ref. Not edited.
+- `VCSX-SPEC.md:1033` (Section 6.4) carries the copy-belonging-to-the-resolved-remote phrasing,
+  which is Section 6.4 stating the same resolution for a base ref. Not edited.
+
+Re-run at `d78d7af`, after decisions 0140–0146, 0148 and 0152 landed, reported **one** finding, and
+it was the `conformance/vcsx/README.md` site above: the `operations` bullet moved from `:108` to
+`:112` when decision 0141 inserted Section 4.3's `load_policy` invariant above it. The assessment
+stands; only the address moved. That file has no numbered sections, so the check has no finer
+address for it than a line, and this record goes stale again whenever anything is inserted above
+that bullet — the durable way to re-find the site is the `operations` bullet carrying
+`lifecycle_position: null`, not the number.
+
+Re-run again at `b7912f6`, after decisions 0147 and 0149 landed, reports **no** finding from 11
+quoted spans, and every address above resolves unchanged. That pair edited `SPEC.md`,
+`CONFORMANCE-STATEMENT-TEMPLATE.md`, `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` and
+`conformance/vocabulary.json`, none of which this plan addresses — each site was re-read at that
+revision rather than inferred from the file list.
+
+One site is named only incidentally, recorded so a later reader does not read silence as judgement.
+`conformance/vcsx/vocabulary.json:336` (`arguments`) carries the
+copy-belonging-to-the-resolved-remote phrasing in its `policy_branch` note, and the check counts it
+named because the word `arguments` happens to occur in step 3's prose about capability contexts —
+a registry group is matched as a bare identifier anywhere in the plan. The judgement it did not get
+mechanically it gets here: the note fixes which revision the argument names, not how that revision
+is read, so step 1's `read_at_source` does not reach it and it is not edited.
+
+The re-run Ordering asks for — at the revision decision 0150 lands on — has **not** been made,
+because 0150 has not landed. Neither `d78d7af` nor `b7912f6` substitutes for it: both predate
+0150's edits to Section 9.1's capability list, its closing paragraph and its network enumeration,
+which is the anchor set this plan shares with that one.
 
 ## Anchor changes
 

@@ -6,8 +6,11 @@
   (Entry Points and Arguments), Section 12.2 (`ship` Sequence), Section 12.3 (`land` Sequence),
   Section 13.1 (Test Matrix), Section 13.2 (Implementation Checklist).
 - `VCSX-CONTRACT.md` — Section 5.6's resume paragraph carries the same silence.
-- `conformance/vcsx/vocabulary.json` — the `output_keys` entry for `resume_token`.
-- `conformance/vcsx/vectors/` — no two-invocation harness; see step 8.
+- `conformance/vcsx/vocabulary.json` — the `output_keys` entry for `resume_token`, and the
+  `arguments` entry for `resume`, whose note carries Section 8.1's bullet almost verbatim.
+- `conformance/vcsx/vectors/` — no two-invocation harness; see step 8. Decision 0142's
+  `conformance/vcsx/vectors/resume-precondition.json` restates Section 8.1's re-entry phrasing in
+  its `notes` and in one vector's description; see step 10.
 - `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` — no new row expected; the token's **form** row already
   exists and decision 0142 narrows it. Check rather than assume (see Cross-cutting sync).
 - `SPEC.md` and Symphony's artifacts — no change. Symphony supplies no `resume` today.
@@ -89,19 +92,43 @@
    contract alone knows whether a resumed front-end reports the re-entered result or continues its
    sequence. This site was found by `python3 scripts/check_plan_anchors.py` against an earlier draft
    that named only `VCSX-SPEC.md` and the registry.
-9. **`conformance/vcsx/vocabulary.json` — the registry note moves with the sections.** Ensure the
-   `output_keys` entry for `resume_token`, whose `meaning` restates "It carries the point and the
-   count and nothing a lifecycle position established", enumerates the same three parts. *Done
-   when:* the registry asserts nothing the specification no longer says — decision 0132's drift
-   class — and `python3 scripts/validate_spec_consistency.py` reports 0 errors and 0 warnings.
+9. **`conformance/vcsx/vocabulary.json` — the registry notes move with the sections, and there are
+   two.** Ensure the `output_keys` entry for `resume_token`, whose `meaning` restates "It carries
+   the point and the count and nothing a lifecycle position established", enumerates the same three
+   parts. Ensure the `arguments` entry for `resume` follows step 5 as well as step 2: its note
+   carries Section 8.1's bullet almost verbatim — "the invocation re-enters the point that raised
+   the need rather than beginning at its entry point, and the flow bound continues from the count
+   the token carries" — so the sentence step 5 edits has a twin in the registry, and an edit
+   addressed to the section alone leaves the registry asserting what the section no longer says.
+   Decision 0142 wrote that entry after this plan was drafted, which is why the first draft named
+   `output_keys` and nothing else. *Done when:* both entries are checked, the registry asserts
+   nothing the specification no longer says — decision 0132's drift class — and `python3
+   scripts/validate_spec_consistency.py` reports 0 errors and 0 warnings.
+10. **`conformance/vcsx/vectors/resume-precondition.json` — the argument survives, and is confirmed
+    rather than assumed.** Decision 0142 created this file after this plan was drafted. Its `notes`
+    and its `land_token_resumed_at_an_awaiting_land_is_established` vector both reason, citing
+    Section 8.1, from "A resume re-enters the point rather than beginning at the entry point", and
+    conclude that "the branch ahead of the re-entered point is never run". That reasoning survives
+    this decision: the continuation step 1 states runs **forward** from the re-entered point, so a
+    branch ahead of it is still never reached and the vector's expectation is unchanged. Ensure the
+    paraphrase still matches Section 8.1 once step 5 has edited it. Ensure no vector changes: the
+    token's third part is not among the four conditions this file exercises, so its `notes` clause
+    "no vector inputs the point the token names — no condition here reads it" stays true with a
+    root trigger in the token. *Done when:* the file has been re-read against the edited Section
+    8.1 rather than left as a twin nobody opened, and any expectation that does move is a
+    deliberate change this step names.
 
 ## Cross-cutting sync
 
 - `VCSX-SPEC.md` Sections 13.1 and 13.2: step 7.
 - `VCSX-CONTRACT.md` Section 5.6: step 8. The contract restates the resume in its own words and
   carries the same silence; it was not in this plan's first draft.
-- `conformance/vcsx/vocabulary.json`: step 9. This is the derived artifact most easily missed,
-  because the note restates a specification sentence in its own words rather than citing it.
+- `conformance/vcsx/vocabulary.json`: step 9, and it is **two** entries rather than one —
+  `output_keys` and `arguments`. This is the derived artifact most easily missed, because the notes
+  restate a specification sentence in their own words rather than citing it, and because the second
+  entry did not exist when this plan was first drafted.
+- `conformance/vcsx/vectors/resume-precondition.json`: step 10. Confirmed unchanged rather than
+  assumed unchanged.
 - `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` Section 3 and `VCSX-SPEC.md` Section 13.3: the existing
   row asks for the **form** of the `resume_token`. This decision changes what the token carries, not
   whether the form is `Implementation-defined`, so no row is expected to be owed — but check it in
@@ -130,16 +157,41 @@
 
 `python3 scripts/check_plan_anchors.py decisions/0153-resume-continues-the-flow/Plan.md --rev
 22b5194` reports reach findings at four sites. One is load-bearing and is now step 8 —
-`VCSX-CONTRACT.md:214`, where the contract restates the resume and stops at the re-entry exactly as
-`VCSX-SPEC.md` does. The other three are benign:
+`VCSX-CONTRACT.md:217`, where the contract restates the resume and stops at the re-entry exactly as
+`VCSX-SPEC.md` does. The other three are benign. Line numbers below are refreshed to `b7912f6`; the
+assessments are the original ones and are unchanged.
 
-- `VCSX-SPEC.md:2272` (Section 8.6) carries "beginning at its entry", which is the precondition
+- `VCSX-SPEC.md:2440` (Section 8.6) carries "beginning at its entry", which is the precondition
   section restating Section 8.1's phrasing for a `resume` that is refused. Nothing there turns on
   what follows the re-entry.
-- `VCSX-SPEC.md:827` (Section 5.6) carries "continues from the count", which is the flow-bound
+- `VCSX-SPEC.md:866` (Section 5.6) carries "continues from the count", which is the flow-bound
   paragraph this decision cites as its argument rather than edits.
 - `conformance/vcsx/vectors/identity-precondition.json:10` carries "entry point and the" in a
   `given`, which is decision 0142's territory rather than this one's.
+
+Re-run at `d78d7af`, after decisions 0140–0146, 0148 and 0152 landed, reported **three** findings.
+All three are artifacts decision 0142 wrote after this plan was drafted, and all three are now
+named:
+
+- `conformance/vcsx/vocabulary.json:352` (`arguments`) carries "and the flow bound" — in fact the
+  whole of Section 8.1's `resume` bullet. This one is **load-bearing** rather than benign: step 5
+  edits that bullet, and a registry note repeating it is exactly the drift class step 9 exists to
+  prevent. Step 9 now covers both entries rather than `output_keys` alone.
+- `conformance/vcsx/vectors/resume-precondition.json:17` (`notes`) and `:102` (`vectors`) carry
+  "rather than beginning at". Benign, and step 10 now records that judgement rather than leaving
+  the file unopened.
+
+Two silences in the re-run were checked rather than assumed. `conformance/vcsx/vocabulary.json:285`
+(`output_keys`) carries the same "and the flow bound" fragment and does not report because step 9
+names it. `conformance/vcsx/vectors/identity-precondition.json:10` still carries its fragment and
+still does not report, because the list above names it through the group `given` — silence there is
+this record working, not the site having gone away.
+
+Re-run again at `b7912f6`, after decisions 0147 and 0149 landed, reports **no** finding from 19
+quoted spans, and every address above resolves unchanged. That pair edited `SPEC.md`,
+`CONFORMANCE-STATEMENT-TEMPLATE.md`, `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` and
+`conformance/vocabulary.json`, none of which this plan addresses — each site was re-read at that
+revision rather than inferred from the file list.
 
 ## Anchor changes
 
