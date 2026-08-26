@@ -416,7 +416,7 @@ Fields:
 
 Single authoritative runtime state owned by the orchestrator, held in memory. Each field has a
 recovery class (Section 14.3) that governs its behavior across a process restart; class `Durable`
-fields MAY additionally be backed by a durable store.
+and class `Cached external signal` fields MAY additionally be backed by a durable store.
 
 Fields (with recovery class):
 
@@ -442,9 +442,12 @@ Fields (with recovery class):
   attempt again). It carries no park state: whether persistent failures are parked at all is a
   choice Section 14.2 leaves to the implementation, so a park record is state Core behavior MAY
   introduce rather than state this enumeration mandates a shape for, and Section 14.3 governs it.
-- `provider_rate_limits` (latest rate-limit snapshot from agent events) — `Cached external signal`;
-  an absent value denotes `UNKNOWN` (distinct from any reading; in particular not `0`), and the
-  policy on `UNKNOWN` is defined by the consuming provider-quota extension.
+- `provider_rate_limits` (latest rate-limit snapshot from agent events) — `Ephemeral` for
+  observability (resets to absent, so the status surface reports no rate-limit reading until the
+  next agent update refreshes it); becomes `Cached external signal` when the provider-quota
+  extension (Section 8.9) enforces on it, which is where its staleness bound (`stale_after_ms`) and
+  its `UNKNOWN` policy come from. An absent value denotes `UNKNOWN` (distinct from any reading; in
+  particular not `0`).
 
 #### 4.1.9 Task (OPTIONAL, Daemon Task Management)
 
@@ -1233,8 +1236,8 @@ Note:
 - Reconciliation runs before dispatch on every tick.
 - Restart recovery is tracker-driven and filesystem-driven: `Reconstructable` and `Ephemeral`
   state (Section 14.3) is rebuilt or reset, and no durable orchestrator database is REQUIRED. An
-  OPTIONAL extension MAY introduce `Durable` state, which is then the only state restored from a
-  store across a restart.
+  OPTIONAL extension MAY introduce `Durable` state, and `Cached external signal` state a store
+  backs, which are then the only state restored from a store across a restart.
 - Startup terminal cleanup removes stale workspaces for issues already in terminal states.
 
 ## 8. Polling, Scheduling, and Reconciliation
@@ -1594,8 +1597,13 @@ Ingestion (two paths, one shape):
 Recovery semantics:
 
 - The snapshot is class `Cached external signal` (Section 14.3): the last-known-good value is
-  carried across a failed refresh and a process restart; once older than `stale_after_ms` it becomes
-  `UNKNOWN`, which is distinct from any `used_percent` value, including `0`.
+  carried across a failed refresh, and across a process restart where a store backs it; once older
+  than `stale_after_ms` it becomes `UNKNOWN`, which is distinct from any `used_percent` value,
+  including `0`. With no store configured the snapshot starts `UNKNOWN` after a restart and the
+  gate's `UNKNOWN` policy below governs until the first reading of the new process arrives.
+- A restored snapshot is a reading; a restore that produced none is not. An `UNKNOWN` that has never
+  held a reading in this process is therefore a different condition from one whose reading aged past
+  `stale_after_ms`, and only the second can be a temporary block.
 
 Dispatch gate:
 
@@ -1605,6 +1613,14 @@ Dispatch gate:
 - On `UNKNOWN`, behavior follows a configured policy: fail-open (proceed) or fail-closed (pause). A
   permanently `UNKNOWN` signal (a provider/agent that exposes no quota interface) SHOULD default to
   fail-open; a transiently `UNKNOWN` one (a temporary block) MAY fail-closed.
+- Where no out-of-band refresh path is configured, a fail-closed policy MUST NOT pause dispatch
+  outright on `UNKNOWN`: the gate clamps its own headroom to one run in flight until a reading
+  arrives. The only source of readings is then an agent update (Section 13.5), which a paused
+  dispatch prevents, so a fail-closed policy would never release — and one run is what makes an
+  agent update arrive, which is as far as the argument reaches. The clamp is the gate's headroom
+  and does not alter `max_concurrent_agents` (Section 8.3). The exit from the clamp is the SHOULD
+  above: permanence is a property of the provider rather than of a reading, so a provider or agent
+  that exposes no quota interface is classified without waiting for one and defaults to fail-open.
 
 Configuration:
 
@@ -3740,15 +3756,31 @@ to the value across a process restart and when a current value is unavailable.
 - `Cached external signal` (`C`)
   - The authoritative source is an external, account-wide provider interface that is not exposed by
     every agent and is only intermittently reachable.
-  - The most recent successfully fetched value (the last-known-good) MUST be carried across both a
-    failed refresh and a process restart.
+  - The most recent successfully fetched value (the last-known-good) MUST be carried across a
+    failed refresh: a refresh that fails MUST NOT replace it. Carrying it across a process restart
+    requires a store, and such storage is OPTIONAL. Where a store backs the field, the value MUST be
+    restored before any decision that enforces on it. When no store is configured, the field starts
+    `UNKNOWN` and the implementation MUST document its degradation (for example, that the consuming
+    extension's `UNKNOWN` policy governs every decision until the first reading of the new process
+    arrives).
   - A value carries an age; once it is older than its configured staleness bound it is promoted to
     an explicit `UNKNOWN`. `UNKNOWN` MUST be represented distinctly from any in-band value — in
     particular it MUST NOT be modeled as `0`.
   - Behavior on `UNKNOWN` is a configured policy: fail-open (proceed) or fail-closed (pause). An
     implementation MAY distinguish a permanently `UNKNOWN` signal (the agent exposes no such
     interface) from a transiently `UNKNOWN` one (a temporary block); a permanently `UNKNOWN` signal
-    SHOULD default to fail-open.
+    SHOULD default to fail-open. A restored value is a reading; a restore that produced none is not,
+    so an `UNKNOWN` that has never held a reading in this process is a different condition from one
+    whose reading aged past the bound, and only the second can be a temporary block.
+  - Where no configured refresh path can produce a reading while the consuming extension's response
+    to `UNKNOWN` is in force, that response MUST NOT be allowed to stop the only path that would
+    produce one, and what the extension releases MUST be no wider than obtaining a reading requires.
+    The only source of readings is then the in-band path, which the extension's own response
+    prevents from running. The rule is stated over whether a reading can arrive rather than over
+    whether one has been held: a restored value already older than its bound, and an idle deployment
+    whose snapshot aged out with nothing running, both have a reading behind them and neither has
+    any way to obtain the next one. How much is released is the consuming extension's to state
+    (Section 8.9 for provider quota); this section classifies state and fixes no dispatch quantity.
 - `Durable` (`D`)
   - Symphony-attributed accounting with no external source, where resetting the value is harmful
     (for example, it would grant a partially-spent issue a fresh budget).
@@ -3772,8 +3804,9 @@ structured tasks or write-through is off; it is never `Ephemeral` by default.
 ### 14.4 Partial State Recovery (Restart)
 
 Scheduler state is `Reconstructable` or `Ephemeral` (Section 14.3) and is therefore held in memory:
-it is rebuilt or reset at startup rather than restored from a durable store. Only `Durable` state
-introduced by an OPTIONAL extension is restored across a restart.
+it is rebuilt or reset at startup rather than restored from a durable store. State whose class
+provides for restoration is restored across a restart: `Durable` state, and `Cached external signal`
+state where a store backs it, both introduced by OPTIONAL extensions.
 Restart recovery means the service can resume useful operation by polling tracker state and reusing
 preserved workspaces. It does not mean retry timers, running sessions, or live worker state survive
 process restart.
@@ -3784,6 +3817,9 @@ After restart:
 - No running sessions are assumed recoverable.
 - Any `Durable` state (Section 14.3) configured by an OPTIONAL extension is restored from its store
   before that extension enforces on it; with no store, the extension degrades as documented.
+- Any `Cached external signal` state (Section 14.3) configured by an OPTIONAL extension is restored
+  from its store before that extension enforces on it; with no store, the field starts `UNKNOWN` and
+  the extension applies its documented `UNKNOWN` policy.
 - Service recovers by:
   - startup terminal workspace cleanup
   - fresh polling of active issues
@@ -4810,9 +4846,13 @@ These checks are `Daemon Conformance`.
   ticks rather than being re-evaluated from scratch each one
 - Every Orchestrator Runtime State field has a documented recovery class (`Reconstructable` /
   `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3)
-- If a `Durable` or `Cached external signal` extension is implemented, restart restores its state
-  before enforcement, `UNKNOWN` is never represented as `0`, and the last-known-good value
+- If a `Durable` or `Cached external signal` extension is implemented with a store, restart restores
+  its state before enforcement, `UNKNOWN` is never represented as `0`, and the last-known-good value
   survives a restart
+- If a `Cached external signal` extension is implemented with no store, the field starts `UNKNOWN`
+  after a restart, `UNKNOWN` is never represented as `0`, and with no out-of-band refresh path
+  configured the dispatch gate clamps to one run in flight until a reading arrives rather than
+  pausing dispatch or releasing the whole `max_concurrent_agents` limit
 - If token budget guards are implemented, a per-session/per-issue cap aborts and requeues only that
   issue while a global cap pauses new dispatch without terminating running workers
 - If token budget guards are implemented, a `token_budget_exceeded` outcome is parked rather than
@@ -4822,8 +4862,9 @@ These checks are `Daemon Conformance`.
   pauses new dispatch only, leaving running workers and reconciliation untouched, with implicit
   resume
 - If provider quota backpressure is implemented, the quota snapshot is normalized across providers,
-  `UNKNOWN` is never represented as `0`, last-known-good survives a restart, and the `UNKNOWN`
-  policy (fail-open vs fail-closed; unsupported vs blocked) is honored
+  `UNKNOWN` is never represented as `0`, last-known-good survives a failed refresh and — where a
+  store backs it — a restart, and the `UNKNOWN` policy (fail-open vs fail-closed; unsupported vs
+  blocked) is honored
 - If a remote node-scheduler is implemented (Section 9.11), a local (`compute.kind=local`) executor is
   behaviorally identical to the in-process worker, and dispatch to a remote executor moves the issue
   through the `Provisioning` state without blocking the poll tick
@@ -5254,7 +5295,8 @@ The Statement MUST record:
   shipped — the sink it aggregates into and how long that data is retained
   (Sections 13.4, 13.5); the park-vs-retry
   disposition of `repository_provisioning_failures` and `engine_invocation_failures`
-  (Section 14.2); the durable-store degradation when no store is configured (Section 14.3); the
+  (Section 14.2); the durable-store degradation when no store is configured, and the degradation
+  when no store backs a `Cached external signal` field (Section 14.3); the
   secret-redaction mechanism and substituted marker for captured subprocess text (Section 15.3);
   how it is established that no route beyond the two this specification closes can write the policy
   branch, and how a host-side hook's unit is resolved (Section 15.4); and

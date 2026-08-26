@@ -149,4 +149,26 @@
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Sections 4.1.8, 7.4, 8.9, 14.3, 14.4, 17.4, 19),
+`CONFORMANCE-STATEMENT-TEMPLATE.md` (Sections 4.1, 5) and `conformance/vocabulary.json`.
+
+Two sites beyond the Scope list, both the same shape as the two the plan does name — a sentence
+enumerating which classes a store restores, written before this decision split the `C` bullet's two
+carries. Section 4.1.8's preamble said "class `Durable` fields MAY additionally be backed by a
+durable store", and Section 7.4's restart bullet said an OPTIONAL extension's `Durable` state "is
+then the only state restored from a store across a restart". Both name both store-backed classes
+now. Leaving either would have reproduced, one section away, exactly the contradiction between
+Sections 14.3 and 14.4 that this decision exists to close.
+
+Step 8 was resolved as a second row rather than by restating the existing one. Section 14.3 now
+carries four obligation sentences and four rows answer for it, which is the one-to-one the step
+asked for; folding the two degradations into one row would have left one sentence unanswered, since
+they differ in content — `Durable` degrades by declining enforcement or resetting a counter, while
+a `Cached external signal` field with no store degrades into its consuming extension's `UNKNOWN`
+policy.
+
+Step 9's column rule is stated in the paragraph above the table rather than inside a `|` header
+cell, which the step permits. It is written over the column and names both instances by their shape
+rather than by field, so `agent_totals` is covered by the same sentence as `provider_rate_limits`.
+
+`python3 scripts/validate_spec_consistency.py` reports 0 errors and 0 warnings.

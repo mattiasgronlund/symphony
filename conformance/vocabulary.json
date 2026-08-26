@@ -111,7 +111,7 @@
       { "token": "completed", "recovery_class": "Ephemeral" },
       { "token": "agent_totals", "recovery_class": "Ephemeral", "note": "Becomes `Durable` when a budgeting extension enforces on it, and is then Symphony-attributed rather than account-wide." },
       { "token": "repository_backoff", "recovery_class": "Ephemeral", "note": "The per-repository backoff Section 14.2 requires where an engine policy could not be used at all. Carries no park state: whether persistent failures are parked is `Implementation-defined`, so a park record is Core-introduced state governed by Section 14.3 rather than a field this enumeration shapes." },
-      { "token": "provider_rate_limits", "recovery_class": "Cached external signal", "note": "An absent value denotes `UNKNOWN`, distinct from any reading and in particular not `0`." }
+      { "token": "provider_rate_limits", "recovery_class": "Ephemeral", "note": "Observability in Core, where the reset consequence is that the status surface reports no rate-limit reading until the next agent update refreshes it. Becomes `Cached external signal` when the OPTIONAL provider-quota extension (Section 8.9) enforces on it, which is where its staleness bound and its `UNKNOWN` policy come from. An absent value denotes `UNKNOWN`, distinct from any reading and in particular not `0`." }
     ]
   },
 
