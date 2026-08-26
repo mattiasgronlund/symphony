@@ -84,4 +84,31 @@
 
 ## Status
 
-Not started.
+Applied to `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (Section 6.1), the only file the plan scopes and
+the only live artifact carrying the removed sentence — `DECISIONS.md` quotes it inside this
+decision's own chapter, where it is history and is not edited.
+
+Step 3's done-condition asks that a clean run be clean for the recorded reason rather than by
+coincidence, so the reason was measured rather than read off the source: `template_rows` returns an
+identical dict before and after the edit, Section 9.1 answered three times either way. The insert is
+invisible because the function scans only `cells[1]` for section numbers and this table's number
+lives in `cells[0]`, while the subsection heading `### 6.1 VCS Backends (Section 9.1)` supplies the
+section's answer. `python3 scripts/validate_spec_consistency.py` reports 0 errors and 0 warnings.
+
+One of the two Anchor check findings does not reproduce. `python3 scripts/check_plan_anchors.py
+decisions/0149-capability-required-by-column/Plan.md` reports a single finding — the recorded
+quote-attribution false positive, the column name `Capability beyond Section 9.1` read as a citation
+to a section the template does not have — at `HEAD` and at `22b5194` alike, the checker being
+unchanged between them. The reach finding this plan records at `VCSX-SPEC.md:2160` does not fire.
+Nothing is owed either way: that sentence is not edited, and the plan's scope does not depend on it.
+
+**Named rather than missed, and not fixed here.** `VCSX-SPEC.md` Section 9.1's realization paragraph
+carries the nearest thing to a source for 0134's inference — "which operations there are is this
+specification's to say rather than an engine's (Sections 4.1, 8.5), so no engine adds one that would
+require more. A capability a backend provides beyond this list is visible as that backend's own
+rather than as shared surface." Its "so" clause is the true half and its second sentence is scoped
+to a capability a backend already provides, so it is not the template's inference and this decision
+scopes `VCSX-SPEC.md` out. But the two documents now read differently on the same question, and the
+scoping is what decisions 0150 and 0151 revisit when they move capabilities into the list.
+
+Issue #102.
