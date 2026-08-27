@@ -446,13 +446,19 @@ guessed-at vector or entry:
   The entry keeps its Section 6.4 `spec_ref`, since Section 5.3 lists the key and defers its fields
   to Section 9.7, and now carries a note saying so and that the key exists at both configuration
   levels (Section 5.3.7).
-- **`server.*` is repository-owned by Section 13.8 (open).** Section 13.8 enables the HTTP server
-  when `server.port` is present in `WORKFLOW.md` front matter, but Section 5 states that
-  `WORKFLOW.md` carries only settings used inside the agent sandbox and MUST NOT carry any setting
-  Symphony executes with host access — which binding a host port is. `config_namespaces` records
-  Section 13.8's placement as written; reconciling the two is a spec-clarification candidate, and is
-  why decision 0069 places `observability.*` in the operator policy config rather than following
-  `server.*`.
+- **`server.*` was repository-owned by Section 13.8 — resolved (decision 0160).** Section 13.8
+  enabled the HTTP server when `server.port` was present in `WORKFLOW.md` front matter, while
+  Section 5 states that `WORKFLOW.md` carries only settings used inside the agent sandbox and MUST
+  NOT carry any setting Symphony executes with host access — which binding a host port is. The
+  finding is worth keeping for what the registry measured: of the sixteen `config_namespaces`
+  entries, `server` was the **only** one assigned to `workflow_md`, so the single key the corpus
+  placed in the untrusted artifact was the one that opened a network listener. Decision 0160 moved
+  it to the operator policy config, on the reasoning decision 0069 had already applied to
+  `observability.*` — which is why that namespace never followed `server.*` in the first place. The
+  same decision made `WORKFLOW.md` per repository (`repository.<name>.workflow`, Section 5.3.7),
+  which turned the placement from a trust contradiction into an unanswerable question: which
+  repository's front matter would have bound the instance's port. The entry now carries
+  `"artifact": "operator_policy_config"` and a note recording both.
 - **A reference algorithm called a function no section defined — resolved (decision 0138).** Section
   16 defined eight functions and called forty-three it did not. Three were gaps rather than
   primitives: `schedule_retry`, which had five call sites (`dispatch_issue` once, `on_worker_exit`

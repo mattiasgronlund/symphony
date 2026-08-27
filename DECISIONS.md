@@ -6388,3 +6388,94 @@ Relates to 0009, 0091–0093, 0116, 0132, 0137, 0148, 0155. Accepted and applied
 17.4, 18.1), `conformance/vocabulary.json`, `conformance/vectors/config-defaults.json`,
 `conformance/vectors/issue-routing.json`, `conformance/vectors/standing-conditions.json`, the new
 `conformance/vectors/repository-inheritance.json` and `conformance/README.md`.
+
+## 0160 — Where `WORKFLOW.md` is read from, and whose it is
+
+**State:** Accepted
+**Folder:** [decisions/0160-workflow-md-sourcing/](decisions/0160-workflow-md-sourcing/)
+
+Lands the half of decision 0097 that never reached `SPEC.md`. 0097 said "`WORKFLOW.md` changes
+timing only and stays worktree-sourced" and narrowed Section 6.2's "all three configuration
+artifacts" to the two the daemon "holds locally" — leaving `WORKFLOW.md` in the watched set, so the
+timing claim and the sourcing claim were made in one sentence and only one of them landed. Decision
+0159 then gave two of the three artifacts a repository dimension and a stated revision
+(`repository.<name>.policy`); the third has neither. What `SPEC.md` says about `WORKFLOW.md` splits
+into a trust half — "repository-owned, in-sandbox … sourced from the worktree" (Section 5), "read
+from the **worktree**" and "Each artifact is read from exactly one revision, which is what makes
+'sourced by trust' checkable" (Section 15.4) — and a mechanism half in which it is a single host file
+at a CLI path or the process working directory (Section 5.1), selected once by the resolution
+pipeline (Section 6.1), watched as locally held (Section 6.2), and validated before every dispatch
+cycle (Sections 6.3, 16.1). A host path in the daemon's own working directory is neither a worktree
+nor a revision. **Six failure paths.** (1) Section 6.1 selects *one* `WORKFLOW.md` path and resolves
+*each* repository's policy pointer in adjacent clauses, so two repositories under one instance share
+a prompt template and their in-sandbox hook halves while Section 11.2 argues about "a field a
+repository's `WORKFLOW.md` names". (2) The stated sourcing has no producer and the trust argument
+fails in both directions: read at the daemon's cwd, Section 5's "an agent edit is honored where it is
+harmless" names nothing, and Section 15.4's `before:commit` division — "the agent can change what the
+gate does and not whether it runs" — loses its first half; read from the worktree, five sections
+describe a resolution, a watch and a preflight against a path belonging to no run. (3) Section 6.2
+contradicts itself about the same file, requiring a watch on an artifact its next bullet says is
+"read once at the start of each unit of work, together with `WORKFLOW.md`" — and Section 18.1.1 still
+carries 0097's superseded "dynamic watch/reload/re-apply for **all three**", decision 0128's class,
+measurable rather than inferred. (4) Two repository-owned artifacts take opposite failure scopes:
+Section 5.5 blocks *new dispatches* instance-wide on a workflow read/YAML error while an unusable
+`repo.policy.toml` is repo-scoped (Section 14.2), so one repository's bad YAML halts every other —
+and unfixable by observation, the daemon being unable to re-read the file without dispatching into
+the repository it just stopped dispatching to. (5) Section 6.3 validates a file that lives in a
+per-issue working tree derived at dispatch, so at preflight there is nothing to read — which is
+exactly why `repo.policy.toml` is not in that list. (6) `conformance/vocabulary.json` assigns
+sixteen top-level keys to artifacts, and the **only** one it assigns to `workflow_md` is `server`
+(Section 13.8) — the key that binds a host port serving instance-wide state, which is what Section 5
+says the artifact MUST NOT carry; `conformance/README.md` already files it open and records that
+decision 0069 placed `observability.*` in the operator policy config rather than follow it, so the
+corpus is routing around a live rule. **Measured prior art**: `symphony-rs` at `3255c9c` carries both
+halves because the specification does — `workflow_path(explicit, cwd)` computes the path from the
+process working directory, `validate(config, repository, workflow_source, …)` runs **per repository**
+against **one** workflow source, `Repository` has `policy`/`vcs`/`agent`/`issues` and no workflow
+pointer, while the same repository's `CLAUDE.md` and secret-isolation skill both tabulate
+`WORKFLOW.md` as read from *the worktree*. **Recommends Option A**: one sourcing rule — the workflow
+file is resolved within the working tree the run acts in and never at a host location outside one,
+named for a dispatched run by `repository.<name>.workflow` (default `WORKFLOW.md`, resolved relative
+to the repository exactly as `policy` is) inside the per-issue workspace, and for a session driven in
+a workspace it did not dispatch by the explicit runtime setting or the process working directory,
+which is that topology's way of naming the same tree. It follows that the artifact leaves the watched
+set and is read once at the start of each unit of work with `repo.policy.toml`; that Section 5.5's
+two-behavior dispatch gating collapses to one, the split having existed only because the file was
+assumed preflight-checkable, so `workflow_config_failures` takes two dispositions on the precedent
+Section 14.2 already sets for `tracker_failures`; that Section 6.3's workflow check goes; that the
+run-spec stops carrying the workflow template, which the orchestrator cannot obtain once the tree is
+derived by the executor (Sections 9.11, 16.6); and that `server.*` moves to the operator policy
+config on Section 18.2's own reasoning for `observability.*`. Steelmanned and rejected: making
+`WORKFLOW.md` operator-held and instance-level, which is the smallest edit, matches every executable
+surface and the one implementation, and is arguably safer — but retracts Section 1's in-repo goal,
+Section 15.4's in-sandbox trust half and its gate division, Section 5.3.4's two-trust-level hook
+model, and one pole of decision 0029's axis, while not fixing one prompt for N repositories but
+merely renaming it; keeping both sources with a per-repository override, which retracts nothing but
+gives up the "exactly one revision" property the trust model is checkable by and would resolve front
+matter leaf by leaf *across* a trust boundary; and declaring the discovery `Implementation-defined`
+like the operator config's, which loses because a repository author writes the file without knowing
+which implementation will run it and needs to know whether an edit is honored, and because it
+converts a checkable property into an asserted one. Filed rather than fixed: a
+`hooks.workspace.timeout_ms` declared in `WORKFLOW.md` bounding the *host-side* half, which is
+decision 0158's execution-context axis; and Sections 9.1/9.3's "non-VCS workspaces", already
+unreachable for a daemon-routed issue since `vcs.local_vcs` is REQUIRED of every `repository` entry.
+Reconsider on a deployment wanting one prompt across many repositories, on an `interactive-agent`
+deployment with no `repository` entry, on a prompt that must vary by issue class beyond
+`agent_by_label`, or on an operator-supplied wrapper around every repository's prompt. No
+`Implementation-defined` choice and no MUST-document obligation is created, so no Conformance
+Statement row is owed. Reviewing the plan before its first edit found five defects in it, one under
+the R lens and four under P: "runtime settings" occurs at Section 3.2 as well as at Sections 1 and
+14.5, and the plan named two of three; Section 16.1's `start_workflow_watch` is the *producer* of the
+watch the plan removes and was unnamed; Section 6.3's opening sentence claims to validate "the
+workflow/config needed to poll and launch workers" and loses that producer with the check; Section
+6.2's "prompt content for future runs" survives with a different producer, the per-unit-of-work read
+rather than a reload; and Section 3.1's executor-composition paragraph lists components 5, 6 and 7,
+which the `Workflow Loader` joins once it runs per run. Implementing it found one more, the same lens
+one level out: Section 17.1's "Invalid workflow reload keeps last known good effective configuration"
+has no surviving counterpart at all, last-known-good being a property of a reload and there being no
+reload of an artifact read fresh each unit of work — so the check is removed rather than reworded,
+and the restatement the plan proposed would have duplicated the policy-config bullet three lines
+below it. Relates to 0005, 0029, 0069, 0097, 0128, 0132, 0148, 0158, 0159. Accepted and applied to
+`SPEC.md` (Sections 1, 3.1, 3.2, 4.1.3, 5, 5.1, 5.3, 5.3.7, 5.5, 6.1, 6.2, 6.3, 6.4, 9.2, 10, 13.8,
+14.2, 14.5, 15.4, 16.1, 16.6, 17.1, 17.2, 17.7, 18.1.1, 18.1.3, 18.2), `conformance/vocabulary.json`
+and `conformance/README.md`.

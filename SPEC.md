@@ -24,8 +24,8 @@ The service solves four operational problems:
 - It turns issue execution into a repeatable daemon workflow instead of manual scripts.
 - It isolates agent execution in per-issue workspaces so agent commands run only inside per-issue
   workspace directories.
-- It keeps the workflow policy in-repo (`WORKFLOW.md`) so teams version the agent prompt and runtime
-  settings with their code.
+- It keeps the workflow policy in-repo (`WORKFLOW.md`) so teams version the agent prompt and its
+  in-sandbox hooks with their code.
 - It provides enough observability to operate and debug multiple concurrent agent runs.
 
 Implementations are expected to document their trust and safety posture explicitly, in the
@@ -89,7 +89,7 @@ Important boundary:
 ### 3.1 Main Components
 
 1. `Workflow Loader`
-   - Reads `WORKFLOW.md`.
+   - Reads the repository's `WORKFLOW.md` from the working tree the run acts in (Section 5.1).
    - Parses YAML front matter and prompt body.
    - Returns `{config, prompt_template}`.
 
@@ -136,14 +136,16 @@ Important boundary:
    - Emits structured runtime logs to one or more configured sinks.
 
 The per-issue run is carried by an `Execution Process` (the *executor*): for one issue it composes
-the `Workspace Manager` (5), the `Agent Runner` (6), and a per-run `Privileged Operation Broker` (7)
-— workspace and object-store provisioning, prompt construction, the agent turn loop,
-privileged-operation mediation, and workspace lifecycle hooks. The `Orchestrator` (4) dispatches a
-run to exactly one executor across an orchestrator↔executor seam that is always present; locally the
-seam is an in-process call (the executor runs in the orchestrator's host), and it MAY instead be a
-network transport to a remote executor (Section 9.11). The executor is the host relative to its own
-agent sandbox (Section 9.6), so it runs both hook trust levels (Section 15.4) and instantiates the
-secret-isolation boundary — sandbox, per-run broker socket, credential-less agent — wherever it runs.
+the `Workflow Loader` (1), the `Workspace Manager` (5), the `Agent Runner` (6), and a per-run
+`Privileged Operation Broker` (7) — workspace and object-store provisioning, reading the
+repository's `WORKFLOW.md` from the tree it derived (Section 5.1), prompt construction, the agent
+turn loop, privileged-operation mediation, and workspace lifecycle hooks. The `Orchestrator` (4)
+dispatches a run to exactly one executor across an orchestrator↔executor seam that is always
+present; locally the seam is an in-process call (the executor runs in the orchestrator's host), and
+it MAY instead be a network transport to a remote executor (Section 9.11). The executor is the host
+relative to its own agent sandbox (Section 9.6), so it runs both hook trust levels (Section 15.4)
+and instantiates the secret-isolation boundary — sandbox, per-run broker socket, credential-less
+agent — wherever it runs.
 
 ### 3.2 Abstraction Levels
 
@@ -154,7 +156,8 @@ Symphony is easiest to port when kept in these layers:
    - Team-specific rules for ticket handling, validation, and handoff.
 
 2. `Configuration Layer` (typed getters)
-   - Parses front matter into typed runtime settings.
+   - Parses the three configuration artifacts into typed runtime settings (Sections 5, 6.1); the
+     `WORKFLOW.md` front matter supplies the in-sandbox hook halves.
    - Handles defaults, environment tokens, and path normalization.
 
 3. `Coordination Layer` (orchestrator)
@@ -321,16 +324,19 @@ Parsed `WORKFLOW.md` payload:
 
 #### 4.1.3 Service Config (Typed View)
 
-Typed runtime values derived from `WorkflowDefinition.config` plus environment resolution.
+Typed runtime values derived from the resolved configuration of all three artifacts (Sections 5,
+6.1) plus environment resolution. Most come from the operator policy config; what
+`WorkflowDefinition.config` supplies is the in-sandbox half of the workspace hooks (Sections 5.3.4,
+15.4).
 
 Examples:
 
-- poll interval
-- workspace root
-- active and terminal issue states
-- concurrency limits
-- coding-agent executable/args/timeouts
-- workspace hooks
+- poll interval (operator policy config)
+- workspace root (operator policy config)
+- active and terminal issue states (operator policy config)
+- concurrency limits (operator policy config)
+- coding-agent executable/args/timeouts (operator policy config)
+- workspace hooks (repository-owned: host-side in `repo.policy.toml`, in-sandbox in `WORKFLOW.md`)
 
 #### 4.1.4 Workspace
 
@@ -528,10 +534,13 @@ Symphony reads configuration from three artifacts, distinguished by who owns the
 repository-owned artifacts — which revision each part is sourced from (Section 15.4):
 
 - `WORKFLOW.md` — repository-owned, in-sandbox. It contains only settings used *inside* the agent
-  sandbox: the per-issue prompt template and in-sandbox hooks. It is sourced from the worktree (the
-  agent's own checkout), so an agent edit is honored where it is harmless (Section 15.4). Because
-  anyone who can commit — including the agent — can edit it, it is untrusted and MUST NOT carry
-  credentials, authorization scope, or any setting Symphony executes with host access.
+  sandbox: the per-issue prompt template and in-sandbox hooks. The operator policy config points
+  each managed repository at its own through `repository.<name>.workflow` (Section 5.3.7), and it is
+  sourced from the worktree — the working tree the run acts in (Sections 5.1, 15.4) — so an agent
+  edit is honored where it is harmless. Like `repo.policy.toml` it is read once at the start of each
+  unit of work rather than watched (Section 6.2). Because anyone who can commit — including the
+  agent — can edit it, it is untrusted and MUST NOT carry credentials, authorization scope, or any
+  setting Symphony executes with host access.
 - `repo.policy.toml` — repository-owned, host-side. It holds the repository's **Way of Working**: the
   work-branch name pattern (`scope.branch_pattern`), the action-policy edges and host-side hooks
   (Section 9.12), the workflow transitions (`tracker.transitions`, Section 11.6), the daemon task
@@ -549,9 +558,9 @@ repository-owned artifacts — which revision each part is sourced from (Section
   what the operator, not the repository, owns: outward credentials, the sandbox profile, the tracker
   and code-host selections with their endpoints and access parameters, polling and concurrency,
   agent selection, the managed repositories with their issue→repo routing (Section 8.7), and, per
-  repository, a pointer to that repository's `repo.policy.toml`. It does not contain the workflow
-  state-machine or hooks. Its format and discovery path are `Implementation-defined` and MUST be
-  documented.
+  repository, pointers to that repository's `repo.policy.toml` and `WORKFLOW.md`. It does not
+  contain the workflow state-machine or hooks. Its format and discovery path are
+  `Implementation-defined` and MUST be documented.
 
 The dividing rules:
 
@@ -575,15 +584,32 @@ The work-branch-only / assigned-issue-only **scope guard** is a Broker Core buil
 
 ### 5.1 WORKFLOW.md Discovery and Path Resolution
 
-Workflow file path precedence:
+`WORKFLOW.md` is resolved **within the working tree the run acts in**, and MUST NOT be read from a
+host location outside one. It is repository-owned and worktree-sourced (Sections 5, 15.4), so the
+revision it is read from is the one that tree holds; a copy at a path the deployment happens to keep
+belongs to no run and is not this artifact.
 
-1. Explicit application/runtime setting (set by CLI startup path).
-2. Default: `WORKFLOW.md` in the current process working directory.
+Two cases name that tree, and they are one rule:
+
+- A dispatched run: the tree is the per-issue workspace (Section 9.1), and the file is at that
+  repository's `repository.<name>.workflow` pointer within it (Section 5.3.7, Default:
+  `WORKFLOW.md`).
+- A deployment that drives a session in a workspace it did not dispatch — the `interactive-agent`
+  topology (Section 3.4), which reads the artifact for the in-sandbox halves of its workspace
+  lifecycle hooks (Section 5.3.4): the tree is the workspace the process runs in, named by an
+  explicit application/runtime setting (set by CLI startup path), otherwise by the current process
+  working directory.
 
 Loader behavior:
 
-- If the file cannot be read, return `missing_workflow_file` error.
-- The workflow file is expected to be repository-owned and version-controlled.
+- The file is read once at the start of each unit of work, with that repository's `repo.policy.toml`
+  (Section 6.2). The prompt template and in-sandbox hook halves in force for a run are the ones read
+  when that run started.
+- If the file cannot be read at the resolved path, return `missing_workflow_file` error, which fails
+  that run attempt (Section 5.5).
+- Every managed repository therefore carries its own workflow file, version-controlled with the code
+  it describes. Two repositories under one instance carry their own prompt templates and their own
+  in-sandbox hook halves, and neither reads the other's.
 
 ### 5.2 File Format
 
@@ -631,8 +657,8 @@ Top-level operator-config keys:
   this orchestrator-level block supplies what an entry does not carry
 - `agent`
 - `codex`
-- `repository` (the managed repositories, one entry each: that repository's `repo.policy.toml`
-  pointer, its `vcs`, its agent selection, and its routing rules; see Section 5.3.7)
+- `repository` (the managed repositories, one entry each: that repository's `repo.policy.toml` and
+  `WORKFLOW.md` pointers, its `vcs`, its agent selection, and its routing rules; see Section 5.3.7)
 
 Unknown keys SHOULD be ignored for forward compatibility.
 
@@ -838,7 +864,9 @@ fields locally if they want stricter startup checks.
 
 The managed repositories (Section 8.7). Each entry is keyed by the repository's name, which is the
 `Repository Key` of Section 4.2, and holds what belongs to that repository rather than to the
-instance.
+instance. Two of its fields are pointers into the repository itself — `policy` and `workflow`, the
+two repository-owned artifacts of Section 5 — and both have a built-in default rather than an
+orchestrator-level counterpart, a path inside one repository saying nothing about another's layout.
 
 A deployment that manages a repository configures at least one entry. An entry MAY carry nothing but
 its key: every field below is OPTIONAL, and an absent one resolves from the orchestrator-level block
@@ -853,6 +881,11 @@ Fields:
     repository, not to the host filesystem: the file is read from a revision on a remote (Sections
     6.2, 15.4).
   - Default: `repo.policy.toml`
+- `workflow` (path string)
+  - The pointer to that repository's `WORKFLOW.md` (Section 5.1). Resolved relative to the
+    repository, not to the host filesystem: the file is read from the working tree the run acts in
+    (Sections 6.2, 15.4).
+  - Default: `WORKFLOW.md`
 - `vcs` (object)
   - That repository's `vcs` block. Its fields are documented in Section 9.7.
   - Default: empty — every field resolves from the orchestrator-level `vcs`.
@@ -942,13 +975,19 @@ resolves them; `template_parse_error` is reserved for a body that is not well-fo
 at all.
 
 The set is not closed: an implementation MAY define additional classes for conditions these five do
-not name. It MUST document any class it defines, and MUST assign each one of the dispatch gating
-behaviors below.
+not name. It MUST document any class it defines, and each one takes the dispatch gating behavior
+below, there being one.
 
 Dispatch gating behavior:
 
-- Workflow file read/YAML errors block new dispatches until fixed.
-- Template errors fail only the affected run attempt.
+- Every class in this section fails the affected run attempt, and none blocks new dispatches for the
+  instance. `WORKFLOW.md` is read from the working tree the run acts in, at the start of that unit
+  of work (Sections 5.1, 6.2), so a read or parse failure is discovered inside a run attempt and
+  there is no earlier point at which it could gate dispatch — which is why dispatch preflight does
+  not read the file (Section 6.3). A repository whose workflow file cannot be read therefore fails
+  its own runs and leaves every other repository dispatching (Section 14.2). That is the disposition
+  a template error already took; the two are read from one file at one moment, and the behavior that
+  distinguished them assumed a file a preflight could check.
 
 ### 5.6 `repo.policy.toml` (Repository Way of Working)
 
@@ -996,12 +1035,12 @@ Discovery and reload:
 
 Configuration is resolved in this order:
 
-1. Load the operator policy config, select the `WORKFLOW.md` path (explicit runtime setting,
-   otherwise cwd default), and resolve each managed repository's `repository.<name>.policy` pointer
-   (Sections 5.3.7, 5.6).
-2. Parse the operator policy config, the `WORKFLOW.md` front matter, and each `repo.policy.toml`
-   (host-side sections from the policy branch, the in-sandbox `before:commit` gate from the
-   worktree; Section 15.4) into raw config maps.
+1. Load the operator policy config and resolve each managed repository's `repository.<name>.policy`
+   and `repository.<name>.workflow` pointers (Sections 5.1, 5.3.7, 5.6).
+2. Parse the operator policy config, each repository's `WORKFLOW.md` front matter (read from the
+   working tree the run acts in; Section 5.1), and each `repo.policy.toml` (host-side sections from
+   the policy branch, the in-sandbox `before:commit` gate from the worktree; Section 15.4) into raw
+   config maps.
 3. Resolve each `repository` entry against the orchestrator-level blocks, leaf by leaf, and then
    apply built-in defaults for missing OPTIONAL fields (Section 5.3.7). In that order: a default
    filled into an entry before resolution would shadow the orchestrator-level value the entry meant
@@ -1029,22 +1068,24 @@ Value coercion semantics:
 
 Dynamic reload is REQUIRED:
 
-- The software MUST detect changes to the two configuration artifacts it holds locally:
-  `WORKFLOW.md` and the operator policy config (Section 5).
-- `repo.policy.toml` is **not watched**. Its host-side sections are read from the policy source
-  (Section 9.7), which is a revision on a remote rather than a file on disk, so there is nothing to
-  watch that does not amount to polling a remote ref on an unstated cadence. It is instead read once
-  at the start of each unit of work, together with `WORKFLOW.md`. The policy in force for a run is
-  therefore the one read when that run started, and a change to the policy source takes effect for
-  work started after it rather than for work already under way. The in-sandbox `before:commit` gate
-  continues to be read from the worktree (Section 15.4).
-- On change, it MUST re-read and re-apply the affected configuration and prompt template without
-  restart. Live operator-config reload includes credentials and scope, and live `repo.policy.toml`
-  reload includes the action-policy machine and transitions; implementations SHOULD apply such
-  changes to future operations rather than disrupting in-flight runs.
-- The software MUST attempt to adjust live behavior to the new config (for example polling
-  cadence, concurrency limits, active/terminal states, codex settings, workspace paths/hooks, and
-  prompt content for future runs).
+- The software MUST detect changes to the one configuration artifact it holds locally: the operator
+  policy config (Section 5).
+- **Neither repository-owned artifact is watched.** `repo.policy.toml`'s host-side sections are read
+  from the policy source (Section 9.7), which is a revision on a remote rather than a file on disk,
+  so there is nothing to watch that does not amount to polling a remote ref on an unstated cadence.
+  `WORKFLOW.md` is read from the working tree the run acts in (Section 5.1), of which there is one
+  per workspace, so a watch would not say which copy it binds. Both are instead read once at the
+  start of each unit of work. The policy, the prompt template, and the in-sandbox hook halves in
+  force for a run are therefore the ones read when that run started, and a change to either source
+  takes effect for work started after it rather than for work already under way. The in-sandbox
+  `before:commit` gate continues to be read from the worktree (Section 15.4).
+- On change, the software MUST re-read and re-apply the operator policy config without restart. Live
+  operator-config reload includes credentials and scope; implementations SHOULD apply such changes
+  to future operations rather than disrupting in-flight runs. A repository's policy, prompt template
+  and hook bodies reach a future run through the per-unit-of-work read above rather than through a
+  reload, which is what keeps a restart off the path for a change to either.
+- The software MUST attempt to adjust live behavior to the new operator policy config (for example
+  polling cadence, concurrency limits, active/terminal states, codex settings, and workspace paths).
 - Reloaded config applies to future dispatch, retry scheduling, reconciliation decisions, hook
   execution, and agent launches.
 - Implementations are not REQUIRED to restart in-flight agent sessions automatically when config
@@ -1059,8 +1100,8 @@ Dynamic reload is REQUIRED:
 ### 6.3 Dispatch Preflight Validation
 
 This validation is a scheduler preflight run before attempting to dispatch new work. It validates
-the workflow/config needed to poll and launch workers, not a full audit of all possible workflow
-behavior.
+the operator configuration needed to poll and launch workers, not a full audit of all possible
+workflow behavior.
 
 Startup validation:
 
@@ -1075,7 +1116,6 @@ Per-tick dispatch validation:
 
 Validation checks:
 
-- Workflow file can be loaded and parsed.
 - At least one `repository` entry is configured, and every entry's key is a valid `Repository Key`
   (Sections 4.2, 5.3.7); otherwise configuration error.
 - The `vcs` fields Section 9.7 requires are resolved for every `repository` entry after resolution
@@ -1098,6 +1138,12 @@ Validation checks:
   validate and then never fire.
 - `codex.command` is present and non-empty.
 
+Neither repository-owned artifact is read here. A repository's `WORKFLOW.md` is inside a per-issue
+working tree that does not exist until the issue is dispatched (Sections 5.1, 9.2), and its
+`repo.policy.toml` is read from a revision on a remote at the start of each unit of work (Sections
+6.2, 9.7); neither is readable where this validation runs. A workflow file that cannot be read or
+parsed is disposed of at the run attempt instead (Sections 5.5, 14.2).
+
 ### 6.4 Core Config Fields Summary (Cheat Sheet)
 
 This section is intentionally redundant so a coding agent can implement the config layer quickly.
@@ -1107,12 +1153,12 @@ not require recognizing or validating extension fields unless that extension is 
 Configuration lives in three artifacts (Section 5): the operator policy config, the repository's
 `repo.policy.toml` (Way of Working), and `WORKFLOW.md` (in-sandbox). Each field below is tagged with
 its owner. The operator policy config enumerates the managed repositories in `repository` (Section
-5.3.7), one entry each, carrying that repository's `vcs`, its agent selection, a pointer to its
-`repo.policy.toml`, and its routing rules keyed on the normalized record's `project`, `team`,
-`labels`, `assignees` and `state` (Sections 4.1.1, 8.7) — which of those an adapter populates is
-tracker-specific and declared (Section 11.7). A key an entry does not carry resolves from the
-orchestrator-level block of the same name, leaf by leaf (Section 5.3.7); the rows below are written
-at the orchestrator level and read the same way under an entry.
+5.3.7), one entry each, carrying that repository's `vcs`, its agent selection, pointers to its
+`repo.policy.toml` and its `WORKFLOW.md`, and its routing rules keyed on the normalized record's
+`project`, `team`, `labels`, `assignees` and `state` (Sections 4.1.1, 8.7) — which of those an
+adapter populates is tracker-specific and declared (Section 11.7). A key an entry does not carry
+resolves from the orchestrator-level block of the same name, leaf by leaf (Section 5.3.7); the rows
+below are written at the orchestrator level and read the same way under an entry.
 
 Operator policy config:
 
@@ -1141,6 +1187,7 @@ Operator policy config:
 - `vcs.await_budget_floor`: OPTIONAL bucket name and minimum remaining below which the wait stops and the issue parks, default unset
 - `forge_budget.enabled` / `forge_budget.warn_percent` / `forge_budget.<bucket>_floor`: the OPTIONAL forge budget guard (Section 8.11); defaults `false` and `80`. Recording the snapshot is Core and needs none of these
 - `repository.<name>.policy`: path resolved relative to the repository, default `repo.policy.toml`; the pointer to that repository's `repo.policy.toml` (Sections 5.3.7, 5.6)
+- `repository.<name>.workflow`: path resolved relative to the repository, default `WORKFLOW.md`; the pointer to that repository's `WORKFLOW.md`, read from the working tree the run acts in (Sections 5.1, 5.3.7)
 - `repository.<name>.vcs`: that repository's `vcs` block, fields as above (Sections 5.3.7, 9.7). `repository.<name>.vcs.git_credential` and `repository.<name>.vcs.forge_credential` are where the per-repository credential scope is written (Sections 8.7, 15.3)
 - `repository.<name>.agent`: that repository's `default_agent`, `default_effort` and `agent_by_label` (Sections 5.3.7, 10.9); no other `agent` field
 - `repository.<name>.routing`: that repository's routing rules over `project`, `team`, `labels`, `assignees` and `state`, default unset — matches every issue (Sections 5.3.7, 8.7)
@@ -1157,7 +1204,7 @@ Repository Way of Working (`repo.policy.toml`, Section 5.6):
 - `tracker.transitions`: list of `{from, on, to}` entries, default `[]` (workflow state-machine, Sections 9.12, 11.6)
 - `[tasks]` / `[driver]`: OPTIONAL daemon task management and computed completion (Section 8.10)
 
-Workspace hooks (repository-owned; in-sandbox in `WORKFLOW.md`, host-side in `repo.policy.toml`, Sections 5.3.4, 15.4):
+Workspace hooks (repository-owned; in-sandbox in `WORKFLOW.md`, host-side in `repo.policy.toml`, each read from its own artifact's source, Sections 5.1, 5.3.4, 15.4):
 
 - `hooks.workspace.after_create`: shell script or null
 - `hooks.workspace.before_run`: shell script or null
@@ -2005,10 +2052,14 @@ Algorithm summary:
 
 1. Sanitize identifier to `workspace_key`.
 2. Compute workspace path under workspace root.
-3. Ensure the workspace path exists as a directory.
+3. Ensure the workspace path exists as a directory, and for a VCS-managed repository derive the
+   working tree there (Section 9.7).
 4. Mark `created_now=true` only if the directory was created during this call; otherwise
    `created_now=false`.
-5. If `created_now=true`, run the `after_create` hook halves that are configured: the host-side half
+5. Read the repository's `WORKFLOW.md` from that tree (Section 5.1). It declares the in-sandbox
+   halves of this workspace's lifecycle hooks (Sections 5.3.4, 15.4), so the tree is derived before
+   the halves run rather than after.
+6. If `created_now=true`, run the `after_create` hook halves that are configured: the host-side half
    first, then the in-sandbox half (Section 9.4).
 
 Notes:
@@ -2715,10 +2766,12 @@ Orchestrator↔executor protocol:
 - The agent app-server protocol terminates at the executor (Section 3.1). The executor speaks it
   locally — in-process for a local executor, on the node for a remote one (Section 9.11) — and the
   orchestrator is never in agent communication. Across the seam the orchestrator sends a *run-spec*
-  (the normalized issue, the workflow template, the `agent`/effort selection, `agent.max_turns`, a
-  wall-clock bound, and any `continuation_ref`) plus the run's secrets, and receives only normalized
-  runtime events (Section 10.4), token usage (Section 13.5), the outcome, and committed-state
-  notifications.
+  (the normalized issue, the `agent`/effort selection, `agent.max_turns`, a wall-clock bound, and
+  any `continuation_ref`) plus the run's secrets, and receives only normalized runtime events
+  (Section 10.4), token usage (Section 13.5), the outcome, and committed-state notifications. The
+  workflow template does not cross the seam: it is read from the working tree the executor derived
+  (Sections 5.1, 16.6), which for a remote executor is derived on the node against a store
+  provisioned there (Section 9.11), so the orchestrator never holds it.
 - When the executor is remote, the wire contract between the orchestrator and the executor — its
   message shapes, framing, and version grammar — is defined by its own versioned protocol document
   that the implementation MUST consult; this specification owns the orchestration semantics (what
@@ -3705,8 +3758,13 @@ Extension config:
 Enablement (extension):
 
 - Start the HTTP server when a CLI `--port` argument is provided.
-- Start the HTTP server when `server.port` is present in `WORKFLOW.md` front matter.
-- The `server` top-level key is owned by this extension.
+- Start the HTTP server when `server.port` is present in the operator policy config.
+- The `server` top-level key is owned by this extension and belongs to the operator policy config.
+  Binding a host port is a deployment concern with a host-side effect, and the listener serves
+  instance-wide state — the runtime snapshot (Section 13.3) and the JSON API (Section 13.8.2) carry
+  the runs of every repository the instance manages — so a repository-owned, in-sandbox artifact
+  MUST NOT carry it (Sections 5, 15.4). This is the placement Section 18.2 states for
+  `observability.*`, on the same reasoning.
 - Positive `server.port` values bind that port.
 - Implementations SHOULD bind loopback by default (`127.0.0.1` or host equivalent) unless explicitly
   configured otherwise.
@@ -3961,17 +4019,29 @@ where a failure arose, while an extension elevates one condition it must dispose
 
 Each bullet names the failure class or classes it disposes of (Section 14.1). The mapping is not
 one-to-one: `workspace_failures` and `agent_session_failures` share the worker disposition because
-both fail one attempt, and `tracker_failures` takes two dispositions because what a tracker failure
-costs depends on where it occurred — a candidate fetch skips a tick, a state refresh keeps the
-workers it already has.
+both fail one attempt, and `tracker_failures` and `workflow_config_failures` each take two
+dispositions because what the failure costs depends on where it occurred — a candidate fetch skips a
+tick, a state refresh keeps the workers it already has; an operator-configuration defect is the
+instance's, a repository's workflow file is that repository's.
 
-- Dispatch validation failures (`workflow_config_failures`):
+- Operator-configuration failures (`workflow_config_failures`): an unsupported tracker kind, missing
+  tracker credentials or project slug, or a missing coding-agent executable — the conditions
+  dispatch preflight reads (Section 6.3):
   - Skip new dispatches.
   - Keep service alive.
   - Continue reconciliation where possible.
 
 - Worker failures (`workspace_failures`, `agent_session_failures`):
   - Convert to retries with exponential backoff.
+
+- Workflow-file failures (`workflow_config_failures`): a repository's `WORKFLOW.md` missing at its
+  configured pointer, or its front matter not parsing (Sections 5.1, 5.5):
+  - Take the worker disposition above: fail the affected run attempt and convert to a retry with
+    exponential backoff (Section 8.4). No backoff schedule of its own is introduced.
+  - The artifact is read inside the run, from the working tree that run acts in, so there is no
+    earlier point at which the failure could gate dispatch (Section 6.3) and no reason for one
+    repository's workflow file to stop another repository's runs. That is why the class splits here
+    rather than in Section 14.1, which names conditions rather than dispositions.
 
 - An exhausted wait for required checks (`await_checks:still_pending`, `await_checks:budget_floor`;
   Sections 8.11, 9.10) is **parked**, not retried and not failed. It is not a failure class, being
@@ -4155,9 +4225,11 @@ reconstruct-from-tracker/filesystem recovery above, with no running session assu
 
 Operators can control behavior by:
 
-- Editing `WORKFLOW.md` (prompt and most runtime settings).
-- `WORKFLOW.md` changes are detected and re-applied automatically without restart according to
-  Section 6.2.
+- Editing a repository's `WORKFLOW.md` (its prompt template and in-sandbox hooks). The artifact is
+  repository-owned, so the edit is made in the repository and takes effect for work started after it
+  reaches the run's working tree; it is not watched (Sections 5.1, 6.2).
+- Editing the operator policy config, whose changes are detected and re-applied without restart
+  according to Section 6.2.
 - Changing issue states in the tracker:
   - terminal state -> running session is stopped and workspace cleaned when reconciled
   - non-active state -> running session is stopped without cleanup
@@ -4327,14 +4399,23 @@ Working from the revision that makes it safe:
   All three are consequences of the mode rather than defects in it, which is why the specification
   states them here rather than warning against the choice.
 - In-sandbox parts — the `WORKFLOW.md` prompt, its `hooks.workspace` lifecycle hooks, and the
-  `hooks.engine` units the `before:commit` gate/scan runs — are read from the **worktree**. An agent
-  edit there is harmless: these run inside the sandbox without credentials or host access, and
-  running a pull request's own gate change against that pull request is correct.
+  `hooks.engine` units the `before:commit` gate/scan runs — are read from the **worktree**: the
+  working tree the run acts in, at the pointer Section 5.1 resolves, so the revision an in-sandbox
+  part is read from is one a reader can point at. An agent edit there is harmless: these run inside
+  the sandbox without credentials or host access, and running a pull request's own gate change
+  against that pull request is correct.
 
 Each artifact is read from exactly one revision, which is what makes "sourced by trust" checkable
 rather than a rule about parts of a file. A hook's execution context follows the artifact that
 declares it — `repo.policy.toml` host-side, `WORKFLOW.md` in-sandbox — so nothing declares a context
 that could disagree with where it was read from (`VCSX-CONTRACT.md`).
+
+Symphony reads `WORKFLOW.md` host-side, out of the workspace directory, as **data** — the
+read/execute distinction stated below for a host-side hook, which MAY read the workspace and MUST
+NOT execute from it. What the file declares is then run where it belongs: an in-sandbox hook half's
+body is handed to the sandbox, and the prompt body is rendered into a prompt Section 5.4 already
+governs as untrusted content. Reading worktree content host-side grants that content no host
+execution.
 
 The gate's *declaration* being in `WORKFLOW.md` does not put the gate in the agent's gift. The
 `[policy]` edge that invokes it stays in `repo.policy.toml` and is read from the policy branch, so
@@ -4409,7 +4490,12 @@ treat harness hardening as part of the core safety model rather than an optional
 function start_service():
   configure_logging()
   start_observability_outputs()
-  start_workflow_watch(on_change=reload_and_reapply_workflow)
+
+  # The operator policy config is the one configuration artifact this process holds locally, so it
+  # is the one that is watched (Section 6.2). Each repository's repo.policy.toml and WORKFLOW.md are
+  # read once at the start of each unit of work instead, from the policy source and from the run's
+  # own working tree (Sections 5.1, 9.7).
+  start_policy_config_watch(on_change=reload_and_reapply_policy_config)
 
   # Establish an identity for this process, distinct from that of any previous process of the same
   # deployment. run_id (Section 4.1.5) composes from it, so this is where its across-restart
@@ -4724,6 +4810,15 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
   if workspace failed:
     fail_worker(run_id, "workspace error")
 
+  # The repository's WORKFLOW.md, read from the tree just derived, at the pointer
+  # repository.<name>.workflow names (Sections 5.1, 5.3.7). It is read here rather than sent across
+  # the seam, because the tree is the executor's and for a remote executor exists only on the node
+  # (Section 10). A read or parse failure fails this attempt and blocks no other repository's
+  # dispatches (Sections 5.5, 14.2).
+  workflow = workflow_loader.read(workspace, repo_of(issue))
+  if workflow failed:
+    fail_worker(run_id, "workflow error")
+
   # Bring the work branch up to date with base; postpone if it would conflict (resolved later
   # only if a push is rejected). This is the engine's back-merge operation (Sections 9.7, 9.8);
   # Symphony has no VCS adapter of its own.
@@ -4747,7 +4842,7 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
     # During each turn the agent uses the symphony broker CLI for privileged operations
     # (push, pull request, tracker writes); Symphony executes them host-side (Sections 10.8, 9.9).
     # First turn: full task prompt; continuation turns: continuation guidance (Section 10.3).
-    prompt = build_turn_prompt(workflow_template, issue, attempt, turn_number, max_turns)
+    prompt = build_turn_prompt(workflow.prompt_template, issue, attempt, turn_number, max_turns)
     if prompt failed:
       agent.release(continuation_ref)
       run_sandbox_hook_best_effort("after_run", workspace)
@@ -4986,12 +5081,18 @@ carries its own profile in parentheses. Bullets that begin with `If ... is imple
 These checks are `Core Conformance`: the configuration layer is shared by both layer profiles,
 except where a bullet states otherwise.
 
-- Workflow file path precedence:
-  - explicit runtime path is used when provided
-  - cwd default is `WORKFLOW.md` when no explicit runtime path is provided
-- Workflow file changes are detected and trigger re-read/re-apply without restart
-- Invalid workflow reload keeps last known good effective configuration and emits an
-  operator-visible error
+- `WORKFLOW.md` is resolved within the working tree the run acts in and never at a host location
+  outside one (Section 5.1): a dispatched run resolves it at `repository.<name>.workflow` inside its
+  per-issue workspace, and a session driven in a workspace it did not dispatch resolves it by
+  explicit runtime setting, otherwise by the process working directory
+- `WORKFLOW.md` is read once at the start of each unit of work and is not watched: a change to a
+  repository's workflow file mid-run does not alter that run and takes effect for the next
+  (Section 6.2)
+- Two repositories under one instance carry their own prompt templates and their own in-sandbox hook
+  halves, each read from that run's own working tree, and neither reads the other's (Sections 5.1,
+  5.3.7)
+- A `WORKFLOW.md` missing at its configured pointer, or whose front matter does not parse, fails
+  that run attempt and does not block dispatch for any other repository (Sections 5.5, 14.2)
 - Policy config and `WORKFLOW.md` load as separate artifacts; `WORKFLOW.md` carries only in-sandbox
   settings (prompt and in-sandbox hooks)
 - Policy-config changes are detected and re-applied without restart, with last-known-good on invalid
@@ -5015,6 +5116,8 @@ except where a bullet states otherwise.
   entry inherits is not shadowed by the default that would have filled the entry's own key
 - A `Repository Key` outside `[A-Za-z0-9._-]` fails configuration validation rather than being
   sanitized, and a policy config with no `repository` entry fails it too (Sections 4.2, 5.3.7, 6.3)
+- An entry's `policy` and `workflow` pointers take their built-in defaults rather than an
+  orchestrator-level value, there being none for either (Section 5.3.7)
 - Two repositories whose Ways of Working differ run under one operator policy config that names
   neither repository's policy machine, host-side hooks, transitions, or branch-name pattern: two
   `repository` entries, each pointing at its own `repo.policy.toml`
@@ -5120,8 +5223,10 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - The policy branch resolves to the copy the configured remote holds; a local branch of the same
   name in the checkout does not change which host-side Way of Working runs (Section 9.7)
 - Each configuration artifact is read from exactly one revision: `repo.policy.toml` from the policy
-  source, `WORKFLOW.md` from the worktree. A hook's execution context follows the artifact declaring
-  it, and no hook declares one. An agent edit to the `before:commit` gate's unit in `WORKFLOW.md`
+  source, `WORKFLOW.md` from the working tree the run acts in (Section 5.1), which is where an
+  in-sandbox hook half's declaration is read from — derived before the `after_create` halves run
+  (Section 9.2). A hook's execution context follows the artifact declaring it, and no hook declares
+  one. An agent edit to the `before:commit` gate's unit in `WORKFLOW.md`
   changes what the gate does; the `[policy]` edge invoking it is read from the policy source, so the
   agent cannot change whether it runs (Section 15.4)
 - A host-side hook declaring a unit at a path the agent can also write runs the policy branch's copy
@@ -5426,9 +5531,10 @@ These checks are `Core Conformance`: structured logging and its sinks serve both
 
 These checks are `Daemon Conformance`: they describe the long-running host process.
 
-- CLI accepts a positional workflow path argument (`path-to-WORKFLOW.md`)
-- CLI uses `./WORKFLOW.md` when no workflow path argument is provided
-- CLI errors on nonexistent explicit workflow path or missing default `./WORKFLOW.md`
+- Where the process runs in the workspace it acts in (Section 5.1), the CLI accepts a positional
+  workflow path argument (`path-to-WORKFLOW.md`), uses `./WORKFLOW.md` when none is provided, and
+  errors on a nonexistent explicit path or a missing default. A daemon resolves each repository's
+  workflow file from that run's own working tree instead and takes no such argument
 - CLI surfaces startup failure cleanly
 - CLI exits with success when application starts and shuts down normally
 - CLI exits nonzero when startup fails or the host process exits abnormally
@@ -5488,11 +5594,13 @@ Required of every conforming implementation, whichever profiles its topology cla
 - Typed config layer with defaults, secret-provider resolution, and `$` expansion for non-secret
   paths
 - Three configuration artifacts (Section 5): operator policy config, repository-owned
-  `repo.policy.toml` (Way of Working; host-side sections policy-branch-sourced), and
-  repository-owned `WORKFLOW.md` (in-sandbox, worktree-sourced); dynamic watch/reload/re-apply for
-  all three with last-known-good on invalid reload; the workflow validation error classes
-  (Section 5.5) are REQUIRED spellings, and any class defined beyond them is documented and assigned
-  a dispatch gating behavior
+  `repo.policy.toml` (Way of Working; host-side sections policy-branch-sourced, pointer
+  `repository.<name>.policy`), and repository-owned `WORKFLOW.md` (in-sandbox, read from the working
+  tree the run acts in, pointer `repository.<name>.workflow`). The operator policy config is watched
+  and reloaded with last-known-good on invalid reload; the two repository-owned artifacts are not
+  watched and are read once at the start of each unit of work (Sections 5.1, 6.2). The workflow
+  validation error classes (Section 5.5) are REQUIRED spellings, and any class defined beyond them
+  is documented and takes the one dispatch gating behavior — failing the affected run attempt
 - Structured logs with `issue_id`, `issue_identifier`, `session_id`, `origin_run_id` (a retry
   carries its origin's; a first attempt carries its own), and `credential_scope` on any call that
   reached the code host
@@ -5570,7 +5678,9 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
 
 Required of the `daemon` topology only.
 
-- Workflow path selection supports explicit runtime path and cwd default
+- Each repository's `WORKFLOW.md` is resolved within that run's own working tree, at
+  `repository.<name>.workflow` (Sections 5.1, 5.3.7), and never at a host location outside a working
+  tree
 - `WORKFLOW.md` loader with YAML front matter + prompt body split
 - Polling orchestrator with single-authority mutable state
 - Issue tracker client with candidate fetch + state refresh + terminal fetch
@@ -5587,9 +5697,9 @@ Required of the `daemon` topology only.
 - Dispatch preflight refuses a configured `tracker.assignee` on a tracker adapter whose capability
   descriptor does not declare that it populates `assignees` (Sections 6.3, 11.7)
 - Multiple repositories per instance, enumerated in `repository` with a key an entry does not carry
-  resolving from the orchestrator level leaf by leaf (Section 5.3.7); issue→repo routing from the
-  entries' own `routing` rules and one shared tracker polled once per cycle; workspace/concurrency
-  keyed by (repository, issue)
+  resolving from the orchestrator level leaf by leaf (Section 5.3.7), and each entry pointing at its
+  own `repo.policy.toml` and `WORKFLOW.md`; issue→repo routing from the entries' own `routing` rules
+  and one shared tracker polled once per cycle; workspace/concurrency keyed by (repository, issue)
 - The routing mapping is evaluated over the normalized record's own fields (`project`, `team`,
   `labels`, `assignees`, `state`) rather than over a raw tracker payload, and an issue more than one
   repository's rule claims is left unrouted (Sections 4.1.1, 8.7)
@@ -5679,8 +5789,11 @@ budget guards, provider quota backpressure, the forge budget guard, cross-sessio
 aggregation, the node-scheduler, and autonomous task management extend `Daemon Conformance`; the
 per-execution usage ledger extends `Broker Core Conformance`.
 
-- HTTP server extension honors CLI `--port` over `server.port`, uses a safe default bind host, and
-  exposes the baseline endpoints/error semantics in Section 13.8 if shipped.
+- HTTP server extension (Section 13.8) honors CLI `--port` over `server.port`, uses a safe default
+  bind host, and exposes the baseline endpoints/error semantics in Section 13.8 if shipped. It owns
+  the `server.*` namespace in the **operator policy config**: binding a host port is a deployment
+  concern with a host-side effect serving instance-wide state, which a repository-owned, in-sandbox
+  artifact MUST NOT carry (Sections 5, 15.4) — the placement stated for `observability.*` below.
 - Durable state across restarts is governed by the recovery-class taxonomy (Section 14.3): the retry
   queue stays `Ephemeral` (backoff restarts after a restart), and durably persisting session
   accounting is the `Durable` class an OPTIONAL budgeting extension provides rather than a core

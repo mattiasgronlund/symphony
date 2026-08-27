@@ -1,2 +1,5 @@
 # Byte-compiled artifacts from running the validators in scripts/.
 scripts/__pycache__/
+
+# Per-developer Claude Code permission overrides; the checked-in bundle lives in .claude/skills/.
+.claude/settings.local.json
