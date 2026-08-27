@@ -429,10 +429,10 @@ Fields (with recovery class):
   different things and a message can be decided against the entry rather than against the key. Each
   entry also carries the `repository` it was dispatched to (Sections 8.7, 16.4), recorded once at
   dispatch rather than recomputed, so a later re-evaluation of the routing mapping has a fixed value
-  to compare against. The member does not change how the field recovers: where one instance manages
-  several repositories the workspace path carries `repo_key` (Section 9.1) and the value is read
-  back from it, and where it manages one the single managed repository is the only value the member
-  can hold.
+  to compare against. The member holds a `Repository Key` (Section 4.2), and does not change how the
+  field recovers: the workspace path carries that key as `repo_key` (Section 9.1) and the value is
+  read back from it exactly, the key being constrained where it is configured rather than sanitized
+  where it is used.
 - `claimed` (set of issue IDs reserved/running/retrying) — `Reconstructable` (re-derived from
   `running` and `retry_attempts`).
 - `retry_attempts` (map `issue_id -> RetryEntry`) — `Ephemeral` (timers are not restored; backoff
@@ -487,6 +487,17 @@ Fields:
     `[A-Za-z0-9._-]` with `_` (Section 9.5, Invariant 3); a non-ASCII code point yields one `_` per
     byte.
   - Use the sanitized value for the workspace directory name.
+- `Repository Key`
+  - The name a `repository` entry is keyed by (Section 5.3.7): the value routing selects (Section
+    8.7), the repository half of the `(repository, issue)` key, and the `repo_key` component of the
+    per-issue workspace path (Section 9.1).
+  - Permitted characters are `[A-Za-z0-9._-]`. A name outside that set fails configuration
+    validation (Section 6.3) rather than being sanitized, so one value appears in the configuration,
+    in the workspace path, and in a running entry's `repository` (Section 4.1.8).
+  - It is constrained where it is written rather than sanitized where it is used, which
+    `Workspace Key` cannot be: that key is derived from an identifier the tracker owns, so
+    sanitization is the only option and is deliberately lossy. This value is the operator's own, and
+    the workspace path is where it is read back from after a restart (Section 4.1.8).
 - `Lowercase Normalization`
   - The Unicode Default Case Conversion to lowercase (The Unicode Standard, Section 3.13 "Default
     Case Algorithms"), using the full mappings rather than the simple ones: the mapping is not
@@ -614,11 +625,14 @@ Top-level operator-config keys:
 - `tracker` (its `transitions` field is repository-owned; see Section 5.3.1)
 - `polling`
 - `workspace`
-- `vcs` (per managed repository: the code-host selection, its access parameters and credentials, the
-  remote, the policy branch, the default pull-request target and its bound, and the commit/actor
-  identities; its fields are documented in Section 9.7)
+- `vcs` (the code-host selection, its access parameters and credentials, the remote, the policy
+  branch, the default pull-request target and its bound, and the commit/actor identities; its fields
+  are documented in Section 9.7). Written per managed repository under `repository` (Section 5.3.7);
+  this orchestrator-level block supplies what an entry does not carry
 - `agent`
 - `codex`
+- `repository` (the managed repositories, one entry each: that repository's `repo.policy.toml`
+  pointer, its `vcs`, its agent selection, and its routing rules; see Section 5.3.7)
 
 Unknown keys SHOULD be ignored for forward compatibility.
 
@@ -630,6 +644,10 @@ Note:
   the policy config or `WORKFLOW.md`, and whether changes apply dynamically or require restart.
 
 #### 5.3.1 `tracker` (object)
+
+One instance configures one tracker, and the managed repositories draw work from it: it is polled
+once per cycle and the returned issues are routed to repositories (Section 8.7). This block is
+orchestrator-level and has no per-repository form.
 
 Fields:
 
@@ -746,6 +764,14 @@ Fields:
 
 #### 5.3.5 `agent` (object)
 
+The selection fields — `default_agent`, `default_effort` and `agent_by_label` — are per managed
+repository: a `repository` entry MAY carry its own (Sections 5.3.7, 10.9), and this block supplies
+the value for an entry that carries none. The remaining fields — `max_concurrent_agents`,
+`max_turns`, `max_retry_backoff_ms` and `max_concurrent_agents_by_state` — are orchestrator-level
+and have no per-repository form: Section 8.3 computes the concurrency limits over the instance's
+`running` map and Section 8.4's backoff is per issue, so a per-repository value would bound
+something this specification does not count.
+
 Fields:
 
 - `default_agent` (string)
@@ -807,6 +833,53 @@ fields locally if they want stricter startup checks.
 - `stall_timeout_ms` (integer)
   - Default: `300000` (5 minutes)
   - If `<= 0`, stall detection is disabled.
+
+#### 5.3.7 `repository` (map of objects)
+
+The managed repositories (Section 8.7). Each entry is keyed by the repository's name, which is the
+`Repository Key` of Section 4.2, and holds what belongs to that repository rather than to the
+instance.
+
+A deployment that manages a repository configures at least one entry. An entry MAY carry nothing but
+its key: every field below is OPTIONAL, and an absent one resolves from the orchestrator-level block
+of the same name. A single-repository deployment therefore writes its `vcs` and `agent` settings
+once at the top level and names the repository here; a deployment with several writes per entry what
+differs and leaves the rest at the top level.
+
+Fields:
+
+- `policy` (path string)
+  - The pointer to that repository's `repo.policy.toml` (Section 5.6). Resolved relative to the
+    repository, not to the host filesystem: the file is read from a revision on a remote (Sections
+    6.2, 15.4).
+  - Default: `repo.policy.toml`
+- `vcs` (object)
+  - That repository's `vcs` block. Its fields are documented in Section 9.7.
+  - Default: empty — every field resolves from the orchestrator-level `vcs`.
+- `agent` (object)
+  - That repository's agent selection: `default_agent`, `default_effort` and `agent_by_label`
+    (Sections 5.3.5, 10.9). No other `agent` field is accepted here; the rest of Section 5.3.5 is
+    orchestrator-level.
+  - Default: empty — selection resolves from the orchestrator-level `agent`.
+- `routing` (list of rules)
+  - That repository's share of the issue-to-repository mapping (Section 8.7). Each rule is a
+    conjunction of conditions over the normalized issue record's `project`, `team`, `labels`,
+    `assignees` and `state` (Sections 4.1.1, 4.2); a condition on a list-valued field is membership
+    and a condition on a scalar field is equality. A rule holds for an issue when every condition in
+    it holds, and it selects the entry it is written in.
+  - Default: unset — the entry matches every issue. That is what makes a single-repository
+    deployment need no mapping at all, and it is why two entries that both configure none leave
+    every issue matched by more than one repository and therefore unrouted (Section 8.7).
+
+Resolution against the orchestrator level:
+
+- A key an entry does not carry takes the orchestrator-level value for the same key. Resolution is
+  per leaf key rather than per block, so an entry setting `agent.default_effort` keeps the
+  orchestrator-level `agent.default_agent`, and an entry setting `vcs.forge_credential` keeps the
+  orchestrator-level `vcs.remote`.
+- It happens before built-in defaults are applied (Section 6.1). A default filled into an entry
+  first would shadow the orchestrator-level value the entry meant to inherit, and the entry would
+  read as having chosen it.
 
 ### 5.4 Prompt Template Contract
 
@@ -880,11 +953,11 @@ Dispatch gating behavior:
 ### 5.6 `repo.policy.toml` (Repository Way of Working)
 
 `repo.policy.toml` is the repository-owned Way-of-Working surface (Section 5). The operator policy
-config points each managed repository at its `repo.policy.toml`; the repository owns the contents, so
-configuring Symphony needs no knowledge of its policy machine, host-side hooks, transitions, or
-branch-name pattern. Symphony consumes it through the VCS engine contract (`VCSX-CONTRACT.md`,
-Section 4); this specification names its sections and defers the field-level schema to that
-contract.
+config points each managed repository at its `repo.policy.toml` through `repository.<name>.policy`
+(Section 5.3.7); the repository owns the contents, so configuring Symphony needs no knowledge of its
+policy machine, host-side hooks, transitions, or branch-name pattern. Symphony consumes it through
+the VCS engine contract (`VCSX-CONTRACT.md`, Section 4); this specification names its sections and
+defers the field-level schema to that contract.
 
 The file carries no code-host selection, access parameters, credentials, or remote: those are read
 before the repository exists and are operator-owned (Sections 5, 9.7). What remains is what a clone
@@ -913,8 +986,9 @@ Trust sourcing:
 
 Discovery and reload:
 
-- The file path is resolved relative to the repository. Changes are re-read and re-applied like other
-  configuration (Section 6.2), with last-known-good on invalid reload.
+- The file path is `repository.<name>.policy` (Section 5.3.7, Default: `repo.policy.toml`),
+  resolved relative to the repository. Changes are re-read and re-applied like other configuration
+  (Section 6.2), with last-known-good on invalid reload.
 
 ## 6. Configuration Specification
 
@@ -923,11 +997,15 @@ Discovery and reload:
 Configuration is resolved in this order:
 
 1. Load the operator policy config, select the `WORKFLOW.md` path (explicit runtime setting,
-   otherwise cwd default), and resolve each managed repository's `repo.policy.toml` pointer.
+   otherwise cwd default), and resolve each managed repository's `repository.<name>.policy` pointer
+   (Sections 5.3.7, 5.6).
 2. Parse the operator policy config, the `WORKFLOW.md` front matter, and each `repo.policy.toml`
    (host-side sections from the policy branch, the in-sandbox `before:commit` gate from the
    worktree; Section 15.4) into raw config maps.
-3. Apply built-in defaults for missing OPTIONAL fields.
+3. Resolve each `repository` entry against the orchestrator-level blocks, leaf by leaf, and then
+   apply built-in defaults for missing OPTIONAL fields (Section 5.3.7). In that order: a default
+   filled into an entry before resolution would shadow the orchestrator-level value the entry meant
+   to inherit.
 4. Resolve secrets through the secret-provider interface, and `$VAR_NAME` indirection for non-secret
    path values that explicitly contain `$VAR_NAME`.
 5. Coerce and validate typed values.
@@ -998,6 +1076,11 @@ Per-tick dispatch validation:
 Validation checks:
 
 - Workflow file can be loaded and parsed.
+- At least one `repository` entry is configured, and every entry's key is a valid `Repository Key`
+  (Sections 4.2, 5.3.7); otherwise configuration error.
+- The `vcs` fields Section 9.7 requires are resolved for every `repository` entry after resolution
+  against the orchestrator level (Section 5.3.7), so a deployment supplying no `vcs.local_vcs` for
+  one repository fails configuration rather than defaulting one for it.
 - `tracker.kind` is present and supported.
 - `tracker.api_key` is present after `$` resolution when the selected tracker adapter is
   `secret`-mode (Section 11.7); `none`-mode adapters require no key.
@@ -1006,8 +1089,8 @@ Validation checks:
   capability (Section 11.7); otherwise configuration error.
 - When `tracker.assignee` is non-null, the selected tracker adapter declares that it populates
   `assignees` (Section 11.7); otherwise configuration error.
-- Every record field a routing mapping keys on (Section 8.7) is one the selected tracker adapter
-  declares it populates (Section 11.7); otherwise configuration error.
+- Every record field a `routing` rule keys on (Sections 5.3.7, 8.7) is one the selected tracker
+  adapter declares it populates (Section 11.7); otherwise configuration error.
 - Every `tracker.transitions` entry's `on` value is in the trigger vocabulary (Section 11.6);
   otherwise configuration error. The VCS engine cannot make this check on Symphony's behalf: a bare
   token is a well-formed signal to the engine, whose signal set is open because the consumer raises
@@ -1023,10 +1106,13 @@ not require recognizing or validating extension fields unless that extension is 
 
 Configuration lives in three artifacts (Section 5): the operator policy config, the repository's
 `repo.policy.toml` (Way of Working), and `WORKFLOW.md` (in-sandbox). Each field below is tagged with
-its owner. The operator policy config MAY define multiple repositories, each with its own `vcs` and
-`agent` settings and a pointer to that repository's `repo.policy.toml`, plus an issue→repo mapping
-keyed on the normalized record's `project`, `team`, `labels`, `assignees` and `state` (Sections
-4.1.1, 8.7) — which of those an adapter populates is tracker-specific and declared (Section 11.7).
+its owner. The operator policy config enumerates the managed repositories in `repository` (Section
+5.3.7), one entry each, carrying that repository's `vcs`, its agent selection, a pointer to its
+`repo.policy.toml`, and its routing rules keyed on the normalized record's `project`, `team`,
+`labels`, `assignees` and `state` (Sections 4.1.1, 8.7) — which of those an adapter populates is
+tracker-specific and declared (Section 11.7). A key an entry does not carry resolves from the
+orchestrator-level block of the same name, leaf by leaf (Section 5.3.7); the rows below are written
+at the orchestrator level and read the same way under an entry.
 
 Operator policy config:
 
@@ -1043,7 +1129,7 @@ Operator policy config:
 - `vcs.forge`: string, `github` | `forgejo`, the code host the repository is published on (operator-owned, Section 9.7)
 - `vcs.git_access` / `vcs.forge_access`: where the version-control operations reach the remote, and where the forge operations reach the code host
 - `vcs.forge_parameters`: OPTIONAL per-backend extension bag, carried to the selected backend uninterpreted
-- `vcs.git_credential` / `vcs.forge_credential`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; `vcs.forge_credential` defaults to `vcs.git_credential`. Both MAY be configured **per repository**, in which case that value applies to the repository's calls and the orchestrator-level value applies to repositories configuring none (Sections 8.7, 15.3). An implementation MUST support the per-repository form; using it is the operator's choice
+- `vcs.git_credential` / `vcs.forge_credential`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; `vcs.forge_credential` defaults to `vcs.git_credential`. Both MAY be written **under a `repository` entry**, where they resolve as every other entry key does (Section 5.3.7): that value applies to the repository's calls and this orchestrator-level value applies to repositories configuring none (Sections 8.7, 15.3). An implementation MUST support the per-repository form; using it is the operator's choice
 - `vcs.remote`: the remote the repository is provisioned from and the operations that touch one act against
 - `vcs.policy_source`: string, `policy_branch` | `target_branch`, default `policy_branch`; where host-side Way of Working is read from (Sections 9.7, 15.4)
 - `vcs.policy_branch`: REQUIRED under `policy_source = "policy_branch"`, no default; the branch `repo.policy.toml`'s host-side parts are read from. Never a pull-request target (Sections 9.7, 9.10, 15.4)
@@ -1054,7 +1140,10 @@ Operator policy config:
 - `vcs.await_bound_ms` / `vcs.await_max_reads` / `vcs.await_interval_ms`: the bounds Symphony hands the engine's `await_checks` on `merge:checks_pending` (Sections 8.11, 9.10); defaults `Implementation-defined` and documented. Reaching either bound parks the issue; a pull request with no required checks returns `no_checks` and the flow continues
 - `vcs.await_budget_floor`: OPTIONAL bucket name and minimum remaining below which the wait stops and the issue parks, default unset
 - `forge_budget.enabled` / `forge_budget.warn_percent` / `forge_budget.<bucket>_floor`: the OPTIONAL forge budget guard (Section 8.11); defaults `false` and `80`. Recording the snapshot is Core and needs none of these
-- a `repo.policy.toml` pointer per managed repository (Section 5.6)
+- `repository.<name>.policy`: path resolved relative to the repository, default `repo.policy.toml`; the pointer to that repository's `repo.policy.toml` (Sections 5.3.7, 5.6)
+- `repository.<name>.vcs`: that repository's `vcs` block, fields as above (Sections 5.3.7, 9.7). `repository.<name>.vcs.git_credential` and `repository.<name>.vcs.forge_credential` are where the per-repository credential scope is written (Sections 8.7, 15.3)
+- `repository.<name>.agent`: that repository's `default_agent`, `default_effort` and `agent_by_label` (Sections 5.3.7, 10.9); no other `agent` field
+- `repository.<name>.routing`: that repository's routing rules over `project`, `team`, `labels`, `assignees` and `state`, default unset — matches every issue (Sections 5.3.7, 8.7)
 - `observability.*`: namespace for OPTIONAL observability settings, no core fields (Section 18.2)
 - `observability.ledger.*`: usage-ledger settings, no core fields (Section 13.6)
 
@@ -1272,8 +1361,8 @@ Tick sequence:
 
 1. Reconcile running issues.
 2. Run dispatch preflight validation.
-3. Fetch candidate issues from each tracker (once per tracker) and route them to repositories
-   (Section 8.7).
+3. Fetch candidate issues from the configured tracker, once for the cycle, and route them to
+   repositories (Section 8.7).
 4. Sort issues by dispatch priority.
 5. Dispatch eligible issues while slots remain.
 6. Notify observability/status consumers of state changes.
@@ -1578,8 +1667,12 @@ One Symphony instance MAY manage multiple repositories.
 
 Configuration:
 
-- The policy config enumerates the managed repositories, each with its own VCS configuration
-  (Section 9.7) and agent selection (Section 10.9), and the trackers they draw work from.
+- The policy config enumerates the managed repositories in `repository` (Section 5.3.7): one entry
+  per repository, keyed by its `Repository Key` (Section 4.2), carrying that repository's VCS
+  configuration (Section 9.7), its agent selection (Section 10.9), its `repo.policy.toml` pointer
+  (Section 5.6), and its routing rules (below). A key an entry does not carry resolves from the
+  orchestrator-level block of the same name, so a single-repository deployment configures one entry
+  and writes the rest once at the top level.
 
 Issue-to-repository routing:
 
@@ -1588,6 +1681,12 @@ Issue-to-repository routing:
 - Routing is a pure function of the normalized issue record (Section 4.1.1) and an explicit mapping
   in the policy config, evaluated after normalization (Section 4.2) rather than over the tracker
   payload the adapter read it from.
+- The mapping is the union of the entries' `routing` rules (Section 5.3.7). A rule selects the
+  repository whose entry it is written in, so it cannot name a repository that is not configured,
+  and the case below of two rules reaching one repository is one entry carrying two rules. An entry
+  with no `routing` matches every issue: that is what a single-repository deployment relies on, and
+  it is why two entries that both configure none leave every issue matched by more than one
+  repository — the reported condition below, reached by configuration rather than by a new rule.
 - The mapping's key space is the record's own comparable fields — `project`, `team`, `labels`,
   `assignees`, and `state` — rather than per-tracker key names, so one mapping grammar serves every
   adapter and what varies per tracker is which of those fields an adapter populates (Section 11.7).
@@ -1620,9 +1719,9 @@ Issue-to-repository routing:
 
 Shared polling:
 
-- When several repositories draw work from the same tracker, the tracker is polled once per cycle
-  and the returned issues are routed to repositories via the mapping, rather than polling per
-  repository. This minimizes redundant background polling.
+- The instance configures one tracker (Section 5.3.1) and the managed repositories share it: it is
+  polled once per cycle and the returned issues are routed to repositories via the mapping, rather
+  than polling per repository. This minimizes redundant background polling.
 
 Keying:
 
@@ -1878,8 +1977,14 @@ Workspace root:
 
 Per-issue workspace path:
 
-- `<workspace.root>/<repo_key>/<sanitized_issue_identifier>` when one instance manages multiple
-  repositories; `<workspace.root>/<sanitized_issue_identifier>` for a single-repository instance.
+- `<workspace.root>/<repo_key>/<sanitized_issue_identifier>`, where `repo_key` is the
+  `Repository Key` of the repository the issue routes to (Sections 4.2, 8.7) and the issue component
+  is the `Workspace Key` (Sections 4.2, 9.5).
+- The path is repository-qualified whether the instance manages one repository or several. A
+  single-repository deployment is one `repository` entry rather than a distinct mode (Section
+  5.3.7), and a layout that varied with the number of entries would re-key every existing workspace
+  the moment a second entry was added — orphaning trees Section 9.2 would otherwise have reused, on
+  an edit to an unrelated part of the configuration, with nothing to report it.
 
 Workspace persistence:
 
@@ -2014,6 +2119,11 @@ Invariant 3: Workspace key is sanitized.
 - Operate on the identifier's UTF-8 encoding: replace every byte not in `[A-Za-z0-9._-]` with `_`, so
   a non-ASCII code point yields one `_` per UTF-8 byte. The identifier is not normalized first; the
   invariant is a safe directory name, not a reversible one.
+- Only the issue component is sanitized. The repository component is a `Repository Key` (Section
+  4.2), already restricted to the same character set where it is configured and refused there if it
+  is not (Section 6.3) — because the workspace path is where that value is read back from after a
+  restart (Section 4.1.8), and a lossy derivation would make the read-back name a different
+  repository.
 
 ### 9.6 Agent Sandbox and Execution Isolation
 
@@ -2140,7 +2250,9 @@ Degradation when the host cannot store more:
 
 Configuration:
 
-- Operator policy config (`vcs` object, per managed repository — Sections 5.3, 8.7):
+- Operator policy config (`vcs` object, per managed repository — Sections 5.3, 8.7). Written under
+  a `repository` entry as `repository.<name>.vcs`, with the orchestrator-level `vcs` supplying what
+  an entry does not carry (Section 5.3.7):
   - `forge` (string) — the code host the repository is published on (`github`, `forgejo`, and
     others). The operator names it, not the repository: it is read before the repository exists, so
     it cannot be configured inside it (Section 5).
@@ -2973,7 +3085,9 @@ Capability descriptor:
 Selection:
 
 - The agent and its effort are selected in the operator policy config, because agent choice carries
-  model credentials and sandbox shape. Each repository has a `default_agent` and `default_effort`.
+  model credentials and sandbox shape. Each repository has a `default_agent` and `default_effort`,
+  written as `repository.<name>.agent` and resolved from the orchestrator-level `agent` where an
+  entry carries none (Sections 5.3.5, 5.3.7).
 - A per-issue override is expressed as an explicit policy table mapping tracker labels to an
   `{agent, effort}` pair (`agent.agent_by_label`); only mapped labels take effect.
 
@@ -4105,12 +4219,14 @@ RECOMMENDED additional hardening for ports:
   variables and tool-native credential files) in its own process, but MUST scrub every
   secret-bearing environment variable before starting the agent sandbox.
 - The outward credentials have a **scope**, and it is configured rather than implied. An operator MAY
-  configure `vcs.git_credential` and `vcs.forge_credential` per repository (Section 6.4); where a
-  repository configures none, the orchestrator-level value applies, which is the behavior a
-  deployment configuring nothing already has. An implementation MUST support the per-repository
-  configuration even though an operator need not use it — otherwise the recommendation below is one
-  a multi-tenant operator cannot satisfy on a conforming implementation. A deployment whose
-  orchestrator serves repositories under different ownership SHOULD partition.
+  configure `vcs.git_credential` and `vcs.forge_credential` per repository, as
+  `repository.<name>.vcs.git_credential` and `repository.<name>.vcs.forge_credential` (Sections
+  5.3.7, 6.4); where a repository configures none, the orchestrator-level value applies, which is
+  the behavior a deployment configuring nothing already has. An implementation MUST support the
+  per-repository configuration even though an operator need not use it — otherwise the
+  recommendation below is one a multi-tenant operator cannot satisfy on a conforming
+  implementation. A deployment whose orchestrator serves repositories under different ownership
+  SHOULD partition.
   - Two distinct failures motivate it. A forge meters a **credential**, not a repository, so
     repositories sharing one are one spender to the code host and a runaway loop in one exhausts the
     budget of every other; the budget guard (Section 8.11) can observe and pause on that but cannot
@@ -4486,6 +4602,9 @@ function terminate_running_issue(state, issue_id, cleanup_workspace):
 function dispatch_issue(issue, state, attempt):
   # Ensure the repository's shared object store exists before a per-issue working tree is derived
   # from it (Section 9.7). Host-side and credentialed, performed by the engine, never by the agent.
+  # repo_of(issue) is Section 8.7's mapping evaluated over the normalized record: the union of the
+  # `repository` entries' routing rules (Section 5.3.7). It returns the issue's Repository Key
+  # (Section 4.2), which the running entry below records and the workspace path carries.
   store = ensure_object_store(repo_of(issue))
   if store failed:
     # Repository Provisioning Failures (Section 14.1) are repo-scoped, not per-worker: skip this
@@ -4887,10 +5006,18 @@ except where a bullet states otherwise.
   `vcs.forge_credential` defaults to `vcs.git_credential` when unset
 - The code-host selection (`vcs.forge`), its access parameters and extension bag, the credential
   pair, the remote, and `vcs.local_vcs` resolve from the operator policy config and not from
-  `repo.policy.toml` (Sections 5, 9.7); a deployment supplying no `vcs.local_vcs` fails
-  configuration rather than defaulting one
+  `repo.policy.toml` (Sections 5, 9.7); a deployment supplying no `vcs.local_vcs` for a managed
+  repository, at either level, fails configuration rather than defaulting one
+- A `repository` entry's key overrides the orchestrator-level value for that key leaf by leaf, and a
+  key the entry does not carry inherits: an entry setting `agent.default_effort` keeps the
+  orchestrator-level `agent.default_agent` (Section 5.3.7)
+- Resolution against the orchestrator level precedes defaulting, so an orchestrator-level value an
+  entry inherits is not shadowed by the default that would have filled the entry's own key
+- A `Repository Key` outside `[A-Za-z0-9._-]` fails configuration validation rather than being
+  sanitized, and a policy config with no `repository` entry fails it too (Sections 4.2, 5.3.7, 6.3)
 - Two repositories whose Ways of Working differ run under one operator policy config that names
-  neither repository's policy machine, host-side hooks, transitions, or branch-name pattern
+  neither repository's policy machine, host-side hooks, transitions, or branch-name pattern: two
+  `repository` entries, each pointing at its own `repo.policy.toml`
 - Secret-provider resolution works for tracker auth; `$VAR` resolution works for non-secret path
   values only
 - `~` path expansion works
@@ -4917,6 +5044,9 @@ These checks are `Broker Core Conformance`, except the bullets marked `VCS Engin
 deployment satisfies by using a conforming engine rather than by implementing them here.
 
 - Deterministic workspace path per issue identifier
+- The per-issue workspace path is repository-qualified for a single-repository instance as well as a
+  multi-repository one, the repository component being the `Repository Key` unsanitized (Sections
+  4.2, 9.1)
 - Missing workspace directory is created
 - Existing workspace directory is reused
 - Existing non-directory path at workspace location is handled safely (replace or fail per
@@ -5072,6 +5202,9 @@ These checks are `Daemon Conformance`.
   same way
 - An issue two repositories' rules both match is not routed and not dispatched, and the condition is
   reported
+- A `repository` entry with no `routing` matches every issue, so a single-repository instance routes
+  without a mapping; two entries that both configure none leave every issue matched by more than one
+  repository, not routed and reported (Sections 5.3.7, 8.7)
 - A routing mapping keyed on a record field the selected tracker adapter does not populate is
   refused at dispatch preflight rather than routing nothing quietly
 - Workspace and concurrency identity are keyed by (repository, issue)
@@ -5410,8 +5543,9 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
 - The agent's environment is composed rather than inherited: no variable naming a location outside
   the run's workspace reaches it undeclared, and such a location resolves inside the workspace
   (Section 9.6)
-- Outward credentials MAY be scoped per repository, an implementation supports that configuration,
-  and a call's `credential_scope` is in the record (Sections 8.7, 13.1, 15.3)
+- Outward credentials MAY be scoped per repository, written as
+  `repository.<name>.vcs.git_credential`, an implementation supports that configuration, and a
+  call's `credential_scope` is in the record (Sections 5.3.7, 8.7, 13.1, 15.3)
 - The secret model splits outward credentials (broker-mediated, never in the sandbox) from
   repo-internal integrity values (repo-owned host-side hook environment; Section 15.3)
 - Text captured from a subprocess (agent messages, host-side hook output) is redacted of the run's
@@ -5452,8 +5586,10 @@ Required of the `daemon` topology only.
   in flight, not only at dispatch (Sections 5.3.1, 8.5)
 - Dispatch preflight refuses a configured `tracker.assignee` on a tracker adapter whose capability
   descriptor does not declare that it populates `assignees` (Sections 6.3, 11.7)
-- Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
-  polling; workspace/concurrency keyed by (repository, issue)
+- Multiple repositories per instance, enumerated in `repository` with a key an entry does not carry
+  resolving from the orchestrator level leaf by leaf (Section 5.3.7); issue→repo routing from the
+  entries' own `routing` rules and one shared tracker polled once per cycle; workspace/concurrency
+  keyed by (repository, issue)
 - The routing mapping is evaluated over the normalized record's own fields (`project`, `team`,
   `labels`, `assignees`, `state`) rather than over a raw tracker payload, and an issue more than one
   repository's rule claims is left unrouted (Sections 4.1.1, 8.7)

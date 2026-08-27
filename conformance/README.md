@@ -435,11 +435,17 @@ guessed-at vector or entry:
   Whether a template that reads `attempt` on the first run renders empty (known-but-null) or fails
   (absent = unknown) is undetermined, so no first-run `attempt` vector is authored; the slice tests
   `attempt` only with an integer value. A spec-clarification candidate.
-- **`vcs` is not in Section 5.3's top-level key list (open).** Section 6.4's cheat sheet documents
-  `vcs.author`, `vcs.actor`, and `vcs.api_key` as operator policy config, but Section 5.3's
-  "Top-level operator-config keys" list names only `tracker`, `polling`, `workspace`, `agent`, and
-  `codex`. `config_namespaces` carries `vcs` on Section 6.4's authority, since the key demonstrably
-  exists; whether Section 5.3's list is meant to be complete is a spec-clarification candidate.
+- **`vcs` was not in Section 5.3's top-level key list — resolved, and stale before it was closed
+  (decision 0159).** The finding recorded that Section 5.3's "Top-level operator-config keys" named
+  only `tracker`, `polling`, `workspace`, `agent` and `codex`, so `config_namespaces` carried `vcs`
+  on Section 6.4's authority alone. Section 5.3 lists `vcs` today, and one of the three keys the
+  finding cited as evidence — `vcs.api_key` — left `SPEC.md` with the code-host relocation
+  (`d2647a0`, decisions 0091–0093) and survived only here, in the text describing it. Nothing was
+  checking: check 3 reads dotted tokens against the Section 6.4 sheet and check 4 reads registry
+  tokens against the corpus, and neither reads this file's prose, which is where the claim lived.
+  The entry keeps its Section 6.4 `spec_ref`, since Section 5.3 lists the key and defers its fields
+  to Section 9.7, and now carries a note saying so and that the key exists at both configuration
+  levels (Section 5.3.7).
 - **`server.*` is repository-owned by Section 13.8 (open).** Section 13.8 enables the HTTP server
   when `server.port` is present in `WORKFLOW.md` front matter, but Section 5 states that
   `WORKFLOW.md` carries only settings used inside the agent sandbox and MUST NOT carry any setting
@@ -557,6 +563,26 @@ guessed-at vector or entry:
   of two. `vectors/retry-fire-disposition.json` widens from the generation match to the fire's whole
   disposition, distinguishing a re-arm from a release rather than collapsing both into one
   not-dispatched outcome. Issues #120, #121.
+- **The repository dimension had no configuration key — resolved (decision 0159).** Section 5.3's
+  top-level operator keys were six singletons while six other places described a configuration with
+  a repository dimension. Section 6.1's first pipeline step resolved a `repo.policy.toml` pointer no
+  key named, and Section 6.4's row for it was the only row in that section naming no key — which is
+  also why check 3 could not see it, since that check tests a dotted token for occurrence in the
+  sheet and a row with no token is not a token. Section 15.3's "An implementation MUST support the
+  per-repository configuration" was a two-level schema rule with fallback at the leaf, stated for
+  one field pair in a document that had no second level. And `repo_key`, the path component Section
+  4.1.8 reads a running entry's `repository` back out of after a restart, was defined nowhere, while
+  the only sanitization rule in the document is byte-wise and deliberately lossy — so the rule that
+  would have made the name safe would have made the read-back name a different repository. This
+  corpus carried the gap as data in two places, `vectors/issue-routing.json` and
+  `vectors/standing-conditions.json`, both recording that the schema was owed a decision and both
+  citing decision 0148; a decision closing it and updating one would have left the other asserting
+  the gap, which is what a cross-reference living in a prose note costs. Section 5.3.7 now
+  enumerates the repositories, keyed by `Repository Key` (Section 4.2), each entry resolving against
+  the orchestrator level leaf by leaf and before defaulting. `vectors/repository-inheritance.json`
+  pins that resolution and `config-defaults.json` says which level its flat view is of; the two
+  layers are separable only because Section 6.1 states the order between them, which is the one
+  place an implementation defaulting first would silently shadow an inherited value.
 - **One hook per lifecycle point, on every surface that executes one — resolved (decision 0158).**
   Decision 0025's re-evaluation recorded the gap and did not close it: Section 5.3.4 states the hook
   split as configuration and Section 15.4 states it as trust, while Section 9.4's execution

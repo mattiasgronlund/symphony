@@ -6303,3 +6303,88 @@ workspace, so it joins startup cleanup (Section 8.6) in having no run context �
 removal sites now say, rather than narrowing Section 5.3.4 to take the half away. Relates to 0025, 0117, 0132,
 0157. Accepted and applied to `SPEC.md` (Sections 8.6, 9.2, 9.4, 16.3, 16.6, 17.2, 18.1.2),
 `conformance/vectors/config-defaults.json` and `conformance/README.md`.
+
+## 0159 — The multi-repository configuration schema
+
+**State:** Accepted
+**Folder:** [decisions/0159-multi-repository-config-schema/](decisions/0159-multi-repository-config-schema/)
+
+Opens the gap decision 0148 filed rather than fixed: "the mapping has no configuration key, and neither does
+the repository list". Section 5.3's top-level operator keys — `tracker`, `polling`, `workspace`, `vcs`,
+`agent`, `codex` — are all singletons, while six other places describe a configuration that has a repository
+dimension: Section 5's "per repository, a pointer to that repository's `repo.policy.toml`", Section 5.3's own
+"(per managed repository)" annotation on `vcs`, Section 6.1's pipeline step resolving "each managed
+repository's `repo.policy.toml` pointer", Section 6.4's "MAY define multiple repositories", Section 8.7's "The
+policy config enumerates the managed repositories", and Section 10.9's "Each repository has a `default_agent`
+and `default_effort`". Nothing says what the enumeration is called, what an entry holds, what identifies a
+repository, or what an entry that omits a key inherits. **Five failure paths.** (1) Section 6.1's first
+pipeline step reads a pointer no key names, and Section 6.4's row for it is the one row in that section that
+names no key — which is also why `scripts/validate_spec_consistency.py` check 3 cannot see it, a row with no
+token not being a token (measured at `be0ee6a`: `0 error(s), 0 warning(s)`). (2) Section 15.3's "An
+implementation MUST support the per-repository configuration" for `vcs.git_credential`, restated at the key in
+Section 6.4 and as a Section 18.1 checklist row, is a two-level schema rule with fallback at the leaf, stated
+for one field pair in a document that has no second level — so the MUST is discharged by inventing a location
+and audited against the implementation's own documentation. (3) `repo_key` is a path component nothing
+defines, and the obvious rule breaks the recovery that reads it: Section 4.1.8 reads a running entry's
+`repository` back out of the Section 9.1 path after a restart, while Section 9.5's Invariant 3 is
+byte-sanitization and "not a reversible one", so `web/app` and `web_app` both become `web_app` and the
+read-back names another repository's object store or stops a healthy run under Section 8.5 Part B — and not
+sanitizing leaves Invariant 2 defeated by `..`. (4) `vcs` has fourteen fields and two carry a level rule;
+`agent` splits by meaning rather than level, since Section 10.9 gives the repository `default_agent` and
+`default_effort` while Section 8.3 computes `max_concurrent_agents` over the instance's `running` map, so a
+key-by-key override admits a per-repository concurrency limit that is either an unspecified capability or a
+key that does nothing. (5) Section 8.1's tick fetches "from each tracker (once per tracker)" and Section 8.7's
+enumeration carries "the trackers they draw work from", where Section 5.3.1 defines one `tracker` and Section
+6.3 says "the selected tracker adapter" in four checks. **What the gap costs is the conformance surface, not
+the daemon**: the leaf keys are fixed and published as `config_namespaces` "so a spelling can be generated or
+checked instead of transcribed", and the container holding them is the one part an implementation must invent,
+so the registry is complete against itself and blind to the key that contains the others (decision 0132's
+class) and Section 17.1's "Two repositories whose Ways of Working differ run under one operator policy config"
+asserts a property of a document shape the specification does not fix. The corpus already records the hole:
+`vectors/issue-routing.json` says the mapping's schema "is deliberately not pinned here", and
+`vectors/config-defaults.json` describes a flat view with one value per dotted path, which is under-determined
+the moment a path exists at two levels. **Measured prior art**: `symphony-rs` at `3255c9c`, pinned to
+`4d610da`, has already invented the schema — a `[[repository]]` array with `name`, `policy`, `vcs`, `agent`,
+`issues`, whose `agent` "overrides the shared one key by key", so it admits failure path 4 — and its module
+says outright that "the ledger rather than the corpus picked a data structure"; its `Repository::issues` still
+justifies itself by quoting "an explicit, tracker-implementation-specific mapping", language decision 0148
+removed (`1c32bd4`) and absent from the revision that repository pins, which is what owning the container
+downstream costs. **Recommends Option A**: a top-level `repository` map keyed by the repository name, each
+entry holding `policy` (default `repo.policy.toml`), `vcs`, the agent *selection* fields, and its own
+`routing` rules, with an unset key taking the orchestrator-level value leaf by leaf — the rule Section 6.4
+already states for the credential pair, generalized rather than left a special case; the name constrained to
+`[A-Za-z0-9._-]` at validation rather than sanitized at use, so `repo_key` round-trips; the workspace path
+repository-qualified in both cases, since a layout that depends on the number of entries re-keys existing
+workspaces when an unrelated entry is added; and the tracker kept singular, with Sections 8.1 and 8.7 made to
+say so. Steelmanned and rejected: one instance per repository, which gives stronger credential isolation than
+Section 15.3's per-repository configuration achieves but multiplies polling against a limit the tracker meters
+per credential, makes Section 8.3's instance-wide bound uncomputable, and retracts Sections 8.7, 17.4's
+routing rows and decisions 0009, 0148 and 0155's standing routing condition; declaring the config's
+*structure* `Implementation-defined` beside its format, which is consistent and small but leaves the corpus's
+dotted defaults ambiguous, keeps the registry blind, and makes the Section 15.3 MUST permanently unauditable
+across implementations; a list of entries each carrying a `name`, TOML's idiom and `symphony-rs`'s choice,
+which loses because the name is an identity three sections already key by and a list admits a duplicate,
+empty or missing one; and a single top-level routing table, which loses to Section 8.7's own refusal to take a
+first match, leaving evaluation order with nothing to carry. Reconsider on a deployment needing two trackers
+in one instance — which is an issue-identity change before it is a schema change, Section 4.2's `Issue ID`
+being unqualified and Section 4.1.8 keying `running`, `claimed` and `completed` by it — on a per-repository
+scheduling limit or `max_turns`, on two repositories needing different `codex.*` settings, or on a repository
+name that cannot be spelled in the permitted set. No `Implementation-defined` choice and no MUST-document
+obligation is created, so no Conformance Statement row is owed; the encoding stays covered by the existing
+"Operator policy config format and discovery path" row. Reviewing the plan before its first edit found the
+absence asserted in a **second** corpus file — `vectors/standing-conditions.json` reuses
+`vectors/issue-routing.json`'s rules modelling verbatim and carries the same "owed a decision" claim, so
+closing the gap and updating one would have left the other stating it was still open — and a consequence with
+no producer: a path repository-qualified in every case needs a `Repository Key` in the `interactive-agent`
+topology (Section 3.4), which runs no dispatch preflight, so the floor of one entry is stated in Section 5.3
+where the enumeration is defined rather than in Section 6.3 where dispatch-time checks live. That floor is
+also what keeps the single-repository configuration to today's flat blocks plus the line naming the
+repository. Implementing it corrected the plan once more, against the P lens: resolution against the
+orchestrator level must run **before** built-in defaults, since a default filled into an entry first shadows
+the orchestrator-level value the entry meant to inherit and reads as a choice the entry made — a pipeline
+position the document needed only once Section 6.4's credential pair stopped being the single special case.
+Relates to 0009, 0091–0093, 0116, 0132, 0137, 0148, 0155. Accepted and applied to `SPEC.md` (Sections 4.1.8,
+4.2, 5.3, 5.3.1, 5.3.5, 5.3.7, 5.6, 6.1, 6.3, 6.4, 8.1, 8.7, 9.1, 9.5, 9.7, 10.9, 15.3, 16.4, 17.1, 17.2,
+17.4, 18.1), `conformance/vocabulary.json`, `conformance/vectors/config-defaults.json`,
+`conformance/vectors/issue-routing.json`, `conformance/vectors/standing-conditions.json`, the new
+`conformance/vectors/repository-inheritance.json` and `conformance/README.md`.
