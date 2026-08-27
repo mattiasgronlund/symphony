@@ -6479,3 +6479,82 @@ below it. Relates to 0005, 0029, 0069, 0097, 0128, 0132, 0148, 0158, 0159. Accep
 `SPEC.md` (Sections 1, 3.1, 3.2, 4.1.3, 5, 5.1, 5.3, 5.3.7, 5.5, 6.1, 6.2, 6.3, 6.4, 9.2, 10, 13.8,
 14.2, 14.5, 15.4, 16.1, 16.6, 17.1, 17.2, 17.7, 18.1.1, 18.1.3, 18.2), `conformance/vocabulary.json`
 and `conformance/README.md`.
+
+## 0161 — Who sets the bound on a workspace hook
+
+**State:** Accepted
+**Folder:** [decisions/0161-hook-bound-sourcing/](decisions/0161-hook-bound-sourcing/)
+
+Opens what decision 0160 filed rather than fixed. Decision 0158 gave every workspace lifecycle hook
+body an artifact-fixed execution context and left `hooks.workspace.timeout_ms` where it found it:
+documented once for both repository artifacts (Section 5.3.4, "Applies to all workspace hooks") and
+spent on both halves (Section 9.4, "The bound applies to each half, not to the pair"). It is the one
+member of the namespace that is not a body, so the artifact split does not place it — it does not
+run anywhere; it is how long Symphony waits. **The mechanism**: Section 15.4 sources `WORKFLOW.md`
+from the worktree on one sentence — "An agent edit there is harmless: these run inside the sandbox
+without credentials or host access" — which holds for the prompt body, the in-sandbox hook bodies
+and a gate's unit, and not for a value nothing in the sandbox reads. Section 3.1 names who does read
+it: "The executor is the host relative to its own agent sandbox (Section 9.6), so it runs both hook
+trust levels", waiting on both from outside the sandbox. Section 5's prohibition does not catch it
+either — `WORKFLOW.md` "MUST NOT carry credentials, authorization scope, or any setting Symphony
+executes with host access", and a timeout is none of the three: it is not executed, it parameterizes
+execution. Four consequences follow, and the sharpest is fail-open. (1) `hooks.workspace.timeout_ms:
+1` left in the workspace tree times out the host-side `after_run` or `before_remove` half, whose
+failure Section 9.4 logs and ignores, so a credentialed teardown does not run and the run reports
+success; no commit is needed, since Section 5.1 reads the file from the tree as it stands, and no
+cross-issue reach is needed, since Section 9.2 step 5 re-reads it at the start of the next unit of
+work, which a retry attempt on the same workspace is. (2) A day-long value discharges Section 15.4's
+"Hook timeouts are REQUIRED to avoid hanging the orchestrator" with a number the untrusted party
+named — and scoping each artifact's value to its own half does not repair it, because the executor
+waits on the in-sandbox half from the host too. (3) The same one-millisecond value times out the
+fatal setup halves, stopping the repository's own runs, which is loud self-denial by the same
+mechanism. (4) Nothing states a precedence where both artifacts declare the key, so three faithful
+readings ship, and the corpus cannot separate them: `vectors/config-defaults.json` asserts the
+default through a flat view that abstracts "over which of the three artifacts owns each field".
+**Prior art in the corpus**: `VCSX-SPEC.md` answers the same question for the engine's own hooks by
+deleting the key — "The bound is the consumer's, and `[hooks]` carries no key for it… a bound
+declared here would be a bound the bounded thing sets, and a hook that hangs and a hook that raised
+its own ceiling to a day are the same hook" — resting the deletion on a limitation Symphony does not
+share: "the engine labels contexts without enforcing the sourcing rule, so it never learns which
+revision a value came from", where Section 3.2 of that document says "the consumer sources config by
+trust", and Section 15.4 has Symphony read each artifact from exactly one revision. **Measured**:
+`symphony-rs` at `3255c9c` carries both sides of the disagreement — `vcsx-hooks`'s runner refuses
+the repository key and records the cost of doing so, `vcsx-cli`'s `hook_bound` is
+`requested.unwrap_or(DEFAULT_BOUND).max(MINIMUM_BOUND)` at 600 s (a portability floor protecting the
+repository from the consumer, the opposite direction), while `symphony-config` keeps
+`hooks.timeout_ms` repository-owned and asserts in a test that the operator config never names it.
+**Decided**: the key is a `repo.policy.toml` key, read from the policy source with that artifact's
+other host-side parts, bounding both halves; a `timeout_ms` in `WORKFLOW.md` front matter MUST NOT
+be honored. The reasoning in one line: the bound is not consumed inside the sandbox, and Section 5's
+second dividing rule gives `WORKFLOW.md` only what is; what remains is a repository-owned setting
+the host acts on, and that belongs to the artifact sourced from the revision the agent cannot write.
+Steelmanned and rejected: making the bound the operator's, per repository under `repository.<name>`,
+which matches the engine's sentence exactly and closes the residual accepted here — but the number
+is a fact about the repository's hooks, so an operator setting it is an operator knowing them,
+against Section 5's stated property that configuring Symphony "needs no knowledge of a repository's
+policy machine, host-side hooks, transitions, or branch-name pattern", which is the shape of
+reasoning decision 0160 refused the operator-held `WORKFLOW.md` on; an operator ceiling with the
+repository's value under it, which imitates a clamp that exists in the other direction and buys a
+new key and a merge rule against a party — the policy branch — the operator has already trusted with
+host-side bodies that run with its credentials; and each artifact bounding its own half, the tidy
+split, which repairs the disarming and leaves the hanging. Consequences stated rather than left
+derivable: "Applies to all workspace hooks" survives with one source rather than two; "Changes
+SHOULD be re-applied at runtime for future hook executions" loses the watch it assumed (decision
+0160 established that neither repository artifact is watched) and is restated over the
+per-unit-of-work read that delivers it; and no topology loses the ability to name the bound,
+`interactive-agent` reading `repo.policy.toml` for `ship`/`land` already. Reconsider on a
+multi-tenant operator that does not trust a repository's policy branch to bound its own machine, on
+a topology where the wait on the in-sandbox half is not the executor's (an adapter owning sandbox
+lifetime, Section 10.9; a node-scheduler executor, Section 9.11), or on a repository whose hook body
+and its timing must change in one commit — which would be answered by a worktree value that can only
+lower the policy source's, not by the split rejected here. No `Implementation-defined` choice and no
+MUST-document obligation is created, so no Conformance Statement row is owed. Reviewing the plan
+before its first edit found one site it had not reached — Section 14.5 lists the artifacts an
+operator may edit and names no `repo.policy.toml`, so an operator looking for the bound would have
+found neither it nor its artifact — plus one sentence kept past its producer (Section 5.3.4's
+runtime re-apply, whose watch decision 0160 removed) and ten misattributed quotations that were the
+plan's own addressing rather than claims about the corpus. Implementing it found the same lens one
+level out: Section 5's `repo.policy.toml` bullet enumerates what that artifact holds, and the key
+was moved into the artifact without being added to the artifact's own enumeration. Relates to 0025,
+0029, 0097, 0132, 0158, 0160. Accepted and applied to `SPEC.md` (Sections 5, 5.3.4, 5.6, 6.4, 9.4,
+14.5, 15.4, 17.1, 17.2, 18.1.2), `conformance/vocabulary.json` and `conformance/README.md`.

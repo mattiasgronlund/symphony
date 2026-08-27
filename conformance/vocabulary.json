@@ -127,7 +127,7 @@
       { "token": "tracker", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.1", "note": "Its `transitions` field is repository-owned and lives in `repo.policy.toml` (Section 11.6)." },
       { "token": "polling", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.2" },
       { "token": "workspace", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.3" },
-      { "token": "hooks", "artifact": "repository_owned", "core": true, "spec_ref": "Section 5.3.4", "note": "In-sandbox hooks in `WORKFLOW.md`, host-side hooks in `repo.policy.toml` (Section 15.4)." },
+      { "token": "hooks", "artifact": "repository_owned", "core": true, "spec_ref": "Section 5.3.4", "note": "In-sandbox hook bodies in `WORKFLOW.md`, host-side hook bodies in `repo.policy.toml` (Section 15.4); `hooks.workspace.timeout_ms` is declared in `repo.policy.toml` only and bounds both halves (Section 5.3.4)." },
       { "token": "agent", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.5" },
       { "token": "codex", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.6" },
       { "token": "repository", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.7", "note": "The managed repositories, keyed by `Repository Key` (Section 4.2). An entry holds the repository-level keys — `policy`, `vcs`, `agent` and `routing` — and a key it does not carry resolves from the orchestrator-level block of the same name, leaf by leaf." },

@@ -539,11 +539,14 @@ repository-owned artifacts — which revision each part is sourced from (Section
   sourced from the worktree — the working tree the run acts in (Sections 5.1, 15.4) — so an agent
   edit is honored where it is harmless. Like `repo.policy.toml` it is read once at the start of each
   unit of work rather than watched (Section 6.2). Because anyone who can commit — including the
-  agent — can edit it, it is untrusted and MUST NOT carry credentials, authorization scope, or any
-  setting Symphony executes with host access.
+  agent — can edit it, it is untrusted and MUST NOT carry credentials, authorization scope, any
+  setting Symphony executes with host access, or any setting that governs Symphony's own behavior
+  outside the sandbox. The bound on a workspace hook is of that last kind and is declared in
+  `repo.policy.toml` (Sections 5.3.4, 15.4).
 - `repo.policy.toml` — repository-owned, host-side. It holds the repository's **Way of Working**: the
   work-branch name pattern (`scope.branch_pattern`), the action-policy edges and host-side hooks
-  (Section 9.12), the workflow transitions (`tracker.transitions`, Section 11.6), the daemon task
+  (Section 9.12), the bound on every workspace hook half (`hooks.workspace.timeout_ms`, Section
+  5.3.4), the workflow transitions (`tracker.transitions`, Section 11.6), the daemon task
   settings `[tasks]` / `[driver]` (Section 8.10), and the engine `version_floor` the document
   requires of its reader (`[requires]`, Section 5.6). Its host-side-executed parts are sourced from
   the **policy branch** (`vcs.policy_branch`, Section 9.7) — which the agent cannot push to and
@@ -568,7 +571,9 @@ The dividing rules:
   formats messages, or merges — it belongs to `repo.policy.toml`, sourced by trust (the policy
   branch for host-side parts; the worktree for the in-sandbox `before:commit` gate; Section 15.4).
 - If a setting is consumed *inside the sandbox* (prompt template, in-sandbox hooks), it belongs to
-  `WORKFLOW.md`.
+  `WORKFLOW.md`. The bound on a workspace hook is not such a setting — nothing in the sandbox reads
+  it and Symphony waits on it from the host — so it belongs with the Way of Working (Sections 5.3.4,
+  15.4).
 - Everything else Symphony uses outside the sandbox that is an *operator or deployment* concern
   (credentials, sandbox profile, the tracker and code-host selections with their endpoints and
   access parameters, polling, concurrency, agent selection, repo routing) belongs to the operator
@@ -766,6 +771,10 @@ Both sets share the same lifecycle points. A lifecycle point MAY be defined in e
 both define it, the `repo.policy.toml` hook runs on the host and the `WORKFLOW.md` hook runs inside
 the sandbox.
 
+What the split assigns is the hook *bodies* — the scripts below, each running where its artifact
+places it. `timeout_ms` is not one of them: it runs nowhere and bounds Symphony's wait, so it is
+declared in one artifact and bounds both halves (see its field below and Section 15.4).
+
 Fields:
 
 - `after_create` (multiline shell script string, OPTIONAL)
@@ -784,9 +793,13 @@ Fields:
   - Failure is logged but ignored; cleanup still proceeds.
 - `timeout_ms` (integer, OPTIONAL)
   - Default: `60000`
-  - Applies to all workspace hooks.
+  - Declared in `repo.policy.toml` and read from the policy source with that artifact's other
+    host-side parts (Section 15.4). A `timeout_ms` in `WORKFLOW.md` front matter MUST NOT be
+    honored; an implementation MAY report it.
+  - Bounds both halves of every lifecycle point (Section 9.4).
   - Invalid values fail configuration validation.
-  - Changes SHOULD be re-applied at runtime for future hook executions.
+  - A change takes effect for work started after it, through the read at the start of each unit of
+    work (Section 6.2).
 
 #### 5.3.5 `agent` (object)
 
@@ -1010,6 +1023,9 @@ Sections:
   9.8). Only the branch *name* is configurable here; the scope guard itself is a Broker Core built-in
   (Section 10.8).
 - the action-policy edges and host-side hooks — the `(trigger) → (action)` machine (Section 9.12).
+- `hooks.workspace` — the host-side halves of Symphony's workspace lifecycle hooks and the
+  `timeout_ms` bounding every half (Section 5.3.4). The namespace is Symphony's; the engine's named
+  units are `hooks.engine.<name>` (`VCSX-CONTRACT.md`).
 - `tracker.transitions` — the workflow state-machine, expressed as `set_state` bindings in the
   machine (Sections 5.3.1, 11.6).
 - `[tasks]` and `[driver]` — daemon task management and computed completion (Section 8.10).
@@ -1204,13 +1220,13 @@ Repository Way of Working (`repo.policy.toml`, Section 5.6):
 - `tracker.transitions`: list of `{from, on, to}` entries, default `[]` (workflow state-machine, Sections 9.12, 11.6)
 - `[tasks]` / `[driver]`: OPTIONAL daemon task management and computed completion (Section 8.10)
 
-Workspace hooks (repository-owned; in-sandbox in `WORKFLOW.md`, host-side in `repo.policy.toml`, each read from its own artifact's source, Sections 5.1, 5.3.4, 15.4):
+Workspace hooks (repository-owned; the hook bodies are in-sandbox in `WORKFLOW.md` and host-side in `repo.policy.toml`, each read from its own artifact's source, while the bound is `repo.policy.toml`'s alone, Sections 5.1, 5.3.4, 15.4):
 
 - `hooks.workspace.after_create`: shell script or null
 - `hooks.workspace.before_run`: shell script or null
 - `hooks.workspace.after_run`: shell script or null
 - `hooks.workspace.before_remove`: shell script or null
-- `hooks.workspace.timeout_ms`: integer, default `60000`
+- `hooks.workspace.timeout_ms`: integer, default `60000`; declared in `repo.policy.toml` and read from the policy source, bounding both halves — a value in `WORKFLOW.md` is not honored (Sections 5.3.4, 15.4)
 - `hooks.engine.<name>`: a named unit a `[policy]` `run` edge invokes; its context follows the
   artifact (`VCSX-CONTRACT.md`)
 
@@ -2106,8 +2122,10 @@ Execution contract:
   half runs with the workspace directory as `cwd`; a host-side half does not, and receives the
   workspace path as an argument or environment value. Section 15.4 owns the rule and the reason it
   exists.
-- Hook timeout uses `hooks.workspace.timeout_ms`; default: `60000 ms`. The bound applies to each
-  half, not to the pair.
+- Hook timeout uses `hooks.workspace.timeout_ms` (Section 5.3.4), declared in `repo.policy.toml`
+  and read from the policy source; default: `60000 ms`. The bound applies to each half, not to the
+  pair. One artifact's value governs both halves because the wait is one party's: the executor runs
+  both trust levels and waits on each from outside the sandbox (Sections 3.1, 15.4).
 - Log hook start, failures, and timeouts, naming the execution context the half ran in.
 
 Order:
@@ -4228,6 +4246,10 @@ Operators can control behavior by:
 - Editing a repository's `WORKFLOW.md` (its prompt template and in-sandbox hooks). The artifact is
   repository-owned, so the edit is made in the repository and takes effect for work started after it
   reaches the run's working tree; it is not watched (Sections 5.1, 6.2).
+- Editing a repository's `repo.policy.toml` (its Way of Working: the host-side hook halves and the
+  bound on every half, the action-policy edges, the transitions, and the branch-name pattern). It is
+  repository-owned and not watched either, and takes effect for work started after the edit reaches
+  the policy source (Sections 5.6, 6.2, 15.4).
 - Editing the operator policy config, whose changes are detected and re-applied without restart
   according to Section 6.2.
 - Changing issue states in the tracker:
@@ -4398,12 +4420,14 @@ Working from the revision that makes it safe:
   from — so the issue or `vcs.base_branch` MUST supply one, whatever the operation (Section 9.7).
   All three are consequences of the mode rather than defects in it, which is why the specification
   states them here rather than warning against the choice.
-- In-sandbox parts — the `WORKFLOW.md` prompt, its `hooks.workspace` lifecycle hooks, and the
-  `hooks.engine` units the `before:commit` gate/scan runs — are read from the **worktree**: the
-  working tree the run acts in, at the pointer Section 5.1 resolves, so the revision an in-sandbox
-  part is read from is one a reader can point at. An agent edit there is harmless: these run inside
-  the sandbox without credentials or host access, and running a pull request's own gate change
-  against that pull request is correct.
+- In-sandbox parts — the `WORKFLOW.md` prompt, the in-sandbox halves of its `hooks.workspace`
+  lifecycle hooks, and the `hooks.engine` units the `before:commit` gate/scan runs — are read from
+  the **worktree**: the working tree the run acts in, at the pointer Section 5.1 resolves, so the
+  revision an in-sandbox part is read from is one a reader can point at. An agent edit to one of
+  them is harmless: each runs inside the sandbox without credentials or host access, and running a
+  pull request's own gate change against that pull request is correct. That is a property of what
+  these parts are and not of the artifact holding them, so a value the host acts on is outside it —
+  which is why the bound on a hook is sourced with the host-side parts and not here.
 
 Each artifact is read from exactly one revision, which is what makes "sourced by trust" checkable
 rather than a rule about parts of a file. A hook's execution context follows the artifact that
@@ -4446,6 +4470,17 @@ Hook implications:
     relative command inside it would otherwise reach the working tree.
 - Hook output SHOULD be truncated in logs.
 - Hook timeouts are REQUIRED to avoid hanging the orchestrator.
+- The **bound** on a workspace hook — `hooks.workspace.timeout_ms` (Section 5.3.4) — is read from
+  the policy source and bounds both halves; a `timeout_ms` in `WORKFLOW.md` MUST NOT be honored. The
+  bound is not a body that runs somewhere: the executor waits on the in-sandbox half from the host
+  exactly as it does on the host-side one (Section 3.1), so a bound declared in the worktree would
+  be a bound the bounded thing sets, and a hook that hangs and a hook whose ceiling was raised to a
+  day would be the same hook. It would disarm as readily as it extends: a one-millisecond bound
+  times out the host-side `after_run` or `before_remove` half, whose failure Section 9.4 logs and
+  ignores, so a trusted teardown would not run and nothing would fail. The engine refuses the
+  equivalent repository-declared key outright, on this reasoning and because it never learns which
+  revision a value came from (`VCSX-SPEC.md`); Symphony reads each artifact from exactly one
+  revision, which is what lets it keep the key on the trusted revision instead of removing it.
 
 Important boundary: the two rules above are about the *host-side* half only. An in-sandbox hook's
 unit is worktree-sourced and remains so, because it runs where the agent already has full control
@@ -5095,6 +5130,9 @@ except where a bullet states otherwise.
   that run attempt and does not block dispatch for any other repository (Sections 5.5, 14.2)
 - Policy config and `WORKFLOW.md` load as separate artifacts; `WORKFLOW.md` carries only in-sandbox
   settings (prompt and in-sandbox hooks)
+- A `hooks.workspace.timeout_ms` in `WORKFLOW.md` front matter does not change the bound in force:
+  the value read from the policy source governs both halves, and the workflow file's is not honored
+  (Sections 5.3.4, 15.4)
 - Policy-config changes are detected and re-applied without restart, with last-known-good on invalid
   reload
 - Missing `WORKFLOW.md` returns `missing_workflow_file`
@@ -5167,6 +5205,10 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - `before_remove` hook runs on cleanup and failures/timeouts are ignored; at both removal paths —
   the startup sweep and reconciliation teardown — the host-side half runs and the in-sandbox half is
   skipped and logged, no run context existing at either (Sections 8.6, 9.4, 16.3)
+- An agent-authored bound reaches neither half: with `hooks.workspace.timeout_ms` set to `1` in the
+  workspace's `WORKFLOW.md`, both halves still run under the policy source's bound, so the host-side
+  `after_run` half runs to completion rather than being timed out into the failure Section 9.4 logs
+  and ignores (Sections 5.3.4, 15.4)
 - Workspace path sanitization and root containment invariants are enforced before agent launch
 - Agent launch uses the per-issue workspace path as cwd and rejects out-of-root paths
 - Agent launch wraps the session in the configured sandbox (strict profile by default)
@@ -5623,7 +5665,8 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
 - Both halves of a lifecycle point execute (Section 9.4): setup points run host-side first and
   teardown points in-sandbox first, a fatal half leaves the other unrun, and a workspace-removal
   path runs the host-side half alone because no run context exists there (Sections 8.6, 16.3)
-- Hook timeout config (`hooks.workspace.timeout_ms`, default `60000`)
+- Hook timeout config (`hooks.workspace.timeout_ms`, default `60000`), read from the policy source
+  and bounding both halves; a value in `WORKFLOW.md` is not honored (Sections 5.3.4, 15.4)
 - Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
   app-server JSON line protocol as the worked example)
 - Turn-centric contract: `run_turn` threads an opaque `continuation_ref` (no separate start),
