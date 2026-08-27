@@ -607,3 +607,19 @@ guessed-at vector or entry:
   the host-side half alone. This vector's own drift is the same class decision 0132 named:
   `config-defaults.json` resolved `hooks.timeout_ms`, a path `SPEC.md` never defined, against the
   `hooks.workspace.timeout_ms` of Sections 5.3.4, 6.4 and 9.4.
+- **One `hooks.workspace.timeout_ms` for two artifacts at two trust levels — resolved (decision
+  0161).** Section 5.3.4 documented the key once for both repository artifacts and Section 9.4 spent
+  it on both halves, so the bound Symphony waits by could be named in `WORKFLOW.md` — read from the
+  working tree the run acts in, where an agent's edit is honored. It is the one member of the
+  namespace that is not a hook body: nothing in the sandbox reads it, and the executor waits on both
+  halves from outside the sandbox (Section 3.1), so a worktree value would have set the ceiling on
+  the host's own wait and a one-millisecond one would have timed out the host-side `after_run` or
+  `before_remove` half, whose failure Section 9.4 logs and ignores. `VCSX-SPEC.md` had already
+  refused the equivalent `[hooks] timeout_ms` for the engine, on the same reasoning plus a
+  limitation Symphony does not share — the engine never learns which revision a value came from,
+  where Symphony reads each artifact from exactly one. Nothing here was checking and nothing here
+  could have: `vectors/config-defaults.json` asserts the default through a flat view that abstracts
+  "over which of the three artifacts owns each field", which is the property that made
+  `repository-inheritance.json` separable and is the same property that hides an ownership defect.
+  The key is now `repo.policy.toml`'s alone (Section 5.3.4), and `config_namespaces`' `hooks` entry
+  distinguishes the bodies from the bound in its `note`.
