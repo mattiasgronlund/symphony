@@ -1154,8 +1154,10 @@ claim state.
      run holds: reconciliation terminates the run the same way, through
      `terminate_running_issue`, with no retry taking the claim over (Sections 8.2, 8.5, 8.7, 16.3).
    - Issue missing from the candidate set, or a retry path that completed without re-dispatch:
-     `on_retry_timer` releases it on the branch where the fired retry's issue is no longer a
-     candidate (Section 16.7).
+     `on_retry_timer` releases the claim with the retry entry the fire consumes, and the two
+     branches that neither dispatch nor re-arm leave it released — the issue absent from the
+     candidate set, and the issue present but no longer satisfying a condition of Section 8.2
+     (Sections 8.2, 8.4, 16.7).
 
 Important nuance:
 
@@ -1297,6 +1299,25 @@ An issue is dispatch-eligible only if all are true:
   - If the issue state is `Todo`, do not dispatch when any blocker is non-terminal.
   - An adapter that does not populate `blocked_by` reports no blockers, so this rule does not gate.
 
+Two sites dispatch, and both evaluate every condition above. A poll tick reaches `dispatch_issue`
+after testing them (Section 16.2); a retry timer fire reaches it when its backoff elapses (Sections
+8.4, 16.7). The second is a dispatch and not a resumption — no run is in flight, no workspace is
+held, and what it starts is a run attempt like any other — so none of the conditions above is
+evaluated at one site and skipped at the other. A retry timer fire MUST NOT dispatch an issue that
+has stopped satisfying one of them while its backoff elapsed. Where a condition no longer holds the
+fire dispatches nothing and releases the claim, and a later poll tick dispatches the issue at a
+fresh attempt if it becomes eligible again; where what no longer holds is a concurrency condition —
+no dispatch slot available under either limit — the fire re-arms instead, that being the transient
+case and the one whose attempt count is worth keeping (Sections 8.3, 8.4).
+
+The `claimed`-membership condition is what would otherwise put the second site out of reach of
+these conditions: arming a retry takes the claim (Section 8.4), so an issue with a retry entry is
+claimed by construction and the conditions evaluated whole would refuse every issue a fire could ask
+about. The fire releases that claim with the retry entry it consumes rather than excepting the
+condition (Section 16.7). Routing is not among the conditions either site tests: `dispatch_issue`
+evaluates the mapping for both callers (Sections 8.7, 16.4), and Section 8.7's standing routing
+condition is stated over a run's recorded `repository`, which a fire has none of.
+
 Which of these conditions a reconciliation pass may re-test is fixed here rather than left to
 Section 8.5. The conditions this section states over the issue record are **standing**: re-evaluated
 on every issue-state refresh for as long as the run is in flight, rather than tested once at
@@ -1350,6 +1371,14 @@ Per-state limit:
 
 The runtime counts issues by their current tracked state in the `running` map.
 
+An issue has a dispatch slot when both limits admit it: `available_slots` is above zero, and the
+number of running issues whose current tracked state equals the issue's is below the limit resolved
+for that state. That pair is exactly Section 8.2's two concurrency conditions, and a dispatch site
+needing them without the rest of Section 8.2 tests the pair as `dispatch_slot_available(issue,
+state)` (Section 16.7). `available_slots` is the global half alone: an issue it admits may still be
+at `max_concurrent_agents_by_state` for its state, so a site testing only `available_slots` admits a
+run past the per-state limit.
+
 Slot accounting is placement-opaque: it counts agent sessions, not where they run. When a remote
 node-scheduler (Section 9.11) packs several executor processes onto one node, that packing does not
 affect these limits; a deployment that wants to bound co-location does so with the same
@@ -1390,19 +1419,25 @@ Backoff formula:
 Retry handling behavior:
 
 1. Fetch active candidate issues (not all issues).
-2. Find the specific issue by `issue_id`.
-3. If not found, release claim.
-4. If found and still candidate-eligible:
-   - Dispatch if slots are available.
-   - Otherwise requeue with error `no available orchestrator slots`.
-5. If found but no longer active, release claim.
+2. Release the claim. It was taken when the retry was armed, and the entry it was taken for has been
+   consumed; every step below either takes it back or leaves the issue `Released` (Section 7.1).
+3. Find the specific issue by `issue_id`. If not found, nothing further is owed and the release
+   above is the whole disposition.
+4. If found and no dispatch slot is available under either concurrency limit (Section 8.3), requeue
+   with error `no available orchestrator slots`, which takes the claim back.
+5. If found and every condition of Section 8.2 holds, dispatch at the entry's `attempt`.
+6. If found and a condition of Section 8.2 no longer holds, do nothing further: the issue stays
+   released, and a poll tick dispatches it at a fresh attempt when it is eligible again. State
+   membership is one of those conditions rather than a step of its own — an issue this step reaches
+   came from a candidate fetch, which returns only issues in the configured active states
+   (Section 11.1).
 
 Note:
 
 - Terminal-state workspace cleanup is handled by startup cleanup and active-run reconciliation
   (including terminal transitions for currently running issues).
-- Retry handling mainly operates on active candidates and releases claims when the issue is absent,
-  rather than performing terminal cleanup itself.
+- Retry handling mainly operates on active candidates and releases claims when the issue is absent
+  or no longer dispatch-eligible, rather than performing terminal cleanup itself.
 - The executor owns continuation within a run (the turn loop, Section 16.6); the orchestrator owns
   retry across runs. For a remote executor (Section 9.11) the orchestrator MAY request a fresh node
   on re-dispatch but MUST NOT compel the node-scheduler to supply one; a refusal is a `Node
@@ -1513,11 +1548,17 @@ ends a dispatched run either releases the claim or hands it to a retry entry, an
 - `dispatch_issue`'s spawn-failure early return (Section 16.4) writes no entry and arms a retry,
   which takes the claim. Its `ensure_object_store` failure writes no entry and arms no retry, and
   leaves the issue unclaimed so a later tick retries it — the case that makes the partition complete
-  rather than an exception to it.
+  rather than an exception to it. That holds because `dispatch_issue` is entered unclaimed from both
+  of its callers: a poll tick because the conditions of Section 8.2 refused a claimed issue, and a
+  retry timer fire because it released the claim with the entry it consumed (Sections 8.4, 16.7).
+  Entered still claimed, the same branch would leave a claim no site could remove, since the fire's
+  retry entry is gone and no running entry was written.
 
 A site added later MUST state which side of that partition it is on. So stated, Section 7.1's
 `Released` state is derivable from Section 16 rather than asserted beside it, and a reader can check
-the coverage without enumerating call sites.
+the coverage without enumerating call sites. A retry timer fire's own release (Section 16.7) is on
+neither side, for the reason Part B's absent-id branch is on neither: the partition is over sites
+that end a dispatched run, and a fire ends a retry entry with no run in flight.
 
 ### 8.6 Startup Terminal Workspace Cleanup
 
@@ -3970,7 +4011,10 @@ Operators can control behavior by:
   - non-active state -> running session is stopped without cleanup
 - Removing a required label from an issue, or changing its assignment away from the configured
   `tracker.assignee` -> running session is stopped, the claim released, no retry armed, and the
-  workspace left in place when reconciled (Sections 5.3.1, 8.5)
+  workspace left in place when reconciled (Sections 5.3.1, 8.5). Against an issue queued for retry
+  rather than running, the same edit stops the re-dispatch: the fire tests the condition, dispatches
+  nothing, and releases the claim, so the effect arrives when the backoff elapses rather than on the
+  next tick (Sections 8.2, 8.4)
 - Editing the routing mapping so the issue no longer routes to the repository its run was dispatched
   to -> the same disposition, and the workspace left behind stays under the old repository's key
   (Sections 8.5, 8.7, 9.1)
@@ -4279,7 +4323,7 @@ on_tick(state):
     return state
 
   for issue in sort_for_dispatch(issues):
-    if no_available_slots(state):
+    if available_slots(state) == 0:
       break
 
     if should_dispatch(issue, state):
@@ -4613,7 +4657,8 @@ function schedule_retry(state, issue_id, attempt, opts):
   # Arming a retry takes the claim, so a RetryQueued issue is claimed by construction rather than
   # by inheritance from dispatch_issue - whose spawn-failure early return arms a retry for an issue
   # it never claimed (Section 16.4). Idempotent: the issue may already be claimed from dispatch.
-  # on_retry_timer releases it if it is no longer a candidate.
+  # The claim is held for this entry and comes off with it: on_retry_timer releases it when the fire
+  # consumes the entry, and only a re-arm here or a dispatch takes it back.
   state.claimed.add(issue_id)
   return state
 ```
@@ -4674,16 +4719,36 @@ on_retry_timer(issue_id, generation, state):
       error: "retry poll failed"
     })
 
+  # The claim was taken for the entry this fire consumed (Section 8.4), so it comes off with it -
+  # the discipline terminate_running_issue follows for a running entry (Section 16.3). Released
+  # before the eligibility test below rather than inside its branches, because that test is Section
+  # 8.2's conditions whole and their claimed-membership condition would otherwise refuse every issue
+  # a fire could ask about; released after the fetch rather than before it, so no round trip runs
+  # with the issue unclaimed. Each branch below either takes the claim afresh - schedule_retry when
+  # it re-arms, dispatch_issue when it writes a running entry - or leaves the issue Released
+  # (Section 7.1).
+  state.claimed.remove(issue_id)
+
   issue = find_by_id(candidates, issue_id)
   if issue is null:
-    state.claimed.remove(issue_id)
     return state
 
-  if available_slots(state) == 0:
+  # Section 8.2's two concurrency conditions, tested apart from the rest because their disposition
+  # differs: a slot is transient, so the fire re-arms and keeps counting attempts, while a condition
+  # over the record is not, so the fire releases. Both limits, not available_slots alone, which is
+  # the global half and admits a run past max_concurrent_agents_by_state (Section 8.3).
+  if not dispatch_slot_available(issue, state):
     return schedule_retry(state, issue_id, retry_entry.attempt + 1, {
       identifier: issue.identifier,
       error: "no available orchestrator slots"
     })
+
+  # A fire is a dispatch, so it tests what a dispatch tests: the same conditions on_tick tests, over
+  # the record this fetch returned (Sections 8.2, 16.2). Membership in the candidate set is not that
+  # test - an issue whose required label was removed, whose assignment moved, or whose blocker
+  # reopened during the backoff is still in the set.
+  if not should_dispatch(issue, state):
+    return state
 
   return dispatch_issue(issue, state, attempt=retry_entry.attempt)
 ```
@@ -4995,6 +5060,16 @@ These checks are `Daemon Conformance`.
 - The forge budget snapshot each engine invocation reported is recorded against the run and
   repository, under the forge's own bucket names, and is not summed into the token-usage record or a
   provider quota snapshot (Sections 8.11, 13.5)
+- A retry timer fire evaluates every condition of Section 8.2 before dispatching: an issue that lost
+  a `tracker.required_labels` label, lost the configured `tracker.assignee`, or gained a
+  non-terminal blocker while in `Todo` during its backoff is not dispatched by the fire, and is left
+  unclaimed rather than armed for another retry — a later poll tick dispatches it at a fresh attempt
+  once it is eligible again
+- A retry timer fire tests both concurrency limits: a fire for an issue whose tracked state is
+  already at `max_concurrent_agents_by_state` requeues with `no available orchestrator slots` rather
+  than dispatching, even where the global limit has headroom
+- A repository provisioning failure raised by a dispatch a retry timer fire started leaves the issue
+  unclaimed, so a later tick retries it (Section 14.2), rather than leaving a claim no site removes
 - Retry backoff cap uses configured `agent.max_retry_backoff_ms`
 - Retry queue entries include attempt, due time, identifier, and error
 - Stall detection kills stalled sessions and schedules retry
@@ -5323,6 +5398,10 @@ Required of the `daemon` topology only.
 - Exponential retry queue with continuation retries after normal exit; a retry timer fire is
   matched to its arming by `generation` and discarded when it does not match, so a cancelled timer
   that fired anyway cannot collapse a backoff (Section 8.4)
+- Both dispatch sites evaluate Section 8.2's conditions whole — a retry timer fire no less than a
+  poll tick — so an issue that stopped satisfying one during its backoff is not re-dispatched, and
+  both concurrency limits are tested at each rather than the global one alone (Sections 8.2, 8.3,
+  16.7)
 - Every worker-lifecycle message decided against the current running entry's `run_id` before it is
   accounted, so a run the orchestrator replaced cannot consume the entry that replaced it
   (Sections 4.1.5, 8.5)
@@ -5330,7 +5409,8 @@ Required of the `daemon` topology only.
 - Concurrency headroom computed from the `running` map alone: a claim with no running entry — an
   issue queued for retry — is not counted against it (Sections 4.1.8, 8.3)
 - The claim has one lifetime: taken at dispatch or at retry arming, released where the run it was
-  held for ends without a retry taking it over (Sections 7.1, 8.5)
+  held for ends without a retry taking it over, and released by a retry timer fire together with the
+  entry it consumes — only a re-arm or a dispatch takes it back (Sections 7.1, 8.4, 8.5)
 - Reconciliation that stops runs on terminal/non-active tracker states and on a standing-condition
   loss — a required label removed, the configured assignee unassigned, or the mapping no longer
   routing the issue to the run's recorded `repository` — owning the removal and
