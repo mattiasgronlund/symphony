@@ -5916,7 +5916,13 @@ implied, since Section 9.1 says a capability's context is "read off this list an
 its arguments": a read of the policy branch acquires nothing **only because `provision` precedes it**,
 placing the copy in the store, a consequence Section 13.1 already accepts. What the addition buys is
 Section 9.3's descriptor discipline and a reported refusal at validation instead of three engines
-naming one requirement three ways.
+naming one requirement three ways. Applying it added one case to Section 9's enumeration of
+determinate facts — a revision carrying no file at the path asked for — so the new capability's
+three answers land on the shape that section already describes; and it confirmed rather than assumed
+that Section 9.3's first-use half keeps its producer, an OPTIONAL capability refused at validation
+neither adding one to that half nor removing one. Depends on 0141 and 0150; relates to 0149.
+Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 6.1, 6.6, 6.11, 9, 9.1, 9.3, 13.1, 13.2, 13.3)
+and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (Sections 3, 6.1).
 
 ## 0152 — What a front-end sequence must reach, not only where it stops
 

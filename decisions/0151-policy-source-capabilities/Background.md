@@ -239,6 +239,28 @@ here, and the Section 9.3-plus-`capability_unsupported` half is what makes the a
 The `vcsx.toml` location, by contrast, is checkable in Section 13.1 as a property of the merged
 surface.
 
+## Findings from applying the plan
+
+- **Section 9's enumeration of determinate facts was one case short of the capability being added.**
+  That section states the rule `read_at_source`'s middle answer depends on — a value-answering
+  capability MUST be able to report that it could not determine one, and that report MUST NOT be
+  spelled as the value's absent case — and illustrates it with an enumeration: an absent
+  counterpart, a base the checkout does not hold, a checkout with no current branch, a working tree
+  that is not dirty, a work branch with no pull request, a pull request unmoved since its validator.
+  A revision carrying no file at the path asked for is the same kind of fact and was not among them,
+  which would leave the new capability's three answers reading as a shape of their own rather than
+  as the shape the section already describes. The case is added there. No step named the site; it
+  was found by checking the new bullet against the rule it has to satisfy rather than against the
+  section the step edits.
+- **The first-use half keeps its producer, checked rather than assumed.** Step 7 widens Section
+  9.3's "What remains on the first-use side is an OPTIONAL capability (Section 9.2)", and two
+  consequences elsewhere rest on that half still having a referent: Section 13.1's Plugins row
+  ("that half has no producer among the operation set and policy keys this specification defines")
+  and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` Section 6.2's demonstration table. Both survive, and
+  survive for the reason the decision is built on: Section 9.1's OPTIONAL capability is refused at
+  validation rather than reached at first use, so it adds no producer to the half it is being
+  excluded from and removes none from it. Neither site is edited.
+
 ## Reconsideration triggers
 
 - **An engine that reads policy without `provision` preceding it.** The credential-free placement of

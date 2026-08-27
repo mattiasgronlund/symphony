@@ -220,11 +220,12 @@ work branch reaches, rather than leaving the arrangement to each backend.
   8.2): every invocation reads and validates the document itself, and the pin is how a later one
   claims that what it read is the surface this unit of work began under (Section 8.6). This is the
   operation that makes Section 3.2's "the consumer sources config by trust" literally true, and it
-  is why no capability of Section 9.1 reads a file at a revision — one operation does it once,
-  rather than a capability doing it per read. Like `provision`, it has no lifecycle position and
-  raises no `<op>:<reason>` trigger, and for the same reason no `run_op` edge may name it: the edges
-  that would gate, route or dispatch it are in the document it exists to obtain. Its failures are
-  the four Section 6.1 names, reported as configuration errors. Read-only.
+  is realized through the plugin layer as every other operation is: it reads each file at the
+  revision through `read_at_source` (Section 9.1), once per invocation rather than once per unit of
+  work, because what a unit of work fixes is the surface and not the read. Like `provision`, it has
+  no lifecycle position and raises no `<op>:<reason>` trigger, and for the same reason no `run_op`
+  edge may name it: the edges that would gate, route or dispatch it are in the document it exists to
+  obtain. Its failures are the four Section 6.1 names, reported as configuration errors. Read-only.
 - `provision` — ensure the repository is present and current: create the store where
   `store_location` holds none, refresh it where it holds one, and, where the invocation names a
   `tree_location`, derive the working tree there from that store (Section 8.1). An invocation naming
@@ -922,8 +923,13 @@ two facts a caller acts on — which position, and which unit.
 - `repo.policy.toml` is the repository-owned Way-of-Working file. Its path is resolved relative to the
   repository root; the discovery precedence (explicit override, then the repository default) is
   `Implementation-defined` and MUST be documented.
-- An engine-native `vcsx.toml`, when present, is merged into the same surface; `repo.policy.toml` keys
-  take precedence on conflict. A consumer MAY present the merged surface as one document.
+- An engine-native `vcsx.toml`, when present, is merged into the same surface; `repo.policy.toml`
+  keys take precedence on conflict. A consumer MAY present the merged surface as one document. Its
+  path is resolved relative to the repository root as `repo.policy.toml`'s is, and its discovery
+  precedence is `Implementation-defined` and MUST be documented on the same terms. Both files the
+  loader reads are addressed rather than only one because two engines taking the second from
+  different places merge different documents from one revision and run different policies for one
+  repository, which no value a consumer can read reports.
 - **A policy that cannot be used yields one disposition and four diagnoses.** Four conditions leave
   the engine without a policy it can run:
   - the source it is read from could not be read — `policy_source_unreadable`;
@@ -1148,8 +1154,21 @@ declaration does:
 
 This specification names no branch here, because the engine has none: which revision counts as
 trusted is the consumer's (Section 3.2), and this rule says only that the unit and the declaration
-come from the same one. How an engine resolves a `host_side` unit is `Implementation-defined` and
-MUST be documented (Section 13.3).
+come from the same one. Making that source available as a directory is the backend's, through
+`export_source` (Section 9.1): a revision is not a directory, and getting a tree out of one is what
+a backend knows rather than what an engine does. How a unit is addressed within that source, and
+what working directory the engine gives it, remain `Implementation-defined` and MUST be documented
+(Section 13.3).
+
+Where the form the engine's `run` unit takes requires the source materialized and the selected VCS
+backend declares no `export_source`, a merged surface declaring any `[hooks.engine]` unit is refused
+at validation with `capability_unsupported` (Sections 6.11, 9.3). The condition is the engine's
+declared unit form rather than the unit: a form that is a command line carries no statement of
+whether it names a path in the source, so a per-unit condition could not be evaluated from the
+configuration this specification specifies, while the engine's form and the backend's declaration
+are both static and held before the policy runs. An engine whose form resolves a unit from the
+declaration itself — a task the consumer registered under a name the policy writes — materializes
+nothing and reaches neither the capability nor the refusal.
 
 How the engine treats a hook:
 
@@ -1478,8 +1497,9 @@ before the policy runs" a question with an answer (Sections 8.6, 9.3):
   what `version_floor_unmet` turns on, together with its own defaults (Section 6.8);
 - the consumer's selection and access configuration (Section 8.1), which fixes which backends the
   plugin layer loads and therefore which descriptors the engine reads (Section 9.3); the descriptors
-  of the selected backends, together with the defaults above, are what `capability_unsupported` turns
-  on;
+  of the selected backends, together with the defaults above and, where the capability is
+  `export_source`, with the form the engine's own `run` unit takes (Section 6.6), are what
+  `capability_unsupported` turns on;
 - the actions the consumer can effect, supplied as `effectable_actions` (Sections 5.2, 8.1), which is
   what `set_state_unbound` turns on;
 - the repository units the consumer bound, supplied as `bound_units` (Section 8.1), which is what
@@ -2573,7 +2593,8 @@ the engine composes an operation from. A capability that answers a typed result 
 it could not resolve through the result itself. A capability that answers a value MUST be able to
 answer that it could not determine one, and that answer MUST NOT be spelled as the value's absent or
 negative case. An absent counterpart, a base the checkout does not hold, a checkout with no current
-branch, a working tree that is not dirty, a work branch with no pull request, and a pull request
+branch, a working tree that is not dirty, a revision carrying no file at the path asked for, a work
+branch with no pull request, and a pull request
 that has not moved since a validator was issued for it (Section 9.2) are each a
 determinate fact about the remote or the checkout; none of them is "the backend could not find out".
 The last is worth naming beside the others because it is the cheapest answer a capability can give
@@ -2677,6 +2698,14 @@ Realizes the version-control operations. Required capabilities:
   cause (Section 4.3): the distinction is `status`'s, which reports a checkout demonstrably holding
   no copy as `base_absent` and a resolution it could not complete as undetermined, rather than
   stating a fact about the checkout it did not establish (Section 4.1).
+- `read_at_source(remote, branch, path)` → the content of the file at `path` in the revision
+  `branch` names for `remote`, none where that revision carries no such file, or that it could not
+  be read. Reads the copy the checkout already holds; acquires nothing. The three are distinct
+  answers because Section 6.1 diagnoses them apart: a source the engine could not read is
+  `policy_source_unreadable` and a revision carrying no `repo.policy.toml` is `policy_not_found`,
+  and the repair differs by which holds — make the source readable, or commit the file. This is what
+  `load_policy` reads the policy source through, the merged `vcsx.toml` included (Sections 4.1, 6.1,
+  8.1).
 - `diff(base_ref)` → `diff:*`, the branch delta against the resolved base (Section 6.4). Read-only.
 - `derive_work_branch(pattern, identity)` → the pinned work branch (Section 6.3).
 - `worktree_revision()` → an identity for the working tree as `commit` would capture it, or that it
@@ -2733,38 +2762,59 @@ Realizes the version-control operations. Required capabilities:
   on something else, on the remote not having moved for example, does not satisfy it merely by
   refusing in the common case (Section 11).
 
+OPTIONAL:
+
+- `export_source(remote, branch, into)` → the revision `branch` names for `remote`, materialized as
+  a directory at `into`, or that it could not be materialized. Reads the copy the checkout already
+  holds; acquires nothing. It is what a `host_side` unit is resolved through where the form the
+  engine's `run` unit takes needs a directory to resolve one from (Section 6.6): a revision is not a
+  directory, and backends make one from a revision differently enough that the mechanism is not the
+  engine's to own. `into` is supplied by the engine as `store_location` and `tree_location` are, so
+  where the source is materialized is the consumer's decision rather than a location the backend
+  chose (Section 8.1). A backend declares whether it provides this capability in the descriptor
+  below, and a policy that needs one against a backend declaring none is refused at validation
+  rather than reaching it (Sections 6.6, 6.11, 9.3). It is OPTIONAL because an engine whose unit
+  form resolves a unit from the declaration itself materializes nothing, and a capability every
+  backend must provide for an engine that never calls it is surface with no reader.
+
 The network-touching capabilities are exactly `ensure_store`, `fetch_base`, `fetch_counterpart` and
 `push`: they reach the remote at `git_access` under `git_credential` (Section 8.1) and realize the
-version-control operations Section 3.2 places host-side. Every other capability above is local to the
-checkout — it reads or writes the worktree and the history the checkout already holds, takes neither
-the access parameter nor the credential, and acquires nothing over the network. That is an
-enumeration rather than a property of a signature, so a capability's context is read off this list and
-never inferred from its arguments: `resolve_base_ref` takes a `remote` and acquires nothing, because the
-remote names which of the checkout's copies it answers with (Section 6.4), and `merge_base`,
-`merge_counterpart`, `commit` and `derive_working_tree` write to the checkout and are still local,
-because the distinction is credentials rather than mutation.
+version-control operations Section 3.2 places host-side. Every other capability above is local to
+the checkout — it reads or writes the worktree and the history the checkout already holds, takes
+neither the access parameter nor the credential, and acquires nothing over the network. That is an
+enumeration rather than a property of a signature, so a capability's context is read off this list
+and never inferred from its arguments: `resolve_base_ref` takes a `remote` and acquires nothing,
+because the remote names which of the checkout's copies it answers with (Section 6.4), and
+`merge_base`, `merge_counterpart`, `commit` and `derive_working_tree` write to the checkout and are
+still local, because the distinction is credentials rather than mutation. `read_at_source` and
+`export_source` take a `remote` and a `branch` and are local for a reason one step further out:
+`provision` runs before everything the engine reads out of the repository (Section 4.1), and the
+policy source resolves to the copy belonging to the resolved `remote` (Section 8.1), which that
+`provision` has already placed in the store. The consequence is stated where it is already accepted
+— a change to the policy source after that does not take effect until the next unit of work (Section
+13.1).
 
 An operation is realized through one capability or several. `provision` is `ensure_store`, then
 `derive_working_tree` where the invocation named a `tree_location` (Sections 4.1, 8.1) — which is
 what places the acquisition on the network side of the enumeration above and the tree derivation on
 the local side, and what lets a consumer take the acquiring half alone without reaching a capability
-that writes a checkout; `integrate` is `fetch_base` then
-`merge_base`; `pull` is `fetch_counterpart` then `merge_counterpart`; `commit` is the read its
-position makes then `commit` — `worktree_diff` where the position scans the tree's content and
-`worktree_revision` where nothing there reads it — which is what makes the tree the gate inspected
-the tree captured (Section 6.6); `status` reads through
-`detect_mode`, `current_branch`, `is_dirty`, `is_conflicted` and `ahead_behind`, with the forge's
-`pr_state` where one is configured (Section 9.2). `pr_state` has three readers rather than one, and
-two of them act on the answer instead of reporting it: `push` refuses over a CLOSED/MERGED pull
-request (Section 4.1) and `merge` takes the head it conditions on from the same read (Section 9.2),
-which is why the state it could not determine is refused at each rather than read as an absence.
-That split also fixes which reads carry a validator (Sections 8.1, 9.2): the engine presents a
-`known_validator` on the read whose answer it **reports** — `status`'s — and on neither of the two
-an operation **conditions a write on**. An `unchanged` answer carries no state and so no head, and
-a `merge` that resolved one against the head a consumer remembered would be conditioned on a value
-the engine did not read, which is the guarantee `merge:head_moved` exists to make (Sections 4.3,
-9.2). A conditional read makes a poll cheap; it does not make a write conditional on consumer-held
-state.
+that writes a checkout; `load_policy` is `read_at_source` at the policy source, once for
+`repo.policy.toml` and once for a `vcsx.toml` beside it (Sections 4.1, 6.1); `integrate` is
+`fetch_base` then `merge_base`; `pull` is `fetch_counterpart` then `merge_counterpart`; `commit` is
+the read its position makes then `commit` — `worktree_diff` where the position scans the tree's
+content and `worktree_revision` where nothing there reads it — which is what makes the tree the gate
+inspected the tree captured (Section 6.6); `status` reads through `detect_mode`, `current_branch`,
+`is_dirty`, `is_conflicted` and `ahead_behind`, with the forge's `pr_state` where one is configured
+(Section 9.2). `pr_state` has three readers rather than one, and two of them act on the answer
+instead of reporting it: `push` refuses over a CLOSED/MERGED pull request (Section 4.1) and `merge`
+takes the head it conditions on from the same read (Section 9.2), which is why the state it could
+not determine is refused at each rather than read as an absence. That split also fixes which reads
+carry a validator (Sections 8.1, 9.2): the engine presents a `known_validator` on the read whose
+answer it **reports** — `status`'s — and on neither of the two an operation **conditions a write
+on**. An `unchanged` answer carries no state and so no head, and a `merge` that resolved one against
+the head a consumer remembered would be conditioned on a value the engine did not read, which is the
+guarantee `merge:head_moved` exists to make (Sections 4.3, 9.2). A conditional read makes a poll
+cheap; it does not make a write conditional on consumer-held state.
 
 `checks_state` is settled by the same rule reached from its own side rather than by `pr_state`'s
 readers: it has one reader, `await_checks` reports its answer, and no operation conditions a write on
@@ -2818,15 +2868,16 @@ that can write a commit, so a mechanical merge commit is attributed no different
 branch is derived from (Section 6.3), which is a derivation input rather than an attribution, and
 writes no commit.
 
-The list is the minimum every backend MUST provide, not a maximum: every operation Section 4.1
-defines is realizable through it, and which operations there are is this specification's to say
-rather than an engine's (Sections 4.1, 8.5), so no engine adds one that would require more. A
-capability a backend provides beyond this list is visible as that backend's own rather than as
-shared surface.
+The required capabilities are the minimum every backend MUST provide, not a maximum: every operation
+Section 4.1 defines is realizable through them — `load_policy` included, which reads its source
+through `read_at_source` — and which operations there are is this specification's to say rather than
+an engine's (Sections 4.1, 8.5), so no engine adds one that would require more. A capability a
+backend provides beyond this list is visible as that backend's own rather than as shared surface.
 
 Descriptor fields: supported modes, whether `merge_base` can reuse recorded conflict resolutions,
-whether the backend can operate in a workspace with no colocated remote (Section 3.3), and whether it
-can derive more than one working tree from one store (Sections 4.1, 9.3).
+whether the backend can operate in a workspace with no colocated remote (Section 3.3), whether it
+can derive more than one working tree from one store, and whether it provides `export_source`
+(Sections 4.1, 6.6, 9.3).
 
 ### 9.2 Forge Backend Plugin
 
@@ -2989,11 +3040,17 @@ refused at validation — whether the policy states the strategy or takes the Se
 since the engine holds its own default. A consumer configuration that derives more than one working
 tree from one store against a VCS backend declaring it cannot (Section 9.1) is refused the same way,
 and for the same reason: the declaration is static and the consumer's requirement is held before the
-policy runs. What remains on the first-use side is an OPTIONAL capability (Section 9.2) an
-operation reaches against a backend that does not declare it, and a descriptor field a backend can
-answer only once it has opened the checkout. Neither is reachable through the operation set and the
-policy keys this specification defines, so a Conformance Statement claiming the first-use half names
-the optional capability or descriptor field it demonstrated the claim against (Section 13.1).
+policy runs. A `[hooks.engine]` unit declared against a VCS backend declaring no `export_source`,
+under an engine whose `run` unit form needs the policy source materialized, is refused there too:
+the backend's declaration and the engine's own form are both static, and the hook is declared in the
+document validation reads (Sections 6.6, 9.1). What remains on the first-use side is an OPTIONAL
+capability of Section 9.2 an operation reaches against a backend that does not declare it, and a
+descriptor field a backend can answer only once it has opened the checkout. Section 9.1's OPTIONAL
+capability is not on that side: what requires it is a declaration in the document together with the
+engine's own unit form, neither of which an operation has to run to establish, so it falls on the
+determinable half above. Neither is reachable through the operation set and the policy keys this
+specification defines, so a Conformance Statement claiming the first-use half names the optional
+capability or descriptor field it demonstrated the claim against (Section 13.1).
 
 ## 10. Message Formulation
 
@@ -3618,10 +3675,14 @@ A conforming engine SHOULD include tests covering:
   the surface it read; each of the four unusable conditions — source unreadable, file absent,
   unparseable, invalid — refuses with `usage_or_config` and its own reason, so a consumer branching
   on the status handles all four alike while the reason distinguishes the repair;
-  `policy_source_unreadable` covers an absent branch, an unreachable remote and a refused
-  credential without distinguishing them; under `policy_source = "target_branch"` a `policy_branch`
-  equal to the target is not an error and `policy_branch` is not required (Sections 6.1, 6.11, 8.1,
-  8.2, 8.6).
+  `policy_source_unreadable` covers an absent branch, an unreachable remote and a refused credential
+  without distinguishing them, and a revision carrying no `repo.policy.toml` yields
+  `policy_not_found` where a source the engine could not read yields `policy_source_unreadable`, the
+  two being distinct answers of the capability the read is realized through rather than one absence
+  read two ways; a `vcsx.toml` at the path relative to the repository root is merged and one
+  elsewhere is not, so two engines reading one revision merge one document; under
+  `policy_source = "target_branch"` a `policy_branch` equal to the target is not an error and
+  `policy_branch` is not required (Sections 6.1, 6.11, 8.1, 8.2, 8.6, 9.1).
 - The bootstrap pair: a `[policy]` edge whose `run_op` names `load_policy` and one whose `run_op`
   names `provision` are each refused with `operation_not_dispatchable` before anything runs, while
   the same edge naming `integrate` validates; an edge keyed `on = "load_policy:#error"` and one
@@ -3662,7 +3723,11 @@ A conforming engine SHOULD include tests covering:
   the working tree as its working directory and is given the tree's location instead, so a host-side
   scan over working-tree content still completes; an `in_sandbox` hook resolves its unit from the
   working tree and runs there; a unit the engine could not start yields `hook_unanswered` in either
-  context, so only where the engine looked differs (Sections 6.6, 8.6).
+  context, so only where the engine looked differs; a merged surface declaring a `[hooks.engine]`
+  unit, under an engine whose `run` unit form needs the policy source materialized and a VCS backend
+  declaring no `export_source`, is refused at validation with `capability_unsupported` before the
+  policy runs rather than failing where the hook is first reached (Sections 6.6, 6.11, 8.6, 9.1,
+  9.3).
 - Gate blocking: a `before:<op>` hook blocking with a `needs_caller` result surfaces as
   `<op>:blocked` and with an `error` result as `<op>:failed`, at every gated operation (Section 6.6);
   a gated operation dispatched by a `[policy]` `run_op` edge rather than by a front-end sequence — a
@@ -3864,14 +3929,15 @@ A conforming engine SHOULD include tests covering:
   section, and a section carrying `[base]` or `[scope]` — the keys that select it — is refused.
   Under `target_branch` the third source drops out and the refusal reaches
   every entry but `provision`, before validation, the base being what locates the policy there.
-- `repo.policy.toml` loader and validation (with `vcsx.toml` merge), the consumer configuration as a
-  second and disjoint input, including the refusal of a
-  policy that is not well formed, of one declaring a hook with no unit to run, of one binding a
-  template body source with no template unit bound, and of one whose lifecycle positions dispatch one
-  another in a cycle, base resolution to a branch and a base ref, and the execution-context labeling
-  — an edge's and a hook's alike taken from the artifact each was declared in rather than from a
-  key, including that a hook's unit resolves by its context, a `host_side` one from the host-side
-  policy's own source rather than from the working tree.
+- `repo.policy.toml` loader and validation (with `vcsx.toml` merge), both files addressed relative
+  to the repository root and read at the policy source through the backend, the consumer
+  configuration as a second and disjoint input, including the refusal of a policy that is not well
+  formed, of one declaring a hook with no unit to run, of one binding a template body source with no
+  template unit bound, and of one whose lifecycle positions dispatch one another in a cycle, base
+  resolution to a branch and a base ref, and the execution-context labeling — an edge's and a hook's
+  alike taken from the artifact each was declared in rather than from a key, including that a hook's
+  unit resolves by its context, a `host_side` one from the host-side policy's own source rather than
+  from the working tree.
 - The invocation contract: result envelope with every field described and `entry` nullable only where
   no entry point was read, the `outputs` keys that report what the engine emitted and nobody
   performed, what a hook left unanswered on either side of the division, and what the policy failed
@@ -3883,11 +3949,13 @@ A conforming engine SHOULD include tests covering:
   with a `version_floor` floor.
 - The plugin API with VCS and forge backends and their capability descriptors, the VCS backend
   separating the capabilities that acquire from the local ones that use what they acquired, the
-  engine supplying each plugin the parameter and credential it uses — the forge backend its
-  repository coordinate, `forge_access` and `forge_credential`, the VCS backend its resolved remote,
-  `git_access` and `git_credential` — and every value-answering capability able to report that it
-  could not determine its answer, in how it derives that answer from a response as well as in what
-  it returns.
+  policy source read at its revision through one of those and materialized through the OPTIONAL
+  capability a backend declares, with a policy needing one no selected backend declares refused at
+  validation, the engine supplying each plugin the parameter
+  and credential it uses — the forge backend its repository coordinate, `forge_access` and
+  `forge_credential`, the VCS backend its resolved remote, `git_access` and `git_credential` — and
+  every value-answering capability able to report that it could not determine its answer, in how it
+  derives that answer from a response as well as in what it returns.
 - Conditional forge reads where the backend declares them: one validator per resource, each returned
   in `outputs` beside the data it describes and presented back as `pr_state_validator` or
   `checks_state_validator`, never to the capability that did not issue it; an unmoved pull request
@@ -3952,18 +4020,18 @@ The Statement MUST record:
   `version_floor` the build satisfies.
 - A resolution for every `Implementation-defined` behavior in this specification: checkout-mode
   detection (Section 3.3), the flow bound's value and any further bound the engine imposes (Section
-  5.6), `repo.policy.toml` discovery precedence (Section 6.1), the form of a hook's engine-invoked
-  `run` unit, how a `host_side` unit is resolved from the host-side policy's source and what working
-  directory it is given, and the bound the engine waits for one under (Section 6.6), which reason is
-  reported when several configuration conditions hold (Section 6.11), the consumer configuration's
-  discovery precedence, the backend's default remote where the consumer supplies none, the
-  entry-point argument encodings and how a front-end derives the forge repository coordinate where
-  it does, the default `network_bound_ms` and any per-capability values the engine applies
-  (Sections 8.1, 9), the form of the `resume_token` — what it encodes, whether it is signed, and the
-  mechanism by which the four conditions Section 8.1 fixes are judged, those conditions themselves
-  being specified rather than declared — the form of the `policy_pin` and how the engine establishes
-  that one it is handed names the surface it validated (Sections 8.1, 8.2, 8.6), the `detail`
-  field of an `unanswered_gates` entry (Section 8.2), and the escalation `detail` field
+  5.6), `repo.policy.toml` and `vcsx.toml` discovery precedence (Section 6.1), the form of a hook's
+  engine-invoked `run` unit, how a `host_side` unit is addressed within the host-side policy's
+  source and what working directory it is given, and the bound the engine waits for one under
+  (Section 6.6), which reason is reported when several configuration conditions hold (Section 6.11),
+  the consumer configuration's discovery precedence, the backend's default remote where the consumer
+  supplies none, the entry-point argument encodings and how a front-end derives the forge repository
+  coordinate where it does, the default `network_bound_ms` and any per-capability values the engine
+  applies (Sections 8.1, 9), the form of the `resume_token` — what it encodes, whether it is signed,
+  and the mechanism by which the four conditions Section 8.1 fixes are judged, those conditions
+  themselves being specified rather than declared — the form of the `policy_pin` and how the engine
+  establishes that one it is handed names the surface it validated (Sections 8.1, 8.2, 8.6), the
+  `detail` field of an `unanswered_gates` entry (Section 8.2), and the escalation `detail` field
   (Section 8.4).
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class and,
   where that class is `needs_caller`, its default `need` (Section 4.3), a configuration reason

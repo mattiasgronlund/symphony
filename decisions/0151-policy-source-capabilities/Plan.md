@@ -163,10 +163,14 @@ a registry group is matched as a bare identifier anywhere in the plan. The judge
 mechanically it gets here: the note fixes which revision the argument names, not how that revision
 is read, so step 1's `read_at_source` does not reach it and it is not edited.
 
-The re-run Ordering asks for — at the revision decision 0150 lands on — has **not** been made,
-because 0150 has not landed. Neither `d78d7af` nor `b7912f6` substitutes for it: both predate
-0150's edits to Section 9.1's capability list, its closing paragraph and its network enumeration,
-which is the anchor set this plan shares with that one.
+The re-run Ordering asks for — at the revision decision 0150 lands on — has been made: `python3
+scripts/check_plan_anchors.py decisions/0151-policy-source-capabilities/Plan.md --rev 1b18624`
+reports **no** finding from 11 quoted spans, `1b18624` being the commit that applied 0150. The
+result is what reading the two plans together predicts: 0150 edited Section 9.1's
+`worktree_revision()` and `commit` bullets, the realization paragraph, Section 6.6's identity
+clause, Section 10.4 and the two conformance sections, while this plan's spans are in Section 9.1's
+closing paragraph and its network enumeration, Section 4.1's `load_policy` bullet, Section 6.1,
+Section 6.6's resolution clause, Section 8.1 and the template — no span in common.
 
 ## Anchor changes
 
@@ -184,4 +188,15 @@ which is the anchor set this plan shares with that one.
 
 ## Status
 
-Not started.
+Applied. Steps 1 to 4 and step 7 are in `VCSX-SPEC.md` Sections 4.1, 9.1 and 9.3; steps 5 and 6 are
+in Section 6.6, with the second input the refusal turns on named in Section 6.11; step 8 is in
+Section 6.1; step 9 is in Sections 13.1 and 13.2; step 10 is in Section 13.3 and in
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`, which gains the `vcsx.toml` discovery-precedence row and
+the `export_source` column, and whose host-side-unit row is narrowed with the obligation Section 6.6
+narrowed. `conformance/vcsx/vocabulary.json` and `conformance/vcsx/vectors/` are unchanged.
+`SPEC.md` and `CONFORMANCE-STATEMENT-TEMPLATE.md` are unchanged, and the four sites carrying
+Symphony's parallel host-side-unit obligation — `SPEC.md` Sections 15.4, 18.1.2 and 19, and
+`CONFORMANCE-STATEMENT-TEMPLATE.md` Section 4.1's row — were re-read at this revision rather than
+assumed independent. `python3 scripts/validate_spec_consistency.py` reports 0 errors and 0 warnings.
+
+Two findings are recorded in `Background.md` under `Findings from applying the plan`.
