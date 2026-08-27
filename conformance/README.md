@@ -268,7 +268,7 @@ Slice 1 — pure derivations (decision 0046):
 | `vectors/state-normalization.json` | `normalize_state` | Core | Section 4.2 |
 | `vectors/config-defaults.json` | `resolve_config_defaults` | Core | Sections 6.4, 17.1 |
 | `vectors/retry-backoff.json` | `retry_backoff_delay_ms` | Daemon | Section 8.4 |
-| `vectors/retry-fire-disposition.json` | `retry_fire_disposition` | Daemon | Sections 8.4, 16.7 |
+| `vectors/retry-fire-disposition.json` | `retry_fire_disposition` | Daemon | Sections 8.2, 8.3, 8.4, 16.7 |
 | `vectors/worker-exit-disposition.json` | `worker_exit_disposition` | Daemon | Sections 8.5, 16.7 |
 | `vectors/available-slots.json` | `available_slots` | Daemon | Section 8.3 |
 | `vectors/per-state-concurrency.json` | `per_state_concurrency_limit` | Daemon | Sections 8.3, 4.2 |
@@ -534,3 +534,26 @@ guessed-at vector or entry:
   whole record, Part B iterates the running ids and disposes of an unanswered one by leaving the
   run untouched, and `conformance/vectors/reconcile-disposition.json` pins all six of Part B's
   outcomes. Issue #121.
+- **A retry fire dispatched what a poll tick would have refused — resolved (decision 0157).** The
+  third site the answer to issue #120 named, after the two decision 0155 reached. Section 8.4's
+  "Retry handling behavior" required a fire to dispatch an issue "found and still
+  candidate-eligible", and Section 7.3's `Retry Timer Fired` trigger required it a second time —
+  "Re-fetch active candidates and attempt re-dispatch, or release claim if no longer eligible";
+  Section 16.7's `on_retry_timer` tested membership in the candidate set and
+  `available_slots`, and nothing else — so a backoff of up to `agent.max_retry_backoff_ms`, default
+  `300000`, outlived the eligibility that armed it, and a fire re-dispatched an issue whose required
+  label was removed, whose configured assignee was unassigned, or whose blocker reopened while it
+  waited. Two more followed from the same two lines. `available_slots` is Section 8.3's global
+  computation alone, so a fire dispatched past `max_concurrent_agents_by_state` while the poll tick
+  held that limit on every cycle. And the fire entered `dispatch_issue` still holding the claim
+  `schedule_retry` took, with its retry entry already removed, so the `ensure_object_store` early
+  return left a claim no site could remove — `state.claimed.remove` appears at two places in Section
+  16 and neither is reachable for that issue again — against Section 8.5's own statement that the
+  branch "leaves the issue unclaimed so a later tick retries it". Section 8.2 now states that both
+  dispatch sites evaluate its conditions whole; the fire releases the claim with the entry it
+  consumes rather than excepting the `claimed` condition, which is what lets the conditions be
+  evaluated whole and what makes Section 8.5's bullet true of both callers; and Section 8.3 names
+  `dispatch_slot_available` for the pair of limits, whose want of a name is why one site tested one
+  of two. `vectors/retry-fire-disposition.json` widens from the generation match to the fire's whole
+  disposition, distinguishing a re-arm from a release rather than collapsing both into one
+  not-dispatched outcome. Issues #120, #121.

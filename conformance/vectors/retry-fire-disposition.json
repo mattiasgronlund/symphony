@@ -1,37 +1,122 @@
 {
   "function": "retry_fire_disposition",
   "profile": "Daemon Conformance",
-  "spec_refs": ["Section 8.4", "Section 16.7"],
-  "description": "Decide what an arriving retry timer fire does. Creating a retry entry cancels any timer already armed for the issue, but cancellation is not synchronous, so a fire from the cancelled arming can still arrive. A fire dispatches only when its generation equals the current retry entry's; otherwise it is discarded and the entry and its armed timer are left in place. Testing only whether an entry is present is not sufficient, because a replaced entry is present.",
-  "given": "{ entry: { generation: integer, attempt: integer } | null, fire_generation: integer }",
-  "expect": "{ disposition: 'dispatch' | 'discard', entry_retained: boolean }",
+  "spec_refs": ["Section 8.2", "Section 8.3", "Section 8.4", "Section 16.7"],
+  "description": "Decide what an arriving retry timer fire does. A fire is matched to its arming first: creating a retry entry cancels any timer already armed for the issue, but cancellation is not synchronous, so a fire from the cancelled arming can still arrive, and only a fire whose generation equals the current entry's proceeds. A fire that proceeds is a dispatch, so it tests what a dispatch tests (Section 8.2), over a record it re-fetches; it releases the claim taken for the entry it consumed, and each disposition below either takes that claim back or leaves the issue Released (Section 7.1). The two concurrency conditions are tested apart from the rest because their disposition differs: no slot re-arms and keeps counting attempts, while a condition over the record releases.",
+  "given": "{ entry: { generation: integer, attempt: integer } | null, fire_generation: integer, fetch: 'ok' | 'failed', in_candidate_set: boolean, slot_available: boolean, dispatch_eligible: boolean }",
+  "expect": "{ disposition: 'dispatch' | 'discard' | 'rearm' | 'release', entry_retained: boolean, claim_released: boolean, next_attempt: integer | null }",
+  "notes": [
+    "slot_available and dispatch_eligible are handed to this function rather than derived in it. dispatch_slot_available is Section 8.3's pair of limits, whose halves are pinned by vectors/available-slots.json and vectors/per-state-concurrency.json; the Section 8.2 predicate is vectors/candidate-eligibility.json's subject. This file pins what a fire does with their answers, not how the answers are computed, which is the discipline vectors/reconcile-disposition.json follows for Part B.",
+    "slot_available: false implies dispatch_eligible: false, the two concurrency conditions being among the nine Section 8.2 states. No vector holds the impossible pair slot_available: false with dispatch_eligible: true. The reverse pair is possible and is exercised: a record condition can fail while both limits have headroom. Where in_candidate_set is false, or fetch is failed, neither downstream field is read; the vectors carry values there that are self-consistent rather than significant.",
+    "The order the two are tested in is Section 16.7's, not a precedence Section 8.2 fixes: Section 8.2 fixes none among its conditions, so the case where neither holds is determined by the call order in on_retry_timer rather than by the predicate. That case has its own vector.",
+    "entry_retained is about the retry entry present when the fire arrived: true only where that entry and its armed timer are left untouched. A rearm consumes the arriving fire's entry and arms a new one at a new generation, so entry_retained is false there.",
+    "claim_released is the net effect of the fire on the issue's claim. A fire releases the claim with the entry it consumes and every continuing branch takes it back, so claim_released is true only where the fire ends with the issue unclaimed.",
+    "next_attempt is the attempt the disposition carries on: the entry's own attempt where the fire dispatches, and attempt + 1 where it re-arms (Section 8.4). It is null where the fire hands nothing on."
+  ],
   "vectors": [
     {
       "id": "fire-generation-matches",
-      "description": "The live arming's fire. The entry is consumed and the issue is dispatched at the entry's attempt.",
+      "description": "The live arming's fire, with everything downstream admitting it. The entry is consumed and the issue is dispatched at the entry's attempt.",
       "given": {
         "entry": { "generation": 7, "attempt": 3 },
-        "fire_generation": 7
+        "fire_generation": 7,
+        "fetch": "ok",
+        "in_candidate_set": true,
+        "slot_available": true,
+        "dispatch_eligible": true
       },
-      "expect": { "disposition": "dispatch", "entry_retained": false }
+      "expect": { "disposition": "dispatch", "entry_retained": false, "claim_released": false, "next_attempt": 3 }
     },
     {
       "id": "fire-generation-stale",
-      "description": "A cancelled timer fired anyway and its entry has since been replaced. The fire is discarded. entry_retained is the half a pop-then-test implementation fails: it removes the entry before it compares, so the live arming's backoff is consumed by a fire that did not belong to it.",
+      "description": "A cancelled timer fired anyway and its entry has since been replaced. The fire is discarded before anything downstream is read, which is why this vector carries inputs that would otherwise dispatch. entry_retained is the half a pop-then-test implementation fails: it removes the entry before it compares, so the live arming's backoff is consumed by a fire that did not belong to it.",
       "given": {
         "entry": { "generation": 8, "attempt": 4 },
-        "fire_generation": 7
+        "fire_generation": 7,
+        "fetch": "ok",
+        "in_candidate_set": true,
+        "slot_available": true,
+        "dispatch_eligible": true
       },
-      "expect": { "disposition": "discard", "entry_retained": true }
+      "expect": { "disposition": "discard", "entry_retained": true, "claim_released": false, "next_attempt": null }
     },
     {
       "id": "fire-with-no-entry",
-      "description": "A fire for an issue that has no retry entry. Discarded. Unreachable where timer fires are delivered in the order they were enqueued, and retained because SPEC.md states no delivery-ordering property for orchestrator messages, which is the same premise the generation non-reuse requirement rests on.",
+      "description": "A fire for an issue that has no retry entry. Discarded, and nothing is touched — in particular no claim is released, there being no entry whose claim this fire could be consuming. Unreachable where timer fires are delivered in the order they were enqueued, and retained because SPEC.md states no delivery-ordering property for orchestrator messages, which is the same premise the generation non-reuse requirement rests on.",
       "given": {
         "entry": null,
-        "fire_generation": 7
+        "fire_generation": 7,
+        "fetch": "ok",
+        "in_candidate_set": true,
+        "slot_available": true,
+        "dispatch_eligible": true
       },
-      "expect": { "disposition": "discard", "entry_retained": false }
+      "expect": { "disposition": "discard", "entry_retained": false, "claim_released": false, "next_attempt": null }
+    },
+    {
+      "id": "candidate-fetch-failed",
+      "description": "The fire's own candidate fetch failed, so nothing is known about the issue. Re-armed at the next attempt with the entry's identifier, and the claim is not released: the fire never reached the point where it comes off.",
+      "given": {
+        "entry": { "generation": 7, "attempt": 3 },
+        "fire_generation": 7,
+        "fetch": "failed",
+        "in_candidate_set": false,
+        "slot_available": true,
+        "dispatch_eligible": false
+      },
+      "expect": { "disposition": "rearm", "entry_retained": false, "claim_released": false, "next_attempt": 4 }
+    },
+    {
+      "id": "issue-absent-from-candidate-set",
+      "description": "The fetch succeeded and the issue is not in it — closed, deleted, or moved out of the configured active states while the backoff elapsed. The claim released with the entry is the whole disposition; no retry is armed.",
+      "given": {
+        "entry": { "generation": 7, "attempt": 3 },
+        "fire_generation": 7,
+        "fetch": "ok",
+        "in_candidate_set": false,
+        "slot_available": true,
+        "dispatch_eligible": false
+      },
+      "expect": { "disposition": "release", "entry_retained": false, "claim_released": true, "next_attempt": null }
+    },
+    {
+      "id": "no-dispatch-slot",
+      "description": "The issue is a candidate but no dispatch slot is available under one of the two limits (Section 8.3). Transient, so the fire re-arms at the next attempt rather than releasing: releasing would drop the attempt count, and a later tick would re-dispatch at a fresh attempt with the backoff restarted.",
+      "given": {
+        "entry": { "generation": 7, "attempt": 3 },
+        "fire_generation": 7,
+        "fetch": "ok",
+        "in_candidate_set": true,
+        "slot_available": false,
+        "dispatch_eligible": false
+      },
+      "expect": { "disposition": "rearm", "entry_retained": false, "claim_released": false, "next_attempt": 4 }
+    },
+    {
+      "id": "condition-lost-during-backoff",
+      "description": "The issue is a candidate and a slot is available, but a condition of Section 8.2 no longer holds — a required label removed, the configured assignee unassigned, or a blocker reopened on a Todo issue while the backoff elapsed. Not dispatched, and left unclaimed rather than armed for another retry: a later poll tick dispatches it at a fresh attempt once it is eligible again. This is the case a fire testing only membership in the candidate set dispatches.",
+      "given": {
+        "entry": { "generation": 7, "attempt": 3 },
+        "fire_generation": 7,
+        "fetch": "ok",
+        "in_candidate_set": true,
+        "slot_available": true,
+        "dispatch_eligible": false
+      },
+      "expect": { "disposition": "release", "entry_retained": false, "claim_released": true, "next_attempt": null }
+    },
+    {
+      "id": "no-slot-and-condition-lost",
+      "description": "Neither holds. The fire re-arms rather than releasing, because Section 16.7 tests the slot first and its disposition returns. Determined by the call order in on_retry_timer, not by a precedence among Section 8.2's conditions, which the specification does not fix.",
+      "given": {
+        "entry": { "generation": 7, "attempt": 3 },
+        "fire_generation": 7,
+        "fetch": "ok",
+        "in_candidate_set": true,
+        "slot_available": false,
+        "dispatch_eligible": false
+      },
+      "expect": { "disposition": "rearm", "entry_retained": false, "claim_released": false, "next_attempt": 4 }
     }
   ]
 }

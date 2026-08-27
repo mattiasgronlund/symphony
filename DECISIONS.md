@@ -6174,3 +6174,63 @@ routine (which needs a bound, not a reversed disposition), on a third decision c
 operation's name against its contract, or on Section 4.1.1 gaining a field only the candidate path
 can populate. Relates to 0140, 0148, 0154, 0155. Accepted and applied to `SPEC.md`,
 `conformance/vectors/reconcile-disposition.json` and `conformance/README.md`.
+
+## 0157 — What a re-dispatch tests
+
+**State:** Accepted
+**Folder:** [decisions/0157-re-dispatch-eligibility/](decisions/0157-re-dispatch-eligibility/)
+
+The third site the answer to issue #120 named — "Section 8.5 Part B, the worker's post-turn check in
+Section 16.6, and `on_retry_timer` in Section 16.7" — after decision 0155 reached the first two and
+recorded this one as found rather than repaired. It is not a gap but a **contradiction between
+Section 8.4's prose and Section 16.7's reference algorithm**: the "Retry handling behavior" list has
+always required a fire to dispatch an issue "found and still candidate-eligible", while
+`on_retry_timer` tested membership in the candidate set and `available_slots` and nothing else, and
+the algorithm is what an implementation copies. Section 7.3's `Retry Timer Fired` trigger said it a
+second time — "Re-fetch active candidates and attempt re-dispatch, or release claim if no longer
+eligible" — so the reference algorithm disagreed with two normative statements, which is what makes
+the direction of the repair settled rather than chosen. Section 8.2 states nine conditions and says
+an issue is dispatch-eligible only if all hold; that path tested two. The window they went untested
+in is the backoff, up to `agent.max_retry_backoff_ms`, default `300000`: a label removed, an
+assignee unassigned, or a blocker reopened during those five minutes is the thing Section 5.3.1 says
+stops work "to dispatch or continue", and the fire started a run anyway — provisioning a workspace,
+taking a slot, and granting an agent commit and pull-request authority. Reconciliation stops it on
+the next tick, which is right and late. **Two more defects follow from the same two lines.**
+`available_slots` is Section 8.3's global computation alone, so a fire dispatched past
+`max_concurrent_agents_by_state` while every poll tick held that limit. And the fire entered
+`dispatch_issue` still holding the claim `schedule_retry` took, its retry entry already removed, so
+the `ensure_object_store` early return left a claim **no site could remove** —
+`state.claimed.remove` occurs twice in Section 16 and neither is reachable for that issue again —
+stranding the issue for the life of the process and making Section 14.2's stated recovery
+unreachable, against Section 8.5's own claim that that branch "leaves the issue unclaimed so a later
+tick retries it". **The repair is one change, which is why the three share a decision:** a retry
+fire is a dispatch and tests what a dispatch tests, and the `claimed`-membership condition that
+would otherwise refuse every issue a fire asks about is handled by **releasing the claim with the
+retry entry it consumes** — the discipline `terminate_running_issue` already follows for a running
+entry — rather than by excepting the condition. That leaves the conditions evaluated whole at both
+sites, and leaves `dispatch_issue` entered unclaimed from both callers, which is what makes Section
+8.5's completeness bullet true rather than true-of-one-caller. The two concurrency conditions are
+tested apart from the rest because their disposition differs — a slot is transient, so the fire
+re-arms and keeps counting attempts, while a condition over the record releases — and Section 8.3
+gains `dispatch_slot_available` for the pair, whose want of a name is why one site tested one of
+two. Steelmanned and rejected: a third eligibility predicate stating the subset a re-dispatch owes,
+which formalizes the divergence that caused the defect, taxes every future Section 8.2 condition
+with a classification, and leaves the stranded claim in place; releasing the claim before the
+candidate fetch rather than after it, which would widen the unclaimed interval across a network
+round trip for a derivation gap Section 13.3's snapshot has no reader for; releasing on per-state
+slot exhaustion, which Section 17.4's own backoff-escalation row forbids; and leaving state
+membership to `fetch_candidate_issues`'s filter, which the poll tick is not allowed to do either.
+**Decision 0155's recorded finding is corrected rather than inherited**: its "not the four
+orchestrator-state ones" classified by a property that does not decide what a dispatch site can test
+— only `claimed` is true by construction at a fire, `running` is false by construction so testing it
+refuses nothing, and both concurrency conditions must be tested. The correction is recorded in
+0157's `Background.md`, not edited into 0155's, per the `decision-record` skill. No token is added,
+renamed or removed, and no `Implementation-defined` or MUST-document obligation is created, so no
+`vocabulary.json` group and no Conformance Statement row are owed. Reconsider on a third dispatch
+site, on a Section 8.2 condition a fire genuinely cannot evaluate, on duplicate dispatch across
+`dispatch_issue`'s unclaimed `ensure_object_store` interval — which is the poll tick's today and
+both sites' after this, and whose repair belongs in `dispatch_issue` or Section 7.4 once for both —
+or on a third caller wanting only the global concurrency half. Relates to 0136, 0138, 0140, 0144,
+0145, 0148, 0155. Accepted and applied to `SPEC.md` — including Section 14.5, which answered only
+for a running session and now says what the same label or assignment edit does to an issue in
+backoff — `conformance/vectors/retry-fire-disposition.json` and `conformance/README.md`.
