@@ -426,7 +426,13 @@ Fields (with recovery class):
 - `running` (map `issue_id -> running entry`) — `Reconstructable` (rebuilt from tracker state and
   workspaces during reconciliation). The map is keyed by the issue; each entry carries the `run_id`
   of the run attempt it holds (Sections 4.1.5, 16.4), so the key and the entry's identity are
-  different things and a message can be decided against the entry rather than against the key.
+  different things and a message can be decided against the entry rather than against the key. Each
+  entry also carries the `repository` it was dispatched to (Sections 8.7, 16.4), recorded once at
+  dispatch rather than recomputed, so a later re-evaluation of the routing mapping has a fixed value
+  to compare against. The member does not change how the field recovers: where one instance manages
+  several repositories the workspace path carries `repo_key` (Section 9.1) and the value is read
+  back from it, and where it manages one the single managed repository is the only value the member
+  can hold.
 - `claimed` (set of issue IDs reserved/running/retrying) — `Reconstructable` (re-derived from
   `running` and `retry_attempts`).
 - `retry_attempts` (map `issue_id -> RetryEntry`) — `Ephemeral` (timers are not restored; backoff
@@ -1143,6 +1149,10 @@ claim state.
      (Section 8.5). Each listed cause has a producer in Section 16:
    - Terminal or non-active issue: reconciliation terminates the run and `terminate_running_issue`
      releases the claim with the running entry (Sections 8.5, 16.3).
+   - A standing condition of the run no longer holding — a required label removed, the configured
+     assignee no longer assigned, or the mapping no longer routing the issue to the repository the
+     run holds: reconciliation terminates the run the same way, through
+     `terminate_running_issue`, with no retry taking the claim over (Sections 8.2, 8.5, 8.7, 16.3).
    - Issue missing from the candidate set, or a retry path that completed without re-dispatch:
      `on_retry_timer` releases it on the branch where the fired retry's issue is no longer a
      candidate (Section 16.7).
@@ -1152,8 +1162,14 @@ Important nuance:
 - A successful worker exit does not mean the issue is done forever.
 - The worker MAY continue through multiple back-to-back coding-agent turns before it exits.
 - After each normal turn completion, the worker re-checks the tracker issue state.
-- If the issue is still in an active state, the worker SHOULD start another turn on the same live
-  coding-agent thread in the same workspace, up to `agent.max_turns`.
+- If the issue is still in an active state, and still carries every label in
+  `tracker.required_labels` and the configured `tracker.assignee` (Section 5.3.1) — the two standing
+  conditions the worker can evaluate from the record it has just re-fetched — the worker SHOULD
+  start another turn on the same live coding-agent thread in the same workspace, up to
+  `agent.max_turns`.
+- The worker's re-check does not extend to routing. Routing is evaluated over the run's recorded
+  `repository` against a fresh evaluation of the whole mapping (Sections 8.7, 16.3), which is
+  reconciliation's check rather than one the worker's post-turn loop repeats.
 - The first turn SHOULD use the full rendered task prompt.
 - Continuation turns SHOULD send only continuation guidance to the existing thread, not resend the
   original task prompt that is already present in thread history.
@@ -1223,7 +1239,8 @@ Note:
 
 - `Reconciliation State Refresh`
   - Stop runs whose issue states are terminal or no longer active.
-  - Schedule no retry for a run stopped this way.
+  - Stop runs whose standing conditions no longer hold (Sections 8.2, 8.5, 8.7).
+  - Schedule no retry for a run stopped in either way.
 
 - `Stall Timeout`
   - Kill worker and schedule retry. The retry is queued by reconciliation, not by the killed
@@ -1279,6 +1296,34 @@ An issue is dispatch-eligible only if all are true:
 - Blocker rule for `Todo` state passes:
   - If the issue state is `Todo`, do not dispatch when any blocker is non-terminal.
   - An adapter that does not populate `blocked_by` reports no blockers, so this rule does not gate.
+
+Which of these conditions a reconciliation pass may re-test is fixed here rather than left to
+Section 8.5. The conditions this section states over the issue record are **standing**: re-evaluated
+on every issue-state refresh for as long as the run is in flight, rather than tested once at
+dispatch and then assumed. Section 5.3.1 already requires two of them of a run that continues and
+not only of one that starts — an issue MUST contain every configured label, and MUST be assigned to
+`tracker.assignee`, "to dispatch or continue" — and Section 8.5 Part B is where that clause is
+evaluated. Every condition above is accounted for:
+
+- The state-membership condition is standing already: Part B tests it every tick and stops the run
+  where it fails. The rule stated here extends that practice to the record's remaining filters
+  rather than introducing it.
+- `tracker.required_labels` and `tracker.assignee` are standing.
+- Routing is standing too, and is stated over the run rather than over the record (Section 8.7):
+  what it tests is which repository the run's authority lives in, not a property of the issue.
+- The field-presence condition is not standing. It is a well-formedness test on the record the
+  adapter returned: a refresh whose record omits `id`, `identifier`, `title`, or `state` has not
+  returned the normalized record Section 4 defines, which every adapter owes on every read
+  (Section 11.2). That surfaces as a refresh failure, and it MUST NOT be read as a
+  standing-condition loss that stops the run.
+- The `running`-membership condition, the `claimed`-membership condition, and both concurrency-slot
+  conditions are dispatch-time only. A run already in flight holds the `running` entry and the
+  `claimed` membership the first two test, and occupies the slot the other two count, so re-tested
+  against that run every one of the four is false by construction — an implementation that re-ran
+  this predicate whole on every refresh would stop every run it checked.
+- The `Todo` blocker rule is dispatch-time only by choice rather than by construction. Making it
+  standing would put the issue's dependency graph into every refresh, on every tick, for every
+  running issue, to re-check a gate the run has already cleared.
 
 Sorting order (stable intent):
 
@@ -1380,14 +1425,34 @@ Part B: Tracker state refresh
 - Fetch current issue states for all running issue IDs.
 - For each running issue:
   - If tracker state is terminal: terminate worker and clean workspace.
-  - If tracker state is still active: update the in-memory issue snapshot.
+  - If tracker state is still active and the run's standing conditions still hold (Sections 8.2,
+    8.7): update the in-memory issue snapshot.
+  - If tracker state is still active but a standing condition no longer holds — a label in
+    `tracker.required_labels` removed, the configured `tracker.assignee` no longer among the issue's
+    `assignees` (Section 5.3.1), or the mapping no longer routing the issue to the repository the
+    run holds (Section 8.7) — terminate the worker without workspace cleanup, release the claim,
+    and schedule no retry.
   - If tracker state is neither active nor terminal: terminate worker without workspace cleanup.
 - If state refresh fails, keep workers running and try again on the next tick.
-- For a remote executor (Section 9.11), a terminal or non-active decision is forwarded to the executor
-  over the seam while it is connected, so the executor stops; while the executor is disconnected it
-  re-reads the issue state itself before finalizing any push, pull request, or tracker write, so it
-  does not act for an issue that has gone terminal. Reconciliation emits `signal_done` (Section 9.11)
-  when it stops a remote run.
+- A stop for a standing-condition loss is reported to the operator naming the condition that failed,
+  in the shape Section 8.7 already uses for a reported routing ambiguity. The two branches beside it
+  need no such report: an operator reads a terminal or non-active cause off the issue, while a
+  standing-condition loss may trace to a third party's label or assignment edit, or to an operator's
+  own mapping change, neither of which is visible from the issue.
+- For a remote executor (Section 9.11), a terminal, non-active, or standing-condition-loss decision
+  is forwarded to the executor over the seam while it is connected, so the executor stops; while the
+  executor is disconnected it re-reads the issue state itself before finalizing any push, pull
+  request, or tracker write, so it does not act for an issue that has gone terminal. Reconciliation
+  emits `signal_done` (Section 9.11) when it stops a remote run.
+
+Note: whether a stopping branch cleans the workspace follows what its cause says about the work in
+that workspace. A terminal issue's work is finished, so the tree holds nothing wanted and is
+removed. A non-active issue's is not finished; nor is a standing-condition loss, which is reversible
+besides — a label re-added, an assignment restored, a mapping edit corrected — so removing the tree
+would be an unrecoverable response to what may be an operator's own typo. The cost is that a
+re-routed issue's workspace becomes an orphan: Section 9.1 keys the per-issue path by `repo_key`, so
+the tree stays under the repository the run was dispatched to while any later, correctly routed run
+for the same issue is provisioned at a different path, and nothing sweeps it.
 
 Important: reconciliation owns the runs it terminates. Where either part terminates a worker, it
 removes that issue's running entry and adds that run's runtime to the aggregate totals at the point
@@ -1415,7 +1480,8 @@ reference algorithms in Section 16:
 
 - A stalled run schedules exactly one retry. Part A queues it after terminating the worker; the exit
   that termination causes queues nothing.
-- A run stopped because its issue reached a terminal or non-active state schedules no retry at all.
+- A run stopped because its issue reached a terminal or non-active state, or because one of its
+  standing conditions no longer holds (Section 8.2), schedules no retry at all.
   Without the invariant its worker's abnormal exit would queue one for an issue the tracker has
   already closed, and that issue would hold its own claim until the retry fired and released it — up
   to `agent.max_retry_backoff_ms`, default `300000`, for every issue closed while its worker was
@@ -1426,9 +1492,9 @@ reference algorithms in Section 16:
 The claim follows the same ownership, as a partition rather than as a rule per site: every site that
 ends a dispatched run either releases the claim or hands it to a retry entry, and there is no third.
 
-- `terminate_running_issue` (Section 16.3) releases it with the entry. Both branches of Part B and
-  Part A's stall path reach it; Part A then arms a retry, which takes the claim back, which is why
-  it terminates first and arms second.
+- `terminate_running_issue` (Section 16.3) releases it with the entry. All three of Part B's
+  terminating branches and Part A's stall path reach it; Part A then arms a retry, which takes the
+  claim back, which is why it terminates first and arms second.
 - `on_worker_exit` (Section 16.7) removes the entry itself and arms a retry, and arming takes the
   claim.
 - `dispatch_issue`'s spawn-failure early return (Section 16.4) writes no entry and arms a retry,
@@ -1483,6 +1549,18 @@ Issue-to-repository routing:
   check stands in for it. A dispatch grants an agent commit and pull-request authority in the
   repository it routes to, so an implementation that picked a match would be choosing where to grant
   that.
+- Routing is a standing condition of a dispatched run and not only a dispatch-time computation
+  (Section 8.2). For as long as a run is in flight the mapping is re-evaluated against the current
+  normalized record on every issue-state refresh, and the result MUST still name the repository the
+  run holds — the `repository` its running entry recorded at dispatch (Sections 4.1.8, 16.4). Where
+  it does not, including where the issue now routes nowhere or to more than one repository, the
+  run's standing conditions no longer hold and Section 8.5 Part B disposes of it. The condition is
+  stated over the run rather than over the issue because routing is the computation that decides
+  which repository "the issue's repository" names: asked of the issue alone it is circular, and at
+  dispatch there is no earlier answer to compare against. Re-evaluating is a live check rather than
+  a recomputation of a value already known, because the mapping's own artifact — the operator policy
+  config — is re-read and re-applied without restart (Section 6.2), so the mapping in force at
+  refresh time need not be the one in force at dispatch.
 
 Shared polling:
 
@@ -1494,6 +1572,10 @@ Keying:
 
 - Workspace identity, the per-repository object store (Section 9.7), and concurrency accounting are
   keyed by `(repository, issue)`.
+- For a dispatched run the repository half of that key is the `repository` its running entry
+  recorded at dispatch (Sections 4.1.8, 16.4), not a fresh evaluation of the mapping. Keyed on a
+  fresh evaluation, a run's workspace and object store would move under it the moment the mapping
+  changed — which is the condition Section 8.5 Part B stops the run for, not one it works through.
 
 Credential scope:
 
@@ -2322,9 +2404,10 @@ Acquisition and lifecycle:
   the entry `dispatch_issue` wrote into the `running` map exists from dispatch onward and
   `Provisioning` is a phase of it (Sections 7.1, 8.3, 16.4) — no second counter is involved — and it
   is not yet `Running`, so a slow acquire does not block the poll tick.
-- `signal_done` is emitted when a run completes and when reconciliation stops a run for a terminal or
-  non-active issue (Sections 8.5, 8.6). Reclaiming a leaked node is the scheduler's responsibility;
-  Symphony only signals.
+- `signal_done` is emitted when a run completes and when reconciliation stops a run — for a terminal
+  or non-active issue, or because one of the run's standing conditions no longer holds (Sections
+  8.2, 8.5, 8.6, 8.7). A stop that does not signal leaks the node. Reclaiming a leaked node is the
+  scheduler's responsibility; Symphony only signals.
 
 Sharing:
 
@@ -2865,6 +2948,18 @@ Candidate enumeration:
   limitation the adapter MUST document; silently dropping issues the adapter could have fetched is
   not permitted.
 
+Refresh completeness:
+
+- `fetch_issue_states_by_ids` (Section 11.1) MUST, for every id it resolves, return a normalized
+  record carrying the fields the standing conditions read (Section 8.2): `state`, `labels`,
+  `assignees`, and the routing fields the adapter populates (Section 11.7). A silently partial
+  result is non-conformant, because Section 8.5 Part B evaluates those conditions on every tick and
+  a record that omits a field it reads is indistinguishable from a record whose field is empty — an
+  issue whose labels the refresh did not ask for reads as an issue whose labels were removed. The
+  completeness is over the fields of an id the caller supplied, not over a result set the adapter
+  pages through, so there is no hard-cap counterpart to the clause above. The operation's name
+  reflects the use Section 11.1 lists it for, not the shape of its result.
+
 Linear-specific requirements for `tracker.kind == "linear"`:
 
 - `tracker.kind == "linear"`
@@ -2873,9 +2968,8 @@ Linear-specific requirements for `tracker.kind == "linear"`:
 - `tracker.project_slug` maps to Linear project `slugId`
 - Candidate issue query filters project using `project: { slugId: { eq: $projectSlug } }`
 - Candidate and issue-state refresh queries include issue labels and assignees, and the routing
-  fields the adapter populates (`project`, `team`). Required-label, configured-assignee and routing
-  filtering happens after normalization so refresh can observe a label removal, an assignment
-  change, or an issue moved between projects or teams, and stop or release existing work.
+  fields the adapter populates (`project`, `team`) — the query shape that satisfies Refresh
+  completeness above. Filtering happens after normalization (Section 11.3), never in the query.
 - Issue-state refresh query uses GraphQL issue IDs with variable type `[ID!]`
 - Pagination REQUIRED for candidate issues
 - Page size default: `50`
@@ -3186,6 +3280,11 @@ Message formatting requirements:
 - Use stable `key=value` phrasing.
 - Include action outcome (`completed`, `failed`, `retrying`, etc.).
 - Include concise failure reason when present.
+- A record describing a run reconciliation stopped names the cause: the terminal or non-active
+  tracker state, or the standing condition that failed (Sections 8.2, 8.5). Where the cause is
+  routing, the record also names the repository the run held (Sections 4.1.8, 8.7) — without it an
+  operator cannot tell a mapping edit from a label edit, which are different repairs. The stable
+  `key=value` phrasing above carries both; neither is a new context field.
 - Avoid logging large raw payloads unless necessary.
 - Agent-produced free text reaches the log already redacted of the run's resolved secret values: the
   requirement binds where the text is captured, not at each sink (Section 15.3).
@@ -3827,7 +3926,10 @@ After restart:
 
 Remote executors (OPTIONAL, Section 9.11) add durable run state that local execution does not need.
 In remote mode the orchestrator maintains a *run registry* — a `Durable`-class mapping (Section 14.3)
-from each in-flight run to its issue and its node. On restart it reconciles in-flight remote runs by
+from each in-flight run to its issue, its repository, and its node. The repository is carried for
+the same reason the running entry carries it (Sections 4.1.8, 8.7): a run reattached after a restart
+or a moved node is checked against the standing conditions like any other, and the registry is the
+only left-hand side that check has. On restart the orchestrator reconciles in-flight remote runs by
 re-querying the node-scheduler for the current endpoint (`lookup_by_run_id`) and reattaching across
 the seam, where the executor replays buffered events (Section 10). This is the one case where a
 running session is recoverable, and it is scoped to remote mode: local execution keeps the
@@ -3843,6 +3945,12 @@ Operators can control behavior by:
 - Changing issue states in the tracker:
   - terminal state -> running session is stopped and workspace cleaned when reconciled
   - non-active state -> running session is stopped without cleanup
+- Removing a required label from an issue, or changing its assignment away from the configured
+  `tracker.assignee` -> running session is stopped, the claim released, no retry armed, and the
+  workspace left in place when reconciled (Sections 5.3.1, 8.5)
+- Editing the routing mapping so the issue no longer routes to the repository its run was dispatched
+  to -> the same disposition, and the workspace left behind stays under the old repository's key
+  (Sections 8.5, 8.7, 9.1)
 - Restarting the service for process recovery or deployment (not as the normal path for applying
   workflow config changes).
 
@@ -4177,7 +4285,20 @@ function reconcile_running_issues(state):
     if issue_state in normalize_states(terminal_states):
       state = terminate_running_issue(state, issue.id, cleanup_workspace=true)
     else if issue_state in normalize_states(active_states):
-      state.running[issue.id].issue = issue
+      # Section 8.2's conditions over the record and Section 8.7's routing condition are standing:
+      # re-evaluated here on every refresh rather than once at dispatch. Tested before the snapshot
+      # is written, so a run that has lost one is stopped against the record that lost it. The
+      # routing half compares a fresh evaluation of the mapping against the entry's own
+      # `repository` (Section 16.4) - never against a second evaluation of the same mapping, which
+      # would agree with itself and see nothing (Section 6.2).
+      standing = standing_conditions_hold(state.running[issue.id], issue)
+      if standing.holds:
+        state.running[issue.id].issue = issue
+      else:
+        # Reported naming the condition that failed. The branches beside this one need no report:
+        # an operator reads their cause off the issue (Section 8.5).
+        log_standing_condition_loss(issue, standing.failed)
+        state = terminate_running_issue(state, issue.id, cleanup_workspace=false)
     else:
       state = terminate_running_issue(state, issue.id, cleanup_workspace=false)
 
@@ -4227,10 +4348,13 @@ function terminate_running_issue(state, issue_id, cleanup_workspace):
 
   terminate_worker(running_entry.worker)
   if cleanup_workspace:
-    cleanup_workspace_for(issue_id)
+    # The entry's own repository, not a re-evaluation of the mapping: Section 9.1 keys the per-issue
+    # path by repo_key, so a run whose issue re-routed mid-flight would otherwise have the tree it
+    # never used removed and the tree it worked in left behind (Sections 8.7, 16.4).
+    cleanup_workspace_for(running_entry.repository, issue_id)
 
   # No retry is scheduled here. Part A of Section 8.5 queues its own after terminating; Part B
-  # queues none, for either of its two branches.
+  # queues none, for any of its branches.
   notify_observers()
   return state
 ```
@@ -4277,6 +4401,11 @@ function dispatch_issue(issue, state, attempt):
   # dispatch rather than from the first agent turn.
   state.running[issue.id] = {
     run_id,
+    # The repository repo_of(issue) selected, recorded once here rather than recomputed later. It
+    # is the left-hand side of reconciliation's routing test (Sections 8.7, 16.3): recomputing both
+    # sides evaluates the same mapping twice and agrees with itself, which is blind to the reload
+    # (Section 6.2) the test exists to catch.
+    repository: repo_of(issue),
     worker_handle,
     monitor_handle,
     identifier: issue.identifier,
@@ -4760,7 +4889,9 @@ surface (Section 11.1) is `Daemon Conformance`, because it exists to find and re
   are tracker-dependent, and an empty `blocked_by` applies no blocker gating
 - Labels are normalized with `Lowercase Normalization` (Section 4.2)
 - `metadata` carries adapter-defined provider-specific fields the flat model does not capture
-- Issue state refresh by ID returns minimal normalized issues
+- Issue state refresh by ID returns, for every id it resolves, a normalized record carrying the
+  fields the standing conditions read — `state`, `labels`, `assignees`, and the routing fields the
+  adapter populates; a silently partial record is non-conformant (Sections 8.2, 11.2)
 - Issue state refresh query uses GraphQL ID typing (`[ID!]`) as specified in Section 11.2
 - Error mapping covers transport failures, unsuccessful status, backend-reported errors, and
   malformed payloads (the transport-neutral categories of Section 11.4)
@@ -4789,9 +4920,19 @@ These checks are `Daemon Conformance`.
   remaining conditions
 - A configured `tracker.assignee` against an adapter whose descriptor does not declare that it
   populates `assignees` fails dispatch preflight rather than silently matching no issue
-- Active-state issue refresh updates running entry state
-- An assignment removed while a run is in flight is observed on the issue-state refresh and stops or
-  releases that run, as a removed required label is
+- Active-state issue refresh updates running entry state where the run's standing conditions still
+  hold, and does not update it where they do not
+- A label in `tracker.required_labels` removed while a run is in flight is observed on the
+  issue-state refresh and stops that run: the worker is terminated, the claim released, no retry
+  armed, and the workspace left in place
+- The configured `tracker.assignee` removed from an issue's `assignees` while a run is in flight
+  stops that run with the same disposition
+- A routing mapping edited so it no longer selects the `repository` the run's entry recorded —
+  including an edit after which the issue routes nowhere, or to more than one repository — stops
+  that run with the same disposition, the mapping being re-evaluated live under the reloaded config
+  rather than read back from the entry (Sections 6.2, 8.7)
+- A stop for a standing-condition loss names the condition that failed in the operator-visible
+  report, the terminal and non-active stops beside it needing none
 - Non-active state stops running agent without workspace cleanup
 - Terminal state stops running agent and cleans workspace
 - Reconciliation with no running issues is a no-op
@@ -4818,9 +4959,10 @@ These checks are `Daemon Conformance`.
 - Retry queue entries include attempt, due time, identifier, and error
 - Stall detection kills stalled sessions and schedules retry
 - A stalled run schedules exactly one retry, not a second from the exit its termination causes
-- A run stopped because its issue reached a terminal or non-active state schedules no retry, and its
-  claim is released without waiting for a backoff to elapse — an issue closed and reopened while its
-  worker was running is dispatched again as soon as it is a candidate, with no restart
+- A run stopped because its issue reached a terminal or non-active state, or because one of its
+  standing conditions no longer holds, schedules no retry, and its claim is released without waiting
+  for a backoff to elapse — an issue closed and reopened while its worker was running is dispatched
+  again as soon as it is a candidate, with no restart
 - A repeatedly failing worker spawn escalates its backoff toward `agent.max_retry_backoff_ms` rather
   than restarting at the first attempt every `polling.interval_ms`, the retry it arms holding the
   claim that keeps the next tick from re-dispatching the issue underneath it
@@ -4872,11 +5014,14 @@ These checks are `Daemon Conformance`.
   scope and retries on a later tick (not a per-worker backoff), while an executor bring-up or
   boundary-instantiation failure is fail-closed (the run does not proceed credential-exposed)
 - If a remote node-scheduler is implemented, an in-flight remote run reattaches via `lookup_by_run_id`
-  after an orchestrator restart or a moved node, and the buffered event stream replays with no gap in
-  token accounting
+  after an orchestrator restart or a moved node, the reattached entry carries the `repository` the
+  run registry recorded so reconciliation's routing test has a run-side value to compare against,
+  and the buffered event stream replays with no gap in token accounting
 - If a remote node-scheduler is implemented, git/forge writes originate only from the executor, a
   terminal issue stops a connected run via the forwarded signal and a disconnected run via the
-  executor's pre-finalize re-check, and `signal_done` is emitted on completion and on terminal/cancel
+  executor's pre-finalize re-check, a standing-condition loss is forwarded over the seam the same
+  way, and `signal_done` is emitted on completion and on terminal/cancel and on a
+  standing-condition stop
 - If a remote node-scheduler is implemented, secret delivery to the executor is direct and mutually
   authenticated with the scheduler off the secret path, and a below-floor executor protocol version is
   refused fail-closed at bring-up
@@ -5117,12 +5262,14 @@ Required of the `daemon` topology only.
 - Issue tracker client with candidate fetch + state refresh + terminal fetch
 - Agent and effort selected from policy (`default_agent`/`default_effort`) with `agent_by_label`
   per-issue overrides
-- `fetch_candidate_issues` enumerates the complete matching set (adapter paginates internally); a
-  silent partial result is non-conformant
+- `fetch_candidate_issues` enumerates the complete matching set (adapter paginates internally) and
+  `fetch_issue_states_by_ids` returns the standing conditions' fields for every id it resolves; a
+  silent partial result is non-conformant in either (Sections 8.2, 11.2)
 - Candidate eligibility evaluated over the normalized record and the resolved configuration: every
   label in `tracker.required_labels` present, and the issue assigned to a configured
   `tracker.assignee`, both compared under `Lowercase Normalization`; a null configured assignee does
-  not gate (Sections 4.2, 8.2)
+  not gate (Sections 4.2, 8.2). Both conditions are standing: they apply for as long as the run is
+  in flight, not only at dispatch (Sections 5.3.1, 8.5)
 - Dispatch preflight refuses a configured `tracker.assignee` on a tracker adapter whose capability
   descriptor does not declare that it populates `assignees` (Sections 6.3, 11.7)
 - Multiple repositories per instance with tracker-specific issue→repo routing and shared per-tracker
@@ -5144,9 +5291,11 @@ Required of the `daemon` topology only.
   issue queued for retry — is not counted against it (Sections 4.1.8, 8.3)
 - The claim has one lifetime: taken at dispatch or at retry arming, released where the run it was
   held for ends without a retry taking it over (Sections 7.1, 8.5)
-- Reconciliation that stops runs on terminal/non-active tracker states, owning the removal and
+- Reconciliation that stops runs on terminal/non-active tracker states and on a standing-condition
+  loss — a required label removed, the configured assignee unassigned, or the mapping no longer
+  routing the issue to the run's recorded `repository` — owning the removal and
   runtime accounting for the runs it terminates so a worker exit it caused queues no retry
-  (Section 8.5)
+  (Sections 8.2, 8.5, 8.7)
 - Every Orchestrator Runtime State field is assigned and documented as a recovery class
   (`Reconstructable` / `Ephemeral` / `Cached external signal` / `Durable`, Section 14.3), as is any
   state Core behavior requires beyond the fields Section 4.1.8 enumerates

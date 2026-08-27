@@ -1,0 +1,131 @@
+{
+  "function": "standing_conditions_hold",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 4.2", "Section 5.3.1", "Section 8.2", "Section 8.7", "Section 16.3"],
+  "description": "Decide whether a dispatched run's standing conditions still hold, the predicate Section 16.3 calls on Part B's active branch as standing_conditions_hold(entry, issue). Section 8.2's closing paragraph fixes which of its nine dispatch conditions are standing - re-evaluated on every issue-state refresh for as long as the run is in flight, rather than tested once at dispatch and assumed: tracker.required_labels and tracker.assignee (Section 5.3.1), and Section 8.7's routing condition, stated over the run rather than over the issue record because it tests which repository the run's authority lives in. The remaining four dispatch conditions - already-in-running, already-in-claimed, and both concurrency-slot conditions - are dispatch-time only: re-tested against a run already in flight, each is false by construction, because that run itself holds the running entry and the claim and occupies the slot the two conditions count (Section 8.2). The Todo blocker rule is dispatch-time only too, but by choice rather than by construction: making it standing would put the issue's dependency graph into every refresh, on every tick, for every running issue, to re-check a gate the run has already cleared. None of these five conditions is part of this predicate.",
+  "given": "{ entry: { repository: string }, issue: { state, labels, assignees, project, team }, config: { tracker: { required_labels, assignee } }, rules: Array<{ repository: string, match: { <record field>: <value> } }> }",
+  "expect": "{ holds: boolean, failed: <condition> | null }",
+  "notes": [
+    "The four orchestrator-state conditions (already-in-running, already-in-claimed, and both concurrency-slot conditions) and the Todo blocker rule are excluded from this predicate for the reason Section 8.2 states: re-tested against a run already in flight, the four are false by construction because that run itself holds the running entry and the claim and occupies the slot the two conditions count, and the blocker rule is excluded by choice rather than by construction. The field-presence condition and the state-membership condition are also outside this predicate: Section 16.3's caller tests field-presence during the fetch that produces issue and the terminal/active branch before this predicate is reached, so given.issue.state appears here only as one of Section 8.7's routing key fields, not re-tested for active/terminal membership.",
+    "The routing half's left-hand side is entry.repository, the value the running entry recorded at dispatch (Section 16.4) - never a second evaluation of the same mapping, which would agree with itself and be blind to the config reload (Section 6.2) this test exists to catch (Sections 8.7, 16.3). That is why given carries entry.repository separately from rules rather than deriving it by evaluating rules a second time.",
+    "A routing outcome of no repository and of more than one repository both fail this condition: Section 8.7 requires the re-evaluated mapping to still name the repository the run holds, and failing to name it uniquely is no different from failing to name it at all.",
+    "The rules modelling reuses conformance/vectors/issue-routing.json's verbatim: a rule is a conjunction of field conditions over the normalized record's comparable fields (project, team, labels, assignees, state); a list-valued key (labels, assignees) is read as membership and a scalar key (project, team, state) is read as equality. The mapping's configuration schema is not fixed by SPEC.md and is not pinned here (decision 0148); a harness maps its own mapping representation onto this shape.",
+    "The failed values (required_labels, assignee, routing) are this file's labels for the conditions above, not a published vocabulary: SPEC.md names no token for them and conformance/vocabulary.json publishes no group for them. A harness maps them onto its own implementation's reported condition, the discipline conformance/vectors/candidate-eligibility.json records for should_dispatch's refused values and conformance/vectors/issue-routing.json records for route_issue's multiple_rules_matched.",
+    "Each failing vector holds exactly one failing condition, so the reported condition is determined. Section 8.2 fixes no precedence among its conditions and Section 8.7 states none between its routing condition and them; the discipline is the one conformance/vectors/candidate-eligibility.json already records for should_dispatch.",
+    "Every value in given.issue is already normalized, as Section 8.2's and Section 8.7's predicates read it (Section 4.2): labels, assignees, state, project and team appear as Lowercase Normalization produced them. Configured values in config.tracker are not, since Section 5.3.1 states the trimming and the normalization as part of the match - the same discipline conformance/vectors/candidate-eligibility.json records for should_dispatch."
+  ],
+  "vectors": [
+    {
+      "id": "holds-all-conditions",
+      "description": "Both standing filters are satisfied and the mapping still selects the repository the run holds. All three standing conditions hold.",
+      "given": {
+        "entry": { "repository": "web" },
+        "issue": { "state": "in progress", "labels": ["symphony", "backend"], "assignees": ["alice"], "project": "web-platform", "team": "core" },
+        "config": { "tracker": { "required_labels": ["symphony"], "assignee": "alice" } },
+        "rules": [
+          { "repository": "web", "match": { "project": "web-platform" } },
+          { "repository": "api", "match": { "project": "api-platform" } }
+        ]
+      },
+      "expect": { "holds": true, "failed": null }
+    },
+    {
+      "id": "required-label-removed",
+      "description": "A required label present at dispatch has since been removed from the issue, so tracker.required_labels no longer matches (Section 5.3.1). Assignee and routing still hold, so this is the only failing condition.",
+      "given": {
+        "entry": { "repository": "web" },
+        "issue": { "state": "in progress", "labels": ["backend"], "assignees": ["alice"], "project": "web-platform", "team": "core" },
+        "config": { "tracker": { "required_labels": ["symphony"], "assignee": "alice" } },
+        "rules": [
+          { "repository": "web", "match": { "project": "web-platform" } },
+          { "repository": "api", "match": { "project": "api-platform" } }
+        ]
+      },
+      "expect": { "holds": false, "failed": "required_labels" }
+    },
+    {
+      "id": "assignee-no-longer-matched",
+      "description": "The issue has been reassigned away from the configured tracker.assignee since dispatch (Section 5.3.1). Required labels and routing still hold, so this is the only failing condition.",
+      "given": {
+        "entry": { "repository": "web" },
+        "issue": { "state": "in progress", "labels": ["symphony", "backend"], "assignees": ["bob"], "project": "web-platform", "team": "core" },
+        "config": { "tracker": { "required_labels": ["symphony"], "assignee": "alice" } },
+        "rules": [
+          { "repository": "web", "match": { "project": "web-platform" } },
+          { "repository": "api", "match": { "project": "api-platform" } }
+        ]
+      },
+      "expect": { "holds": false, "failed": "assignee" }
+    },
+    {
+      "id": "null-assignee-does-not-gate",
+      "description": "A null tracker.assignee does not gate (Section 5.3.1), so an issue that now carries no assignees still holds on the remaining conditions, mirroring should_dispatch's own null-assignee vector.",
+      "given": {
+        "entry": { "repository": "web" },
+        "issue": { "state": "in progress", "labels": ["symphony", "backend"], "assignees": [], "project": "web-platform", "team": "core" },
+        "config": { "tracker": { "required_labels": ["symphony"], "assignee": null } },
+        "rules": [
+          { "repository": "web", "match": { "project": "web-platform" } },
+          { "repository": "api", "match": { "project": "api-platform" } }
+        ]
+      },
+      "expect": { "holds": true, "failed": null }
+    },
+    {
+      "id": "routing-still-names-recorded-repository",
+      "description": "The mapping is re-evaluated against the current record, this time keyed on team rather than project, and still names the repository the run holds (Section 8.7).",
+      "given": {
+        "entry": { "repository": "web" },
+        "issue": { "state": "in progress", "labels": ["symphony", "backend"], "assignees": ["alice"], "project": "web-platform", "team": "core" },
+        "config": { "tracker": { "required_labels": ["symphony"], "assignee": "alice" } },
+        "rules": [
+          { "repository": "web", "match": { "team": "core" } },
+          { "repository": "api", "match": { "team": "platform" } }
+        ]
+      },
+      "expect": { "holds": true, "failed": null }
+    },
+    {
+      "id": "routing-now-names-different-repository",
+      "description": "The operator has edited the mapping since dispatch (Section 6.2) so it now sends this issue's project to a different repository than the one the run holds. Exactly one rule matches, but not entry.repository, so routing fails.",
+      "given": {
+        "entry": { "repository": "web" },
+        "issue": { "state": "in progress", "labels": ["symphony", "backend"], "assignees": ["alice"], "project": "web-platform", "team": "core" },
+        "config": { "tracker": { "required_labels": ["symphony"], "assignee": "alice" } },
+        "rules": [
+          { "repository": "api", "match": { "project": "web-platform" } },
+          { "repository": "web", "match": { "project": "other-platform" } }
+        ]
+      },
+      "expect": { "holds": false, "failed": "routing" }
+    },
+    {
+      "id": "routing-now-names-no-repository",
+      "description": "The mapping now matches no rule for this issue. Section 8.7 requires the re-evaluated mapping to still name the repository the run holds; naming none fails the condition the same as naming the wrong one.",
+      "given": {
+        "entry": { "repository": "web" },
+        "issue": { "state": "in progress", "labels": ["symphony", "backend"], "assignees": ["alice"], "project": "web-platform", "team": "core" },
+        "config": { "tracker": { "required_labels": ["symphony"], "assignee": "alice" } },
+        "rules": [
+          { "repository": "web", "match": { "project": "other-platform" } },
+          { "repository": "api", "match": { "project": "api-platform" } }
+        ]
+      },
+      "expect": { "holds": false, "failed": "routing" }
+    },
+    {
+      "id": "routing-now-names-more-than-one-repository",
+      "description": "The mapping now matches two rules naming two different repositories, one of them the run's own. Section 8.7's ambiguity rule is stated over the issue rather than over whether the run's own repository is among the matches, so this fails routing exactly as an ambiguous mapping does at dispatch.",
+      "given": {
+        "entry": { "repository": "web" },
+        "issue": { "state": "in progress", "labels": ["symphony", "backend"], "assignees": ["alice"], "project": "web-platform", "team": "core" },
+        "config": { "tracker": { "required_labels": ["symphony"], "assignee": "alice" } },
+        "rules": [
+          { "repository": "web", "match": { "project": "web-platform" } },
+          { "repository": "api", "match": { "labels": "backend" } }
+        ]
+      },
+      "expect": { "holds": false, "failed": "routing" }
+    }
+  ]
+}

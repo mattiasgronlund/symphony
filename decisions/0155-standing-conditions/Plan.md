@@ -460,4 +460,16 @@ records what was true when written.
 
 ## Status
 
-Not started. This PR carries the decision record only; `SPEC.md` is untouched by it.
+Applied. Steps 1 to 10 are in `SPEC.md`; step 11 is in
+`conformance/vectors/standing-conditions.json` and `conformance/README.md`. Issue #121.
+
+Every site carrying the "terminal or non-active" enumeration was re-grepped after the edits and
+carries three causes: `SPEC.md` Section 7.1's `Released` list, Section 7.3's `Reconciliation State
+Refresh` trigger, Section 8.5's consequence bullet and its remote-executor bullet, Section 9.11's
+`signal_done` bullet, Section 14.5's operator table, Section 17.4's no-retry row and its
+remote-executor row, and Section 18.1.3's reconciliation item. No site was left on the two-way
+reading.
+
+Four findings are recorded in `Background.md` under "Findings from applying the plan": three sites
+this plan's steps did not reach, repaired here, and `on_retry_timer` (Section 16.7), recorded and
+not repaired because what a re-dispatch tests is a decision of its own.

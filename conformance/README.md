@@ -275,6 +275,7 @@ Slice 1 — pure derivations (decision 0046):
 | `vectors/candidate-eligibility.json` | `should_dispatch` | Daemon | Sections 8.2, 16.2 |
 | `vectors/issue-routing.json` | `route_issue` | Daemon | Sections 4.1.1, 8.7 |
 | `vectors/dispatch-ordering.json` | `sort_for_dispatch` | Daemon | Sections 8.2, 16.2 |
+| `vectors/standing-conditions.json` | `standing_conditions_hold` | Daemon | Sections 5.3.1, 8.2, 8.7, 16.3 |
 
 Slice 2 — prompt rendering (decision 0048):
 
@@ -494,3 +495,23 @@ guessed-at vector or entry:
   three further sites of the extension-only framing, two of which the decision's first plan did not
   name and `scripts/check_plan_anchors.py` found. No vector is owed: a recovery class is an
   assignment, not a function of inputs. Issue #96.
+- **Standing conditions went unevaluated at reconciliation — resolved (decision 0155).** Section
+  8.5 Part B and Section 16.3's `reconcile_running_issues` tested a running issue's tracker state
+  alone — terminal, active, or neither — and never `tracker.required_labels`, `tracker.assignee`,
+  or routing. Section 5.3.1 already required the first two "to dispatch or continue", a Core MUST,
+  but nothing downstream of dispatch read that clause a second time: Section 8.2 tested both once,
+  at candidate selection, and Part B tested neither on any later tick. The rule that did state the
+  behavior lived in Section 11.2, inside the **Linear adapter's** own requirements — an obligation
+  every adapter had to satisfy, stated in one adapter's section rather than in the general
+  reconciliation rule every adapter is dispatched through. Section 17.3 compounded it with a
+  checklist row, "Issue state refresh by ID returns minimal normalized issues", that licensed
+  exactly the partial refresh the rule needed forbidden: a checklist row is a target an implementer
+  builds toward, so an adapter returning the smallest conforming issue was conformant. This is a
+  second instance of the class decision 0137 named — Core behavior requiring state or a condition
+  `SPEC.md`'s own model had no room for — here a condition Core already required going unevaluated
+  at the one site meant to keep re-evaluating it, rather than 0137's missing state. Section 8.2 now
+  states which of its conditions are standing and which are dispatch-time only, Section 8.7 states
+  routing as a standing condition over the run, and Section 8.5 Part B and Section 16.3 evaluate
+  them. Section 11.2 carries a general Refresh completeness obligation in place of the
+  Linear-specific sentence, and `conformance/vectors/standing-conditions.json` exercises the
+  predicate. Issue #121.
