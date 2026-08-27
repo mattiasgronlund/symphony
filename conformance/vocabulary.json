@@ -139,7 +139,7 @@
       { "token": "[driver]", "artifact": "repo_policy_toml", "core": false, "spec_ref": "Section 8.10" },
       { "token": "compute", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 9.11" },
       { "token": "observability", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 18.2", "note": "Reserved for observability settings (Section 13); the specification names the namespace, not the fields. Ledger settings are `observability.ledger.*` (Section 13.6)." },
-      { "token": "server", "artifact": "workflow_md", "core": false, "spec_ref": "Section 13.8", "note": "Section 13.8 starts the HTTP server when a CLI `--port` argument is given or `server.port` is present in `WORKFLOW.md` front matter." }
+      { "token": "server", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 13.8", "note": "Section 13.8 starts the HTTP server when a CLI `--port` argument is given or `server.port` is present in the operator policy config. The key was placed in `WORKFLOW.md` front matter until decision 0160: binding a host port is a setting Symphony executes with host access, which Section 5 forbids that artifact, and the listener serves instance-wide state while `WORKFLOW.md` is per repository (Section 5.1). This is the placement Section 18.2 already states for `observability.*`." }
     ]
   },
 
