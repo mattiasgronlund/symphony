@@ -351,7 +351,7 @@ bounded server-side-ordered mode is noted as a deferred scale option. Continues 
 
 ## 0025 — Session resource governance and the host-side launch seam
 
-**State:** Proposed
+**State:** Proposed (partly overtaken by 0035, 0117)
 **Folder:** [decisions/0025-session-resource-governance/](decisions/0025-session-resource-governance/)
 
 Captures the analysis behind an operator request for per-session CPU *fairness* (work-conserving weights, not
@@ -376,8 +376,22 @@ and not closing the per-session CPU-governance question this decision leaves ope
 (Accepted) later realized Option C's "session resource domain" as a placed component — the execution
 process behind an always-present orchestrator↔executor seam — closing the host-side *launch-seam* gap
 along the placement axis while leaving this decision's per-session CPU-*governance* question open (its
-mechanism, when chosen, should attach to the 0035 executor rather than be invented separately). Proposed; finding
-recorded, no `SPEC.md` change.
+mechanism, when chosen, should attach to the 0035 executor rather than be invented separately).
+Re-evaluated 2026-08-27: three of the finding's claims no longer hold. (1) A workspace hook's execution context
+follows the artifact that declares it (Section 5.3.4) — `WORKFLOW.md` hooks run in-sandbox, `repo.policy.toml`
+hooks host-side — so the named hooks no longer locate the host-side CPU cost, which narrows to
+policy-branch-declared privileged setup. (2) 0035's executor makes every host-side op named in finding 2 the work
+of a named per-session component, and Section 8.3 makes co-location the scheduler's concern under
+`compute.sharing`, so the gap reduces to one question: MAY a local executor be its own launch context? (3)
+Finding 1's attach point has no configuration surface — `SPEC.md` defines no `sandbox.*` namespace and Section 17
+asserts a "configured sandbox" that Section 6.4 never configures — so the agent side is unconfigured rather than
+settled, and in the event the cgroup wrap was never deployed and host-side CPU never measured. The
+re-evaluation adds Option D (cooperative capping: divide the CPU budget through the gate-control variables now
+carried by 0117's constructed environment, which absorbs the deferred env-passthrough decision in part — carrier
+yes, policy no), ranks D > B > C > A as of that date while still selecting none, retires the measurement gate for
+a trigger that arrives on its own (implementation reaching the Section 3.1 `Execution Process`), and records an
+adjacent gap left open: Section 9.4 documents one execution contract for what Sections 5.3.4 and 15.4 make two
+contexts. Still no option selected and no `SPEC.md` change.
 
 ## 0026 — VCS-operation lifecycle hooks aligned with `vcsx`
 

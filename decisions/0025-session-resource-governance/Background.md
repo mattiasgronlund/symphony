@@ -19,6 +19,8 @@ attach? Two findings from mapping the brief onto the spec:
    cgroup / CPU weight: an operator wraps the sandbox invocation (for example a systemd transient
    scope under a shared parent slice) without Symphony defining anything new. The agent-side
    requirement is already satisfied by the existing sandbox-wrap contract.
+   **Superseded on this point (2026-08-27):** the sandbox-wrap contract has no configuration surface
+   a deployment can reach — see correction 3 in the update below.
 
 2. **The spec has no launch-governance seam for host-side work.** Symphony performs repository
    provisioning and `git fetch` (Section 9.7), branch / back-merge / push (Section 9.8) behind the
@@ -36,6 +38,9 @@ session escape that session's weight. Magnitude is uneven: fetch / merge / workt
 network- and IO-bound and bounded; the genuinely CPU-heavy host-side path is operator build/install
 hooks (for example `after_create` warming a build cache or installing dependencies), which under K
 concurrent sessions contend much like the in-sandbox gate runs.
+**Qualified on this point (2026-08-27):** a workspace hook's execution context now follows the
+artifact that declares it, so these hook names no longer locate the cost — see correction 1 in the
+update below.
 
 A separable concern in the same brief — propagating a curated set of *non-secret* gate-control
 environment variables (`ENTRY_CHECK_JOBS` / `_LOAD` / `_SLOTS` / `_DIR`) into the session so the gate's
@@ -43,6 +48,8 @@ cap and `-j`/`-l` settings actually apply — is out of scope here. It touches t
 secret-scrubbing invariant: the spec scrubs every secret-bearing variable before the sandbox starts
 but has no positive mechanism to inject a non-secret allowlist into the sandbox. That is a candidate
 for its own later decision, not this one.
+**Superseded on this point (2026-08-27):** it is not a separate concern but a fourth option here, and
+its carrier now exists (decision 0117) — see Option D in the update below.
 
 ## Options considered
 
@@ -92,6 +99,9 @@ material share once the agent subtree is governed: concurrent `after_create` / `
 build/install hooks are the path to watch, while fetch / merge / worktree appear bounded. Until that
 is measured, no option is preferable on the evidence here. The non-secret env-passthrough half of the
 brief (Section 15.3) is tracked separately and does not gate this decision.
+**Retired (2026-08-27):** nothing was measured and the agent subtree was never governed, so this gate
+described a condition nobody was positioned to observe; it is replaced by a trigger that arrives on
+its own — see the update below.
 
 ## Update — 2026-06-28: repository provisioning's failure-model half addressed by 0034
 
@@ -135,3 +145,158 @@ rather than invented separately: the seam Option C wanted already exists as the 
 The distinguishing evidence for choosing is unchanged (whether host-side per-session CPU is material
 once the agent subtree is governed); what changed is that the seam it would attach to is no longer
 hypothetical.
+
+## Update — 2026-08-27: three corrections, a fourth option, and a trigger that arrives on its own
+
+A re-evaluation session re-read this decision against `SPEC.md` as it now stands. The finding is
+smaller and differently shaped than recorded above, and three of the claims it rests on no longer hold
+as written. The State becomes `Proposed (partly overtaken by 0035, 0117)` — the question is still
+open, but two of the surfaces it reasoned over have since been built. Nothing above is erased; the
+claims that changed carry an inline marker pointing here.
+
+### Correction 1 — a workspace hook's execution context follows the artifact that declares it
+
+The Context above names the dominant host-side CPU cost as "concurrent `after_create` / `before_run`
+build/install hooks", treating a workspace hook as host-side by virtue of being a workspace hook. The
+specification no longer has one execution context for those names. Section 5.3.4 splits them by
+declaring artifact: hooks defined in `repo.policy.toml` are sourced from the policy branch and "run on
+the host outside the sandbox with host access", for "privileged setup (for example dependency
+bootstrap that reaches credentialed mirrors)"; hooks defined in `WORKFLOW.md` are worktree-sourced,
+"run inside the sandbox without credentials", and are for "in-sandbox build/test/workspace
+preparation". A lifecycle point MAY be defined in both artifacts, and when it is, both run — one on
+each side of the boundary (Sections 5.3.4, 15.4).
+
+This narrows the host-side CPU tail rather than removing it. The build-cache warm in the original
+example is in-sandbox build preparation, so it lands on finding 1's side of the line and is already
+covered by the sandbox attach point; the dependency bootstrap is the specification's own host-side
+example and stays host-side. What is no longer true is that the hook *names* locate the cost. Whether
+a session's setup hook contends on the host is a repository's choice of declaring artifact, made on
+the policy branch — which also means the orchestrator that would have to govern it cannot tell from
+its own configuration how much host-side work a given repository's sessions will do.
+
+### Correction 2 — the seam exists; the gap is that a local executor has no launch context of its own
+
+Finding 2's premise was that host-side per-session subprocesses are children of the long-lived
+orchestrator and therefore inherit the orchestrator's cgroup. Decision 0035 changed the structure that
+premise described. Section 3.1 now gives the per-issue run an `Execution Process` — the *executor* —
+which composes the Workspace Manager, the Agent Runner, and the per-run Privileged Operation Broker,
+and which "is the host relative to its own agent sandbox", running both hook trust levels wherever it
+runs. Every host-side op finding 2 listed — worktree and object-store provisioning, the brokered git
+verbs, the host-side hooks — is now work of a named per-session component rather than an unattributed
+behavior of the orchestrator.
+
+That splits the remaining gap by topology, and only one half is still Symphony's:
+
+- **Remote.** Under the node-scheduler extension (Section 9.11) the executor runs on a node the
+  scheduler owns, and where the scheduler packs several executor processes onto one node under
+  `compute.sharing = shared`, Section 8.3 makes Symphony deliberately placement-opaque and points a
+  deployment wanting to bound co-location at `max_concurrent_agents`. Per-session CPU fairness there
+  is the scheduler's concern by design, not an omission.
+- **Local.** The seam is an in-process call and the executor runs in the orchestrator's process, so
+  its host-side work shares the orchestrator's cgroup exactly as finding 2 described.
+
+Option C therefore shrinks from "define a session resource domain and a launch-wrapper indirection"
+to a much smaller question: **MAY a local executor be its own launch context?** The abstraction it
+wanted to introduce already exists as the executor boundary; what is unstated is whether that
+boundary is permitted to be a process boundary when the transport is in-process.
+
+### Correction 3 — finding 1 closes the agent side on a contract with no configuration surface
+
+Finding 1 declares the agent side already satisfied: "an operator wraps the sandbox invocation (for
+example a systemd transient scope under a shared parent slice) without Symphony defining anything
+new." Two facts recorded here undercut that.
+
+The first is the absent measurement, recorded next to the claim it bears on, as the missing half of
+the Context's CPU-stall figures: **as of 2026-08-27 the cgroup wrap was never deployed and host-side
+per-session CPU was never measured.** The operator filed a measured congestion report and then did not
+apply the fix this decision called free. That is behavioral evidence about the fix, not only about
+priorities.
+
+The second is the mechanism. `SPEC.md` has no `sandbox.*` configuration namespace at all. Section 9.6
+says the sandbox profile "is configurable" and `Implementation-defined`; Section 6.4 names no field
+that selects it, and the only sandbox keys in the cheat sheet — `codex.thread_sandbox`,
+`codex.turn_sandbox_policy` — configure the *agent's own* sandbox, not Symphony's. Section 17 then
+asserts that "Agent launch wraps the session in the configured sandbox (strict profile by default)"
+against a configuration no section defines. So "wrapping the sandbox invocation" means patching
+whatever code performs the launch, in an implementation, per deployment. The operator asked for
+governance driven "from the Symphony side, with a per-host enable flag that no-ops on dev laptops, CI,
+and non-systemd hosts" — a configuration surface — and that is precisely what the contract finding 1
+points at does not offer.
+
+Finding 1 is therefore true in principle and unreachable in a deployment, which is the same shape of
+defect finding 2 named for host-side work: a gap declared closed by pointing at a contract that has no
+surface a deployment can reach. The agent side is not settled; it is unconfigured.
+
+### Option D — cooperative capping through the constructed environment
+
+The Context above sets the brief's non-secret env-passthrough half out of scope as a separate concern.
+It is not a separate concern: it is a fourth way to reach the same goal, and it belongs in this
+decision's option list.
+
+- **Option D — cooperative capping.** Divide a CPU budget across concurrent runs by telling each run
+  what share it may use — the gate-control variables from the brief (`ENTRY_CHECK_JOBS` / `_LOAD` /
+  `_SLOTS` / `_DIR`), which set the build's own `-j` / `-l` caps — instead of enforcing weights around
+  it. When this decision was written the mechanism had no carrier, which is why it was deferred.
+  Decision 0117 has since supplied one: Section 9.6's *Constructed environment* clause makes the run's
+  environment composed rather than inherited, requires that "variables the deployment intends are
+  passed explicitly", and makes the composed set `Implementation-defined` and documented in the
+  Conformance Statement.
+
+  Trade-offs. It reaches both execution contexts without a new abstraction — in-sandbox and host-side
+  work read the same constructed environment, which is the whole-subtree coverage Option C wanted the
+  cgroup for. It has no cgroup-v2, delegation, or systemd dependency, so it degrades to a no-op on
+  laptops, CI, and non-systemd hosts by construction rather than by an enable flag. Against it: it is
+  advisory, so a run that ignores the variables is ungoverned, and it is not work-conserving in the
+  way the brief asked for — a fixed per-run `-j` leaves the box idle when one session runs alone,
+  where a CPU weight would let it saturate. It also only governs ecosystems whose build tools honor
+  such variables, and the number handed to each run has to come from somewhere: nothing in the spec
+  derives a per-run share from `max_concurrent_agents`, so today it would be an operator's constant.
+
+  What 0117 supplies is the carrier, not the policy. No decision says a deployment should divide a CPU
+  budget across concurrent runs, and none derives the per-run number. The separately-tracked future
+  decision this Context promised is therefore **absorbed in part** — its mechanism exists, its policy
+  does not — and is now this decision's Option D rather than an unowned thread. Nothing else in the
+  decision log has ever referred to it.
+
+### The four options ranked as of this date
+
+Still selecting none. The ranking below is as of 2026-08-27 and does not revise the June list above,
+which records what was considered then.
+
+1. **D, cooperative capping.** The only option that reaches host-side and in-sandbox work alike
+   without introducing an abstraction, and the only one whose no-op fallback is structural. Weakest
+   on enforcement, which is a real loss against the brief's "fairness" framing.
+2. **B, restated.** The clarifying note is worth more now than in June, because correction 3 shows the
+   attach point it would name is unconfigured. A B that only names the sandbox launch repeats the
+   defect; a B that also introduces a configuration surface for it is a genuine improvement.
+3. **C, shrunk.** Reduced by correction 2 to "MAY a local executor be its own launch context", and by
+   correction 1 to a narrower motivating cost. Cheap in its shrunken form, but it governs only the
+   local topology, the one case a deployment can already address by putting the whole service in a
+   slice.
+4. **A, silence.** Weakest of the four now. Silence was defensible while the attach point was believed
+   reachable; correction 3 shows it is not, so staying silent conceals a gap that has been observed to
+   bite an operator.
+
+### Reconsideration trigger, replacing the evidence gate
+
+The original gate — measure whether host-side per-session CPU is material once the agent subtree is
+governed — is retired. Nothing was measured and the agent subtree was never governed, so the gate
+described a condition nobody was positioned to observe; a trigger nobody watches for reads as
+diligence while functioning as a deferral.
+
+The replacement is a trigger that arrives on its own: **implementation reaching the Execution
+Process.** The phase that builds the Section 3.1 executor cannot be planned without answering whether
+a local executor is its own launch context, which is exactly correction 2's remaining question, and
+whether the sandbox launch gets a configuration surface, which is correction 3's. A secondary trigger
+is a second operator report of concurrency congestion, from any deployment — one report is an anecdote
+about one box, two is a property of the design.
+
+### Adjacent gap discovered here and not closed
+
+Section 9.4 "Workspace Hooks" documents a single execution contract — "Execute in a local shell
+context appropriate to the host OS, with the workspace directory as `cwd`" — for what Sections 5.3.4
+and 15.4 make two execution contexts with different trust, different sourcing revisions, and (per
+Section 15.4) different working directories. A reader who configures hooks from Section 9.4 alone
+cannot tell which context a hook runs in, and the `cwd` sentence is true only of the in-sandbox half.
+That is a documentation-consistency defect on the surface that decided correction 1, not a governance
+question, and it needs its own decision rather than a quiet repair folded into this one.
