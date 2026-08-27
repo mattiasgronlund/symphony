@@ -1423,7 +1423,10 @@ Part A: Stall detection
 Part B: Tracker state refresh
 
 - Fetch current issue states for all running issue IDs.
-- For each running issue:
+- For each running issue — the ids in `running` the refresh was asked about, not the records it
+  returned:
+  - If the refresh returned no record for that id: leave the run untouched — worker running, entry
+    in place, claim held, no retry armed — and reconcile it again on the next tick.
   - If tracker state is terminal: terminate worker and clean workspace.
   - If tracker state is still active and the run's standing conditions still hold (Sections 8.2,
     8.7): update the in-memory issue snapshot.
@@ -1434,11 +1437,21 @@ Part B: Tracker state refresh
     and schedule no retry.
   - If tracker state is neither active nor terminal: terminate worker without workspace cleanup.
 - If state refresh fails, keep workers running and try again on the next tick.
+- The absent-id branch takes that same disposition, for the same reason: a refresh that did not
+  answer for an id is not a tracker that revoked it, and the partial failure is not treated more
+  harshly than the total one. An id can go unanswered because the issue was deleted, because the
+  adapter's own scope moved, or because a backend answered partially in a way its error path did not
+  catch, and only the first is a revocation. The cost is that a permanently absent id — a genuinely
+  deleted issue — leaves a run reconciliation never stops, until the worker exits through
+  `agent.max_turns` or its own failure. Part A is a weak backstop for that case: a run making
+  progress against a deleted issue is not stalled. The branch is on neither side of the claim
+  partition below, because it does not end a dispatched run — the partition is over the sites that
+  end one.
 - A stop for a standing-condition loss is reported to the operator naming the condition that failed,
-  in the shape Section 8.7 already uses for a reported routing ambiguity. The two branches beside it
-  need no such report: an operator reads a terminal or non-active cause off the issue, while a
-  standing-condition loss may trace to a third party's label or assignment edit, or to an operator's
-  own mapping change, neither of which is visible from the issue.
+  in the shape Section 8.7 already uses for a reported routing ambiguity. The other two stopping
+  branches need no such report: an operator reads a terminal or non-active cause off the issue,
+  while a standing-condition loss may trace to a third party's label or assignment edit, or to an
+  operator's own mapping change, neither of which is visible from the issue.
 - For a remote executor (Section 9.11), a terminal, non-active, or standing-condition-loss decision
   is forwarded to the executor over the seam while it is connected, so the executor stops; while the
   executor is disconnected it re-reads the issue state itself before finalizing any push, pull
@@ -2921,7 +2934,12 @@ Read operations (REQUIRED of every adapter):
    - Used for startup terminal cleanup.
 
 3. `fetch_issue_states_by_ids(issue_ids)`
-   - Used for active-run reconciliation.
+   - For every id it resolves, return the complete normalized issue record Section 4.1.1 defines,
+     not only that issue's `state`.
+   - Two callers consume the result: active-run reconciliation (Section 8.5), which evaluates the
+     standing conditions over it, and the worker's post-turn re-check (Section 16.6), which renders
+     the next continuation turn's prompt from it. A record narrowed to what the first reads fails
+     the second under strict variable checking (Sections 11.2, 12.2).
 
 Write operations (performed by the broker, Section 10.8; the agent supplies the content; supported
 per the capability descriptor, Section 11.7):
@@ -2950,15 +2968,20 @@ Candidate enumeration:
 
 Refresh completeness:
 
-- `fetch_issue_states_by_ids` (Section 11.1) MUST, for every id it resolves, return a normalized
-  record carrying the fields the standing conditions read (Section 8.2): `state`, `labels`,
-  `assignees`, and the routing fields the adapter populates (Section 11.7). A silently partial
-  result is non-conformant, because Section 8.5 Part B evaluates those conditions on every tick and
-  a record that omits a field it reads is indistinguishable from a record whose field is empty — an
-  issue whose labels the refresh did not ask for reads as an issue whose labels were removed. The
-  completeness is over the fields of an id the caller supplied, not over a result set the adapter
-  pages through, so there is no hard-cap counterpart to the clause above. The operation's name
-  reflects the use Section 11.1 lists it for, not the shape of its result.
+- `fetch_issue_states_by_ids` (Section 11.1) MUST return the complete normalized record (Section
+  4.1.1) for every id it resolves. A silently partial result is non-conformant on both of the paths
+  that read it. Section 8.5 Part B evaluates the standing conditions on every tick, and a record
+  that omits a
+  field they read is indistinguishable from a record whose field is empty — an issue whose labels
+  the refresh did not ask for reads as an issue whose labels were removed. Section 16.6's worker
+  renders the next turn's prompt from the same record under strict variable checking (Section 12.2),
+  so a field a repository's `WORKFLOW.md` names and the refresh omitted fails that turn with
+  `template_render_error` (Section 5.5) and so the run attempt (Section 12.4) — a failure the
+  operator cannot attribute, since the variable is one the template has always carried.
+- The completeness is over the fields of an id the caller supplied, not over a result set the
+  adapter pages through, so there is no hard-cap counterpart to the clause above. The operation's
+  name names a state; its contract is the record (Section 11.1), and an adapter author reads the
+  contract rather than the name.
 
 Linear-specific requirements for `tracker.kind == "linear"`:
 
@@ -3951,6 +3974,10 @@ Operators can control behavior by:
 - Editing the routing mapping so the issue no longer routes to the repository its run was dispatched
   to -> the same disposition, and the workspace left behind stays under the old repository's key
   (Sections 8.5, 8.7, 9.1)
+- Deleting an issue from the tracker -> the running session is **not** stopped. Reconciliation
+  leaves a run whose id the refresh no longer answers for untouched, because an unanswered id is
+  not a revocation (Section 8.5), so the worker runs until it exits on its own. Moving the issue to
+  a terminal state is the intervention that stops the run and cleans its workspace
 - Restarting the service for process recovery or deployment (not as the normal path for applying
   workflow config changes).
 
@@ -4278,7 +4305,17 @@ function reconcile_running_issues(state):
     log_debug("keep workers running")
     return state
 
-  for issue in refreshed:
+  for issue_id in running_ids:
+    # The loop is over the ids the refresh was asked about, not over the records it returned, so an
+    # id it did not answer for is a case rather than an iteration that never happens (Section 8.5).
+    issue = find_by_id(refreshed, issue_id)
+    if issue is null:
+      # Same disposition as the whole-fetch failure above, on the same reasoning: a refresh that
+      # did not answer for an id is not a tracker that revoked it. Section 16.6 covers itself the
+      # same way, with `refreshed_issue[0] or issue`.
+      log_debug("no refreshed record; keep worker running")
+      continue
+
     # Membership is tested on both sides after normalization (Section 4.2), never on the raw
     # tracker spelling.
     issue_state = normalize_state(issue.state)
@@ -4889,9 +4926,9 @@ surface (Section 11.1) is `Daemon Conformance`, because it exists to find and re
   are tracker-dependent, and an empty `blocked_by` applies no blocker gating
 - Labels are normalized with `Lowercase Normalization` (Section 4.2)
 - `metadata` carries adapter-defined provider-specific fields the flat model does not capture
-- Issue state refresh by ID returns, for every id it resolves, a normalized record carrying the
-  fields the standing conditions read — `state`, `labels`, `assignees`, and the routing fields the
-  adapter populates; a silently partial record is non-conformant (Sections 8.2, 11.2)
+- Issue state refresh by ID returns the complete normalized record (Section 4.1.1) for every id it
+  resolves; a record carrying only what reconciliation reads is non-conformant, the same record
+  being what the next continuation turn's prompt renders from (Sections 11.1, 11.2, 16.6)
 - Issue state refresh query uses GraphQL ID typing (`[ID!]`) as specified in Section 11.2
 - Error mapping covers transport failures, unsuccessful status, backend-reported errors, and
   malformed payloads (the transport-neutral categories of Section 11.4)
@@ -4920,6 +4957,9 @@ These checks are `Daemon Conformance`.
   remaining conditions
 - A configured `tracker.assignee` against an adapter whose descriptor does not declare that it
   populates `assignees` fails dispatch preflight rather than silently matching no issue
+- An id in `running` for which the issue-state refresh returns no record leaves that run untouched —
+  worker, entry, claim and retry state unchanged — and is reconciled again on the next tick, rather
+  than being stopped as a revocation
 - Active-state issue refresh updates running entry state where the run's standing conditions still
   hold, and does not update it where they do not
 - A label in `tracker.required_labels` removed while a run is in flight is observed on the
@@ -5263,8 +5303,8 @@ Required of the `daemon` topology only.
 - Agent and effort selected from policy (`default_agent`/`default_effort`) with `agent_by_label`
   per-issue overrides
 - `fetch_candidate_issues` enumerates the complete matching set (adapter paginates internally) and
-  `fetch_issue_states_by_ids` returns the standing conditions' fields for every id it resolves; a
-  silent partial result is non-conformant in either (Sections 8.2, 11.2)
+  `fetch_issue_states_by_ids` returns the complete normalized record for every id it resolves; a
+  silent partial result is non-conformant in either (Sections 4.1.1, 11.1, 11.2)
 - Candidate eligibility evaluated over the normalized record and the resolved configuration: every
   label in `tracker.required_labels` present, and the issue assigned to a configured
   `tracker.assignee`, both compared under `Lowercase Normalization`; a null configured assignee does
