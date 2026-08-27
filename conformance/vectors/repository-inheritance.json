@@ -1,0 +1,142 @@
+{
+  "function": "resolve_repository_config",
+  "profile": "Core Conformance",
+  "spec_refs": ["Section 5.3.7", "Section 6.1", "Section 6.4"],
+  "description": "Resolve one managed repository's effective configuration: the orchestrator-level blocks with that repository's `repository` entry overriding them (Section 5.3.7). A key the entry does not carry takes the orchestrator-level value for the same key, and resolution is per leaf key rather than per block. This layer runs BEFORE defaulting (Section 6.1), so it fills nothing in: a key neither level carries is absent here and vectors/config-defaults.json defaults it afterwards.",
+  "given": "{ orchestrator: object, entry: object }",
+  "expect": "{ resolved: object, absent: Array<string> }  // each dotted path in resolved MUST equal the resolved view at that path; each path in absent MUST NOT be present in it; unlisted paths are unconstrained",
+  "notes": [
+    "`entry` is one value of the `repository` map, without its key. The key is the `Repository Key` (Section 4.2): it identifies the entry and is not itself a value that resolves.",
+    "Only the four repository-level keys may appear in an entry: `policy`, `vcs`, `agent` and `routing` (Section 5.3.7). An `agent` field outside the three selection fields is not accepted in an entry at all, which Section 6.3 refuses rather than this function resolving away.",
+    "`policy` and `routing` have no orchestrator-level counterpart, so an entry that carries neither leaves both absent from the resolved view. Their `Default:` values are the defaulting layer's, which is why `absent` rather than a filled value is asserted here.",
+    "The orchestrator-level keys that have no per-repository form — `tracker`, `polling`, `workspace`, `codex`, and the scheduling fields of `agent` — are in the resolved view unchanged. The view is of one repository, not of the repository level alone, because it is what the defaulting layer of vectors/config-defaults.json consumes.",
+    "The order matters and one vector separates it: resolving first and defaulting second is what keeps an inherited orchestrator-level value from being shadowed by the default that would otherwise have filled the entry's own key (Section 6.1)."
+  ],
+  "vectors": [
+    {
+      "id": "entry-carries-only-its-key",
+      "description": "An entry with no fields at all. Every repository-level value resolves from the orchestrator level, which is the single-repository deployment Section 5.3.7 describes.",
+      "given": {
+        "orchestrator": {
+          "polling": { "interval_ms": 5000 },
+          "vcs": { "remote": "git@example.com:acme/web.git", "local_vcs": "git" },
+          "agent": { "default_agent": "codex", "default_effort": "high" }
+        },
+        "entry": {}
+      },
+      "expect": {
+        "resolved": {
+          "polling.interval_ms": 5000,
+          "vcs.remote": "git@example.com:acme/web.git",
+          "vcs.local_vcs": "git",
+          "agent.default_agent": "codex",
+          "agent.default_effort": "high"
+        },
+        "absent": ["policy", "routing"]
+      }
+    },
+    {
+      "id": "entry-key-overrides-orchestrator-leaf",
+      "description": "A key the entry carries wins over the orchestrator-level value for the same key.",
+      "given": {
+        "orchestrator": { "vcs": { "remote": "git@example.com:acme/web.git", "local_vcs": "git" } },
+        "entry": { "vcs": { "remote": "git@example.com:acme/api.git" } }
+      },
+      "expect": {
+        "resolved": { "vcs.remote": "git@example.com:acme/api.git", "vcs.local_vcs": "git" },
+        "absent": []
+      }
+    },
+    {
+      "id": "agent-resolves-leaf-by-leaf",
+      "description": "The vector a block-level override fails: the entry sets one `agent` leaf and keeps the orchestrator-level value of its sibling. Replacing the block instead would lose `default_agent`.",
+      "given": {
+        "orchestrator": { "agent": { "default_agent": "codex", "default_effort": "high", "agent_by_label": { "deep": { "agent": "claude_code", "effort": "high" } } } },
+        "entry": { "agent": { "default_effort": "low" } }
+      },
+      "expect": {
+        "resolved": {
+          "agent.default_agent": "codex",
+          "agent.default_effort": "low",
+          "agent.agent_by_label": { "deep": { "agent": "claude_code", "effort": "high" } }
+        },
+        "absent": []
+      }
+    },
+    {
+      "id": "vcs-resolves-leaf-by-leaf",
+      "description": "The same rule over `vcs`: an entry scoping its own forge credential keeps every other field the orchestrator level supplied, which is the per-repository credential scope of Section 15.3 written as one key.",
+      "given": {
+        "orchestrator": { "vcs": { "remote": "git@example.com:acme/web.git", "git_credential": "shared-git", "policy_branch": "symphony-policy", "local_vcs": "git" } },
+        "entry": { "vcs": { "forge_credential": "api-only-forge" } }
+      },
+      "expect": {
+        "resolved": {
+          "vcs.remote": "git@example.com:acme/web.git",
+          "vcs.git_credential": "shared-git",
+          "vcs.forge_credential": "api-only-forge",
+          "vcs.policy_branch": "symphony-policy",
+          "vcs.local_vcs": "git"
+        },
+        "absent": []
+      }
+    },
+    {
+      "id": "orchestrator-only-keys-survive-resolution",
+      "description": "Keys with no per-repository form are in the resolved view unchanged, so the view a repository's defaulting layer consumes is a whole configuration and not only its repository-level part.",
+      "given": {
+        "orchestrator": {
+          "tracker": { "kind": "linear", "project_slug": "proj" },
+          "polling": { "interval_ms": 30000 },
+          "workspace": { "root": "/srv/symphony" },
+          "agent": { "max_concurrent_agents": 4, "default_agent": "codex" },
+          "codex": { "command": "codex app-server" }
+        },
+        "entry": { "agent": { "default_agent": "claude_code" } }
+      },
+      "expect": {
+        "resolved": {
+          "tracker.kind": "linear",
+          "tracker.project_slug": "proj",
+          "polling.interval_ms": 30000,
+          "workspace.root": "/srv/symphony",
+          "agent.max_concurrent_agents": 4,
+          "agent.default_agent": "claude_code",
+          "codex.command": "codex app-server"
+        },
+        "absent": []
+      }
+    },
+    {
+      "id": "absent-at-both-levels-is-not-filled-here",
+      "description": "Resolution fills nothing in. A key neither level carries is absent from the resolved view; the defaulting layer supplies it afterwards, and an implementation that defaults first would have shadowed the inheritance the vectors above assert.",
+      "given": {
+        "orchestrator": { "vcs": { "remote": "git@example.com:acme/web.git" } },
+        "entry": { "vcs": { "forge": "forgejo" } }
+      },
+      "expect": {
+        "resolved": { "vcs.remote": "git@example.com:acme/web.git", "vcs.forge": "forgejo" },
+        "absent": ["policy", "routing", "vcs.base_branch", "vcs.forge_credential", "agent.default_agent"]
+      }
+    },
+    {
+      "id": "entry-routing-and-policy-are-carried-through",
+      "description": "The two repository-level keys with no orchestrator-level counterpart are carried through as written, the routing rules unchanged in shape (Sections 5.3.7, 8.7).",
+      "given": {
+        "orchestrator": { "vcs": { "local_vcs": "git" } },
+        "entry": {
+          "policy": "ops/repo.policy.toml",
+          "routing": [{ "project": "api-platform" }, { "labels": "backend" }]
+        }
+      },
+      "expect": {
+        "resolved": {
+          "policy": "ops/repo.policy.toml",
+          "routing": [{ "project": "api-platform" }, { "labels": "backend" }],
+          "vcs.local_vcs": "git"
+        },
+        "absent": []
+      }
+    }
+  ]
+}
