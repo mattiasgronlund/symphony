@@ -391,7 +391,7 @@ carried by 0117's constructed environment, which absorbs the deferred env-passth
 yes, policy no), ranks D > B > C > A as of that date while still selecting none, retires the measurement gate for
 a trigger that arrives on its own (implementation reaching the Section 3.1 `Execution Process`), and records an
 adjacent gap left open: Section 9.4 documents one execution contract for what Sections 5.3.4 and 15.4 make two
-contexts. Still no option selected and no `SPEC.md` change.
+contexts — opened as decision 0158. Still no option selected and no `SPEC.md` change.
 
 ## 0026 — VCS-operation lifecycle hooks aligned with `vcsx`
 
@@ -6248,3 +6248,32 @@ or on a third caller wanting only the global concurrency half. Relates to 0136, 
 0145, 0148, 0155. Accepted and applied to `SPEC.md` — including Section 14.5, which answered only
 for a running session and now says what the same label or assignment edit does to an issue in
 backoff — `conformance/vectors/retry-fire-disposition.json` and `conformance/README.md`.
+
+## 0158 — Where a workspace hook runs
+
+**State:** Proposed
+**Folder:** [decisions/0158-hook-execution-context/](decisions/0158-hook-execution-context/)
+
+Opens the adjacent gap decision 0025's re-evaluation recorded and did not close: the hook split is stated as
+configuration (Section 5.3.4: a lifecycle point MAY be defined in both artifacts, and then the `repo.policy.toml`
+half runs host-side and the `WORKFLOW.md` half in-sandbox) and as trust (Section 15.4), while every surface that
+has to *execute* a hook still models one hook per lifecycle point. Five failure paths. (1) Section 9.4's
+"Execute in a local shell context ... with the workspace directory as `cwd`" is false for the host-side half and
+contradicts the Section 15.4 rule it defeats — a policy-branch-trusted body invoking a relative command would
+reach agent-written content with host access. (2) Section 16.6 calls `run_hook("before_run", workspace.path)`
+once, before any sandbox exists, and the in-sandbox half has no call site. (3) `before_remove` at startup
+cleanup (Section 8.6) and `after_create` inside workspace creation (Section 9.2) occur where no run context
+exists, so an in-sandbox half has nowhere to run — while Section 9.2's own note routes preparation to in-sandbox
+hooks. (4) Nothing orders the halves or says whether a fatal one short-circuits the other. (5)
+`conformance/vectors/config-defaults.json` pins `hooks.timeout_ms`, a path `SPEC.md` does not define (the field
+is `hooks.workspace.timeout_ms`) — decision 0132's drift class on this surface. Recommends Option A, repairing
+the execution surface: Section 9.4 states both contexts and defers the working-directory rule to Section 15.4;
+setup points run host-side then in-sandbox and teardown points unwind in reverse; each half keeps its lifecycle
+point's fatality and a fatal half short-circuits the other; an in-sandbox half runs only where a run context
+exists, which makes explicit that the sandbox is scoped to the run attempt rather than to a turn. Steelmanned
+and rejected: a prose-only repair of Section 9.4, which leaves the defect in the artifact implementations copy
+(0157's precedent); and narrowing the contract to make `after_create`/`before_remove` host-side-only, which
+would remove the in-sandbox hook Section 9.2 recommends. No `Implementation-defined` choice and no MUST-document
+obligation is created, so no Conformance Statement row is owed; no published token changes. Reconsider if the
+sandbox's scope is narrowed below the run attempt, or if a deployment needs an in-sandbox `before_remove` at
+startup cleanup. Relates to 0025, 0117, 0132, 0157. Proposed; no `SPEC.md` change yet.

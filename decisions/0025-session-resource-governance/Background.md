@@ -299,4 +299,6 @@ and 15.4 make two execution contexts with different trust, different sourcing re
 Section 15.4) different working directories. A reader who configures hooks from Section 9.4 alone
 cannot tell which context a hook runs in, and the `cwd` sentence is true only of the in-sandbox half.
 That is a documentation-consistency defect on the surface that decided correction 1, not a governance
-question, and it needs its own decision rather than a quiet repair folded into this one.
+question, and it needs its own decision rather than a quiet repair folded into this one. Opened the
+same day as decision 0158, which found the gap wider than the `cwd` sentence: the reference algorithm
+and two lifecycle points share it.
