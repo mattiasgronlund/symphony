@@ -21,7 +21,7 @@
           "polling.interval_ms": 30000,
           "scope.branch_pattern": "symphony/<identifier>",
           "tracker.transitions": [],
-          "hooks.timeout_ms": 60000,
+          "hooks.workspace.timeout_ms": 60000,
           "agent.agent_by_label": {},
           "agent.max_concurrent_agents": 10,
           "agent.max_turns": 20,

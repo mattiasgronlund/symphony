@@ -145,6 +145,33 @@ satisfy at two of the four lifecycle points.
 per-turn sandbox, or an agent adapter that owns sandbox lifetime itself (Section 10.9) — the
 availability answer above stops holding for `before_run`, and the ordering and failure answers have to
 be re-derived against whatever bounds the sandbox then has. A second trigger is a repository that
-needs an in-sandbox `before_remove` at startup cleanup: the skip recorded here is a consequence of
-there being no run context, and a deployment that wants one is asking for a run context to be created
+needs an in-sandbox `before_remove` at either workspace-removal path — startup cleanup or
+reconciliation teardown (Sections 8.6, 16.3): the skip recorded here is a consequence of there being
+no run context at either, and a deployment that wants one is asking for a run context to be created
 for cleanup, which is a different decision.
+
+## What the plan review changed (2026-08-27)
+
+Reviewing the plan before its first edit (`plan-review`, lenses Q, R, C, P) found two consequences
+this decision keeps that had no producer left once the halves were separated. Option A stands as
+recorded and neither answer above is reversed; what changed is what the decision *states* rather
+than what it decides.
+
+- **The in-sandbox `after_run` half rested on a sandbox lifetime no section fixed.** Every
+  `after_run` call site in Section 16.6 follows `agent.release(continuation_ref)`, and Section
+  10.7's `release` frees "warm resources (a live subprocess, a session handle)". The availability
+  answer above already says the sandbox is scoped to the run attempt, but an implementation free to
+  count the sandbox among the session's warm resources would have had nowhere to run the in-sandbox
+  `after_run` half and would still have conformed. Section 9.4 now states that the attempt's sandbox
+  outlives the release; Section 9.6 keeps its wording, since the lifetime belongs beside the
+  availability rule that depends on it.
+- **The in-sandbox `before_remove` half had no producer at all.** The availability answer named
+  startup terminal cleanup (Section 8.6) as the path with no run context. It is not the only one:
+  reconciliation removes a workspace too, and `terminate_running_issue` (Section 16.3) calls
+  `terminate_worker` before `cleanup_workspace_for`, so no sandbox survives there either. Those two
+  are the only removal paths this specification defines, which leaves a `WORKFLOW.md`-declared
+  `before_remove` as valid configuration nothing can run. Rather than narrow Section 5.3.4 — the
+  configuration surface this decision undertook not to touch — Section 9.4 says so, and both removal
+  sites name their disposition. A reader who wants an in-sandbox teardown hook now learns from the
+  section documenting the hook that no path runs it, instead of composing the availability rule with
+  two call sites to find out.

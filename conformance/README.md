@@ -557,3 +557,21 @@ guessed-at vector or entry:
   of two. `vectors/retry-fire-disposition.json` widens from the generation match to the fire's whole
   disposition, distinguishing a re-arm from a release rather than collapsing both into one
   not-dispatched outcome. Issues #120, #121.
+- **One hook per lifecycle point, on every surface that executes one — resolved (decision 0158).**
+  Decision 0025's re-evaluation recorded the gap and did not close it: Section 5.3.4 states the hook
+  split as configuration and Section 15.4 states it as trust, while Section 9.4's execution
+  contract, Section 9.2's creation step, Section 16.6's `run_hook` calls, and Section 17.2's rows
+  all
+  modelled one hook per lifecycle point — the shape the document had before the split existed. The
+  execution surface therefore contradicted the configuration surface, and Section 9.4's "with the
+  workspace directory as `cwd`" was not merely false for the host-side half but defeated the control
+  Section 15.4 states it for: a policy-branch-trusted body invoking a relative command would have
+  reached agent-written content with host access. Two consequences had no producer once the halves
+  were separated, and the decision states both rather than leaving them derivable: an in-sandbox
+  `after_run` is reachable only because the sandbox is scoped to the run attempt and outlives
+  `release(continuation_ref)` (Sections 9.6, 10.7), and an in-sandbox `before_remove` is valid
+  configuration that no removal path this specification defines supplies a run context for, both
+  removal paths — startup cleanup (Section 8.6) and reconciliation teardown (Section 16.3) — running
+  the host-side half alone. This vector's own drift is the same class decision 0132 named:
+  `config-defaults.json` resolved `hooks.timeout_ms`, a path `SPEC.md` never defined, against the
+  `hooks.workspace.timeout_ms` of Sections 5.3.4, 6.4 and 9.4.
