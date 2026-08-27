@@ -6120,6 +6120,5 @@ repository rather than against a configured value — a different left-hand side
 workspace-orphan sweep landing elsewhere in the document, on a tracker adapter that cannot
 distinguish a missing field from an incomplete fetch, on genuine tracker-side deletion becoming a
 live failure mode, or on a decision already touching Sections 11.1, 16.3 or 16.6 that can fold the
-rename in. Relates to 0128, 0137, 0138, 0140, 0144, 0145, 0148. Accepted; the record is written and
-reviewed, and its application to `SPEC.md`, `conformance/vectors/standing-conditions.json` and
-`conformance/README.md` is owed as a separate pass.
+rename in. Relates to 0128, 0137, 0138, 0140, 0144, 0145, 0148. Accepted and applied to `SPEC.md`,
+`conformance/vectors/standing-conditions.json` and `conformance/README.md`.

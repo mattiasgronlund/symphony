@@ -271,3 +271,56 @@ At `85cb892`, against the working tree:
 - **`fetch_issue_states_by_ids` gaining a second reason to change.** The naming tension is recorded
   rather than paid for alone; a decision already touching Sections 11.1, 16.3 or 16.6 should fold
   the rename in rather than this one reopening the question by itself.
+
+## Findings from applying the plan
+
+Three sites the plan's steps did not reach were found while applying them, and are repaired in the
+same change rather than deferred. All three are consequences of this decision's own additions, which
+is the part worth recording: the plan added a value and a report and did not chase what would read
+them.
+
+- **`cleanup_workspace_for` could not compute the path it deletes.** Section 16.3's
+  `terminate_running_issue` called `cleanup_workspace_for(issue_id)`, while Section 9.1's per-issue
+  path is `<workspace.root>/<repo_key>/<sanitized_issue_identifier>`. With no repository in the call
+  an implementation must re-derive one, and re-deriving under the current mapping is the same
+  blindness step 5 exists to remove: for a terminal issue whose routing moved mid-run it removes the
+  tree the run never used and leaves the tree it worked in. The call now takes
+  `running_entry.repository`, which step 5 is what makes available.
+- **Section 8.7's keying bullet did not say which repository keys a dispatched run.** It states that
+  workspace identity, the per-repository object store and concurrency accounting are keyed by
+  `(repository, issue)` without saying whether the first half is the entry's recorded value or a
+  fresh evaluation of the mapping. Read the second way, a run's workspace and object store move
+  under it the moment an operator edits the mapping — which is the condition Part B stops the run
+  for, not one it works through. The bullet now names the entry's value.
+- **Nothing required the stop's cause to reach the record.** Step 3 makes the stop
+  operator-visible, and Section 13.1 is where a record's obligations are stated; it required neither
+  the cause nor, for the routing case, the repository the run held. Without the second an operator
+  reading the record cannot tell a mapping edit from a label edit, and those are different repairs.
+  Both are stated among Section 13.1's message-formatting requirements rather than as new REQUIRED
+  context fields, so no `log_context_fields` token is added and `conformance/vocabulary.json` stays
+  unchanged.
+
+A fourth was found and is **recorded rather than repaired**, because repairing it is a decision
+rather than a consequence. `on_retry_timer` (Section 16.7) is the third site the answer to issue
+#120 named — "Section 8.5 Part B, the worker's post-turn check in Section 16.6, and
+`on_retry_timer` in Section 16.7" — and this decision reaches the first two. At a retry fire it
+calls `fetch_candidate_issues`, does `find_by_id(candidates, issue_id)`, checks `available_slots`,
+and calls `dispatch_issue` directly. It never calls `should_dispatch`, so a retry fires and
+re-dispatches an issue whose required label was removed or whose assignment moved while it was in
+backoff.
+
+The gap predates this decision and is against Section 8.2 rather than against Part B: Section 8.2
+says an issue is dispatch-eligible only if all nine conditions hold, and this path tests two of
+them. It is not repairable by calling `should_dispatch` there, for the reason this decision's own
+Section 8.2 paragraph gives — at a retry fire the issue is in `claimed` by construction,
+`schedule_retry` having taken the claim, so the whole predicate refuses every issue it is asked
+about. What `on_retry_timer` owes is therefore a stated subset: the record's conditions and the
+`Todo` blocker rule, but not the four orchestrator-state ones, and not routing, which
+`dispatch_issue` re-derives correctly for a run that has not started. Saying which subset a
+re-dispatch tests is a decision of its own, and folding it into a decision about reconciliation
+would repeat the shape this file already records for decisions 0140 and 0148 — a repair that stops
+one site short of the class.
+
+Recorded here so the third site is not rediscovered from the issue thread. Reconsideration trigger:
+any decision touching Section 16.7's `on_retry_timer`, which should fold it in rather than reopen it
+separately.
