@@ -76,12 +76,13 @@ concrete choice; do not leave a row blank.
 | Checkout-mode detection mechanism | 3.3 | `<how git / jj / jj secondary workspace are distinguished>` |
 | Flow bound: the `run_op` count (at least 64), and any further bound imposed | 5.6 | `<count, plus any wall-clock or other bound>` |
 | `repo.policy.toml` discovery precedence (explicit override, then repository default) | 6.1 | `<...>` |
+| `vcsx.toml` discovery precedence (its path is resolved relative to the repository root, as `repo.policy.toml`'s is) | 6.1 | `<...>` |
 | Consumer-configuration discovery precedence (Section 4's second input) | 8.1 | `<...>` |
 | How a front-end lets a caller name a `base_branch`, where it does | 8.1 | `<flag / per-task field / not offered, always from config>` |
 | The backend's default remote where the consumer supplies no `remote`, per backend | 8.1 | `<name each backend uses>` |
 | The `forge_parameters` keys each forge backend reads | 8.1 | `<per backend: the keys read, and what each does>` |
 | Form of a hook's engine-invoked `run` unit | 6.6 | `<executable path / shell string / named task / …>` |
-| How a `host_side` unit is resolved from the host-side policy's source, and what working directory it is given | 6.6 | `<how the trusted source is addressed; where the working tree's location is supplied>` |
+| How a `host_side` unit is addressed within the host-side policy's source, and what working directory it is given | 6.6 | `<how the unit is addressed within the source; where the working tree's location is supplied>` |
 | Hook bound: how long the engine waits for a hook to answer (at least 600 s admitted) | 6.6 | `<duration, and whether a deployment may configure it>` |
 | Which reason is reported when several configuration conditions hold | 6.11 | `<first found / a documented precedence / all of them>` |
 | Entry-point argument encodings (argument *names* for shared concepts are fixed) | 8.1 | `<CLI flags / JSON on stdin / in-process struct / …>` |
@@ -168,14 +169,18 @@ configuration error. Declare what each shipped backend advertises.
 
 ### 6.1 VCS Backends (Section 9.1)
 
-| Backend | Supported modes | Recorded-resolution reuse | Operates with no colocated remote | Derives >1 working tree from one store |
-|---------|-----------------|---------------------------|-----------------------------------|----------------------------------------|
-| `<git / jj / …>` | `<...>` | [ ] | [ ] | [ ] |
+| Backend | Supported modes | Recorded-resolution reuse | Operates with no colocated remote | Derives >1 working tree from one store | Materializes the policy source (`export_source`) |
+|---------|-----------------|---------------------------|-----------------------------------|----------------------------------------|--------------------------------------------------|
+| `<git / jj / …>` | `<...>` | [ ] | [ ] | [ ] | [ ] |
 
-A backend that does not declare the last column is refused at validation with
+A backend that does not declare the working-tree column is refused at validation with
 `capability_unsupported` where a consumer derives more than one working tree from one store
 (Sections 4.3, 6.11, 9.3) — the other half of Section 9.3's split, and determinable because the
-consumer's selection fixes whose descriptor is read.
+consumer's selection fixes whose descriptor is read. The last column is Section 9.1's OPTIONAL
+capability, and it is refused on the same half: a policy declaring a `[hooks.engine]` unit is
+refused with `capability_unsupported` against a backend that does not declare it, where the form
+this engine's `run` unit takes needs the policy source materialized to resolve a `host_side` unit
+(Sections 6.6, 9.1).
 
 Section 9.1's required capabilities are a minimum for a backend, not a maximum. The operation set is
 the specification's and this engine adds none to it (Sections 4.1, 8.5), so a capability beyond the

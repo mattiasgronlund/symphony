@@ -5884,7 +5884,12 @@ its own — a backend answering a *staged* diff would satisfy a loose reading an
 wrong content, which the pairing does not catch — and `worktree_revision()`'s write-to-bookkeeping
 note is restated over the position, since both are consulted there on invocations the gate then
 blocks. The network enumeration stays at four, checked against Section 9.1's list rather than
-inferred from the signature, which that section forbids.
+inferred from the signature, which that section forbids. Applying it found one site the plan's scope
+did not reach: decision 0079's own Section 6.6 sentence wrote the two-read arrangement down as a
+rule — "the engine takes the identity when the position completes" — where every other site already
+said the read the position made, so the repair moved an outlier and keeps 0079's rule, changing when
+the identity is taken rather than what it binds. Relates to 0079, 0149 and 0151. Accepted and applied
+to `VCSX-SPEC.md` (Sections 6.6, 9.1, 10.4, 13.1, 13.2).
 
 ## 0151 — Reading and materializing the policy source
 
@@ -5925,7 +5930,13 @@ implied, since Section 9.1 says a capability's context is "read off this list an
 its arguments": a read of the policy branch acquires nothing **only because `provision` precedes it**,
 placing the copy in the store, a consequence Section 13.1 already accepts. What the addition buys is
 Section 9.3's descriptor discipline and a reported refusal at validation instead of three engines
-naming one requirement three ways.
+naming one requirement three ways. Applying it added one case to Section 9's enumeration of
+determinate facts — a revision carrying no file at the path asked for — so the new capability's
+three answers land on the shape that section already describes; and it confirmed rather than assumed
+that Section 9.3's first-use half keeps its producer, an OPTIONAL capability refused at validation
+neither adding one to that half nor removing one. Depends on 0141 and 0150; relates to 0149.
+Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 6.1, 6.6, 6.11, 9, 9.1, 9.3, 13.1, 13.2, 13.3)
+and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (Sections 3, 6.1).
 
 ## 0152 — What a front-end sequence must reach, not only where it stops
 
