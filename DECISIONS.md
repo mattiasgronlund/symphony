@@ -6028,7 +6028,14 @@ kind as the count. Easy to miss: `conformance/vcsx/vocabulary.json`'s `resume_to
 the two-element description **in its own words**, so it moves with the sections — decision 0132's
 drift class — and the format revision is shared with decision 0142, separable in substance and not
 in encoding: 0142 will plausibly land first, so both records now state the coupling rather than only
-whichever is applied second.
+whichever is applied second. Applying it found the token's contents leaked into two places
+describing its **form** and named by no step — Section 13.3's "what it encodes", which after this
+decision reads as licence over contents the specification fixes, and the Conformance Statement
+template's matching row, whose answer field enumerated the two parts literally; both are edited and
+neither owed a new row, which is decision 0132's drift class read from the side where the row exists
+and so no check reports it. Relates to 0059, 0060, 0123, 0128, 0132, 0142, 0143. Accepted and
+applied to `VCSX-SPEC.md`, `VCSX-CONTRACT.md`, `conformance/vcsx/vocabulary.json` and
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`.
 
 ## 0154 — The record grew three fields and the vector that enumerates it did not
 

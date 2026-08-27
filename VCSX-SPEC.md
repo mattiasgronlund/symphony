@@ -800,6 +800,24 @@ refused may now pass and a gate that gave no usable answer may now answer, and n
 the hook did not give (Section 6.6). A resume that landed past the position would run an operation no
 gate had inspected, which is what the position exists to prevent.
 
+A resume **continues the flow** from the point it re-entered. The result the re-entry produces is
+disposed of by Section 5.4 as any result is, and where that disposition returns control it returns
+to whatever made the dispatch, at the point it made it: a front-end sequence resumes its own
+traversal from where the re-entered dispatch sat (Sections 12.2, 12.3), and a re-entered lifecycle
+position runs its edges and the operation it gates proceeds as it does under any dispatch. A `ship`
+that escalated `resolve_conflicts`, whose caller resolved the conflicts, therefore retries its push
+and reaches `create_pr` in the resuming invocation rather than reporting the re-dispatched
+`integrate` and stopping. Section 5.4 already names that disposition and its name is `continue`, so
+a resume that stopped at the re-entered result would need a fourth disposition the section does not
+provide.
+
+The single-operation case is a **consequence** of that rule rather than an exception to it: where
+the entry point is a bare operation the remainder of the flow is empty, so the invocation reports
+the result and ends. A driver composing its own sequence out of bare operations gets the same
+behavior for the same reason — the sequence is the driver's and not the engine's, so there is
+nothing for the engine to continue past the operation the driver invoked, and the driver resumes its
+own composition as it drives it (Sections 7.3, 8.1).
+
 A resume is carried by the invocation that resumes rather than held by the engine. An invocation that
 ends at `needs_caller` with a **resolvable** need returns a `resume_token` in `outputs`, and an
 invocation supplying it as the `resume` argument re-enters the point that token names
@@ -815,21 +833,45 @@ so an operation conditioned on an inspected identity — `expected_worktree`, `e
 (Section 6.6) — is conditioned on what the re-entered position saw. An engine that carried the earlier
 expectation forward would hand an operation state no position had inspected since, which is the
 condition Sections 4.3 and 6.6 exist to report rather than to produce. The token is held to that rule
-and not excepted from it: it carries the point to re-enter and the flow bound already spent, and it
-MUST NOT carry `expected_worktree`, `expected_head`, or anything else a position established. A value
-that already carries two things is where a third looks harmless, which is why the prohibition is
-stated over the token rather than left to follow from the paragraph above it.
+and not excepted from it: it carries the point to re-enter, the root trigger the chain that point
+belongs to descends from, and the flow bound already spent, and it MUST NOT carry
+`expected_worktree`, `expected_head`, or anything else a position established. A value that already
+carries three things is where a fourth looks harmless, which is why the prohibition is stated over
+the token rather than left to follow from the paragraph above it. A trigger is admitted for the same
+reason the count is: both are control-flow state — what the flow was doing — rather than something a
+position inspected, so neither is what this rule refuses.
+
+The **root trigger** is the result of the sequence's own `run_op` that the chain the point belongs
+to descends from (Sections 12.1, 12.2). It is what selects the control transfer once the re-entry's
+result is disposed of, the transfer being a property of the trigger rather than of the disposition
+an edge replaced (Sections 12.2, 12.3) — so without it a resumed `integrate` has no landing,
+`integrate` appearing in Section 12.2 only inside a `push:non_fast_forward` disposition. It is
+stated as the **root** rather than as the trigger an edge substituted, because Section 12.2 routes
+`push:non_fast_forward` to `integrate` built in and escalates `integrate:merge_conflicts` with no
+edge involved: phrased over substitution the field would be absent exactly where the built-in path
+needs it. It is not needed where the point is a lifecycle position, the gated operation's own result
+being the root the sequence transfers on.
+
+Each of the three parts is fixed-width, and none grows with the policy graph. Section 5.4 has a
+`run_op`'s own result take the place of the outcome it disposed of rather than stack beside it, so a
+substitution chain of any length still descends from one root and one root is what the token names:
+naming a point in the flow is not licence to serialize a traversal. The trigger MUST be carried by
+its **registry token** (Sections 4.3, 5.1) rather than by an ordinal into an enumeration the engine
+generated, because an operation or a reason added by a MINOR release shifts such an enumeration, and
+a token issued before it then decodes into a different trigger — silently, from a record that still
+looks valid. What the token has to determine is fixed here; how it spells any of it stays the
+engine's own (Sections 8.1, 13.3).
 
 Any **re-entry** a resume causes counts against the flow bound (Section 5.6). The count is stated over
 re-entry rather than over the dispatch it usually is, because a resume into a lifecycle position
 re-enters a position inside a dispatch whose count is already spent: a resolver that always resolves
 would otherwise loop there with nothing to stop it. Both shapes therefore reach `flow_exhausted`
 rather than running indefinitely, which is the property Section 5.6 holds for every other loop the
-schema can express. The count is what the `resume_token` carries alongside the point, so it
-accumulates across a chain of resumed invocations as it does within one: a bound that restarted at
-each re-invocation would hold for a driver whose resolver returns in-process and fail for a front-end
-whose caller resolves and invokes again, and the property would then depend on an encoding the
-consumer chose for unrelated reasons.
+schema can express. The count is what the `resume_token` carries alongside the point and the root
+trigger, so it accumulates across a chain of resumed invocations as it does within one: a bound that
+restarted at each re-invocation would hold for a driver whose resolver returns in-process and fail
+for a front-end whose caller resolves and invokes again, and the property would then depend on an
+encoding the consumer chose for unrelated reasons.
 
 `park` (Section 5.2) reaches the same `needs_caller` result and carries a need of its own, so the
 envelope's escalation rule holds for it without exception (Section 8.2). It is not a second point of
@@ -1993,16 +2035,17 @@ A consumer MAY supply `resume`, an OPTIONAL token continuing a flow a previous i
 
 - `resume` (OPTIONAL) — the `resume_token` a previous invocation returned in `outputs`
   (Section 8.2). Supplied, the invocation re-enters the point that raised the need rather than
-  beginning at its entry point, and the flow bound continues from the count the token carries.
+  beginning at its entry point, continues the flow from there rather than ending at the re-entered
+  result (Section 5.5), and the flow bound continues from the count the token carries.
   - Default: unset — the invocation begins at its entry point.
 
-A resumed invocation therefore does not run the flow ahead of the point it re-enters, and an
-argument the flow reads only ahead of that point has no effect on it. A resumed `land` consults no
-`await_first`: the await branch runs once, before the merge loop a resume re-enters (Section 12.3).
-A resumed `ship` does consult `message`, which the commit loop reads at every turn (Section 12.2).
-The property is where the flow reads an argument and not what kind of argument it is, and a caller
-that wants the prefix dispatches the operation itself, which is the composition Section 7.2 already
-describes.
+A resumed invocation therefore does not run the flow ahead of the point it re-enters — the prefix,
+not the remainder, which it continues into (Section 5.5) — and an argument the flow reads only ahead
+of that point has no effect on it. A resumed `land` consults no `await_first`: the await branch runs
+once, before the merge loop a resume re-enters (Section 12.3). A resumed `ship` does consult
+`message`, which the commit loop reads at every turn (Section 12.2). The property is where the flow
+reads an argument and not what kind of argument it is, and a caller that wants the prefix dispatches
+the operation itself, which is the composition Section 7.2 already describes.
 
 The engine holds it opaque, as it holds the base ref and the forge repository coordinate opaque, and
 here that is a choice rather than a necessity: the value is the engine's own rather than another
@@ -2213,14 +2256,16 @@ Every invocation returns one structured result:
   reason (Section 6.11) or a precondition reason (Section 8.6) — each from a registry a consumer
   branches on and an engine MUST document additions to — and a repository-authored value there would
   be indistinguishable from an engine one.
-- `outputs` carries `resume_token` where the invocation ended at `needs_caller` with a **resolvable**
-  need (Section 8.4): an opaque token naming the point that raised the need and the flow bound already
-  spent, which a later invocation supplies as `resume` (Sections 5.5, 5.6, 8.1). The key is absent
-  where `status` is not `needs_caller`, and absent where the need is one of the two holds —
-  `intervention` and `flow_exhausted` — which no front-end resolves and no resume continues. Its
-  presence therefore agrees with the need's resolvability, so a front-end reads Section 8.4's
-  prohibition off the envelope rather than off the policy that produced it. The token carries the
-  point and the count and nothing a lifecycle position established (Section 5.5).
+- `outputs` carries `resume_token` where the invocation ended at `needs_caller` with a
+  **resolvable** need (Section 8.4): an opaque token naming the point that raised the need, the root
+  trigger the chain that point belongs to descends from, and the flow bound already spent, which a
+  later invocation supplies as `resume` (Sections 5.5, 5.6, 8.1). The key is absent where `status`
+  is not `needs_caller`, and absent where the need is one of the two holds — `intervention` and
+  `flow_exhausted` — which no front-end resolves and no resume continues. Its presence therefore
+  agrees with the need's resolvability, so a front-end reads Section 8.4's prohibition off the
+  envelope rather than off the policy that produced it. The token carries the point, the root
+  trigger and the count, and nothing a lifecycle position established; supplying it continues the
+  flow from that point rather than ending the invocation at it (Section 5.5).
 - `outputs` carries `policy_pin` where the invocation **validated a policy surface**: an opaque
   handle naming that surface, which a later invocation supplies as `policy_pin` to claim the two are
   one unit of work (Sections 4.1, 8.1, 8.6). The key is absent where no surface was validated, which
@@ -3310,6 +3355,23 @@ The transfer is selected by the result of the sequence's own `run_op` and by not
 different things. This is the same "the trigger is the whole of the key" discipline Section 5.4
 already states for matching.
 
+**Where a resume re-enters, and what follows it.** A resumed invocation enters this sequence at the
+point its token names rather than at the top (Sections 5.5, 8.1), so a token naming a point in the
+push loop does not re-run the commit loop's guard, and `identity` and `message` are consulted only
+where the flow ahead of that point reads them (Section 8.1). What happens after the re-entry is this
+section's ordinary rule and not a second one: the re-entered dispatch's result is disposed of, and
+the transfer is selected by the token's root trigger — the result of this sequence's own `run_op`
+the chain descends from — which is what the un-resumed case selects on too (Section 12.1).
+
+A `ship` that escalated `resolve_conflicts` carries `push:non_fast_forward` as that root, so the
+resumed `integrate`'s result transfers `continue` and the push is retried, exactly as it is where
+the `integrate` ran in the escalating invocation; the loop then breaks on `push:ok` and the sequence
+reaches `create_pr`. Without the root the resumed `integrate` would be a dispatch with no landing,
+since `integrate` appears in this sequence only inside that disposition and never as a step of its
+own. Every `run_op` the re-entry and the continuation dispatch counts against the flow bound from
+the count the token carries (Sections 5.5, 5.6), so both loops' convergence argument holds across a
+resumed chain as it does within one invocation.
+
 `worktree_dirty()` is the `is_dirty()` capability (Section 9.1), so the guard and the operation
 share one predicate: a change made only of content the VCS has not yet recorded is dirty, and `ship`
 commits it rather than reporting the branch clean and pushing nothing. Where the capability cannot
@@ -3373,6 +3435,18 @@ last handed back (`result_of`, Section 12.1). So a policy-bound `merge:head_move
 `continue` and the merge is retried — the built-in re-read-and-retry below is not silently disabled
 by an edge that only meant to observe. The transfer is selected by the result of this sequence's own
 `run_op` and by nothing else, so a substitution chain inside the machine cannot move it.
+
+**Where a resume re-enters, and what follows it.** A resumed invocation enters at the point its
+token names and continues from there (Sections 5.5, 8.1): a token naming a point inside the merge
+loop re-enters that loop whether or not the invocation names `await_first`, the await branch lying
+ahead of it. What follows is this section's ordinary rule — the re-entered dispatch's result is
+disposed of and the transfer is selected by the token's root trigger (Section 12.1) — so a root of
+`merge:head_moved` transfers `continue` and the loop re-dispatches, while a root in the await branch
+transfers on the class default that branch tests: a resumed `await_checks` whose result is class
+`done` falls through into the merge loop rather than reporting, which is the answer the un-resumed
+case gives. Every `run_op` the re-entry and the continuation dispatch counts against the flow bound
+from the count the token carries (Sections 5.5, 5.6), so the loop's convergence argument holds
+across a resumed chain as it does within one invocation.
 
 The await branch is Section 7.2's composition written out, and it adds no rule: it dispatches the
 operation and applies the class default Section 5.4 gives every operation result, which is why the
@@ -3595,18 +3669,22 @@ A conforming engine SHOULD include tests covering:
   `intervention`, `flow_exhausted` — carries none, so the prohibition on resuming a hold is readable
   from the envelope; supplying the token re-enters the point that raised the need rather than the
   entry point, so a resolved `commit:blocked` re-runs the gate rather than committing past it; the
-  re-entered position reads the working tree and the pull-request head again rather than reusing what
-  the token was issued beside; a resolver that resolves every time reaches `flow_exhausted` **across
-  invocations** and not only within one, the bound being over the flow; a token the engine cannot
-  establish as its own and current is refused with `resume_unusable` before the policy runs on any
-  of the four conditions — a different policy, a different repository, a different major version, or
-  an entry point other than the one the resuming invocation names — so a `ship` token supplied to a
-  `land` is refused, and a token supplied to an entry that issues none, `provision` or
-  `load_policy`, is refused on the entry point alone and with no policy consulted; and a resumed
-  invocation does not run the flow ahead of the point it re-enters, so a `land` resuming into its
-  merge loop consults no `await_first` whether or not the invocation names one, while a resumed
-  `ship` consults `message` at every turn of the commit loop it re-enters (Sections 5.5, 5.6, 7.2,
-  8.1, 8.2, 8.6, 12.2, 12.3).
+  re-entered position reads the working tree and the pull-request head again rather than reusing
+  what the token was issued beside; the flow then **continues** from that point rather than ending
+  at the re-entered result, so a `ship` whose caller resolved a `resolve_conflicts` escalation
+  retries its push and reaches `create_pr` in the resuming invocation, the transfer selected by the
+  root trigger the token carries and the answer the same as the un-resumed case gives; the
+  accumulated count survives into that continuation, so a resolver that resolves every time reaches
+  `flow_exhausted` **across invocations** and not only within one, the bound being over the flow; a
+  token the engine cannot establish as its own and current is refused with `resume_unusable` before
+  the policy runs on any of the four conditions — a different policy, a different repository, a
+  different major version, or an entry point other than the one the resuming invocation names — so a
+  `ship` token supplied to a `land` is refused, and a token supplied to an entry that issues none,
+  `provision` or `load_policy`, is refused on the entry point alone and with no policy consulted;
+  and a resumed invocation does not run the flow ahead of the point it re-enters, so a `land`
+  resuming into its merge loop consults no `await_first` whether or not the invocation names one,
+  while a resumed `ship` consults `message` at every turn of the commit loop it re-enters (Sections
+  5.5, 5.6, 7.2, 8.1, 8.2, 8.6, 12.2, 12.3).
 - Consumer capability declarations: a `set_state` edge against a consumer whose `effectable_actions`
   omits `set_state` is refused with `set_state_unbound` before any operation runs, while a
   `create_task` edge against the same consumer validates, emits, and is reported in
@@ -3965,13 +4043,18 @@ A conforming engine SHOULD include tests covering:
   repository units it bound, both defaulting empty, both readable from the consumer configuration, and
   the three `*_unbound` reasons judged from them before the policy runs.
 - A resume carried across the invocation boundary: an opaque token returned for a resolvable need and
-  withheld for a hold, supplied back to re-enter the point that raised the need, carrying the spent
-  flow-bound count and nothing a lifecycle position established, and established against four
-  conditions — the policy, the repository, the major version and the entry point that issued it —
-  the last of which an engine judges from the token and the invocation alone, and which is therefore
-  the one available where no policy was validated. A resumed invocation runs none of the flow ahead
-  of the point it re-enters, so an argument the flow reads only ahead of it is not consulted and no
-  class of arguments has to be recognized to know that.
+  withheld for a hold, supplied back to re-enter the point that raised the need, carrying the root
+  trigger and the spent flow-bound count and nothing a lifecycle position established, and
+  established against four conditions — the policy, the repository, the major version and the entry
+  point that issued it — the last of which an engine judges from the token and the invocation alone,
+  and which is therefore the one available where no policy was validated. A resumed invocation runs
+  none of the flow ahead of the point it re-enters, so an argument the flow reads only ahead of it
+  is not consulted and no class of arguments has to be recognized to know that.
+- A resumed invocation that **continues** the flow past the point it re-entered rather than
+  reporting the re-entered result: the front-end sequence resumes its own traversal, the transfer
+  selected by the token's root trigger as it is un-resumed, and the bare-operation case falling out
+  of an empty remainder rather than being cased. Each of the token's three parts fixed-width, and
+  the trigger carried by its registry token rather than by an ordinal into a generated enumeration.
 - The two operations that run outside the action-policy machine, marked by the property rather than
   by name: no `run_op` edge naming either, no trigger an `on` may name, both reached as entry points
   instead, and the reason registry scoped to what it covers — so an operation whose every outcome is
@@ -4027,11 +4110,12 @@ The Statement MUST record:
   the consumer configuration's discovery precedence, the backend's default remote where the consumer
   supplies none, the entry-point argument encodings and how a front-end derives the forge repository
   coordinate where it does, the default `network_bound_ms` and any per-capability values the engine
-  applies (Sections 8.1, 9), the form of the `resume_token` — what it encodes, whether it is signed,
-  and the mechanism by which the four conditions Section 8.1 fixes are judged, those conditions
-  themselves being specified rather than declared — the form of the `policy_pin` and how the engine
-  establishes that one it is handed names the surface it validated (Sections 8.1, 8.2, 8.6), the
-  `detail` field of an `unanswered_gates` entry (Section 8.2), and the escalation `detail` field
+  applies (Sections 8.1, 9), the form of the `resume_token` — how it spells the three parts Section
+  5.5 fixes, whether it is signed, and the mechanism by which the four conditions Section 8.1 fixes
+  are judged, those parts and those conditions themselves being specified rather than declared — the
+  form of the `policy_pin` and how the engine establishes that one it is handed names the surface it
+  validated (Sections 8.1, 8.2, 8.6), the `detail` field of an `unanswered_gates` entry (Section
+  8.2), and the escalation `detail` field
   (Section 8.4).
 - Any reason token the engine adds beyond a registry: an operation reason with its proto class and,
   where that class is `needs_caller`, its default `need` (Section 4.3), a configuration reason

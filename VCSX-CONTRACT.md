@@ -214,11 +214,18 @@ binds the *resolver*:
 `escalate` is what lets the same `repo.policy.toml` run under both front-ends (Section 3). It is the
 one place the two front-ends legitimately differ.
 
-A resume re-enters the point that raised the need, and it round-trips through the consumer: an
-invocation that ends on a resolvable need returns a token, and the invocation that resumes supplies
-it back. The engine holds nothing between invocations, so the flow bound accumulates across a resumed
-chain rather than restarting — which is what keeps the bound a property of the flow under either
-front-end. A need naming a **hold** rather than a request carries no token and is not resumed.
+A resume re-enters the point that raised the need and the flow **continues** from there: the resumed
+invocation carries on with what it was driving rather than reporting the re-entered step and
+stopping, so a `ship` whose caller resolved a conflict escalation reaches its pull request in the
+resuming invocation. Where the entry point is a single operation there is no remainder to carry on
+with, so the invocation reports the result and ends — the same rule, not a second one.
+
+It round-trips through the consumer: an invocation that ends on a resolvable need returns a token,
+and the invocation that resumes supplies it back. The engine holds nothing between invocations, so
+the flow bound accumulates across a resumed chain rather than restarting — which is what keeps the
+bound a property of the flow under either front-end, the continuation being what the accumulated
+count is spent on. A need naming a **hold** rather than a request carries no token and is not
+resumed.
 
 ## 6. Engine Operations and Typed Results
 
