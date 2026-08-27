@@ -1222,14 +1222,15 @@ unit started, so a hook that answers and leaves a descendant process holding the
 reads is read from until the bound elapses. The invocation is bounded; the host is not, and a consumer
 that needs the stronger property provides it around the engine.
 
-A position gates the operation on the state it inspected. Where that state has an identity the backend
-can name, the engine takes the identity when the position completes, and the operation acts on that
-state or reports that it could not: `merge` conditions on the pull request's head (`expected_head`,
-Section 9.2) and `commit` on the working tree's identity (`expected_worktree`, Section 9.1), each
-reporting `merge:head_moved` or `commit:worktree_moved` rather than acting on state no position
-inspected. The guarantee is not that the state holds still — nothing the engine controls stops another
-writer — but that a state which moved is reported rather than acted on, and the retry re-dispatches the
-operation, which re-runs the position (Sections 12.2, 12.3).
+A position gates the operation on the state it inspected. Where that state has an identity the
+backend can name, the engine takes the identity from the read the position inspected the state
+through, and the operation acts on that state or reports that it could not: `merge` conditions on
+the pull request's head (`expected_head`, Section 9.2) and `commit` on the working tree's identity
+(`expected_worktree`, Section 9.1), each reporting `merge:head_moved` or `commit:worktree_moved`
+rather than acting on state no position inspected. The guarantee is not that the state holds still —
+nothing the engine controls stops another writer — but that a state which moved is reported rather
+than acted on, and the retry re-dispatches the operation, which re-runs the position (Sections 12.2,
+12.3).
 
 The other two positions carry no identity of their own, and what each guarantees is stated where it is
 realized. `before:create_pr` inspects the title and body the engine composed, and the operation writes
@@ -2680,19 +2681,36 @@ Realizes the version-control operations. Required capabilities:
 - `derive_work_branch(pattern, identity)` → the pinned work branch (Section 6.3).
 - `worktree_revision()` → an identity for the working tree as `commit` would capture it, or that it
   could not determine one. The identity MUST differ whenever a `commit` would capture different
-  content, so it distinguishes exactly what `is_dirty()` counts: every change the VCS does not ignore,
-  including content the VCS has not yet recorded (Section 4.1). Its form, and how a backend derives it,
-  are `Implementation-defined` and MUST be documented (Section 13.3) — this specification states the
-  distinction the value MUST make and leaves the mechanism to the backend, as it does for an
-  acquisition that failed (`fetch_counterpart`) and for a merge conditioned on a head (Section 9.2).
-  The allowance to derive an answer by writing to the backend's own bookkeeping state is stated below
-  over the whole list; it bites hardest here, because this capability is consulted at a position on
-  invocations the gate then blocks.
+  content, so it distinguishes exactly what `is_dirty()` counts: every change the VCS does not
+  ignore, including content the VCS has not yet recorded (Section 4.1). Its form, and how a backend
+  derives it, are `Implementation-defined` and MUST be documented (Section 13.3) — this
+  specification states the distinction the value MUST make and leaves the mechanism to the backend,
+  as it does for an acquisition that failed (`fetch_counterpart`) and for a merge conditioned on a
+  head (Section 9.2). The allowance to derive an answer by writing to the backend's own bookkeeping
+  state is stated below over the whole list; it bites hardest at `before:commit`, because the
+  working tree is read there on invocations the gate then blocks, and both this capability and
+  `worktree_diff()` read it. That the diff and the identity come from one read is what holds the
+  price to one such write rather than two: a position taking them separately writes the backend's
+  bookkeeping state once for each.
+- `worktree_diff()` → the diff a `commit` would record, together with the identity
+  `worktree_revision()` answers for the tree it read, or that it could not determine them. The diff
+  is `is_dirty()`'s question answered with content: every change the VCS does not ignore, including
+  content the VCS has not yet recorded (Section 4.1), so a backend answering what it has staged
+  alone hands a scan content the `commit` would not capture. Reads the checkout; acquires nothing.
+  It answers two values from one call as `ahead_behind(base_ref)` does, and for the same reason:
+  values taken against two reads are not a state anything held. The pairing is what binds the scan
+  at `before:commit` to the capture it gates (Sections 6.6, 10.4) — an identity taken from a read of
+  its own matches a tree that moved and moved back, `worktree_revision()`'s contract being stated
+  over content rather than over the reads that observed it, so a `commit` conditioned on it would
+  capture content no position inspected. A pair the backend could not determine is answered before
+  the position runs, so no unit inspects content the operation will not use and the `commit` has no
+  `expected_worktree` to supply (Section 12.2).
 - `commit(message, identity, expected_worktree)` → `commit:*`. `expected_worktree` is the identity
-  `worktree_revision()` answered when the working tree was read at `before:commit` (Sections 6.6,
+  answered for the working tree read at `before:commit` — `worktree_diff()`'s, where the position
+  scanned the tree's content, and `worktree_revision()`'s where nothing there read it (Sections 6.6,
   12.2). The capability MUST NOT create a commit from a working tree whose identity is no longer
-  `expected_worktree`; it reports `commit:worktree_moved` (Section 4.3). Where `worktree_revision()`
-  could not determine an identity there is no `expected_worktree` to supply, and the operation reports
+  `expected_worktree`; it reports `commit:worktree_moved` (Section 4.3). Where that read could not
+  determine an identity there is no `expected_worktree` to supply, and the operation reports
   `commit:failed` rather than capturing a tree no position inspected.
 - `fetch_base(remote, branch)` → the base ref, acquiring the base as `remote` holds it (Section 4.1). A
   base it cannot acquire leaves no ref to answer with, and the engine reports
@@ -2731,9 +2749,10 @@ An operation is realized through one capability or several. `provision` is `ensu
 what places the acquisition on the network side of the enumeration above and the tree derivation on
 the local side, and what lets a consumer take the acquiring half alone without reaching a capability
 that writes a checkout; `integrate` is `fetch_base` then
-`merge_base`; `pull` is `fetch_counterpart` then `merge_counterpart`; `commit` is `worktree_revision`
-at its position then `commit`, which is what makes the tree the gate inspected the tree captured
-(Section 6.6); `status` reads through
+`merge_base`; `pull` is `fetch_counterpart` then `merge_counterpart`; `commit` is the read its
+position makes then `commit` — `worktree_diff` where the position scans the tree's content and
+`worktree_revision` where nothing there reads it — which is what makes the tree the gate inspected
+the tree captured (Section 6.6); `status` reads through
 `detect_mode`, `current_branch`, `is_dirty`, `is_conflicted` and `ahead_behind`, with the forge's
 `pr_state` where one is configured (Section 9.2). `pr_state` has three readers rather than one, and
 two of them act on the answer instead of reporting it: `push` refuses over a CLOSED/MERGED pull
@@ -3055,6 +3074,11 @@ scan's execution context follows the artifact that declares it, as every hook's 
 6.6): the `before:commit` scan is the in-sandbox one — the message was authored there and the tree
 it inspects is there — where a scan the host-side policy declares over the composed title and body
 runs in the consumer's context.
+
+The diff scanned at `before:commit` is bound to the capture by the identity that came with it:
+`worktree_diff()` answers the diff and the identity of the tree it read in one read, and the engine
+supplies that identity as the `commit`'s `expected_worktree`, so a tree written to between the scan
+and the capture is reported as `commit:worktree_moved` rather than committed (Sections 9.1, 12.2).
 
 The title and body scanned at `before:create_pr` are the values the operation writes: the engine
 composes them once (Section 10.2) and recomposes nothing between the scan and the write, so that
@@ -3747,9 +3771,16 @@ A conforming engine SHOULD include tests covering:
   no `[messages]` key, so a `before:create_pr` scan blocking with a `needs_caller` result yields
   `create_pr:blocked` while the same repository with no edge at that position publishes the composed
   title and body unscanned, the position running nothing (Sections 5.4, 6.5, 10.4); the same policy
-  scans a commit diff at `before:commit` with no key naming a profile for it; a scan is handed the
-  content of its position and a `run` edge naming a hook the document does not declare is refused at
-  validation with `unknown_hook` (Sections 6.6, 6.11).
+  scans a commit diff at `before:commit` with no key naming a profile for it; the content a
+  `before:commit` scan inspected is the content the `commit` captures — a working tree written to
+  while the scan runs yields `commit:worktree_moved` rather than a commit of content no scan saw,
+  and a tree written to and restored around the engine's reads yields no `commit:ok` over a diff the
+  scan was not handed, the window an engine taking the identity in a read of its own leaves open and
+  one answering the diff and the identity from `worktree_diff()` closes; a backend whose
+  `worktree_diff()` answers only what it has staged is non-conforming, the diff being `is_dirty()`'s
+  set and counting content the VCS has not yet recorded (Sections 4.1, 6.6, 9.1); a scan is handed
+  the content of its position and a `run` edge naming a hook the document does not declare is
+  refused at validation with `unknown_hook` (Sections 6.6, 6.11).
 - The squash transform: a `pr_to_squash` that gives the engine no usable answer yields
   `merge:hook_unanswered` and leaves the pull request unmerged at the head it had, rather than
   merging it under its own title and body, with `outputs.unanswered_gates` naming which of
@@ -3903,7 +3934,9 @@ A conforming engine SHOULD include tests covering:
 - Checkout-mode handling (git, jj, jj secondary workspace), a pinned push refspec whose push never
   drops, rewrites or re-parents a commit already on the remote work branch, a history-preserving
   work-branch update, and the two operations conditioned on the state their position inspected — the
-  merge on the pull request's head and the commit on the working tree's identity.
+  merge on the pull request's head and the commit on the working tree's identity, the latter
+  supplied from the read that produced the diff the position scanned rather than from a read of the
+  engine's own.
 
 ### 13.3 Conformance Statement
 

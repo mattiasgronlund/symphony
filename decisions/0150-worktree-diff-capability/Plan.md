@@ -131,4 +131,12 @@ reader does not re-investigate:
 
 ## Status
 
-Not started.
+Applied. Steps 1 to 6 are in `VCSX-SPEC.md` Sections 6.6, 9.1 and 10.4; steps 7 and 8 are in
+Sections 13.1 and 13.2. No row is owed `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`, as Cross-cutting
+sync expected: the edit introduces no `Implementation-defined` or MUST-document sentence, and the
+identity `worktree_diff()` answers is the value `worktree_revision()`'s existing Section 13.3 row
+already answers for. `conformance/vcsx/vocabulary.json` and `conformance/vcsx/vectors/` are
+unchanged, and `python3 scripts/validate_spec_consistency.py` reports 0 errors and 0 warnings.
+
+Two findings are recorded in `Background.md` under `Findings from applying the plan`: one site the
+plan's scope did not reach, repaired here, and the reading taken where step 2 admits two.

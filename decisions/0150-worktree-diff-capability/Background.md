@@ -260,6 +260,36 @@ does not declare is `capability_unsupported` at validation rather than an engine
 first use. The paired identity is checkable in Section 13.1 as a property of the capability rather
 than as a vector over one input.
 
+## Findings from applying the plan
+
+- **The sentence that states the defect outright was outside the plan's scope, and is decision
+  0079's.** Section 6.6 read "the engine takes the identity when the position completes" — that
+  decision's own wording for the rule this one keeps, and the two-read arrangement written
+  down as a rule, and the one under which a `before:commit` unit's own writes are named by the
+  identity taken after them rather than reported as `commit:worktree_moved`. The plan's scope named
+  Sections 9.1, 10.4, 13.1 and 13.2, so no step reached the clause the repair contradicts. It is
+  repaired here to "the engine takes the identity from the read the position inspected the state
+  through", which is what every other site already said: Section 12.2's pseudocode comment ("commits
+  the tree that position read"), Section 12.2's prose ("conditioned on the working-tree identity its
+  position read"), Section 12.3's dispatch ("supplies the head its own position read"), Section
+  13.1's re-entered-position rows, and Section 5.5's resume clause ("the state a position inspected
+  is read again"). Section 6.6's was the only clause in the document stating the timing the other
+  way, so the repair moved an outlier rather than changing the account — and the new wording holds
+  for `merge` as it does for `commit`, that operation's `expected_head` coming from the `pr_state`
+  read its position made (Section 9.2). The general lesson is the one the plan's own Anchor check
+  makes mechanically: a decision that changes *when* a value is read has to look for every sentence
+  that says when, not only for the sentences that name the capability.
+- **Step 2 admits two readings, and the narrower one was not taken.** "Ensure the compound answer
+  sits inside the Section 9.1 bullet whose sentence reads 'Each answers its value or that it could
+  not determine one'" reads either as a placement — move `worktree_diff()` into the bullet
+  `current_branch()`, `is_dirty()`, `is_conflicted()` and `ahead_behind(base_ref)` share — or as the
+  property that a compound answer is covered by that rule rather than excepted from it. The second
+  is what was written: the capability has a bullet of its own, as `worktree_revision()` does, and
+  names `ahead_behind(base_ref)`'s precedent inside it. The first would have put a capability
+  `commit` is realized through into the bullet `status` reads through, which the realization
+  paragraph keeps apart, and `worktree_revision()` is already the precedent for a value-answering
+  capability with a bullet of its own.
+
 ## Reconsideration triggers
 
 - **A second position that scans working-tree content.** The paired return binds one read to one

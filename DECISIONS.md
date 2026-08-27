@@ -5870,7 +5870,12 @@ its own — a backend answering a *staged* diff would satisfy a loose reading an
 wrong content, which the pairing does not catch — and `worktree_revision()`'s write-to-bookkeeping
 note is restated over the position, since both are consulted there on invocations the gate then
 blocks. The network enumeration stays at four, checked against Section 9.1's list rather than
-inferred from the signature, which that section forbids.
+inferred from the signature, which that section forbids. Applying it found one site the plan's scope
+did not reach: decision 0079's own Section 6.6 sentence wrote the two-read arrangement down as a
+rule — "the engine takes the identity when the position completes" — where every other site already
+said the read the position made, so the repair moved an outlier and keeps 0079's rule, changing when
+the identity is taken rather than what it binds. Relates to 0079, 0149 and 0151. Accepted and applied
+to `VCSX-SPEC.md` (Sections 6.6, 9.1, 10.4, 13.1, 13.2).
 
 ## 0151 — Reading and materializing the policy source
 
