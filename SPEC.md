@@ -1565,7 +1565,9 @@ that end a dispatched run, and a fire ends a retry entry with no run in flight.
 When the service starts:
 
 1. Query tracker for issues in terminal states.
-2. For each returned issue identifier, remove the corresponding workspace directory.
+2. For each returned issue identifier, remove the corresponding workspace directory. Only the
+   host-side `before_remove` half runs: no issue is dispatched at service start, so there is no run
+   context for an in-sandbox half and the skip is logged (Section 9.4).
 3. If the terminal-issues fetch fails, log a warning and continue startup.
 
 This prevents stale terminal workspaces from accumulating after restarts.
@@ -1901,7 +1903,8 @@ Algorithm summary:
 3. Ensure the workspace path exists as a directory.
 4. Mark `created_now=true` only if the directory was created during this call; otherwise
    `created_now=false`.
-5. If `created_now=true`, run `after_create` hook if configured.
+5. If `created_now=true`, run the `after_create` hook halves that are configured: the host-side half
+   first, then the in-sandbox half (Section 9.4).
 
 Notes:
 
@@ -1936,19 +1939,54 @@ Supported hooks:
 
 Execution contract:
 
-- Execute in a local shell context appropriate to the host OS, with the workspace directory as
-  `cwd`.
-- On POSIX systems, `sh -lc <script>` (or a stricter equivalent such as `bash -lc <script>`) is a
-  conforming default.
-- Hook timeout uses `hooks.workspace.timeout_ms`; default: `60000 ms`.
-- Log hook start, failures, and timeouts.
+- A lifecycle point has two halves, one per execution context (Sections 5.3.4, 15.4): the half
+  declared in `repo.policy.toml` runs on the host outside the sandbox, and the half declared in
+  `WORKFLOW.md` runs inside the run's sandbox. A lifecycle point MAY be defined in one artifact or
+  in both; every half that is defined runs, and each bullet below applies to each half
+  independently rather than to the lifecycle point as a whole.
+- Execute in a local shell context appropriate to the host OS. On POSIX systems, `sh -lc <script>`
+  (or a stricter equivalent such as `bash -lc <script>`) is a conforming default.
+- The working directory differs by execution context and is stated in Section 15.4: an in-sandbox
+  half runs with the workspace directory as `cwd`; a host-side half does not, and receives the
+  workspace path as an argument or environment value. Section 15.4 owns the rule and the reason it
+  exists.
+- Hook timeout uses `hooks.workspace.timeout_ms`; default: `60000 ms`. The bound applies to each
+  half, not to the pair.
+- Log hook start, failures, and timeouts, naming the execution context the half ran in.
+
+Order:
+
+- At `after_create` and `before_run`, the host-side half runs first and the in-sandbox half second:
+  privileged setup precedes the untrusted preparation that builds on it.
+- At `after_run` and `before_remove`, the in-sandbox half runs first and the host-side half second,
+  so teardown unwinds setup.
+
+Availability:
+
+- An in-sandbox half runs in the sandbox of the run attempt it belongs to — the sandbox of Section
+  9.6, which the executor instantiates (Section 3.1). That sandbox is scoped to the run attempt: it
+  exists from workspace provisioning until the attempt ends, and it outlives
+  `release(continuation_ref)` (Section 10.7), which frees the agent session's warm resources and not
+  the sandbox around them.
+  Without that scope the in-sandbox `after_run` half would have nowhere to run, since every
+  `after_run` call site follows the release (Section 16.6).
+- Where no run context exists, the in-sandbox half is not run and the skip is logged. This is the
+  disposition at every workspace-removal path this specification defines: startup terminal workspace
+  cleanup (Section 8.6) runs at service start with nothing dispatched, and reconciliation removes a
+  workspace only after terminating the worker (Section 16.3). A `before_remove` half declared in
+  `WORKFLOW.md` is therefore valid configuration that no removal path defined here runs.
+- The host-side half needs no sandbox and runs at every lifecycle point, including both removal
+  paths.
 
 Failure semantics:
 
-- `after_create` failure or timeout is fatal to workspace creation.
-- `before_run` failure or timeout is fatal to the current run attempt.
-- `after_run` failure or timeout is logged and ignored.
-- `before_remove` failure or timeout is logged and ignored.
+- `after_create` failure or timeout in either half is fatal to workspace creation.
+- `before_run` failure or timeout in either half is fatal to the current run attempt.
+- `after_run` failure or timeout is logged and ignored, in either half.
+- `before_remove` failure or timeout is logged and ignored, in either half.
+- A fatal half short-circuits the lifecycle point: where the half that runs first at `after_create`
+  or `before_run` fails or times out, the other half does not run. At `after_run` and
+  `before_remove`, whose failures are logged and ignored, both halves run.
 - A hook whose process was **terminated by a signal** is a failed hook, whatever its exit status.
   This is the narrower form of the rule Section 10.7 states for a turn: a shell script carries no
   event vocabulary, so there is no terminal signal to require, and what is checkable instead is the
@@ -4432,6 +4470,8 @@ function terminate_running_issue(state, issue_id, cleanup_workspace):
     # The entry's own repository, not a re-evaluation of the mapping: Section 9.1 keys the per-issue
     # path by repo_key, so a run whose issue re-routed mid-flight would otherwise have the tree it
     # never used removed and the tree it worked in left behind (Sections 8.7, 16.4).
+    # The worker was terminated above, so this run's sandbox is gone: the removal runs the host-side
+    # before_remove half only, and the in-sandbox half is skipped and logged (Section 9.4).
     cleanup_workspace_for(running_entry.repository, issue_id)
 
   # No retry is scheduled here. Part A of Section 8.5 queues its own after terminating; Part B
@@ -4570,7 +4610,14 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
   # Symphony has no VCS adapter of its own.
   engine.integrate(issue, workspace)
 
+  # Both halves of the lifecycle point, host-side first (Section 9.4). The host-side call passes the
+  # workspace as an argument rather than as a working directory (Section 15.4); the in-sandbox call
+  # runs in this attempt's sandbox, where the workspace is the working directory. The short-circuit
+  # is the control flow itself: fail_worker does not return, so a fatal host-side half leaves the
+  # in-sandbox half unrun.
   if run_hook("before_run", workspace.path) failed:
+    fail_worker(run_id, "before_run hook error")
+  if run_sandbox_hook("before_run", workspace) failed:
     fail_worker(run_id, "before_run hook error")
 
   max_turns = config.agent.max_turns
@@ -4584,6 +4631,7 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
     prompt = build_turn_prompt(workflow_template, issue, attempt, turn_number, max_turns)
     if prompt failed:
       agent.release(continuation_ref)
+      run_sandbox_hook_best_effort("after_run", workspace)
       run_hook_best_effort("after_run", workspace.path)
       fail_worker(run_id, "prompt error")
 
@@ -4597,6 +4645,7 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
 
     if turn_result failed:
       agent.release(continuation_ref)
+      run_sandbox_hook_best_effort("after_run", workspace)
       run_hook_best_effort("after_run", workspace.path)
       fail_worker(run_id, "agent turn error")
 
@@ -4605,6 +4654,7 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
     refreshed_issue = tracker.fetch_issue_states_by_ids([issue.id])
     if refreshed_issue failed:
       agent.release(continuation_ref)
+      run_sandbox_hook_best_effort("after_run", workspace)
       run_hook_best_effort("after_run", workspace.path)
       fail_worker(run_id, "issue state refresh error")
 
@@ -4618,7 +4668,11 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
 
     turn_number = turn_number + 1
 
+  # Teardown unwinds setup, so the in-sandbox half runs first (Section 9.4). It runs after the
+  # release because the sandbox is scoped to the attempt and outlives the agent session
+  # (Sections 9.4, 10.7); both halves are best-effort, so neither short-circuits the other.
   agent.release(continuation_ref)
+  run_sandbox_hook_best_effort("after_run", workspace)
   run_hook_best_effort("after_run", workspace.path)
 
   exit_normal(run_id)
@@ -4868,10 +4922,18 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - Existing non-directory path at workspace location is handled safely (replace or fail per
   implementation policy)
 - OPTIONAL workspace population/synchronization errors are surfaced
-- `after_create` hook runs only on new workspace creation
-- `before_run` hook runs before each attempt and failure/timeouts abort the current attempt
-- `after_run` hook runs after each attempt and failure/timeouts are logged and ignored
-- `before_remove` hook runs on cleanup and failures/timeouts are ignored
+- `after_create` hook runs only on new workspace creation; both configured halves run, host-side
+  first, and a failure or timeout in either is fatal to workspace creation with the half that has
+  not run left unrun
+- `before_run` hook runs before each attempt; both configured halves run, host-side first, and a
+  failure or timeout in either aborts the current attempt with the half that has not run left unrun
+- `after_run` hook runs after each attempt; both configured halves run, in-sandbox first, and
+  failure/timeouts in either are logged and ignored. The in-sandbox half runs in the attempt's
+  sandbox after the agent session is released, so it is reached rather than skipped (Sections 9.4,
+  10.7, 16.6)
+- `before_remove` hook runs on cleanup and failures/timeouts are ignored; at both removal paths —
+  the startup sweep and reconciliation teardown — the host-side half runs and the in-sandbox half is
+  skipped and logged, no run context existing at either (Sections 8.6, 9.4, 16.3)
 - Workspace path sanitization and root containment invariants are enforced before agent launch
 - Agent launch uses the per-issue workspace path as cwd and rejects out-of-root paths
 - Agent launch wraps the session in the configured sandbox (strict profile by default)
@@ -5317,6 +5379,9 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   `repo.policy.toml` from the policy branch; `WORKFLOW.md` hooks in the sandbox from the worktree,
   Section 15.4), with a host-side hook's unit resolved from the policy branch and its working
   directory outside the workspace, so the trust its declaration carries reaches the program it runs
+- Both halves of a lifecycle point execute (Section 9.4): setup points run host-side first and
+  teardown points in-sandbox first, a fatal half leaves the other unrun, and a workspace-removal
+  path runs the host-side half alone because no run context exists there (Sections 8.6, 16.3)
 - Hook timeout config (`hooks.workspace.timeout_ms`, default `60000`)
 - Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
   app-server JSON line protocol as the worked example)

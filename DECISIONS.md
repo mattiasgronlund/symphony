@@ -6269,7 +6269,7 @@ backoff — `conformance/vectors/retry-fire-disposition.json` and `conformance/R
 
 ## 0158 — Where a workspace hook runs
 
-**State:** Proposed
+**State:** Accepted
 **Folder:** [decisions/0158-hook-execution-context/](decisions/0158-hook-execution-context/)
 
 Opens the adjacent gap decision 0025's re-evaluation recorded and did not close: the hook split is stated as
@@ -6294,4 +6294,12 @@ and rejected: a prose-only repair of Section 9.4, which leaves the defect in the
 would remove the in-sandbox hook Section 9.2 recommends. No `Implementation-defined` choice and no MUST-document
 obligation is created, so no Conformance Statement row is owed; no published token changes. Reconsider if the
 sandbox's scope is narrowed below the run attempt, or if a deployment needs an in-sandbox `before_remove` at
-startup cleanup. Relates to 0025, 0117, 0132, 0157. Proposed; no `SPEC.md` change yet.
+either workspace-removal path. Reviewing the plan before its first edit found two consequences the decision kept
+that had no producer left once the halves were separated, and both are now stated rather than derivable: the
+in-sandbox `after_run` half is reachable only because the attempt's sandbox outlives `release(continuation_ref)`
+(Sections 9.6, 10.7), which Section 9.4 now says; and the in-sandbox `before_remove` half has no removal path at
+all — reconciliation's `terminate_running_issue` (Section 16.3) terminates the worker before removing the
+workspace, so it joins startup cleanup (Section 8.6) in having no run context — which Section 9.4 and both
+removal sites now say, rather than narrowing Section 5.3.4 to take the half away. Relates to 0025, 0117, 0132,
+0157. Accepted and applied to `SPEC.md` (Sections 8.6, 9.2, 9.4, 16.3, 16.6, 17.2, 18.1.2),
+`conformance/vectors/config-defaults.json` and `conformance/README.md`.
