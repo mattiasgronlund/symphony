@@ -1,0 +1,78 @@
+{
+  "function": "reconcile_disposition",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 4.2", "Section 8.2", "Section 8.5", "Section 16.3"],
+  "description": "Decide what Section 8.5 Part B does with one running issue once tracker state refresh has run. Given what the refresh returned for that issue's id - a record, or nothing - and, when the record is active, the standing-condition predicate's answer for it, decide whether the run continues or stops, and what stopping costs. The standing-condition predicate itself is conformance/vectors/standing-conditions.json's subject; it is handed in here as an already-computed answer, so this file pins what Part B does with that answer - it does not re-derive how the answer is computed.",
+  "given": "{ refreshed: { state: string } | null, standing: { holds: boolean, failed: <condition> | null } | null, config: { tracker: { active_states: Array<string>, terminal_states: Array<string> } } }",
+  "expect": "{ disposition: 'stop' | 'continue', cleanup_workspace: boolean, claim_released: boolean, snapshot_updated: boolean }",
+  "notes": [
+    "standing is null on every vector where Part B does not reach the predicate: a terminal or a neither-active-nor-terminal state is decided before standing_conditions_hold is called, and an absent id - Section 8.5's absent-id branch, Section 16.3's 'if issue is null: continue' - reaches no state test at all. A harness must not evaluate the predicate for these three cases.",
+    "The two continue rows are not one outcome under two ids. active-standing-conditions-hold takes Section 16.3's 'state.running[issue.id].issue = issue' branch, updating the in-memory issue snapshot the next continuation prompt renders from (Section 16.6). absent-from-refresh takes the 'continue' with no assignment at all, per Section 8.5's 'leave the run untouched - worker running, entry in place, claim held, no retry armed'. Collapsing them into one 'continue' would lose the assertion that an absent id does not overwrite the live snapshot with nothing.",
+    "No retry_armed field is carried because Part B arms no retry on any of its branches - it would be constant across every vector here. Section 16.3's terminate_running_issue states it directly: 'No retry is scheduled here... Part B queues none, for any of its branches'; Section 8.5's standing-condition-loss bullet says the same for its own branch, 'schedule no retry'.",
+    "cleanup_workspace and claim_released are reported separately because Part B's three stopping branches split on the first and agree on the second. Only the terminal branch cleans the workspace (Section 8.5: 'A terminal issue's work is finished, so the tree holds nothing wanted and is removed'), while all three release the claim, because terminate_running_issue removes the claim on every call it does not return early from, regardless of cleanup_workspace (Section 16.3). Collapsing both into one 'stopped' field would let a build that cleans a standing-condition loss's workspace - an operator's own reversible mapping edit or label removal - pass.",
+    "The failed values (required_labels, routing) are carried in from conformance/vectors/standing-conditions.json, whose own note states they are that file's labels for the conditions above, not a published vocabulary: SPEC.md names no token for them and conformance/vocabulary.json publishes no group for them. Here they only identify which standing-condition-loss case is under test; this file mints no vocabulary of its own for them.",
+    "The refreshed.state values in given are already normalized, as Section 16.3's issue_state = normalize_state(issue.state) produces (Section 4.2, Lowercase Normalization). config.tracker.active_states and terminal_states are configured values and are not pre-normalized - normalize_states(terminal_states) and normalize_states(active_states) do that at comparison time (Section 16.3) - matching the discipline conformance/vectors/candidate-eligibility.json records for should_dispatch's own configured lists."
+  ],
+  "vectors": [
+    {
+      "id": "terminal-state",
+      "description": "The refresh answered with a state in config.tracker.terminal_states. Part B terminates the worker and cleans the workspace; the claim comes off with the removed entry, and no retry is armed.",
+      "given": {
+        "refreshed": { "state": "done" },
+        "standing": null,
+        "config": { "tracker": { "active_states": ["Todo", "In Progress"], "terminal_states": ["Done", "Cancelled"] } }
+      },
+      "expect": { "disposition": "stop", "cleanup_workspace": true, "claim_released": true, "snapshot_updated": false }
+    },
+    {
+      "id": "neither-active-nor-terminal",
+      "description": "The refreshed state is in neither configured list. Part B terminates the worker without cleaning the workspace - the issue's work is not finished - while the claim still comes off with the removed entry.",
+      "given": {
+        "refreshed": { "state": "blocked" },
+        "standing": null,
+        "config": { "tracker": { "active_states": ["Todo", "In Progress"], "terminal_states": ["Done", "Cancelled"] } }
+      },
+      "expect": { "disposition": "stop", "cleanup_workspace": false, "claim_released": true, "snapshot_updated": false }
+    },
+    {
+      "id": "active-standing-conditions-hold",
+      "description": "The refreshed state is active and standing_conditions_hold answers holds: true. Part B updates the in-memory issue snapshot and leaves the run running; nothing is cleaned or released.",
+      "given": {
+        "refreshed": { "state": "in progress" },
+        "standing": { "holds": true, "failed": null },
+        "config": { "tracker": { "active_states": ["Todo", "In Progress"], "terminal_states": ["Done", "Cancelled"] } }
+      },
+      "expect": { "disposition": "continue", "cleanup_workspace": false, "claim_released": false, "snapshot_updated": true }
+    },
+    {
+      "id": "active-required-label-lost",
+      "description": "The refreshed state is active but standing_conditions_hold answers holds: false, failed: required_labels - a label in tracker.required_labels has been removed since dispatch. Part B terminates the worker, leaves the workspace because the loss is reversible, and releases the claim; no retry is armed.",
+      "given": {
+        "refreshed": { "state": "in progress" },
+        "standing": { "holds": false, "failed": "required_labels" },
+        "config": { "tracker": { "active_states": ["Todo", "In Progress"], "terminal_states": ["Done", "Cancelled"] } }
+      },
+      "expect": { "disposition": "stop", "cleanup_workspace": false, "claim_released": true, "snapshot_updated": false }
+    },
+    {
+      "id": "active-no-longer-routing",
+      "description": "The refreshed state is active but standing_conditions_hold answers holds: false, failed: routing - the mapping no longer names the repository the run holds. The disposition matches the required-label loss exactly: stop, leave the workspace, release the claim.",
+      "given": {
+        "refreshed": { "state": "in progress" },
+        "standing": { "holds": false, "failed": "routing" },
+        "config": { "tracker": { "active_states": ["Todo", "In Progress"], "terminal_states": ["Done", "Cancelled"] } }
+      },
+      "expect": { "disposition": "stop", "cleanup_workspace": false, "claim_released": true, "snapshot_updated": false }
+    },
+    {
+      "id": "absent-from-refresh",
+      "description": "The refresh answered for other running issues but returned no record for this one. Part B leaves the run untouched entirely - worker running, entry in place, claim held, snapshot unchanged - and reconciles it again on the next tick.",
+      "given": {
+        "refreshed": null,
+        "standing": null,
+        "config": { "tracker": { "active_states": ["Todo", "In Progress"], "terminal_states": ["Done", "Cancelled"] } }
+      },
+      "expect": { "disposition": "continue", "cleanup_workspace": false, "claim_released": false, "snapshot_updated": false }
+    }
+  ]
+}

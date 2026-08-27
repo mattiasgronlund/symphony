@@ -6122,3 +6122,55 @@ distinguish a missing field from an incomplete fetch, on genuine tracker-side de
 live failure mode, or on a decision already touching Sections 11.1, 16.3 or 16.6 that can fold the
 rename in. Relates to 0128, 0137, 0138, 0140, 0144, 0145, 0148. Accepted and applied to `SPEC.md`,
 `conformance/vectors/standing-conditions.json` and `conformance/README.md`.
+
+## 0156 — The refresh that returns a state, and the ids it does not answer
+
+**State:** Accepted
+**Folder:** [decisions/0156-refresh-record-and-absent-ids/](decisions/0156-refresh-record-and-absent-ids/)
+
+The second half of issue #121, and the two things decision 0155 left open. **Section 11.1
+constrained the operation's use and not its result** — `fetch_issue_states_by_ids` carried the
+single line "Used for active-run reconciliation." — and 0155's Refresh completeness block obliged
+only "the fields the standing conditions read", because it was written from Part B's needs. Part B
+is not the only consumer: Section 16.6's worker calls the same operation after every turn, does
+`issue = refreshed_issue[0] or issue`, and renders the next continuation prompt from it. Section
+12.2 renders with strict variable checking over an `issue` object "whose members are the fields
+Section 4.1.1 defines", so a repository whose `WORKFLOW.md` names `{{ issue.title }}` renders turn 1
+from the dispatched record and fails turn 2 with `template_render_error` (Section 5.5) and so a
+failed run attempt (Sections 5.5, 12.4) — **against an adapter that broke no rule**, and with a
+template error naming a variable the workflow author never changed. The obligation is therefore the
+whole record, which costs an adapter nothing it does not already do for `fetch_candidate_issues`:
+Section 4.1.1 opens by naming its three consumers — "orchestration, prompt rendering, and
+observability output" — and a refresh satisfying the first alone has satisfied one of three. **The
+second half is the id the refresh does not answer for.** Sections 8.5 and 16.3 have always disagreed
+about which collection Part B iterates — "For each running issue" against `for issue in refreshed` —
+so the absent case has two readings and the document picks neither. It was cited as an *argument* by
+decisions 0140 and 0148, in nearly identical words ("Part B enumerates terminal / active / neither
+and has **no absent branch at all**"), and repaired by neither, because in both the absent case was
+a consequence of a design being rejected rather than of the one accepted. It survives the accepted
+design: an id goes missing when the issue is deleted, when the adapter's scope moves, or when a
+backend answers partially in a way its error path does not catch. **The disposition is the
+whole-fetch failure's**: leave the run untouched and reconcile again next tick, on Section 8.5's own
+reasoning that a refresh that did not answer is not a tracker that revoked — a rule treating a
+partial failure more harshly than a total one is inconsistent, not stricter. The cost is stated: a
+permanently absent id leaves a run reconciliation never stops until the worker exits through
+`agent.max_turns`, with Part A's stall detection a weak backstop, since a run making progress
+against a deleted issue is not stalled. Section 14.5 carries the operator-facing half of that cost:
+deletion is the one intervention whose effect is nothing, and moving the issue to a terminal state
+is named as what does stop the run. Part B now iterates the running ids and looks records up by
+id, so the branch is expressible at all. Steelmanned and rejected: relaxing Section 12.2's strict
+variable checking instead, which trades a loud failure at the turn boundary for an agent handed an
+empty task description and leaves the orchestrator's own snapshot degraded; stopping the run on an
+absent id; and arming a retry for it, which hands the claim through a backoff for what may be a
+dropped packet. **The rename is declined again**: 0155's trigger — "a decision already touching
+Sections 11.1, 16.3 or 16.6" — has now fired twice without being taken, which is recorded so a third
+is a pattern rather than a coincidence. `conformance/vectors/reconcile-disposition.json` pins Part
+B's six outcomes, distinguishing workspace cleanup from claim release rather than collapsing both
+into "stopped", and re-tests no condition `standing-conditions.json` already covers. No token is
+added, renamed or removed, and no `Implementation-defined` or MUST-document obligation is created,
+so no `vocabulary.json` group and no Conformance Statement row are owed. Reconsider on a backend
+whose by-id endpoint is a projection with no full-record equivalent, on permanent absence becoming
+routine (which needs a bound, not a reversed disposition), on a third decision citing the
+operation's name against its contract, or on Section 4.1.1 gaining a field only the candidate path
+can populate. Relates to 0140, 0148, 0154, 0155. Accepted and applied to `SPEC.md`,
+`conformance/vectors/reconcile-disposition.json` and `conformance/README.md`.

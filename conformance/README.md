@@ -275,7 +275,8 @@ Slice 1 — pure derivations (decision 0046):
 | `vectors/candidate-eligibility.json` | `should_dispatch` | Daemon | Sections 8.2, 16.2 |
 | `vectors/issue-routing.json` | `route_issue` | Daemon | Sections 4.1.1, 8.7 |
 | `vectors/dispatch-ordering.json` | `sort_for_dispatch` | Daemon | Sections 8.2, 16.2 |
-| `vectors/standing-conditions.json` | `standing_conditions_hold` | Daemon | Sections 5.3.1, 8.2, 8.7, 16.3 |
+| `vectors/standing-conditions.json` | `standing_conditions_hold` | Daemon | Sections 4.2, 5.3.1, 8.2, 8.7, 16.3 |
+| `vectors/reconcile-disposition.json` | `reconcile_disposition` | Daemon | Sections 4.2, 8.2, 8.5, 16.3 |
 
 Slice 2 — prompt rendering (decision 0048):
 
@@ -515,3 +516,21 @@ guessed-at vector or entry:
   them. Section 11.2 carries a general Refresh completeness obligation in place of the
   Linear-specific sentence, and `conformance/vectors/standing-conditions.json` exercises the
   predicate. Issue #121.
+- **The refresh record was scoped to one caller, and an absent id had no branch — resolved
+  (decision 0156).** Section 11.1 constrained `fetch_issue_states_by_ids`'s **use** and not its
+  **result**: its entry read only "Used for active-run reconciliation." Decision 0155's Refresh
+  completeness block then obliged only the fields the standing conditions read, because it was
+  written from Part B's needs. Part B is not the only consumer. Section 16.6's worker calls the
+  same operation after every turn and renders the next continuation prompt from what comes back,
+  under Section 12.2's strict variable checking — so a record narrowed to reconciliation's fields
+  fails the next turn with `template_render_error` (Section 5.5) and so the run attempt (Section
+  12.4), against an adapter that broke no rule. Section 8.5 Part B and Section 16.3 disagreed on
+  which collection Part B iterates — "For each running issue" against `for issue in refreshed` —
+  so an id absent from the refresh had two readings and the document picked neither. That
+  disagreement was cited as an **argument** by decisions 0140 and 0148 (both describing Part B as
+  having no absent branch at all) and repaired by neither, because in both the absent case was a
+  consequence of a design being rejected rather than of the one accepted. What now holds it:
+  Section 11.1 states the result's shape, Section 11.2's Refresh completeness block is over the
+  whole record, Part B iterates the running ids and disposes of an unanswered one by leaving the
+  run untouched, and `conformance/vectors/reconcile-disposition.json` pins all six of Part B's
+  outcomes. Issue #121.
