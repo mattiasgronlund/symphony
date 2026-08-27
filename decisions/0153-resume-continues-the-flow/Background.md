@@ -229,6 +229,47 @@ At `22b5194`, against the working tree:
   two-element description verbatim.
 - `python3 scripts/validate_spec_consistency.py` reports 0 errors and 0 warnings.
 
+## Found while applying this, at `2cba688`
+
+**The token's contents had leaked into two places that describe its *form*, and the plan named
+neither as a step.** Both were reached because the plan's Cross-cutting sync said to check the
+`resume_token` form row rather than assume it, and the check fired twice. Neither owed a **new**
+Conformance Statement row — the plan's prediction was right, this decision creating no
+`Implementation-defined` choice and no MUST-document obligation — but each owed an edit to a row
+that already existed.
+
+`VCSX-SPEC.md` Section 13.3 read "the form of the `resume_token` — what it encodes, whether it is
+signed". Before this decision the token's contents were the engine's, so *what it encodes* was an
+accurate name for what an engine declares. After it the contents are the specification's, and the
+same phrase reads as licence over them: an engine could answer that row with a two-part token and
+point at Section 13.3 for the permission. Narrowed to "how it spells the three parts Section 5.5
+fixes", which keeps the obligation and moves the boundary back to spelling.
+
+`VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`'s matching row went further: its answer field enumerated
+the two parts literally, `<the point and the spent flow-bound count; …>`. That is decision 0132's
+drift class one artifact further out than step 9 reached — a restatement in the template's own words
+rather than a citation — and it is the failure mode `CLAUDE.md` records from decision 0128 read from
+the other side: the row existed, so no check reported it missing, and a Statement generated from it
+would have published a two-part token under a three-part specification with every table complete
+against itself. Both edited; the template row's `Section` column gains `5.5`.
+
+**The consumer-observable half and the implementer-only half were separated deliberately.** Section
+13.1's Resuming row takes the continuation, which a caller can observe: a resumed `ship` reaches
+`create_pr` or it does not. The fixed-width property and the registry-token spelling went to Section
+13.2 instead, because the token is opaque (Section 8.1) and no conformance test can look inside one
+to check either. Putting them in the test matrix would have written a row no test can fail.
+
+**Step 10's prediction was checked rather than taken, and it is the claim that could most easily
+have been wrong.** `conformance/vcsx/vectors/resume-precondition.json` reasons from "the branch
+ahead of the re-entered point is never run", and the plan asserts a forward continuation leaves that
+true. It does, but only because *ahead* names the prefix rather than the remainder: Section 12.3's
+`await_first` branch sits before the merge loop, and Section 8.1's own paragraph confirms the
+reading — "the await branch runs once, before the merge loop a resume re-enters". Had *ahead* meant
+*later in the sequence*, the continuation would have run exactly what the vector says is never run,
+and the vector's expectation would have moved. Section 8.1's paragraph now says "the prefix, not the
+remainder, which it continues into", so the reading the vector depends on is stated rather than
+inferred from an example.
+
 ## Reconsideration triggers
 
 - **A front-end sequence whose steps are not reachable from a trigger's position.** The whole

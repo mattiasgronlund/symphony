@@ -208,4 +208,41 @@ revision rather than inferred from the file list.
 
 ## Status
 
-Not started.
+Applied to `VCSX-SPEC.md` (Sections 5.5, 8.1, 8.2, 12.2, 12.3, 13.1, 13.2, 13.3), `VCSX-CONTRACT.md`
+(Section 5.6), `conformance/vcsx/vocabulary.json` (both the `output_keys` `resume_token` entry and
+the `arguments` `resume` entry) and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (the `resume_token`
+form row). `SPEC.md`, `CONFORMANCE-STATEMENT-TEMPLATE.md` and `conformance/` outside
+`conformance/vcsx/vocabulary.json` are unchanged.
+
+Step 10 resolved as the plan predicted, and the prediction was checked rather than taken:
+`conformance/vcsx/vectors/resume-precondition.json` is unedited. Its reasoning turns on "the branch
+ahead of the re-entered point is never run", where *ahead* names the prefix — Section 12.3's
+`await_first` branch sits before the merge loop, and Section 8.1's own paragraph says so — so a
+continuation running forward from the re-entered point still never reaches it. Its `notes` clause
+"no vector inputs the point the token names — no condition here reads it" also survives, no
+condition reading the root trigger either. Section 8.1's paraphrase was re-read against the edited
+bullet and still matches; the edit sharpened the sentence it paraphrases rather than moving it.
+
+Two sites the plan's Cross-cutting sync told this pass to check rather than assume, both hits, and
+both the same shape — the token's *contents* had leaked into text describing its *form*, so a
+two-part enumeration survived in two places no step named. Neither owed a **new** row, which is what
+the plan predicted; each owed an edit to an existing one. `VCSX-SPEC.md` Section 13.3 read "the form
+of the `resume_token` — what it encodes", which after this decision reads as licence over contents
+the specification now fixes; it is narrowed to name the three parts Section 5.5 fixes and to leave
+the engine only their spelling. `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md`'s matching row enumerated
+the two parts literally in its answer field — `<the point and the spent flow-bound count; …>` —
+which is decision 0132's drift class one artifact further out than step 9 reached, and a Statement
+generated from it would have published a two-part token under a three-part specification. Both are
+edited; the template row's `Section` column gains `5.5`.
+
+No new `Implementation-defined` or MUST-document obligation is created, so no Conformance Statement
+row is added (`CLAUDE.md`, decision 0128): the registry-token encoding is a MUST on the engine and
+the fixed-width property is a constraint, neither delegating a choice. The consumer-observable half
+of the change is Section 13.1's Resuming row; the two properties a consumer cannot observe through
+an opaque token — fixed width, registry-token spelling — are stated in Section 13.2 instead, which
+is where an obligation an implementer carries and a conformance test cannot reach belongs.
+
+Checks: `python3 scripts/validate_spec_consistency.py` — 0 errors, 0 warnings; `python3
+scripts/validate_workflow_bundle.py` — valid; `python3 scripts/check_plan_anchors.py
+decisions/0153-resume-continues-the-flow/Plan.md --rev 2cba688` — 0 findings from 19 quoted spans,
+before and after the edits.
