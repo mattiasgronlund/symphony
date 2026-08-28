@@ -147,20 +147,25 @@ reader is a Conformance Statement author, and a divergence shows up as an implem
 its own conformance in a spelling nothing else recognizes. `validation_profiles` carries
 `requirement_level` per entry rather than for the group, its four members not sharing one.
 
-Four groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
+Six groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
 because Section 10.4 permits an adapter to emit events the specification does not name;
 `config_namespaces`, because Section 5.3 permits an extension to define additional top-level keys;
 `error_classes`, because Section 5.5 permits an implementation to define additional classes for
-conditions its five do not name; and `failure_classes`, because Section 14.1 permits an OPTIONAL
-extension to define additional categories. In all four, the names the specification does state are
-fixed; it is the set that is open — so an implementation shipping no such extension may still close
-its own enum at the names it can produce.
+conditions its five do not name; `failure_classes`, because Section 14.1 permits an OPTIONAL
+extension to define additional categories; and `tracker_error_categories` and
+`agent_error_categories`, because Sections 11.4 and 10.6 each permit an implementation to define
+additional categories and require it to document one it defines. In all six, the names the
+specification does state are fixed; it is the set that is open — so an implementation shipping no
+such extension may still close its own enum at the names it can produce.
 
-`tracker_error_categories` and `agent_error_categories` carry no `exhaustive` key. Sections 11.4 and
-10.6 do not state that their sets are open, and inferring it here would be the registry deciding a
-question the prose left alone. The openness a generator needs follows from `requirement_level`
-instead: both are `RECOMMENDED`, so a type generated from either must already admit an unknown
-token.
+`tracker_error_categories` carries `requirement_level` per entry as well as for the group, which
+`validation_profiles` above already does for a reason of its own. Four of its members —
+`tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict` and
+`tracker_pagination_error` — are REQUIRED spellings, because Sections 11.2, 11.7 and 11.8 fail an
+operation with them by name; the rest keep the group's `RECOMMENDED`. A generator therefore reads
+the entry's level where it carries one and the group's otherwise, and the group level is not
+evidence that every member is advisory. `agent_error_categories` is uniformly `RECOMMENDED`, no
+rule in this specification branching on which of its categories a turn failed with.
 
 ### Deferred to later slices
 
