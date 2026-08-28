@@ -29,13 +29,14 @@ The engine's own conformance data derives from `VCSX-SPEC.md` and lives in `vcsx
 
 `SPEC.md` names token sets an implementation — or a repository author — is expected to spell
 exactly: the emitted runtime events (Section 10.4), the REQUIRED log context fields (Section 13.1),
-the neutral token-usage record (Sections 4.1.6, 13.5), the usage-ledger entry fields (Section 13.6),
-the state recovery classes and their per-field assignments (Sections 14.3, 4.1.8), the configuration
-namespaces (Sections 5.3, 18.2), the enumerated error tokens — the workflow and template error
-classes (Section 5.5), the tracker error categories (Section 11.4) and the agent-runner error
-categories (Section 10.6) — and the transition triggers a repository binds in `repo.policy.toml`
-(Section 11.6). Each was prose, so whoever wrote the token spelled it themselves and an upstream
-rename changed nothing downstream until someone read a re-pin diff.
+the neutral token-usage record (Sections 4.1.6, 13.5), the usage-ledger entry fields (Section
+13.6), the state recovery classes and their per-field assignments (Sections 14.3, 4.1.8), the
+configuration namespaces (Sections 5.3, 18.2), the enumerated error tokens — the dispatch preflight
+reason tokens (Section 6.3), the workflow and template error classes (Section 5.5), the tracker
+error categories (Section 11.4) and the agent-runner error categories (Section 10.6) — and the
+transition triggers a repository binds in `repo.policy.toml` (Section 11.6). Each was prose, so
+whoever wrote the token spelled it themselves and an upstream rename changed nothing downstream
+until someone read a re-pin diff.
 
 `vocabulary.json` is those sets as data, so a spelling can be generated or checked instead of
 transcribed. It is the same artifact `vcsx/vocabulary.json` is for the engine (decision 0051), on
@@ -117,6 +118,7 @@ no task model never raises.
 | `runtime_state_fields` | Sections 4.1.8, 14.3 |
 | `config_namespaces` | Sections 5.3, 5.6, 18.2, and the extension section owning each key |
 | `error_classes` | Sections 5.5, 5.1, 5.2, 5.4 |
+| `config_error_reasons` | Sections 6.3, 4.2, 9.7, 11.6, 11.7 |
 | `tracker_error_categories` | Sections 11.4, 11.7, 11.8 |
 | `agent_error_categories` | Section 10.6 |
 | `transition_triggers` | Sections 11.6, 8.10, 9.12 |
@@ -284,6 +286,12 @@ Slice 2 — prompt rendering (decision 0048):
 |------|----------|---------|--------------|
 | `vectors/prompt-rendering.json` | `render_prompt` | Daemon | Sections 5.4, 5.5, 12.2 |
 
+Slice 3 — dispatch preflight reasons (decision 0164):
+
+| File | Function | Profile | Derived from |
+|------|----------|---------|--------------|
+| `vectors/config-preflight.json` | `validate_dispatch_config` | Daemon | Sections 6.3, 4.2, 9.7, 11.6, 11.7 |
+
 ## Deferred to later slices
 
 These behaviors are conformance-relevant but not purely deterministic from inputs alone; they need a
@@ -296,8 +304,11 @@ harness with fixtures or live services and belong with the `Real Integration Pro
 - **Tracker read/write** surfaces, and the adapter's fetch of the candidate set (Sections 8.2,
   11). Section 8.2's eligibility predicate itself is no longer deferred: over an
   already-normalized record (Section 4.1.1) and a resolved configuration it is a pure function,
-  pinned by `vectors/candidate-eligibility.json`. What needs a live tracker is producing the
-  record, not judging it.
+  pinned by `vectors/candidate-eligibility.json`. Section 6.3's dispatch preflight checks are the
+  same shape: the adapter's capability descriptor is static data rather than a runtime call
+  (Section 11.7), so judging it against a resolved configuration needs no live tracker either,
+  pinned by `vectors/config-preflight.json`. What needs a live tracker is producing the record and
+  the descriptor, not judging either.
 - **Action-policy machine** outcomes and **message formulation** (Sections 9.8–9.12) — engine-side,
   covered by `VCSX-SPEC.md`'s own matrix.
 
@@ -623,3 +634,23 @@ guessed-at vector or entry:
   `repository-inheritance.json` separable and is the same property that hides an ownership defect.
   The key is now `repo.policy.toml`'s alone (Section 5.3.4), and `config_namespaces`' `hooks` entry
   distinguishes the bodies from the bound in its `note`.
+- **Three reason tokens named no condition, and the condition was in a different section — resolved
+  (decision 0164).** `unsupported_tracker_kind`, `missing_tracker_api_key` and
+  `missing_tracker_project_slug` each occurred once in the whole of `SPEC.md`, in the Section 11.4
+  bullet list that named them, and `tracker_error_categories`'s own note recorded the symptom
+  without the cause: "The first three entries carry no `condition` because Section 11.4 states
+  none." The cause was that their conditions were never Section 11.4's — they were Section 6.3's,
+  whose ten checks each ended "otherwise configuration error" and named no token at all. On the
+  path that matters, dispatch preflight's per-tick validation skips dispatch every tick while
+  reconciliation keeps running (Section 6.3), so the daemon stayed healthy and idle behind a single
+  undifferentiated refusal an operator could only read as a message string. Measured at `ee74fe7`:
+  `symphony-rs` raises two of the three as `FaultReport::of::<ConfigInvalid>` in
+  `crates/symphony-orchestrator/src/step.rs`, comparing the fault's reason as a string, while its
+  generated `TrackerErrorCategory` (from `conformance/vocabulary.json`) carries all three as
+  tracker variants — both faithful to a specification that put the token in one section and the
+  condition in another. Section 6.3 now carries a condition-to-reason table of twelve tokens
+  modeled on `VCSX-SPEC.md` Section 6.11's, states the evaluation order where several conditions
+  hold, and the three orphans moved with their conditions. What checks now: check 6
+  (`scripts/validate_spec_consistency.py`) closes `config_error_reasons` against Section 6.3's
+  table in both directions, and `vectors/config-preflight.json` pins each of the twelve tokens plus
+  the stated order.

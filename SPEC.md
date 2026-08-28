@@ -1132,12 +1132,14 @@ Per-tick dispatch validation:
 
 Validation checks:
 
-- At least one `repository` entry is configured, and every entry's key is a valid `Repository Key`
-  (Sections 4.2, 5.3.7); otherwise configuration error.
+- At least one `repository` entry is configured; otherwise configuration error.
+- Every `repository` entry's key is a valid `Repository Key` (Sections 4.2, 5.3.7); otherwise
+  configuration error.
 - The `vcs` fields Section 9.7 requires are resolved for every `repository` entry after resolution
   against the orchestrator level (Section 5.3.7), so a deployment supplying no `vcs.local_vcs` for
   one repository fails configuration rather than defaulting one for it.
-- `tracker.kind` is present and supported.
+- `tracker.kind` is present.
+- `tracker.kind` names a kind the implementation supports.
 - `tracker.api_key` is present after `$` resolution when the selected tracker adapter is
   `secret`-mode (Section 11.7); `none`-mode adapters require no key.
 - `tracker.project_slug` is present when REQUIRED by the selected tracker kind.
@@ -1153,6 +1155,34 @@ Validation checks:
   what its policy binds (`VCSX-SPEC.md` Section 5.1), so a misspelled trigger would otherwise
   validate and then never fire.
 - `codex.command` is present and non-empty.
+
+Each check above fails with a stable reason token, surfaced with the operator-visible error so an
+operator or a monitoring surface (Section 13.3) can branch on the cause without parsing a message:
+
+| Condition | Reason |
+|---|---|
+| No `repository` entry is configured | `no_repository_configured` |
+| A `repository` entry's key is not a valid `Repository Key` (Section 4.2) | `invalid_repository_key` |
+| A `vcs` field Section 9.7 requires is unresolved for an entry after resolution against the orchestrator level (Section 5.3.7) | `missing_vcs_field` |
+| `tracker.kind` is absent | `missing_tracker_kind` |
+| `tracker.kind` names a kind the implementation does not support | `unsupported_tracker_kind` |
+| `tracker.api_key` is absent after `$` resolution for a `secret`-mode adapter (Section 11.7) | `missing_tracker_api_key` |
+| `tracker.project_slug` is absent where the selected kind REQUIRES it | `missing_tracker_project_slug` |
+| `tracker.transitions` is non-empty and the adapter declares no `set_state` capability (Section 11.7) | `set_state_capability_unmet` |
+| `tracker.assignee` is non-null and the adapter declares it populates no `assignees` (Section 11.7) | `assignee_capability_unmet` |
+| A `routing` rule keys on a record field the adapter declares it does not populate (Sections 5.3.7, 8.7, 11.7) | `routing_field_unpopulated` |
+| A `tracker.transitions` entry's `on` is outside the Section 11.6 trigger vocabulary | `unknown_transition_trigger` |
+| The selected agent adapter's launch command is absent or empty (`codex.command`, Section 5.3.6) | `missing_agent_command` |
+
+Where several conditions hold at once, an implementation MUST report the reason of whichever is
+first in the table's order above. The order follows what each check reads: the `repository` set,
+then each entry's resolved `vcs`, then `tracker.kind` — which fixes the capability descriptor the
+three capability-dependent checks below it read — then the key and slug that kind requires, then
+those capability-dependent checks, then the trigger vocabulary, then the agent launch command.
+
+This table covers refusals of an operator configuration that has already been read and decoded; it
+does not cover an operator policy config that fails to parse. This specification names no failure
+class for that case — Section 5.5's classes are `WORKFLOW.md`'s.
 
 Neither repository-owned artifact is read here. A repository's `WORKFLOW.md` is inside a per-issue
 working tree that does not exist until the issue is dispatched (Sections 5.1, 9.2), and its
@@ -3295,9 +3325,6 @@ Additional normalization details:
 RECOMMENDED error categories. These are transport-neutral; each adapter maps its transport's
 failures onto them:
 
-- `unsupported_tracker_kind`
-- `missing_tracker_api_key`
-- `missing_tracker_project_slug`
 - `tracker_unsupported_operation` (write not in the adapter capability descriptor, Section 11.7)
 - `tracker_state_unreachable` (`set_state` target unreachable from the current state, Section 11.8)
 - `tracker_state_conflict` (issue state changed underneath a `set_state` write, Section 11.8)
@@ -3308,6 +3335,11 @@ failures onto them:
 - `tracker_payload_invalid` (unexpected or unparseable response payload)
 - `tracker_pagination_error` (pagination integrity failure, for example a missing continuation
   cursor)
+
+Note: `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` are
+dispatch preflight's reason tokens (Section 6.3), not entries here: each names a configuration
+defect refused before any tracker adapter is invoked, so no adapter maps a transport failure onto
+it.
 
 Note: the Linear adapter, being GraphQL over HTTP, reports a non-2xx response as
 `tracker_api_status`, a GraphQL `errors` array as `tracker_backend_errors`, and a missing page
@@ -3561,6 +3593,12 @@ REQUIRED context for a log record describing a call that reached the code host:
   (Sections 8.7, 15.3). It names the scope, never the credential or any part of its value. Without
   it an operator reading a budget record afterwards has to reconstruct the scope from the
   configuration as it was at the time, which is the one thing a record exists to avoid.
+
+REQUIRED context for a log record describing a dispatch preflight refusal:
+
+- `reason` — the token Section 6.3's table reports for the condition that failed. Without it the
+  record carries only that dispatch was skipped or startup failed, which is the branch the table
+  exists to give an operator or a monitoring surface without parsing a message.
 
 Message formatting requirements:
 
@@ -5154,6 +5192,8 @@ except where a bullet states otherwise.
   entry inherits is not shadowed by the default that would have filled the entry's own key
 - A `Repository Key` outside `[A-Za-z0-9._-]` fails configuration validation rather than being
   sanitized, and a policy config with no `repository` entry fails it too (Sections 4.2, 5.3.7, 6.3)
+- Each dispatch preflight condition (Section 6.3) surfaces the reason token its table states, and a
+  configuration failing several conditions reports the first in the table's stated order
 - An entry's `policy` and `workflow` pointers take their built-in defaults rather than an
   orchestrator-level value, there being none for either (Section 5.3.7)
 - Two repositories whose Ways of Working differ run under one operator policy config that names
@@ -5738,7 +5778,10 @@ Required of the `daemon` topology only.
   not gate (Sections 4.2, 8.2). Both conditions are standing: they apply for as long as the run is
   in flight, not only at dispatch (Sections 5.3.1, 8.5)
 - Dispatch preflight refuses a configured `tracker.assignee` on a tracker adapter whose capability
-  descriptor does not declare that it populates `assignees` (Sections 6.3, 11.7)
+  descriptor does not declare that it populates `assignees`, surfacing `assignee_capability_unmet`
+  (Sections 6.3, 11.7)
+- Dispatch preflight surfaces the reason token Section 6.3's table states for each of its twelve
+  conditions, and reports the first in the table's stated order where a configuration fails several
 - Multiple repositories per instance, enumerated in `repository` with a key an entry does not carry
   resolving from the orchestrator level leaf by leaf (Section 5.3.7), and each entry pointing at its
   own `repo.policy.toml` and `WORKFLOW.md`; issue→repo routing from the entries' own `routing` rules

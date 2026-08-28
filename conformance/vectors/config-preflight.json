@@ -1,0 +1,252 @@
+{
+  "function": "validate_dispatch_config",
+  "profile": "Daemon Conformance",
+  "spec_refs": ["Section 6.3", "Section 4.2", "Section 5.3.6", "Section 5.3.7", "Section 8.7", "Section 9.7", "Section 11.6", "Section 11.7"],
+  "description": "Decide whether a resolved operator configuration passes Section 6.3's dispatch preflight validation, and which reason token (Section 6.3's table) it fails with if not. Over an already-resolved configuration (Section 6.1's output) and the selected tracker adapter's static capability descriptor (Section 11.7 — data, not a runtime call), the predicate computes a value from inputs the same way should_dispatch does (vectors/candidate-eligibility.json), which is what puts it in this deterministic corpus rather than the Real Integration Profile. `$` resolution and the secret provider are not exercised: they are I/O-bound and deferred (conformance/README.md).",
+  "given": "{ config: { repository: Record<key, { vcs: { local_vcs }, routing: { match } }>, tracker: { kind, api_key, project_slug, transitions: Array<{from, on, to}>, assignee }, codex: { command } }, descriptor: { auth_mode, set_state, populates_assignees, populates_project, populates_team } }",
+  "expect": "{ valid: boolean, reason: <token> | null }",
+  "notes": [
+    "Each refusing vector holds exactly one failing condition except the three order-* vectors, which hold several so the reported reason is determined by Section 6.3's stated order rather than left ambiguous. The discipline for single-condition vectors is the one candidate-eligibility.json already records.",
+    "descriptor is the selected tracker adapter's Section 11.7 capability descriptor: auth_mode (`secret` | `none`), whether it declares the set_state write capability, and whether it populates assignees, project and team. labels and state are always populated (Section 4.1.1) and never gate a routing key, so no field represents them here.",
+    "repository.<key>.routing.match is Section 8.7's rule, in the shape vectors/issue-routing.json already uses: a map from a record field the rule keys on to the value it matches. Only the field names matter here — routing_field_unpopulated turns on which fields a rule keys on, not on what it matches.",
+    "codex.command is the launch command for the selected agent adapter (Section 5.3.6); missing_agent_command is stated over the selected adapter's launch command generally (Section 6.3), with codex.command named as the instance this specification defines.",
+    "tracker.project_slug is REQUIRED only where the selected kind requires it (`linear`, Section 6.4); a configuration under a kind that does not require it is not exercised here as a failure on that account.",
+    "tracker.kind is not restricted to `linear` and `forgejo` in these vectors: a `none`-mode adapter is admissible as an OPTIONAL extension (Section 11.7), and the predicate reads auth_mode off the selected adapter's descriptor rather than off the kind string, so a vector may name a third kind to exercise that path without asserting the extension is Core."
+  ],
+  "vectors": [
+    {
+      "id": "valid-minimal-config",
+      "description": "One repository, resolved vcs, a supported tracker kind with its required fields present, no transitions, no assignee filter, no routing, a non-empty agent command. Nothing to refuse.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": true, "reason": null }
+    },
+    {
+      "id": "valid-config-capabilities-satisfied",
+      "description": "Transitions, an assignee filter and a routing rule are all configured, and the descriptor declares every capability they require. Using a field is not itself a failure.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" }, "routing": { "match": { "assignees": "alice" } } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [{ "from": "todo", "on": "ready-for-review", "to": "in review" }], "assignee": "alice" },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": true, "reason": null }
+    },
+    {
+      "id": "valid-none-mode-adapter-requires-no-key",
+      "description": "A none-mode adapter dispatches without tracker.api_key; the key check applies only to secret-mode adapters (Section 11.7).",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "local", "api_key": null, "project_slug": null, "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "none", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": true, "reason": null }
+    },
+    {
+      "id": "no-repository-configured",
+      "description": "No repository entry at all.",
+      "given": {
+        "config": {
+          "repository": {},
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "no_repository_configured" }
+    },
+    {
+      "id": "invalid-repository-key",
+      "description": "One entry is configured, so no_repository_configured does not hold, but its key contains a space and is outside [A-Za-z0-9._-] (Section 4.2).",
+      "given": {
+        "config": {
+          "repository": { "my repo": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "invalid_repository_key" }
+    },
+    {
+      "id": "missing-vcs-field",
+      "description": "The repository entry carries no resolved vcs.local_vcs, the example Section 6.3 itself gives.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": null } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "missing_vcs_field" }
+    },
+    {
+      "id": "missing-tracker-kind",
+      "description": "tracker.kind is absent.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": null, "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "missing_tracker_kind" }
+    },
+    {
+      "id": "unsupported-tracker-kind",
+      "description": "tracker.kind is present but names a kind the implementation does not support.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "jira", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "unsupported_tracker_kind" }
+    },
+    {
+      "id": "missing-tracker-api-key",
+      "description": "tracker.kind selects a secret-mode adapter and tracker.api_key is absent after $ resolution.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": null, "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "missing_tracker_api_key" }
+    },
+    {
+      "id": "missing-tracker-project-slug",
+      "description": "tracker.kind=linear REQUIRES project_slug (Section 6.4), and it is absent.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": null, "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "missing_tracker_project_slug" }
+    },
+    {
+      "id": "set-state-capability-unmet",
+      "description": "tracker.transitions is non-empty and the descriptor declares no set_state capability.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [{ "from": "todo", "on": "ready-for-review", "to": "in review" }], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": false, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "set_state_capability_unmet" }
+    },
+    {
+      "id": "assignee-capability-unmet",
+      "description": "tracker.assignee is non-null and the descriptor declares it populates no assignees.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": "alice" },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": false, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "assignee_capability_unmet" }
+    },
+    {
+      "id": "routing-field-unpopulated",
+      "description": "A routing rule keys on team, and the descriptor declares it does not populate team.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" }, "routing": { "match": { "team": "backend" } } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": false }
+      },
+      "expect": { "valid": false, "reason": "routing_field_unpopulated" }
+    },
+    {
+      "id": "unknown-transition-trigger",
+      "description": "The set_state capability is met, so the surviving failure is the transition's on value, which is outside the Section 11.6 vocabulary.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [{ "from": "todo", "on": "review-ready", "to": "in review" }], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "unknown_transition_trigger" }
+    },
+    {
+      "id": "missing-agent-command",
+      "description": "The selected agent adapter's launch command is absent.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": null }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "missing_agent_command" }
+    },
+    {
+      "id": "order-repository-before-agent-command",
+      "description": "Two conditions from opposite ends of the table hold at once: no repository entry, and no agent command. Section 6.3 states the first in the table's order is reported, which is no_repository_configured — the one an implementation that happens to validate codex.command first would get wrong.",
+      "given": {
+        "config": {
+          "repository": {},
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": null }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "no_repository_configured" }
+    },
+    {
+      "id": "order-api-key-before-project-slug",
+      "description": "Both tracker.api_key and tracker.project_slug are absent. missing_tracker_api_key precedes missing_tracker_project_slug in the table's order.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": null, "project_slug": null, "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "missing_tracker_api_key" }
+    },
+    {
+      "id": "order-set-state-before-assignee-capability",
+      "description": "Both capability-dependent conditions hold: transitions configured against a descriptor with no set_state, and an assignee filter against a descriptor that populates no assignees. set_state_capability_unmet precedes assignee_capability_unmet in the table's order.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [{ "from": "todo", "on": "ready-for-review", "to": "in review" }], "assignee": "alice" },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": false, "populates_assignees": false, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "set_state_capability_unmet" }
+    }
+  ]
+}

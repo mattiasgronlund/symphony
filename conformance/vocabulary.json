@@ -162,18 +162,40 @@
     ]
   },
 
+  "config_error_reasons": {
+    "spec_refs": [
+      "SPEC.md Section 6.3 \"Dispatch Preflight Validation\"",
+      "SPEC.md Section 4.2 \"Stable Identifiers and Normalization Rules\"",
+      "SPEC.md Section 9.7 \"Repository Provisioning and the VCS Engine\"",
+      "SPEC.md Section 11.6 \"Workflow State Machine and Transition Triggers\"",
+      "SPEC.md Section 11.7 \"Adapter Capability Descriptor\""
+    ],
+    "note": "Dispatch preflight's refusals of the operator configuration (Section 6.3) — reported before any tracker adapter is invoked, so these are not adapter errors. `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` were carried in `tracker_error_categories` with a token and no `condition`; their condition was never Section 11.4's, it was Section 6.3's, and they moved here with it (decision 0164). Where several conditions hold, the reported reason is the first in the order the entries below are listed, which is Section 6.3's own stated order — a check is ordered after whatever produces the value it reads, so the repository set precedes each entry's resolved `vcs`, which precedes `tracker.kind`, which fixes the capability descriptor the three capability-dependent entries read. `unknown_transition_trigger` is spelled deliberately differently from the engine's `unknown_trigger` (`conformance/vcsx/vocabulary.json` `config_reasons`): the two are checked by different parties against different vocabularies — Symphony against `repo.policy.toml`'s `tracker.transitions`, the engine against its own edges — and an operator reading either in a log needs to tell which validator produced it.",
+    "entries": [
+      { "token": "no_repository_configured", "condition": "No `repository` entry is configured." },
+      { "token": "invalid_repository_key", "condition": "A `repository` entry's key is not a valid `Repository Key` (Section 4.2)." },
+      { "token": "missing_vcs_field", "condition": "A `vcs` field Section 9.7 requires is unresolved for an entry after resolution against the orchestrator level (Section 5.3.7)." },
+      { "token": "missing_tracker_kind", "condition": "`tracker.kind` is absent." },
+      { "token": "unsupported_tracker_kind", "condition": "`tracker.kind` names a kind the implementation does not support." },
+      { "token": "missing_tracker_api_key", "condition": "`tracker.api_key` is absent after `$` resolution for a `secret`-mode adapter (Section 11.7)." },
+      { "token": "missing_tracker_project_slug", "condition": "`tracker.project_slug` is absent where the selected kind REQUIRES it." },
+      { "token": "set_state_capability_unmet", "condition": "`tracker.transitions` is non-empty and the adapter declares no `set_state` capability (Section 11.7)." },
+      { "token": "assignee_capability_unmet", "condition": "`tracker.assignee` is non-null and the adapter declares it populates no `assignees` (Section 11.7)." },
+      { "token": "routing_field_unpopulated", "condition": "A `routing` rule keys on a record field the adapter declares it does not populate (Sections 5.3.7, 8.7, 11.7)." },
+      { "token": "unknown_transition_trigger", "condition": "A `tracker.transitions` entry's `on` is outside the Section 11.6 trigger vocabulary." },
+      { "token": "missing_agent_command", "condition": "The selected agent adapter's launch command is absent or empty (`codex.command`, Section 5.3.6)." }
+    ]
+  },
+
   "tracker_error_categories": {
     "spec_refs": [
       "SPEC.md Section 11.4 \"Error Handling Contract\"",
       "SPEC.md Section 11.7 \"Adapter Capability Descriptor\"",
       "SPEC.md Section 11.8 \"State Transition Write Semantics\""
     ],
-    "note": "Transport-neutral categories each tracker adapter maps its transport's failures onto. RECOMMENDED, so the names are a target vocabulary rather than a checked spelling; a generated type MUST admit an unknown token. The first three entries carry no `condition` because Section 11.4 states none. Section 17.3 requires four of them by name in `Core Conformance` checks — `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict`, `tracker_pagination_error` — which is a disagreement with this level recorded in `conformance/README.md` rather than resolved here.",
+    "note": "Transport-neutral categories each tracker adapter maps its transport's failures onto. RECOMMENDED, so the names are a target vocabulary rather than a checked spelling; a generated type MUST admit an unknown token. `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` moved to `config_error_reasons`: their condition was never here, it was Section 6.3's preflight check, and this group now carries only categories a tracker adapter's own transport failure can raise (decision 0164). Section 17.3 requires four of the remaining entries by name in `Core Conformance` checks — `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict`, `tracker_pagination_error` — which is a disagreement with this level recorded in `conformance/README.md` rather than resolved here.",
     "requirement_level": "RECOMMENDED",
     "entries": [
-      { "token": "unsupported_tracker_kind" },
-      { "token": "missing_tracker_api_key" },
-      { "token": "missing_tracker_project_slug" },
       { "token": "tracker_unsupported_operation", "condition": "Write not in the adapter capability descriptor (Section 11.7)." },
       { "token": "tracker_state_unreachable", "condition": "`set_state` target unreachable from the current state (Section 11.8)." },
       { "token": "tracker_state_conflict", "condition": "Issue state changed underneath a `set_state` write (Section 11.8)." },

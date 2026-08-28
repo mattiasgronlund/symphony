@@ -166,4 +166,9 @@ No section is renamed, added, or removed.
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Sections 6.3, 11.4, 13.1, 17.1, 18.1.3), `conformance/vocabulary.json` (new
+`config_error_reasons` group; `tracker_error_categories` loses three entries), the new
+`conformance/vectors/config-preflight.json`, `conformance/README.md`, and
+`scripts/validate_spec_consistency.py` (`CLOSED_GROUPS`, Symphony's first entry) on branch
+`apply-0164-preflight-reason-tokens`. `python3 scripts/validate_spec_consistency.py` reports `0
+error(s), 0 warning(s)`.
