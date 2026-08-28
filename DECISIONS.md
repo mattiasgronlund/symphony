@@ -6694,8 +6694,14 @@ site the plan had not reached inside a file it was already editing — the harne
 `render_prompt` entry, which states the floor where a harness author meets the function rather than
 in the findings section; and one site that has to *survive*, Section 5.4's "Liquid-compatible
 semantics are sufficient" being quoted by the resolved decision-0135 entry, which would have gone
-stale had the subset replaced the phrase rather than joining it. Relates to 0102, 0135, 0154, 0160.
-Accepted; `Plan.md` written, not yet applied to `SPEC.md`.
+stale had the subset replaced the phrase rather than joining it. Applying the plan found one more
+site of the same shape: `conformance/vocabulary.json`'s `error_classes` registry restated Section
+5.5's `template_render_error` condition list in free text `check_registries` does not compare
+against `SPEC.md`, so it kept naming three conditions after Section 5.5 named four; the entry now
+names the fourth. Relates to 0102, 0135, 0154, 0160. Accepted and applied to `SPEC.md` (Sections
+5.4, 5.5, 12.1, 12.2, 12.3, 17.1, 18.1.3, 19), `CONFORMANCE-STATEMENT-TEMPLATE.md`,
+`conformance/vectors/prompt-rendering.json`, `conformance/README.md` and
+`conformance/vocabulary.json`.
 
 ## 0164 — A preflight refusal that cannot say which check refused
 

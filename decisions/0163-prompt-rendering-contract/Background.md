@@ -234,3 +234,19 @@ conflated quotation, one site the plan had not reached, and one site it had to s
   phrase survives and why, in `Sites checked, no change needed`.
 - Two `Sites checked` bullets quoted `SPEC.md` without naming it, so the checker bound Section
   4.1.5's and Section 11.3's text to `conformance/README.md`. Both now name their document.
+
+## What applying the plan repaired (2026-08-28)
+
+Applying step 9 — adding "a member of the `issue` object outside the field set Section 4.1.1
+defines" as a fourth `template_render_error` condition in `SPEC.md` Section 5.5 — found a site the
+plan's `Scope` did not name: `conformance/vocabulary.json`'s `error_classes` registry restates the
+same condition list under its own `template_render_error` entry ("an unknown variable, an unknown
+filter, or an invalid interpolation"), and that restatement is free text. `check_registries`
+(`scripts/validate_spec_consistency.py`) only pulls a registry entry's `token` field into what it
+checks against `SPEC.md`; `condition` is prose no check reads, so the registry would have kept
+naming three conditions for a class Section 5.5 now names four for, and nothing in the corpus's own
+validation would have caught the drift. The entry's `condition` now names the fourth one too, citing
+Sections 5.4 and 12.2 as Section 5.5's own parenthetical does. The shape matches the plan review's
+earlier finding at `conformance/README.md`'s harness contract: a restatement living beside the
+function or registry entry a reader meets first, one hop from the section the step was written
+against.

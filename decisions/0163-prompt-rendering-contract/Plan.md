@@ -187,4 +187,7 @@ fixes about rendering, and what "OPTIONAL"/"absent" means for one input.
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Sections 5.4, 5.5, 12.1, 12.2, 12.3, 17.1, 18.1.3, 19),
+`CONFORMANCE-STATEMENT-TEMPLATE.md`, `conformance/vectors/prompt-rendering.json`,
+`conformance/README.md`, and `conformance/vocabulary.json` (repair, `Background.md` "What applying
+the plan repaired") on branch `apply-0163-prompt-rendering-contract`.

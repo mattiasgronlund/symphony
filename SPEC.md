@@ -937,13 +937,32 @@ Rendering requirements:
 - Unknown variables MUST fail rendering.
 - Unknown filters MUST fail rendering.
 
+REQUIRED minimal template subset. Every conforming implementation MUST render the following
+constructs, spelled in Liquid syntax, on a `WORKFLOW.md` that uses only them:
+
+- `{{ }}` interpolation of a template input variable or a member reached from it by dotted access
+  (for example `{{ issue.identifier }}`).
+- `{% for x in seq %}…{% endfor %}` iteration over a list and over a map (Section 12.2).
+- Indexed access to the two elements of the key/value pair a map iteration yields (Section 12.2),
+  for example `{{ kv[0] }}` and `{{ kv[1] }}` where `kv` is the loop variable.
+
+A construct beyond this subset — whitespace control, a conditional, assignment, or a tag not listed
+above — is `Implementation-defined` and MUST be documented (Section 19). A `WORKFLOW.md` using one
+is not portable across implementations: it renders only where the implementation documents that it
+supports the construct.
+
+The subset defines no filters, so "Unknown filters MUST fail rendering" above is checked against
+that empty set by default. An implementation MAY offer filters beyond it and MUST document those it
+offers (Section 19); a template using a filter is outside the portable surface.
+
 Template input variables:
 
 - `issue` (object)
   - Includes all normalized issue fields, including labels and blockers.
 - `attempt` (integer or null)
-  - `null`/absent on first attempt.
-  - Integer on retry or continuation run.
+  - Always bound (Section 12.1). `null` on a first attempt, an integer on a retry or continuation
+    run. Strict variable checking (above) is a rule about names the render context does not define,
+    and `attempt` is a name this specification defines, so it is never unknown.
 
 Fallback prompt behavior:
 
@@ -980,7 +999,8 @@ it.
   map)
 - `template_parse_error` (the prompt body is not well-formed template syntax)
 - `template_render_error` (the body is well formed and names something the engine cannot resolve: an
-  unknown variable, an unknown filter, or an invalid interpolation)
+  unknown variable, an unknown filter, an invalid interpolation, or a member of the `issue` object
+  outside the field set Section 4.1.1 defines)
 
 A class names the condition, not the stage at which an implementation detects it. An unknown
 variable and an unknown filter are both `template_render_error` however early the template engine
@@ -3541,7 +3561,7 @@ Inputs to prompt rendering:
 
 - `workflow.prompt_template`
 - normalized `issue` object
-- OPTIONAL `attempt` integer (retry/continuation metadata)
+- `attempt` (integer or null; retry/continuation metadata)
 
 ### 12.2 Rendering Rules
 
@@ -3552,6 +3572,18 @@ Inputs to prompt rendering:
 - Yield a map's entries in ascending order of key, comparing keys as strings by Unicode code point.
   Each entry is a two-element key/value pair with the key first. Yield a list's elements in list
   order.
+- A bound value that is null renders as the empty string. This covers every nullable value the
+  template context carries: Section 4.1.1's nullable fields, a blocker ref's nullable fields, and
+  `attempt` on a first run.
+- The `issue` object's members are the fields Section 4.1.1 defines and no others. Naming a member
+  outside that set — by dotted reference or in iteration — fails rendering with
+  `template_render_error` (Section 5.5). `metadata` is carved out: it is adapter-owned and open
+  (Section 4.1.1), so a member access under `metadata` is permitted for any key, and a key the
+  adapter did not supply is a bound null under the rule above. Closing the set is what keeps the
+  null rule safe: under an open set a misspelled field name and a genuinely null field would render
+  identically, erasing the only signal a prompt author has that a name does not match a field.
+- A `timestamp` value (Section 4.1.1) renders as RFC 3339 in UTC, the form Section 11.3 parses on
+  the way in.
 
 Note: comparing by code point makes the order independent of the host's locale, and applies no
 Unicode normalization form. Comparing the keys' UTF-8 bytes yields the same order, so an
@@ -3568,7 +3600,7 @@ this contract and no order is fixed for it.
 `attempt` SHOULD be passed to the template because the workflow prompt can provide different
 instructions for:
 
-- first run (`attempt` null or absent)
+- first run (`attempt` null)
 - continuation run after a successful prior session
 - retry after error/timeout/stall
 
@@ -5237,6 +5269,15 @@ except where a bullet states otherwise.
 - A map iterates in ascending key order by Unicode code point (Section 12.2), each entry a
   two-element key/value pair with the key first, and a list iterates in list order
   (`Daemon Conformance`)
+- A first-run `attempt` renders as the empty string rather than failing rendering (`Daemon
+  Conformance`)
+- A null issue field renders as the empty string (Section 12.2) (`Daemon Conformance`)
+- A member of the `issue` object outside Section 4.1.1's field set fails `template_render_error`,
+  while a `metadata` key the adapter did not supply renders as the empty string (`Daemon
+  Conformance`)
+- A `timestamp` field renders as RFC 3339 in UTC (Section 12.2) (`Daemon Conformance`)
+- A `WORKFLOW.md` using a construct outside the REQUIRED minimal subset (Section 5.4) is not
+  required to render on every implementation
 
 ### 17.2 Workspace Manager and Safety
 
@@ -5811,9 +5852,11 @@ Required of the `daemon` topology only.
 - The routing mapping is evaluated over the normalized record's own fields (`project`, `team`,
   `labels`, `assignees`, `state`) rather than over a raw tracker payload, and an issue more than one
   repository's rule claims is left unrouted (Sections 4.1.1, 8.7)
-- Strict prompt rendering with `issue` and `attempt` variables, failing `template_render_error`
-  whatever stage the engine resolves the unknown name at (Section 5.5), and map iteration in
-  ascending key order with a two-element key/value entry (Section 12.2)
+- Strict prompt rendering with `issue` and `attempt` variables: the REQUIRED minimal template
+  subset with no portable filters (Section 5.4); a bound null value rendering as the empty string;
+  a closed `issue` member set failing `template_render_error` whatever stage the engine resolves
+  the unknown name at (Section 5.5); and map iteration in ascending key order with a two-element
+  key/value entry (Section 12.2)
 - Exponential retry queue with continuation retries after normal exit; a retry timer fire is
   matched to its arming by `generation` and discarded when it does not match, so a cancelled timer
   that fired anyway cannot collapse a backoff (Section 8.4)
@@ -5971,27 +6014,28 @@ The Statement MUST record:
 - The OPTIONAL extensions shipped and the configuration namespace each owns (Section 18.2).
 - The engine `version_floor` the deployment declares (Section 18.1.4) and the agent-runner protocol
   floor the implementation advertises at bring-up (Section 10).
-- A resolution for every `Implementation-defined` behavior and every other "MUST document" obligation
-  in this specification, including: the identifiers a tracker adapter publishes in `assignees`,
-  `project` and `team` (Section 4.1.1); the agent sandbox profile, the effective egress policy, and
-  the composed environment set an agent receives (Section 9.6); whether the deployment scopes
-  outward credentials per repository (Section 15.3); the carrier by which an issue names its
-  pull-request target, where a deployment admits one (Section 9.7); how the process identity
-  `run_id` composes from is derived (Section 16.1); the bounds handed to the engine's bounded check
-  wait and the forge budget guard's enablement (Sections 8.11, 9.10); the approval, sandbox,
-  operator-confirmation, and user-input-required policy (Section 10.5); the tracker adapter's
-  result-limit and `metadata` choices (Section 11); the tracker error categories defined beyond
-  Section 11.4's set and the agent-runner error categories defined beyond Section 10.6's (Sections
-  10.6, 11.4); the log sink or sinks and what happens when one of them fails (Section 13.2); the
-  human-readable status surface, if any, the presentation of rate-limit data, and — where the
-  aggregation extension is shipped — the sink it aggregates into and how long that data is retained
-  (Sections 13.4, 13.5); the park-vs-retry disposition of `repository_provisioning_failures` and
-  `engine_invocation_failures` (Section 14.2); the durable-store degradation when no store is
-  configured, and the degradation when no store backs a `Cached external signal` field
-  (Section 14.3); the secret-redaction mechanism and substituted marker for captured subprocess text
-  (Section 15.3); how it is established that no route beyond the two this specification closes can
-  write the policy branch, and how a host-side hook's unit is resolved (Section 15.4); and the
-  host-side object-store path (Section 16.5).
+- A resolution for every `Implementation-defined` behavior and every other "MUST document"
+  obligation in this specification, including: the identifiers a tracker adapter publishes in
+  `assignees`, `project` and `team` (Section 4.1.1); the template constructs a `WORKFLOW.md` may use
+  beyond the REQUIRED minimal subset and the filters the implementation offers (Section 5.4); the
+  agent sandbox profile, the effective egress policy, and the composed environment set an agent
+  receives (Section 9.6); whether the deployment scopes outward credentials per repository (Section
+  15.3); the carrier by which an issue names its pull-request target, where a deployment admits one
+  (Section 9.7); how the process identity `run_id` composes from is derived (Section 16.1); the
+  bounds handed to the engine's bounded check wait and the forge budget guard's enablement (Sections
+  8.11, 9.10); the approval, sandbox, operator-confirmation, and user-input-required policy (Section
+  10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the tracker error
+  categories defined beyond Section 11.4's set and the agent-runner error categories defined beyond
+  Section 10.6's (Sections 10.6, 11.4); the log sink or sinks and what happens when one of them
+  fails (Section 13.2); the human-readable status surface, if any, the presentation of rate-limit
+  data, and — where the aggregation extension is shipped — the sink it aggregates into and how long
+  that data is retained (Sections 13.4, 13.5); the park-vs-retry disposition of
+  `repository_provisioning_failures` and `engine_invocation_failures` (Section 14.2); the
+  durable-store degradation when no store is configured, and the degradation when no store backs a
+  `Cached external signal` field (Section 14.3); the secret-redaction mechanism and substituted
+  marker for captured subprocess text (Section 15.3); how it is established that no route beyond the
+  two this specification closes can write the policy branch, and how a host-side hook's unit is
+  resolved (Section 15.4); and the host-side object-store path (Section 16.5).
 - The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8), to any state
   an OPTIONAL extension introduces, and to any state Core behavior requires beyond the fields
   Section 4.1.8 enumerates, and the reset consequence of each field classified `Ephemeral`
