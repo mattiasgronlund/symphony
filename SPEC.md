@@ -6014,29 +6014,28 @@ The Statement MUST record:
 - The OPTIONAL extensions shipped and the configuration namespace each owns (Section 18.2).
 - The engine `version_floor` the deployment declares (Section 18.1.4) and the agent-runner protocol
   floor the implementation advertises at bring-up (Section 10).
-- A resolution for every `Implementation-defined` behavior and every other "MUST document" obligation
-  in this specification, including: the identifiers a tracker adapter publishes in `assignees`,
-  `project` and `team` (Section 4.1.1); the template constructs a `WORKFLOW.md` may use beyond the
-  REQUIRED minimal subset and the filters the implementation offers (Section 5.4); the agent sandbox
-  profile, the effective egress policy, and
-  the composed environment set an agent receives (Section 9.6); whether the deployment scopes
-  outward credentials per repository (Section 15.3); the carrier by which an issue names its
-  pull-request target, where a deployment admits one (Section 9.7); how the process identity
-  `run_id` composes from is derived (Section 16.1); the bounds handed to the engine's bounded check
-  wait and the forge budget guard's enablement (Sections 8.11, 9.10); the approval, sandbox,
-  operator-confirmation, and user-input-required policy (Section 10.5); the tracker adapter's
-  result-limit and `metadata` choices (Section 11); the tracker error categories defined beyond
-  Section 11.4's set and the agent-runner error categories defined beyond Section 10.6's (Sections
-  10.6, 11.4); the log sink or sinks and what happens when one of them fails (Section 13.2); the
-  human-readable status surface, if any, the presentation of rate-limit data, and — where the
-  aggregation extension is shipped — the sink it aggregates into and how long that data is retained
-  (Sections 13.4, 13.5); the park-vs-retry disposition of `repository_provisioning_failures` and
-  `engine_invocation_failures` (Section 14.2); the durable-store degradation when no store is
-  configured, and the degradation when no store backs a `Cached external signal` field
-  (Section 14.3); the secret-redaction mechanism and substituted marker for captured subprocess text
-  (Section 15.3); how it is established that no route beyond the two this specification closes can
-  write the policy branch, and how a host-side hook's unit is resolved (Section 15.4); and the
-  host-side object-store path (Section 16.5).
+- A resolution for every `Implementation-defined` behavior and every other "MUST document"
+  obligation in this specification, including: the identifiers a tracker adapter publishes in
+  `assignees`, `project` and `team` (Section 4.1.1); the template constructs a `WORKFLOW.md` may use
+  beyond the REQUIRED minimal subset and the filters the implementation offers (Section 5.4); the
+  agent sandbox profile, the effective egress policy, and the composed environment set an agent
+  receives (Section 9.6); whether the deployment scopes outward credentials per repository (Section
+  15.3); the carrier by which an issue names its pull-request target, where a deployment admits one
+  (Section 9.7); how the process identity `run_id` composes from is derived (Section 16.1); the
+  bounds handed to the engine's bounded check wait and the forge budget guard's enablement (Sections
+  8.11, 9.10); the approval, sandbox, operator-confirmation, and user-input-required policy (Section
+  10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the tracker error
+  categories defined beyond Section 11.4's set and the agent-runner error categories defined beyond
+  Section 10.6's (Sections 10.6, 11.4); the log sink or sinks and what happens when one of them
+  fails (Section 13.2); the human-readable status surface, if any, the presentation of rate-limit
+  data, and — where the aggregation extension is shipped — the sink it aggregates into and how long
+  that data is retained (Sections 13.4, 13.5); the park-vs-retry disposition of
+  `repository_provisioning_failures` and `engine_invocation_failures` (Section 14.2); the
+  durable-store degradation when no store is configured, and the degradation when no store backs a
+  `Cached external signal` field (Section 14.3); the secret-redaction mechanism and substituted
+  marker for captured subprocess text (Section 15.3); how it is established that no route beyond the
+  two this specification closes can write the policy branch, and how a host-side hook's unit is
+  resolved (Section 15.4); and the host-side object-store path (Section 16.5).
 - The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8), to any state
   an OPTIONAL extension introduces, and to any state Core behavior requires beyond the fields
   Section 4.1.8 enumerates, and the reset consequence of each field classified `Ephemeral`
