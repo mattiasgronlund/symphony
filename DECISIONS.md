@@ -6558,3 +6558,189 @@ level out: Section 5's `repo.policy.toml` bullet enumerates what that artifact h
 was moved into the artifact without being added to the artifact's own enumeration. Relates to 0025,
 0029, 0097, 0132, 0158, 0160. Accepted and applied to `SPEC.md` (Sections 5, 5.3.4, 5.6, 6.4, 9.4,
 14.5, 15.4, 17.1, 17.2, 18.1.2), `conformance/vocabulary.json` and `conformance/README.md`.
+
+## 0162 — The four tracker categories a guarantee is checked by
+
+**State:** Accepted **Folder:**
+[decisions/0162-tracker-category-levels/](decisions/0162-tracker-category-levels/)
+
+Closes `conformance/README.md`'s open finding that Section 17.3 required four RECOMMENDED tracker
+categories by name. The finding understated it: a test matrix requiring a name is a matrix that has
+drifted, but the four are spelled into the specification's own **normative prose**. **Measured**
+(`grep -n <token> SPEC.md` at `a4048bc`, counting sites outside Section 11.4's defining list):
+`tracker_pagination_error` at Section 11.2 ("A failed or incomplete enumeration surfaces
+`tracker_pagination_error`"), `tracker_unsupported_operation` at Section 11.7 ("anyway returns"),
+and `tracker_state_unreachable` and `tracker_state_conflict` at Section 11.8 ("`set_state` fails
+with"), each also in Section 17.3 and — bar the first — in Section 18.1.2. Against that:
+`tracker_api_request` and `tracker_payload_invalid` occur at **one** site each, the bullet defining
+them; `tracker_api_status` and `tracker_backend_errors` at their bullet plus Section 11.4's
+illustrative Linear note; and `unsupported_tracker_kind`, `missing_tracker_api_key` and
+`missing_tracker_project_slug` at one site each with nothing anywhere producing them (decision
+0164's subject). **The mechanism**: RECOMMENDED means an implementation MAY use another name, while
+Section 11.8's failure is a brokered result returned across the sandbox boundary (Section 11.5) to a
+caller the same section tells to branch on it — so two conformant implementations can report
+`tracker_state_conflict` and `state_changed_underneath`, and a caller branching on the name branches
+on something the specification permits to differ. **Measured downstream**: `symphony-rs` at
+`ee74fe7` generates `TrackerErrorCategory` from `conformance/vocabulary.json` and carries the level
+into the generated type — "RECOMMENDED, because the names are a target vocabulary rather than a
+checked spelling" — with an unknown token asserted to parse; every artifact is correct against the
+one above it and the chain publishes an advisory spelling for a value Section 11.8 tells a caller to
+branch on, which is decision 0132's shape. **Decided**: the four are REQUIRED spellings, the rest
+stay RECOMMENDED, and the section states the predicate that separates them — a category is REQUIRED
+where it is what makes a guarantee this specification states observable when it fails. The predicate
+is checkable against the other seven rather than being a list, and it selects the same four the
+document already spells. Sections 11.4 and 10.6 both gain Section 5.5's openness clause and
+MUST-document obligation, with two Conformance Statement rows: fixing 11.4 alone would install
+between it and 10.6 the asymmetry being removed between 11.4 and 17.3. Steelmanned and rejected:
+re-levelling all eleven on decision 0102's exact shape, which is tidier and costs a non-HTTP adapter
+nothing — but three entries carry no condition for the conditional phrasing to attach to, and it
+would fix four names no sentence in the specification uses, which is requirement without a consumer;
+and stripping the names instead, softening Sections 11.2, 11.7, 11.8, 17.3 and 18.1.2, which has a
+real precedent in Section 17.5 naming no agent category at all — it loses because Section 10.6's
+categories classify what an adapter observed while Section 11.8's are a result a caller is told to
+branch on, so softening would leave the branch keyed on nothing. Also rejected: leaving it open, the
+finding having named "a second tracker adapter asserted against those checks" as the evidence that
+would force it while Section 17.3's first check already requires two. No vector is owed: a
+requirement level is an assignment, and the tracker surface is deferred to the Real Integration
+Profile. Reconsider on a tracker whose backend collapses two of the four conditions into one, on a
+recovery rule that ever disposes of a failure by which of the seven it was, or on evidence that a
+two-level section is read by position rather than by marking. Reviewing the plan before its first
+edit found one misattributed quotation — "never silently no-oped" is Section 17.3's phrasing, quoted
+against Section 11.7, the section that owns the construct — and one convention all three of this
+session's plans had wrong: `CLAUDE.md` required a section number "paired with its title" in
+quotation marks, and `check_plan_anchors.py` reads a quoted span as a claim against the section
+*body*, where `section_body`'s heading pattern consumes the title's first character — so a full
+title can never occur in the section it titles, and a quoted pair fails for every section in the
+corpus rather than for some. Decision 0161's applied plan writes the pair in parentheses instead;
+converting it removed the whole class, 8, 13 and 10 findings falling to 3, 7 and 4. `CLAUDE.md` now
+states the parenthesised form and the reason. Repairing `section_body` instead was considered and
+not done: it is shared by four checks in `scripts/validate_spec_consistency.py` whose reads would
+change with it. Relates to 0102, 0104, 0132, 0164. Accepted; `Plan.md` written, not yet applied to
+`SPEC.md`.
+
+## 0163 — The prompt template contract is a cross-implementation contract
+
+**State:** Accepted **Folder:**
+[decisions/0163-prompt-rendering-contract/](decisions/0163-prompt-rendering-contract/)
+
+Closes `conformance/README.md`'s two remaining open findings — "Template syntax is a floor, not a
+mandate" and "`attempt` 'null or absent' versus strict mode" — which are one finding, and adds two
+more of the same kind found by measuring the one implementation. **The mechanism**: Section 12.4
+fails the run attempt on a rendering failure and Section 5.5 gives it a REQUIRED class, so every
+question the specification leaves open about rendering has two possible answers — a string, or a
+failed run — and `WORKFLOW.md`'s author cannot tell which they will get, writing the file without
+knowing which implementation renders it. That is decision 0160's argument for refusing an
+`Implementation-defined` discovery, and it is stronger here: discovery decides whether the file is
+read, syntax decides whether reading it yields a prompt or a failed attempt. Five things a template
+can do whose outcome is unfixed: the syntax itself; filters, where "Unknown filters MUST fail
+rendering" is normative and no section names a filter, so what counts as unknown is whatever the
+implementation registered; `attempt` on a first run, where Section 4.1.5 says null and Sections 5.4,
+12.1 and 12.3 admit absent, and absent means the run fails; an unknown member of a known object, the
+`{{ issue.assignee }}` typo for `assignees`; and what a timestamp prints, Section 11.3 fixing only
+the input side. **Measured**: the corpus is already stricter than the specification it tests —
+`prompt-rendering.json` is `Daemon Conformance` with Liquid source throughout, and records the
+divergence it routed around in its own description ("single-line and use delimiters rather than
+inter-token whitespace so the expected output does not depend on an engine's whitespace-control
+behavior"), which is how the stable subset was located; and of ten vectors **none** uses a filter
+but the deliberately-unknown one. `symphony-rs` at `ee74fe7` answered all four questions and the
+specification none of them: `liquid` 0.26.11 with `default-features = false` so "`with_stdlib()`
+does not exist to be reached for by accident" and no filters ship — reasoned from Tier-0
+determinism, not portability; `a_first_attempt_renders_the_null_rather_than_failing` asserting
+`"Attempt []."`; `an_absent_issue_field_renders_the_null` already generalizing to Section 4.1.1's
+nullable fields; `an_unknown_field_of_a_known_object_fails` saying outright that this is "which
+`§5.4` does not require and which is the behaviour to want"; and
+`a_timestamp_renders_as_milliseconds_since_the_epoch` routing the gap to `SPEC §19` — an obligation
+`SPEC.md` does not create, so nothing would have told a second implementation to publish anything.
+Four sound judgments, none of them the specification's. **Decided**: a REQUIRED minimal subset in
+Liquid spelling — `{{ path }}` with dotted member access, `{% for %}` over a list and a map, and the
+two-element key/value pair indexing Section 12.2 already requires — with anything beyond it
+`Implementation-defined` and documented; no portable filters, an implementation MAY offer them and
+MUST document those it offers; `attempt` always bound and null on a first run, since strict checking
+is a rule about unknown *names* and Section 12.1 defines this one; a bound null renders as the empty
+string, over every nullable value the context carries rather than over `attempt` alone; the `issue`
+object's members closed to Section 4.1.1's fields with `metadata` carved out as adapter-owned and
+open; and a timestamp rendering as RFC 3339 in UTC, the form Section 11.3 parses. Section 5.4 owns
+the surface a template is written against and Section 12.2 what a bound value renders to, and no
+rule is stated in both. Three consequences stated rather than left derivable: the closed member set
+is already mechanized, `scripts/validate_spec_consistency.py` check 7 holding `iterate-issue-object`
+to Section 4.1.1; closing the member set is what makes the null rule safe, since under an open set a
+misspelled field and a genuinely null one render identically and the signal is lost; and the
+timestamp choice is load-bearing on the filter choice, an author handed `1770000000000` having no
+portable way to make it a date. Steelmanned and rejected: mandating Liquid outright, which matches
+the corpus and the implementation and would be right if "Liquid" named a single normative artifact —
+it does not, and two of this repository's own decisions were spent discovering its edges (0102 on
+parse-time filter resolution, 0135 on randomized hash iteration order, both in 0.26.11); keeping the
+floor and adding only the missing obligation and Statement row, which is honest but documents the
+divergence for an audience — "a consumer, auditor, or peer implementation" — that does not include
+the repository author whose file has to render; and closing the four value questions while leaving
+the syntax open, which fixes what an afternoon of reading turned up and leaves the parent that
+generates them. Two Statement rows owed, and four new vectors plus a restated
+`unknown-filter-fails`. Reconsider on an engine that cannot express the map-entry pair indexing, on
+a prompt that genuinely needs `{% if %}`, on an agent runner that consumes a timestamp rather than
+reading it, or on a tracker whose `metadata` keys collide with Section 4.1.1 field names. Reviewing
+the plan before its first edit found a quotation assembled from two documents (the vector file's
+description merged with `conformance/README.md`'s open finding, which different steps rewrite); one
+site the plan had not reached inside a file it was already editing — the harness contract's
+`render_prompt` entry, which states the floor where a harness author meets the function rather than
+in the findings section; and one site that has to *survive*, Section 5.4's "Liquid-compatible
+semantics are sufficient" being quoted by the resolved decision-0135 entry, which would have gone
+stale had the subset replaced the phrase rather than joining it. Relates to 0102, 0135, 0154, 0160.
+Accepted; `Plan.md` written, not yet applied to `SPEC.md`.
+
+## 0164 — A preflight refusal that cannot say which check refused
+
+**State:** Accepted **Folder:**
+[decisions/0164-preflight-reason-tokens/](decisions/0164-preflight-reason-tokens/)
+
+Not a finding the corpus recorded; it surfaced from a measurement taken while resolving decision
+0162. `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` occur
+at exactly **one** site each in the whole of `SPEC.md` — the bullet in Section 11.4 defining them —
+and `conformance/vocabulary.json` already recorded the symptom without naming the cause: "The first
+three entries carry no `condition` because Section 11.4 states none." They carry no condition
+because their conditions are Section 6.3's. **The mechanism**: Section 6.3's ten checks each end
+"otherwise configuration error", and the per-tick disposition keeps the daemon up, keeps
+reconciliation running and dispatches nothing, every tick, until an operator notices — while the
+only machine-readable fact is that *something* was refused. An operator watching the monitoring
+interface (Section 13.3) or the JSON API (Section 13.8.2) sees a healthy idle daemon and must read a
+message string to tell a missing API key from a routing rule keyed on a field the adapter does not
+populate, repairs with nothing in common. This is the state decision 0056 found in the engine, whose
+words fit unchanged — a caller "could tell *that* a policy was refused but not *why* without parsing
+`message`" — and `VCSX-SPEC.md` Section 6.11 now carries twenty-three rows against nine tokens while
+Symphony's equivalent has ten checks and none. The three orphans are the visible corner: someone
+noticed three checks needed names and put them in the nearest registry that had any. **Measured**:
+`symphony-rs` at `ee74fe7` raises two of them as `FaultReport::of::<ConfigInvalid>("…")` in
+`crates/symphony-orchestrator/src/step.rs` while `crates/symphony-vocab/src/generated.rs` carries
+all three as `TrackerErrorCategory` variants — the implementation reached into the tracker registry
+for a configuration reason because that is where the only suitable tokens were, and both halves are
+faithful to a specification that puts the token in one section and the condition in another.
+**Decided**: Section 6.3 gains a condition-to-reason table on Section 6.11's shape, one token per
+condition, absorbing the three; twelve tokens, with the two compound checks split because their
+repairs differ within the check — supply a `tracker.kind` or choose a supported one; add a
+repository or rename one. Two naming judgments are recorded rather than left silent:
+`unknown_transition_trigger` rather than the engine's `unknown_trigger`, the two being checked by
+different parties against different vocabularies with different repairs, which Section 6.3 already
+states ("The VCS engine cannot make this check on Symphony's behalf"); and `missing_agent_command`
+rather than `missing_codex_command`, a token that must be renamed when a second adapter's launch
+command is validated being one that will not be. The evaluation order is stated because the table
+makes it observable — a check is ordered after whatever produces the value it reads, three
+capability-dependent checks reading a descriptor only a resolved `tracker.kind` selects. Steelmanned
+and rejected: one token per check, which maps onto a structure the section already has and needs
+nothing kept in step — but `unsupported_tracker_kind` would then mean "absent or unsupported", which
+the name denies and a reader acts on wrongly half the time, saving two tokens at the cost of the
+property tokens exist for; and leaving the three in Section 11.4 with a clarifying note, genuinely
+the one-line edit and genuinely harmless on its own, which loses because seven checks would still
+refuse namelessly and the note would document that three of ten refusals can be named. Filed rather
+than fixed: this specification names no class for an operator policy config that does not parse,
+Section 5.5's five being `WORKFLOW.md`'s — a Section 5.3 file-contract question whose answer is a
+recovery decision about a running daemon. `config_error_reasons` joins `CLOSED_GROUPS`, Symphony's
+first entry there, so check 6 runs both directions; `conformance/vectors/config-preflight.json` pins
+reason-per-condition and the order, pure over an already-resolved configuration on
+`candidate-eligibility.json`'s own reasoning. No Conformance Statement row is owed. Reconsider on a
+deployment needing every holding condition reported rather than the first, on a second agent adapter
+whose launch command is validated at preflight, or on an extension adding a preflight check.
+Reviewing the plan before its first edit found one defect, in the section whose whole purpose is to
+be read later: the `Anchor changes` entries recorded the three tokens as moving "from Section 11.4
+to Section 6.3" without naming their document, and the last document named before them was
+`VCSX-SPEC.md` — so the append-only history a reader chases a stale anchor through pointed at the
+engine. Relates to 0056, 0130, 0132, 0162. Accepted; `Plan.md` written, not yet applied to
+`SPEC.md`.
