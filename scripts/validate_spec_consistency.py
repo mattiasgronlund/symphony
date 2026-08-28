@@ -97,6 +97,13 @@ NAMESPACE_RULES = {"hooks": ("hooks.workspace.", "hooks.engine.")}
 # other tokens, so `entry_points` is read from its opening enumeration alone (decision 0141: that
 # group carried thirteen entries citing a section that named ten, and nothing compared them), and
 # `arguments` from that section's own argument bullets (decision 0142).
+#
+# `conformance/vocabulary.json` carries one row, Symphony's first: `config_error_reasons` reads
+# SPEC.md Section 6.3's condition-to-reason table (decision 0164). Every row of that table ends in
+# `| \`token\` |`, so the pattern anchors on that trailing table cell rather than on a line prefix —
+# a table row has no leading marker the way a bullet has `- ` — and needs no region, because the
+# table is the whole of what the section states in that shape; unlike Section 8.1, nothing before or
+# after it in the section body would spell a false-positive token in the same form.
 CLOSED_GROUPS = {
     "conformance/vcsx/vocabulary.json": {
         "operations": ("VCSX-SPEC.md", ("4.1",), r"^- `([a-z_]+)` —", None),
@@ -104,6 +111,9 @@ CLOSED_GROUPS = {
         "entry_points": ("VCSX-SPEC.md", ("8.1",), r"`([a-z_]+)`",
                          r"The entry points are[^\n]*:\n\n((?:(?:- |  )[^\n]*\n)+)"),
         "arguments": ("VCSX-SPEC.md", ("8.1",), r"^- `([a-z_]+)`(?: \(OPTIONAL\))? — ", None),
+    },
+    "conformance/vocabulary.json": {
+        "config_error_reasons": ("SPEC.md", ("6.3",), r"\|\s*`([a-z_]+)`\s*\|\s*$", None),
     },
 }
 

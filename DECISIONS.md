@@ -6742,5 +6742,7 @@ Reviewing the plan before its first edit found one defect, in the section whose 
 be read later: the `Anchor changes` entries recorded the three tokens as moving "from Section 11.4
 to Section 6.3" without naming their document, and the last document named before them was
 `VCSX-SPEC.md` — so the append-only history a reader chases a stale anchor through pointed at the
-engine. Relates to 0056, 0130, 0132, 0162. Accepted; `Plan.md` written, not yet applied to
-`SPEC.md`.
+engine. Relates to 0056, 0130, 0132, 0162. Accepted and applied to `SPEC.md` (Sections 6.3, 11.4,
+13.1, 17.1, 18.1.3), `conformance/vocabulary.json`, the new
+`conformance/vectors/config-preflight.json`, `conformance/README.md` and
+`scripts/validate_spec_consistency.py`.
