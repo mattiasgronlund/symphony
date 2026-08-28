@@ -259,8 +259,8 @@ Some functions carry an interpretation note beyond plain equality:
   the resolved config equals each listed path; paths **not** listed are unconstrained (so
   Implementation-defined defaults are never pinned).
 - `render_prompt` — `expect` is either `{ rendered: <string> }` (assert the rendered string equals
-  it) or `{ error: <class> }` (assert rendering fails with that error class). Templates use
-  Liquid-compatible syntax (Section 5.4).
+  it) or `{ error: <class> }` (assert rendering fails with that error class). Templates are written
+  in the REQUIRED minimal template subset (Section 5.4).
 
 The harness itself is not specified here — only the contract above. The corpus prescribes no test
 framework, assertion library, or file-loading mechanism.
@@ -449,18 +449,35 @@ guessed-at vector or entry:
   `agent_error_categories` states the relationship in its `note` rather than leaving a generator to
   discover it. Section 10.6 gained an openness clause under decision 0162, mirroring Section 5.5's:
   an implementation MAY define additional categories and MUST document any it defines (Section 19).
-- **Template syntax is a floor, not a mandate (open).** Section 5.4 says a "Liquid-compatible
-  semantics are sufficient" engine, which pins the strict-failure MUSTs and the
-  `template_render_error` class but leaves the concrete delimiter/filter syntax to the
-  implementation. Because `WORKFLOW.md` is repository-owned and must render on any implementation
-  Symphony targets, the template syntax is effectively a cross-implementation contract; the slice
-  authors the reference vectors in Liquid syntax. Tightening "sufficient" to a normative shared
-  syntax is a spec-clarification candidate.
-- **`attempt` "null or absent" versus strict mode (open).** Section 5.4 lists `attempt` as
-  `null`/absent on the first run, but strict variable checking says unknown variables MUST fail.
-  Whether a template that reads `attempt` on the first run renders empty (known-but-null) or fails
-  (absent = unknown) is undetermined, so no first-run `attempt` vector is authored; the slice tests
-  `attempt` only with an integer value. A spec-clarification candidate.
+- **Template syntax is a floor, not a mandate — resolved (decision 0163).** Section 5.4's
+  "Liquid-compatible semantics are sufficient" pinned the strict-failure MUSTs and the
+  `template_render_error` class but left the concrete syntax to the implementation, so a
+  `WORKFLOW.md` its repository author writes could not be known to render on the implementation
+  that runs it. Measuring `symphony-rs` at `ee74fe7` found the one implementation had already
+  answered this question and three more of the same shape — filters, `attempt` on a first run (the
+  next entry), an unknown member of a known object, and what a timestamp prints — while the
+  specification answered none of them:
+  `a_first_attempt_renders_the_null_rather_than_failing`,
+  `an_absent_issue_field_renders_the_null`, `an_unknown_field_of_a_known_object_fails`, and
+  `a_timestamp_renders_as_milliseconds_since_the_epoch`. The corpus was already stricter than the
+  specification it tests — every `template` in `prompt-rendering.json` is Liquid source — and had
+  recorded, in its own description, the divergence it routed around ("single-line and use
+  delimiters rather than inter-token whitespace so the expected output does not depend on an
+  engine's whitespace-control behavior"); of ten vectors, none used a filter but the
+  deliberately-unknown one. Section 5.4 now states a REQUIRED minimal subset beside the
+  Liquid-compatible-semantics floor — `{{ }}` interpolation with dotted member access, `{% for %}`
+  iteration over a list and a map, and the map-entry pair indexing Section 12.2 already required —
+  with a construct beyond it `Implementation-defined`, documented, and not portable, and states
+  that the subset defines no portable filters. Two of the four gaps — the closed `issue` member set
+  and the timestamp — were found by reading the implementation rather than by authoring a vector;
+  Section 12.2 now closes the `issue` object's member set to Section 4.1.1's fields and fixes a
+  timestamp's rendering to RFC 3339 in UTC. Four new vectors pin the value rules, and
+  `unknown-filter-fails`'s description is restated for the now-stated empty filter table.
+- **`attempt` "null or absent" versus strict mode — resolved (decision 0163).** Closed by the
+  decision above: `attempt` is now always bound and `null` on a first run rather than absent,
+  because strict variable checking is a rule about names the render context does not define and
+  `attempt` is a name this specification defines (Sections 5.4, 12.1). `attempt-null-renders-empty`
+  pins a first-run `attempt` rendering as the empty string rather than failing.
 - **`vcs` was not in Section 5.3's top-level key list — resolved, and stale before it was closed
   (decision 0159).** The finding recorded that Section 5.3's "Top-level operator-config keys" named
   only `tracker`, `polling`, `workspace`, `agent` and `codex`, so `config_namespaces` carried `vcs`

@@ -378,7 +378,7 @@
       {
         "token": "template_render_error",
         "gating": "fails_attempt",
-        "condition": "The body is well formed and names something the engine cannot resolve: an unknown variable, an unknown filter, or an invalid interpolation (Section 5.4)."
+        "condition": "The body is well formed and names something the engine cannot resolve: an unknown variable, an unknown filter, an invalid interpolation, or a member of the `issue` object outside the field set Section 4.1.1 defines (Sections 5.4, 12.2)."
       }
     ]
   },
