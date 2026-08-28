@@ -114,8 +114,12 @@ So plans stay re-executable in any order and after intervening edits, `Plan.md` 
 
 - Prefer code-token identifiers (field names, error/category codes, state names, event names, file
   names); then section titles; cite a section number only as a secondary hint, paired with its title
-  — e.g. `Section 8.4 "Retry and Backoff"`. Section numbers renumber on insert/reorder, so they are
-  not a reliable primary key.
+  in parentheses — e.g. `Section 8.4 (Retry and Backoff)`. Section numbers renumber on
+  insert/reorder, so they are not a reliable primary key. Parentheses rather than quotation marks:
+  `scripts/check_plan_anchors.py` reads a double-quoted span as a claim to verify against the cited
+  section's *body*, and `section_body` starts after the title's first character, so a quoted title
+  never matches its own heading and every such pair reports as a span that does not occur where the
+  plan puts it (decision 0162).
 - Phrase each step as a declarative post-condition ("ensure X exists with `Default: Z`"), not an
   imperative positional diff. Where prose must be located, quote a short unique nearby token. Give
   each step a recognizable done-condition so it is self-checking and idempotent on re-execution.
