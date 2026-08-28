@@ -250,3 +250,27 @@ Sections 5.4 and 12.2 as Section 5.5's own parenthetical does. The shape matches
 earlier finding at `conformance/README.md`'s harness contract: a restatement living beside the
 function or registry entry a reader meets first, one hop from the section the step was written
 against.
+
+## What reviewing the Statement rows changed (2026-08-28)
+
+`scripts/validate_spec_consistency.py` check 2 errors only on a section with obligations and
+**zero** rows, and warns on a count shortfall. It cannot tell whether a row asks the question its
+obligation answers, and the script says so in its own stated limits. Reading the four rows this
+decision and 0162 add against the obligations they cite found one thin.
+
+The filters row asked `<filter names, or none>`. A name is not what the obligation is for. Section
+19 exists "so a consumer, auditor, or peer implementation can determine what the implementation does
+without reading its source", and a peer reading `truncate` learns that a name exists, not its
+semantics or its arity. The row this one was modelled on — "Workflow/template error classes defined
+beyond Section 5.5's five" — asks for "token + dispatch gating behavior for each", a name *and* what
+it does, and the filter case needs that more rather than less: a filter is a construct a repository
+author **invokes**, so the Statement is what tells them whether `{{ x | truncate: 20 }}` runs and
+what it produces. The row now asks for the name, what each filter does, and the arguments it takes.
+
+The other three stand. The tracker row asks for a token and a condition, which is the shape Section
+11.4's own entries and the registry's `condition` field already carry. The constructs row asks which
+constructs are supported, which is the whole of that obligation. The agent-runner row asks for a
+token and a condition where Section 10.6's nine entries are bare tokens and `agent_error_categories`
+models no `condition` — an inconsistency recorded rather than repaired, because asking a condition
+of a newly defined token is the better question and the mismatch is in Section 10.6's presentation
+of its own nine, which this decision does not touch.
