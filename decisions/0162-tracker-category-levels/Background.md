@@ -202,3 +202,19 @@ session's plans shared.
   carries. `CLAUDE.md` now states the parenthesised form and why, so the next plan does not
   rediscover it; repairing `section_body` instead was considered and not done, that function being
   shared by four checks in `scripts/validate_spec_consistency.py` whose reads would change with it.
+
+## What applying the plan left unresolved (2026-08-28)
+
+Step 9's restructuring of `tracker_error_categories` makes a paragraph elsewhere in
+`conformance/README.md` false, and the plan does not name that paragraph. `conformance/README.md`'s
+"What the slice covers" section states, of `tracker_error_categories` and `agent_error_categories`:
+"Sections 11.4 and 10.6 do not state that their sets are open... The openness a generator needs
+follows from `requirement_level` instead: both are `RECOMMENDED`." Applying steps 3, 4 and 9
+falsifies both halves of that sentence — Section 11.4 and Section 10.6 now do state their sets are
+open, and `tracker_error_categories` no longer carries one `requirement_level` for the whole group,
+four entries now overriding it. Step 11 names two entries in the file's findings list to rewrite
+and does not name this paragraph, which sits earlier in the file as descriptive prose about the
+corpus's design rather than as a finding. Left as the plan specifies rather than repaired past what
+it names; a later pass should decide whether the two groups now belong among the paragraph above
+naming the `exhaustive: false` groups, or whether this paragraph should instead explain the
+per-entry override this decision introduced.

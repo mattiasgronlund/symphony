@@ -3028,6 +3028,9 @@ Error mapping (RECOMMENDED normalized categories):
 - `turn_cancelled`
 - `turn_input_required`
 
+The set is not closed: an implementation MAY define additional categories for conditions these do
+not name. It MUST document any category it defines (Section 19).
+
 Note:
 
 - A turn stopped early (timeout, stall, or operator/budget interruption) is cancelled through
@@ -3322,19 +3325,35 @@ Additional normalization details:
 
 ### 11.4 Error Handling Contract
 
-RECOMMENDED error categories. These are transport-neutral; each adapter maps its transport's
-failures onto them:
+Error categories are transport-neutral: each adapter maps its transport's failures onto them. The
+categories carry two requirement levels, not one:
 
-- `tracker_unsupported_operation` (write not in the adapter capability descriptor, Section 11.7)
-- `tracker_state_unreachable` (`set_state` target unreachable from the current state, Section 11.8)
-- `tracker_state_conflict` (issue state changed underneath a `set_state` write, Section 11.8)
-- `tracker_api_request` (transport or connection failure)
-- `tracker_api_status` (unsuccessful response status, for example non-2xx HTTP)
-- `tracker_backend_errors` (backend-reported errors in a well-formed response, for example a
-  GraphQL `errors` array)
-- `tracker_payload_invalid` (unexpected or unparseable response payload)
-- `tracker_pagination_error` (pagination integrity failure, for example a missing continuation
-  cursor)
+- These spellings are REQUIRED: where the condition each names occurs, an implementation MUST
+  report it under that name.
+  - `tracker_unsupported_operation` (write not in the adapter capability descriptor, Section 11.7)
+  - `tracker_state_unreachable` (`set_state` target unreachable from the current state, Section
+    11.8)
+  - `tracker_state_conflict` (issue state changed underneath a `set_state` write, Section 11.8)
+  - `tracker_pagination_error` (pagination integrity failure, for example a missing continuation
+    cursor)
+- The remaining categories are RECOMMENDED — a target vocabulary each adapter maps its transport's
+  failures onto:
+  - `tracker_api_request` (transport or connection failure)
+  - `tracker_api_status` (unsuccessful response status, for example non-2xx HTTP)
+  - `tracker_backend_errors` (backend-reported errors in a well-formed response, for example a
+    GraphQL `errors` array)
+  - `tracker_payload_invalid` (unexpected or unparseable response payload)
+
+A category is REQUIRED where it is what makes a guarantee this specification states observable
+when it fails: the capability descriptor gating writes (Section 11.7), which Section 17.3 checks
+as "never silently no-oped"; `set_state`'s two failure modes and the orchestrator's differing
+response to each (Section 11.8); and candidate enumeration's completeness (Section 11.2). The
+RECOMMENDED categories name how a transport broke, and no rule in this specification disposes of a
+tracker failure by which of them occurred: the orchestrator-behavior bullets below dispose of a
+failure by where it arose, not by its category.
+
+The set is not closed: an implementation MAY define additional categories for conditions these do
+not name. It MUST document any category it defines (Section 19).
 
 Note: `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` are
 dispatch preflight's reason tokens (Section 6.3), not entries here: each names a configuration
@@ -5375,7 +5394,9 @@ surface (Section 11.1) is `Daemon Conformance`, because it exists to find and re
   being what the next continuation turn's prompt renders from (Sections 11.1, 11.2, 16.6)
 - Issue state refresh query uses GraphQL ID typing (`[ID!]`) as specified in Section 11.2
 - Error mapping covers transport failures, unsuccessful status, backend-reported errors, and
-  malformed payloads (the transport-neutral categories of Section 11.4)
+  malformed payloads (the transport-neutral categories of Section 11.4); the four REQUIRED
+  spellings checked above are reported under those names, and the remaining categories here are
+  RECOMMENDED and checked as behavior only
 
 ### 17.4 Orchestrator Dispatch, Reconciliation, and Retry
 
@@ -5751,9 +5772,10 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   repository-owned transition graph (`tracker.transitions` in `repo.policy.toml`, a `set_state`
   binding in the action-policy machine) keyed on agent milestone signals and observed run outcomes;
   each adapter advertises a static write-capability descriptor and an unsupported write surfaces
-  `tracker_unsupported_operation` rather than a silent no-op
-- `set_state` is idempotent and surfaces `tracker_state_unreachable` / `tracker_state_conflict`
-  rather than silently succeeding; a transition failure is logged and does not fail the run
+  `tracker_unsupported_operation`, a REQUIRED spelling (Section 11.4), rather than a silent no-op
+- `set_state` is idempotent and surfaces `tracker_state_unreachable` / `tracker_state_conflict`,
+  REQUIRED spellings (Section 11.4), rather than silently succeeding; a transition failure is
+  logged and does not fail the run
 - Tracker adapters declare an auth mode (`secret` | `none`); `api_key`/`endpoint` and the secret
   provider apply only to `secret`-mode, and a `none`-mode local adapter keeps its store host-side
 
@@ -5953,23 +5975,23 @@ The Statement MUST record:
   in this specification, including: the identifiers a tracker adapter publishes in `assignees`,
   `project` and `team` (Section 4.1.1); the agent sandbox profile, the effective egress policy, and
   the composed environment set an agent receives (Section 9.6); whether the deployment scopes
-  outward credentials per repository (Section 15.3);
-  the carrier by which an issue names its pull-request target, where a deployment admits one
-  (Section 9.7); how the process identity `run_id` composes from is derived (Section 16.1);
-  the bounds handed to the engine's bounded check wait and the forge budget guard's enablement
-  (Sections 8.11, 9.10); the approval, sandbox, operator-confirmation, and user-input-required policy
-  (Section 10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the log
-  sink or sinks and what happens when one of them fails (Section 13.2); the human-readable status
-  surface, if any, the presentation of rate-limit data, and — where the aggregation extension is
-  shipped — the sink it aggregates into and how long that data is retained
-  (Sections 13.4, 13.5); the park-vs-retry
-  disposition of `repository_provisioning_failures` and `engine_invocation_failures`
-  (Section 14.2); the durable-store degradation when no store is configured, and the degradation
-  when no store backs a `Cached external signal` field (Section 14.3); the
-  secret-redaction mechanism and substituted marker for captured subprocess text (Section 15.3);
-  how it is established that no route beyond the two this specification closes can write the policy
-  branch, and how a host-side hook's unit is resolved (Section 15.4); and
-  the host-side object-store path (Section 16.5).
+  outward credentials per repository (Section 15.3); the carrier by which an issue names its
+  pull-request target, where a deployment admits one (Section 9.7); how the process identity
+  `run_id` composes from is derived (Section 16.1); the bounds handed to the engine's bounded check
+  wait and the forge budget guard's enablement (Sections 8.11, 9.10); the approval, sandbox,
+  operator-confirmation, and user-input-required policy (Section 10.5); the tracker adapter's
+  result-limit and `metadata` choices (Section 11); the tracker error categories defined beyond
+  Section 11.4's set and the agent-runner error categories defined beyond Section 10.6's (Sections
+  10.6, 11.4); the log sink or sinks and what happens when one of them fails (Section 13.2); the
+  human-readable status surface, if any, the presentation of rate-limit data, and — where the
+  aggregation extension is shipped — the sink it aggregates into and how long that data is retained
+  (Sections 13.4, 13.5); the park-vs-retry disposition of `repository_provisioning_failures` and
+  `engine_invocation_failures` (Section 14.2); the durable-store degradation when no store is
+  configured, and the degradation when no store backs a `Cached external signal` field
+  (Section 14.3); the secret-redaction mechanism and substituted marker for captured subprocess text
+  (Section 15.3); how it is established that no route beyond the two this specification closes can
+  write the policy branch, and how a host-side hook's unit is resolved (Section 15.4); and the
+  host-side object-store path (Section 16.5).
 - The recovery class assigned to each Orchestrator Runtime State field (Section 4.1.8), to any state
   an OPTIONAL extension introduces, and to any state Core behavior requires beyond the fields
   Section 4.1.8 enumerates, and the reset consequence of each field classified `Ephemeral`

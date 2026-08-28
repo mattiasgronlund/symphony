@@ -193,23 +193,23 @@
       "SPEC.md Section 11.7 \"Adapter Capability Descriptor\"",
       "SPEC.md Section 11.8 \"State Transition Write Semantics\""
     ],
-    "note": "Transport-neutral categories each tracker adapter maps its transport's failures onto. RECOMMENDED, so the names are a target vocabulary rather than a checked spelling; a generated type MUST admit an unknown token. `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` moved to `config_error_reasons`: their condition was never here, it was Section 6.3's preflight check, and this group now carries only categories a tracker adapter's own transport failure can raise (decision 0164). Section 17.3 requires four of the remaining entries by name in `Core Conformance` checks — `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict`, `tracker_pagination_error` — which is a disagreement with this level recorded in `conformance/README.md` rather than resolved here.",
+    "note": "Transport-neutral categories each tracker adapter maps its transport's failures onto. Four are REQUIRED spellings, carried per entry below rather than for the group: a category is REQUIRED where it is what makes a guarantee `SPEC.md` states observable when it fails — the capability descriptor gating writes (Section 11.7), `set_state`'s two failure modes (Section 11.8), and candidate enumeration's completeness (Section 11.2). The rest stay RECOMMENDED, the group's own level: a target vocabulary rather than a checked spelling, so a generated type MUST admit an unknown token. `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` moved to `config_error_reasons`: their condition was never here, it was Section 6.3's preflight check, and this group now carries only categories a tracker adapter's own transport failure can raise (decision 0164). Not a closed set: Section 11.4 permits an implementation to define additional categories for conditions these do not name and requires it to document each one (decision 0162).",
     "requirement_level": "RECOMMENDED",
     "entries": [
-      { "token": "tracker_unsupported_operation", "condition": "Write not in the adapter capability descriptor (Section 11.7)." },
-      { "token": "tracker_state_unreachable", "condition": "`set_state` target unreachable from the current state (Section 11.8)." },
-      { "token": "tracker_state_conflict", "condition": "Issue state changed underneath a `set_state` write (Section 11.8)." },
+      { "token": "tracker_unsupported_operation", "requirement_level": "REQUIRED", "condition": "Write not in the adapter capability descriptor (Section 11.7)." },
+      { "token": "tracker_state_unreachable", "requirement_level": "REQUIRED", "condition": "`set_state` target unreachable from the current state (Section 11.8)." },
+      { "token": "tracker_state_conflict", "requirement_level": "REQUIRED", "condition": "Issue state changed underneath a `set_state` write (Section 11.8)." },
       { "token": "tracker_api_request", "condition": "Transport or connection failure." },
       { "token": "tracker_api_status", "condition": "Unsuccessful response status, for example non-2xx HTTP." },
       { "token": "tracker_backend_errors", "condition": "Backend-reported errors in a well-formed response, for example a GraphQL `errors` array." },
       { "token": "tracker_payload_invalid", "condition": "Unexpected or unparseable response payload." },
-      { "token": "tracker_pagination_error", "condition": "Pagination integrity failure, for example a missing continuation cursor." }
+      { "token": "tracker_pagination_error", "requirement_level": "REQUIRED", "condition": "Pagination integrity failure, for example a missing continuation cursor (Section 11.2)." }
     ]
   },
 
   "agent_error_categories": {
     "spec_refs": ["SPEC.md Section 10.6 \"Timeouts and Error Mapping\""],
-    "note": "Normalized categories an agent adapter maps its protocol's failures onto. RECOMMENDED, so the names are a target vocabulary rather than a checked spelling; a generated type MUST admit an unknown token. Section 10.6 states no condition for any of them. `turn_failed`, `turn_cancelled` and `turn_input_required` are also `events` entries (Section 10.4): the category is named after the event that produced it, so a generator emitting one type per group has three names in two enums by design rather than by collision.",
+    "note": "Normalized categories an agent adapter maps its protocol's failures onto. RECOMMENDED, so the names are a target vocabulary rather than a checked spelling; a generated type MUST admit an unknown token. Section 10.6 states no condition for any of them. `turn_failed`, `turn_cancelled` and `turn_input_required` are also `events` entries (Section 10.4): the category is named after the event that produced it, so a generator emitting one type per group has three names in two enums by design rather than by collision. Not a closed set: Section 10.6 permits an implementation to define additional categories and requires it to document each one (decision 0162).",
     "requirement_level": "RECOMMENDED",
     "entries": [
       "codex_not_found",

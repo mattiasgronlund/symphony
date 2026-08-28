@@ -419,21 +419,31 @@ guessed-at vector or entry:
   fields, and `scripts/validate_spec_consistency.py` check 7 compares Section 4.1.1's field bullets
   against the vector's supplied keys, its expected keys and their ascending order, so the next field
   added to the record fails the check rather than the corpus.
-- **Section 17.3 requires four RECOMMENDED tracker categories by name (open).** Section 11.4
-  declares its eleven error categories RECOMMENDED, but Section 17.3's `Core Conformance` checks
-  name `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict` and
-  `tracker_pagination_error` as the values a conforming implementation surfaces. Four of eleven are
-  therefore required in practice while the set is declared advisory — the same asymmetry decision
-  0102 resolved for Section 5.5, one section over. `tracker_error_categories` records Section 11.4's
-  level as written and names the four in its `note`; re-levelling Section 11.4 is a
-  spec-clarification candidate, and the evidence that would force it is a second tracker adapter
-  asserted against those checks.
+- **Section 17.3 requires four RECOMMENDED tracker categories by name — resolved (decision
+  0162).** Section 11.4 declared its error categories RECOMMENDED as one group, but Section 17.3's
+  `Core Conformance` checks named `tracker_unsupported_operation`, `tracker_state_unreachable`,
+  `tracker_state_conflict` and `tracker_pagination_error` as the values a conforming implementation
+  surfaces — four required in practice while the set was declared advisory, the same asymmetry
+  decision 0102 resolved for Section 5.5, one section over. Measurement found the finding
+  understated it: the four are spelled into Section 11.4's own normative neighbours — Section
+  11.2's completeness guarantee, Section 11.7's capability descriptor, and Section 11.8's
+  `set_state` semantics — while the remaining categories occur only in the bullet that defines
+  them, two of them also in Section 11.4's illustrative Linear note. What the level cost: a caller
+  told to branch on a name the specification permitted to differ — the orchestrator's differing
+  response to `tracker_state_unreachable` versus `tracker_state_conflict` being exactly such a
+  branch. Section 11.4 now states the four as REQUIRED spellings and the rest RECOMMENDED, with
+  the predicate that selects them; Section 17.3 states which of its checks assert a name and which
+  assert behavior only; Section 18.1.2 names the level beside each token; and Section 19 and
+  `CONFORMANCE-STATEMENT-TEMPLATE.md` gained the matching MUST-document obligation for a category
+  defined beyond the set. `tracker_error_categories` now carries the four REQUIRED levels per entry
+  rather than one level for the group.
 - **Sections 10.6 and 10.4 share three spellings (recorded, not a defect).** `turn_failed`,
   `turn_cancelled` and `turn_input_required` are each both an emitted runtime event and a normalized
   agent-runner error category, so a generator emitting one type per group has three names in two
   enums. The category is named after the event that produced it, which is the useful naming;
   `agent_error_categories` states the relationship in its `note` rather than leaving a generator to
-  discover it.
+  discover it. Section 10.6 gained an openness clause under decision 0162, mirroring Section 5.5's:
+  an implementation MAY define additional categories and MUST document any it defines (Section 19).
 - **Template syntax is a floor, not a mandate (open).** Section 5.4 says a "Liquid-compatible
   semantics are sufficient" engine, which pins the strict-failure MUSTs and the
   `template_render_error` class but leaves the concrete delimiter/filter syntax to the
