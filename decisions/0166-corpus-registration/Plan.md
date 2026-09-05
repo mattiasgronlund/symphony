@@ -37,6 +37,14 @@ neither Conformance Statement template is owed a row.
    shape (`Background.md`).
    Done when `resolve_config_defaults` still appears in the list.
 
+## Steps added on re-evaluation
+
+5. **Check 8 asserts the tables index the corpus.** Ensure `scripts/validate_spec_consistency.py`
+   errors when a file in a corpus `vectors/` directory has no row in that corpus README's file
+   table, and when a row names a file that does not exist. Both corpora are covered.
+   Done when the script's docstring lists check 8, `check_vector_registration` is called from
+   `main`, and removing any table row makes the script exit 1.
+
 ## Cross-cutting sync
 
 None. This decision touches no `SPEC.md` section, so Sections 6.4, 17 and 18 are unaffected, and no
@@ -52,3 +60,6 @@ Applied to `conformance/README.md`: the harness contract's interpretation-note l
 `resolve_repository_config` bullet (steps 1 and 2), and a slice 4 table names
 `vectors/repository-inheritance.json` (step 3). `config-defaults.json`'s entry is untouched (step 4).
 At the applied revision `conformance/vectors/` holds 16 files and the tables hold 16 rows.
+
+Step 5 applied on re-evaluation to `scripts/validate_spec_consistency.py` (check 8); see
+`Background.md`. Both corpora pass as added — 16 rows against 16 files, and 10 against 10.
