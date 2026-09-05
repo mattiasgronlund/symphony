@@ -261,6 +261,13 @@ Some functions carry an interpretation note beyond plain equality:
 - `render_prompt` — `expect` is either `{ rendered: <string> }` (assert the rendered string equals
   it) or `{ error: <class> }` (assert rendering fails with that error class). Templates are written
   in the REQUIRED minimal template subset (Section 5.4).
+- `resolve_repository_config` — `expect` is `{ resolved, absent }`. Assert each dotted path in
+  `resolved` equals the resolved view at that path, and assert each path in `absent` is **not
+  present** in it; paths listed in neither are unconstrained. The `absent` half is not optional to
+  implement: Section 6.1 resolves each entry against the orchestrator-level blocks before applying
+  built-in defaults, and an implementation that defaults first produces a *superset* of the correct
+  answer — one that satisfies every path in `resolved`. Only `absent` distinguishes the two orders,
+  so a harness asserting `resolved` alone reports that defect as a pass.
 
 The harness itself is not specified here — only the contract above. The corpus prescribes no test
 framework, assertion library, or file-loading mechanism.
@@ -296,6 +303,12 @@ Slice 3 — dispatch preflight reasons (decision 0164):
 | File | Function | Profile | Derived from |
 |------|----------|---------|--------------|
 | `vectors/config-preflight.json` | `validate_dispatch_config` | Daemon | Sections 6.3, 4.2, 9.7, 11.6, 11.7 |
+
+Slice 4 — multi-repository configuration resolution (decision 0159):
+
+| File | Function | Profile | Derived from |
+|------|----------|---------|--------------|
+| `vectors/repository-inheritance.json` | `resolve_repository_config` | Core | Sections 5.3.7, 6.1, 6.4 |
 
 ## Deferred to later slices
 
