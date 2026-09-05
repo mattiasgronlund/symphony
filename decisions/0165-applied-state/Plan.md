@@ -41,6 +41,13 @@ obligation, so no Statement template row is owed.
    enumerates the same five states.
    Done when `CLAUDE.md` names `Applied`.
 
+7. **The birth value is stated where a chapter is authored.** Ensure `DECISIONS.md`'s
+   new-decision paragraph states that a chapter is born `Accepted`, that only its apply pull request
+   may write `Applied`, and that copying a neighbouring chapter's `State` is the specific way to get
+   it wrong — with the one exception, a decision needing no specification edit, which its own text
+   must say. Added in review; see the Review finding section of `Background.md`.
+   Done when the paragraph names the birth value and the copying hazard.
+
 ## Backfill resolution
 
 `Plan.md`'s `## Status` was the seed; 150 of 164 read an unambiguous `Applied…` and carry over
@@ -84,5 +91,6 @@ an existing field, not a rename of an existing one.
 
 ## Status
 
-Applied to `DECISIONS.md` (States legend and all 164 chapters' `**State:**` lines) and `CLAUDE.md`
-(the decision-log legend mirror).
+Applied to `DECISIONS.md` (States legend, the new-decision authoring paragraph, and all 164
+chapters' `**State:**` lines) and `CLAUDE.md` (the decision-log legend mirror). Step 7 was added in
+review, after `symphony-rs` observed that the backfill left no live `Accepted` for an author to copy.

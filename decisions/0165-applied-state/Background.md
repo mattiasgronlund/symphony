@@ -154,3 +154,46 @@ practice, and the answer would then be Option C's derivation applied to the narr
 whether the State matches the tree, rather than a third field. A second trigger is `symphony-rs`
 not shipping the gate it committed to: the enum argument above is load-bearing, and if nothing ever
 parses the field, Option B's cheapness becomes the better trade.
+
+## Review finding: the backfill inverted the risk it was protecting
+
+Raised by `symphony-rs` against the applied change on branch `0165-applied-state` at `e850f72`,
+before it merged. Counted there: 165 chapters — 160 `Applied`, 4 `Superseded`, 1 `Proposed`, and
+**`Accepted` zero**.
+
+Zero is correct as a fact about today. Everything upstream has accepted has landed, the stranded
+0162 and 0163 having merged the same morning. The defect is what that leaves behind for an author.
+
+**The shape of it.** The fail-safe argument above rests on `Accepted` being what a chapter is *born*
+with: forget to flip it and the chapter under-claims, which is harmless. After the backfill there is
+no live `Accepted` anywhere in the file. A new chapter is written by copying a neighbour, and every
+neighbour reads `Applied`. So the path of least resistance became writing `Applied` at acceptance
+time, before the apply pull request merges — a claim about `main` that the commit making it cannot
+support, which is exactly the condition issue #142 was filed about.
+
+**It was introduced by the repair for that condition**, which is what makes it worth recording
+rather than quietly fixing. The backfill is the step that removed every instance of the safe value,
+and it did so in service of the argument that a field which starts wrong is a field nobody trusts.
+Both things are true: the backfill had to happen, and it left the document unable to teach its own
+birth state. Neither the legend nor `Background.md` said a chapter starts at `Accepted`; both only
+said what moves it to `Applied`, which a reader can satisfy by never having been at `Accepted` at
+all.
+
+**The repair.** `DECISIONS.md`'s authoring paragraph now states the birth value explicitly, names
+copying a neighbour as the specific way to get it wrong, and gives the one exception (a decision
+needing no specification edit, which its own text must say). The instruction sits where an author
+about to add a chapter is already reading, rather than in the legend, which is read by consumers.
+
+A mechanical gate was considered and not taken: a check that a chapter whose `State` reads `Applied`
+was not created in the same commit is stronger, and `scripts/validate_spec_consistency.py` is where
+it would live. It is deferred because it needs commit history rather than tree content, which is a
+new class of input for that script, and because the authoring instruction is likely sufficient on
+its own. The reconsideration trigger for it is the first premature `Applied` observed in review —
+which is now a thing a reviewer knows to look for, this section being the record of why.
+
+**Second-order note.** `symphony-rs` reports that the gate it committed to — every load-bearing
+upstream decision must read `Applied` at the pin — currently passes vacuously, nothing in the file
+reading anything else, and that it will document the gate as unproven until it has caught one. The
+first real exercise is round 2: any of 0166 onward accepted before its text lands. That is the
+correct posture and is recorded here because it is evidence about this decision, not that one: a
+field whose first genuine use is still ahead of it has not yet been shown to work.

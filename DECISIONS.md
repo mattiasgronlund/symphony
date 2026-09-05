@@ -31,6 +31,12 @@ what the specification requires — not the chapter.
 New decisions get the next zero-padded number and a folder `decisions/NNNN-short-slug/`. Copy
 `decisions/_template/` to start. See `CLAUDE.md` for the working conventions.
 
+**A new chapter is born `Accepted`**, and only its apply pull request may write `Applied`. Do not
+copy a neighbouring chapter's `State`: almost every chapter below reads `Applied` because its text
+has long since landed, so copying one writes a claim about `main` that the commit adding it cannot
+make. A chapter created and set to `Applied` in the same commit is premature unless the decision
+needs no specification edit at all, which its own text must say.
+
 ---
 
 ## 0001 — Adopt a decision log
