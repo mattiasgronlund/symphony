@@ -6810,3 +6810,31 @@ observed reading `Applied` whose text is not in `main` or the reverse, which wou
 atomicity this rests on is not holding; or if nothing ever parses the field, which would make the
 cheaper option the better trade. Relates to 0033. No `SPEC.md` edit is required, so this decision is
 `Applied` on acceptance under the rule it introduces.
+
+## 0166 — A vector file registered in neither list
+
+**State:** Applied
+**Folder:** [decisions/0166-corpus-registration/](decisions/0166-corpus-registration/)
+
+`conformance/README.md` gains the fourth interpretation-note bullet, for `resolve_repository_config`,
+and the vector-table row for `vectors/repository-inheritance.json`. Reported as issue #154 from
+`symphony-rs`: the harness contract lists three functions carrying an interpretation note beyond
+plain equality and there are four, the file decision 0159 added being the omission. That file's
+`expect.absent` is the only negative assertion in either corpus — measured at `5a69193`, `absent`
+appears in one file and in all seven of its vectors — and it is the half a positive assertion cannot
+reach. Section 6.1 orders resolution before defaulting because a default filled in first would
+shadow the orchestrator-level value an entry meant to inherit; an implementation that defaults first
+produces a **superset** of the correct answer, satisfying every path in `expect.resolved`, so only
+`absent` separates the two orders. A harness built from the README's list asserts plain equality and
+reports the ordering defect the file exists to catch as a pass — the failure being a harness author
+who is confident and wrong rather than one who is confused. Chosen over declaring the list
+illustrative and removing `config-defaults.json`'s duplicate entry, which is a coherent policy about
+where notes live and cannot explain the second omission found while confirming the report: the same
+file has no row in the **vector file table** either, 15 rows against 16 files at `38b0581`. A notes
+policy has no bearing on an index of files, so Option B needs two causes where one — decision 0159
+registering the file nowhere — explains both. `config-defaults.json`'s inline-and-README duplication
+is therefore left alone: the list is a registry, and a registry restating an inline note is its
+intended shape. Reconsider if a later slice deliberately leaves a vector file out of the tables,
+which would make the table something other than an index; or if a second negative-assertion key
+appears elsewhere, which would want a general statement about negative assertions rather than a
+per-function bullet. Relates to 0046, 0048, 0159.
