@@ -147,20 +147,25 @@ reader is a Conformance Statement author, and a divergence shows up as an implem
 its own conformance in a spelling nothing else recognizes. `validation_profiles` carries
 `requirement_level` per entry rather than for the group, its four members not sharing one.
 
-Four groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
+Six groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
 because Section 10.4 permits an adapter to emit events the specification does not name;
 `config_namespaces`, because Section 5.3 permits an extension to define additional top-level keys;
 `error_classes`, because Section 5.5 permits an implementation to define additional classes for
-conditions its five do not name; and `failure_classes`, because Section 14.1 permits an OPTIONAL
-extension to define additional categories. In all four, the names the specification does state are
-fixed; it is the set that is open — so an implementation shipping no such extension may still close
-its own enum at the names it can produce.
+conditions its five do not name; `failure_classes`, because Section 14.1 permits an OPTIONAL
+extension to define additional categories; and `tracker_error_categories` and
+`agent_error_categories`, because Sections 11.4 and 10.6 each permit an implementation to define
+additional categories and require it to document one it defines. In all six, the names the
+specification does state are fixed; it is the set that is open — so an implementation shipping no
+such extension may still close its own enum at the names it can produce.
 
-`tracker_error_categories` and `agent_error_categories` carry no `exhaustive` key. Sections 11.4 and
-10.6 do not state that their sets are open, and inferring it here would be the registry deciding a
-question the prose left alone. The openness a generator needs follows from `requirement_level`
-instead: both are `RECOMMENDED`, so a type generated from either must already admit an unknown
-token.
+`tracker_error_categories` carries `requirement_level` per entry as well as for the group, which
+`validation_profiles` above already does for a reason of its own. Four of its members —
+`tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict` and
+`tracker_pagination_error` — are REQUIRED spellings, because Sections 11.2, 11.7 and 11.8 fail an
+operation with them by name; the rest keep the group's `RECOMMENDED`. A generator therefore reads
+the entry's level where it carries one and the group's otherwise, and the group level is not
+evidence that every member is advisory. `agent_error_categories` is uniformly `RECOMMENDED`, no
+rule in this specification branching on which of its categories a turn failed with.
 
 ### Deferred to later slices
 
@@ -254,8 +259,8 @@ Some functions carry an interpretation note beyond plain equality:
   the resolved config equals each listed path; paths **not** listed are unconstrained (so
   Implementation-defined defaults are never pinned).
 - `render_prompt` — `expect` is either `{ rendered: <string> }` (assert the rendered string equals
-  it) or `{ error: <class> }` (assert rendering fails with that error class). Templates use
-  Liquid-compatible syntax (Section 5.4).
+  it) or `{ error: <class> }` (assert rendering fails with that error class). Templates are written
+  in the REQUIRED minimal template subset (Section 5.4).
 
 The harness itself is not specified here — only the contract above. The corpus prescribes no test
 framework, assertion library, or file-loading mechanism.
@@ -419,33 +424,60 @@ guessed-at vector or entry:
   fields, and `scripts/validate_spec_consistency.py` check 7 compares Section 4.1.1's field bullets
   against the vector's supplied keys, its expected keys and their ascending order, so the next field
   added to the record fails the check rather than the corpus.
-- **Section 17.3 requires four RECOMMENDED tracker categories by name (open).** Section 11.4
-  declares its eleven error categories RECOMMENDED, but Section 17.3's `Core Conformance` checks
-  name `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict` and
-  `tracker_pagination_error` as the values a conforming implementation surfaces. Four of eleven are
-  therefore required in practice while the set is declared advisory — the same asymmetry decision
-  0102 resolved for Section 5.5, one section over. `tracker_error_categories` records Section 11.4's
-  level as written and names the four in its `note`; re-levelling Section 11.4 is a
-  spec-clarification candidate, and the evidence that would force it is a second tracker adapter
-  asserted against those checks.
+- **Section 17.3 requires four RECOMMENDED tracker categories by name — resolved (decision
+  0162).** Section 11.4 declared its error categories RECOMMENDED as one group, but Section 17.3's
+  `Core Conformance` checks named `tracker_unsupported_operation`, `tracker_state_unreachable`,
+  `tracker_state_conflict` and `tracker_pagination_error` as the values a conforming implementation
+  surfaces — four required in practice while the set was declared advisory, the same asymmetry
+  decision 0102 resolved for Section 5.5, one section over. Measurement found the finding
+  understated it: the four are spelled into Section 11.4's own normative neighbours — Section
+  11.2's completeness guarantee, Section 11.7's capability descriptor, and Section 11.8's
+  `set_state` semantics — while the remaining categories occur only in the bullet that defines
+  them, two of them also in Section 11.4's illustrative Linear note. What the level cost: a caller
+  told to branch on a name the specification permitted to differ — the orchestrator's differing
+  response to `tracker_state_unreachable` versus `tracker_state_conflict` being exactly such a
+  branch. Section 11.4 now states the four as REQUIRED spellings and the rest RECOMMENDED, with
+  the predicate that selects them; Section 17.3 states which of its checks assert a name and which
+  assert behavior only; Section 18.1.2 names the level beside each token; and Section 19 and
+  `CONFORMANCE-STATEMENT-TEMPLATE.md` gained the matching MUST-document obligation for a category
+  defined beyond the set. `tracker_error_categories` now carries the four REQUIRED levels per entry
+  rather than one level for the group.
 - **Sections 10.6 and 10.4 share three spellings (recorded, not a defect).** `turn_failed`,
   `turn_cancelled` and `turn_input_required` are each both an emitted runtime event and a normalized
   agent-runner error category, so a generator emitting one type per group has three names in two
   enums. The category is named after the event that produced it, which is the useful naming;
   `agent_error_categories` states the relationship in its `note` rather than leaving a generator to
-  discover it.
-- **Template syntax is a floor, not a mandate (open).** Section 5.4 says a "Liquid-compatible
-  semantics are sufficient" engine, which pins the strict-failure MUSTs and the
-  `template_render_error` class but leaves the concrete delimiter/filter syntax to the
-  implementation. Because `WORKFLOW.md` is repository-owned and must render on any implementation
-  Symphony targets, the template syntax is effectively a cross-implementation contract; the slice
-  authors the reference vectors in Liquid syntax. Tightening "sufficient" to a normative shared
-  syntax is a spec-clarification candidate.
-- **`attempt` "null or absent" versus strict mode (open).** Section 5.4 lists `attempt` as
-  `null`/absent on the first run, but strict variable checking says unknown variables MUST fail.
-  Whether a template that reads `attempt` on the first run renders empty (known-but-null) or fails
-  (absent = unknown) is undetermined, so no first-run `attempt` vector is authored; the slice tests
-  `attempt` only with an integer value. A spec-clarification candidate.
+  discover it. Section 10.6 gained an openness clause under decision 0162, mirroring Section 5.5's:
+  an implementation MAY define additional categories and MUST document any it defines (Section 19).
+- **Template syntax is a floor, not a mandate — resolved (decision 0163).** Section 5.4's
+  "Liquid-compatible semantics are sufficient" pinned the strict-failure MUSTs and the
+  `template_render_error` class but left the concrete syntax to the implementation, so a
+  `WORKFLOW.md` its repository author writes could not be known to render on the implementation
+  that runs it. Measuring `symphony-rs` at `ee74fe7` found the one implementation had already
+  answered this question and three more of the same shape — filters, `attempt` on a first run (the
+  next entry), an unknown member of a known object, and what a timestamp prints — while the
+  specification answered none of them:
+  `a_first_attempt_renders_the_null_rather_than_failing`,
+  `an_absent_issue_field_renders_the_null`, `an_unknown_field_of_a_known_object_fails`, and
+  `a_timestamp_renders_as_milliseconds_since_the_epoch`. The corpus was already stricter than the
+  specification it tests — every `template` in `prompt-rendering.json` is Liquid source — and had
+  recorded, in its own description, the divergence it routed around ("single-line and use
+  delimiters rather than inter-token whitespace so the expected output does not depend on an
+  engine's whitespace-control behavior"); of ten vectors, none used a filter but the
+  deliberately-unknown one. Section 5.4 now states a REQUIRED minimal subset beside the
+  Liquid-compatible-semantics floor — `{{ }}` interpolation with dotted member access, `{% for %}`
+  iteration over a list and a map, and the map-entry pair indexing Section 12.2 already required —
+  with a construct beyond it `Implementation-defined`, documented, and not portable, and states
+  that the subset defines no portable filters. Two of the four gaps — the closed `issue` member set
+  and the timestamp — were found by reading the implementation rather than by authoring a vector;
+  Section 12.2 now closes the `issue` object's member set to Section 4.1.1's fields and fixes a
+  timestamp's rendering to RFC 3339 in UTC. Four new vectors pin the value rules, and
+  `unknown-filter-fails`'s description is restated for the now-stated empty filter table.
+- **`attempt` "null or absent" versus strict mode — resolved (decision 0163).** Closed by the
+  decision above: `attempt` is now always bound and `null` on a first run rather than absent,
+  because strict variable checking is a rule about names the render context does not define and
+  `attempt` is a name this specification defines (Sections 5.4, 12.1). `attempt-null-renders-empty`
+  pins a first-run `attempt` rendering as the empty string rather than failing.
 - **`vcs` was not in Section 5.3's top-level key list — resolved, and stale before it was closed
   (decision 0159).** The finding recorded that Section 5.3's "Top-level operator-config keys" named
   only `tracker`, `polling`, `workspace`, `agent` and `codex`, so `config_namespaces` carried `vcs`

@@ -86,7 +86,11 @@ obligation not listed here rather than omitting its resolution.
 | `run_id` derivation for a run attempt | 4.1.5 | `<how the value is composed, and how no two run attempts in the deployment share one, including across restarts>` |
 | Process identity `run_id` composes from | 16.1 | `<how the value is derived, and how it differs from that of any previous process of the same deployment>` |
 | Operator policy config format and discovery path | 5 | `<...>` |
+| Template constructs supported beyond the REQUIRED minimal subset | 5.4 | `<which constructs, or none>` |
+| Filters offered beyond the REQUIRED minimal subset (which defines none) | 5.4 | `<name + what each does and the arguments it takes, or none>` |
 | Workflow/template error classes defined beyond Section 5.5's five | 5.5 | `<token + dispatch gating behavior for each, or none>` |
+| Tracker error categories defined beyond Section 11.4's set | 11.4 | `<token + condition for each, or none>` |
+| Agent-runner error categories defined beyond Section 10.6's set | 10.6 | `<token + condition for each, or none>` |
 | `agent.default_agent` default | 5.3.5 | `<which agent>` |
 | `agent.default_effort` default | 5.3.5 | `<native effort value>` |
 | Agent sandbox profile | 9.6 | `<jai Strict / container / VM / …>` |

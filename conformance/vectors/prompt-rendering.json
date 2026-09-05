@@ -2,7 +2,7 @@
   "function": "render_prompt",
   "profile": "Daemon Conformance",
   "spec_refs": ["Section 5.4", "Section 5.5", "Section 12.2"],
-  "description": "Render the WORKFLOW.md prompt template against the normalized issue and attempt. Templates use Liquid-compatible syntax (Section 5.4); the variable set (issue, attempt) and the strict-failure semantics are the normative contract, and an engine that is not Liquid-compatible maps these to its equivalent. Strict mode: an unknown variable and an unknown filter MUST fail rendering, and Section 5.5 makes the error class a REQUIRED spelling, so the class asserted below is the one a conforming implementation reports. A class names the condition, not the stage that detected it (Section 5.5): an engine that resolves filter names while parsing still reports an unknown filter as template_render_error, and template_parse_error is reported only for a body that is not well-formed template syntax. Templates are single-line and use delimiters rather than inter-token whitespace so the expected output does not depend on an engine's whitespace-control behavior. Section 12.2 also fixes what iterating a nested structure yields: a list yields its elements in list order, and a map yields its entries in ascending order of key, keys compared as strings by Unicode code point, with each entry a two-element key/value pair, key first. That order governs the maps a template names by path (the issue object and metadata) and not a blocker ref's own fields, which Section 12.2 reads by name rather than by iteration.",
+  "description": "Render the WORKFLOW.md prompt template against the normalized issue and attempt. Templates are written in the REQUIRED minimal template subset (Section 5.4): {{ }} interpolation with dotted member access, {% for %}...{% endfor %} iteration over a list and over a map, and indexed access to the two elements of a map entry's key/value pair — the surface every conforming implementation MUST render, and the only surface a vector's template uses. Strict mode: an unknown variable and an unknown filter MUST fail rendering, and Section 5.5 makes the error class a REQUIRED spelling, so the class asserted below is the one a conforming implementation reports. A class names the condition, not the stage that detected it (Section 5.5): an engine that resolves filter names while parsing still reports an unknown filter as template_render_error, and template_parse_error is reported only for a body that is not well-formed template syntax. Templates are single-line and use delimiters rather than inter-token whitespace so the expected output does not depend on an engine's whitespace-control behavior. Section 12.2 also fixes what iterating a nested structure yields: a list yields its elements in list order, and a map yields its entries in ascending order of key, keys compared as strings by Unicode code point, with each entry a two-element key/value pair, key first. That order governs the maps a template names by path (the issue object and metadata) and not a blocker ref's own fields, which Section 12.2 reads by name rather than by iteration. Section 12.2 also fixes what a bound null renders to (the empty string), closes the issue object's member set to Section 4.1.1's fields, and fixes a timestamp's rendering to RFC 3339 in UTC.",
   "given": "{ template: string, issue: object, attempt: integer | null }",
   "expect": "{ rendered: string } on success, or { error: string } naming the error class on failure",
   "vectors": [
@@ -88,7 +88,7 @@
     },
     {
       "id": "unknown-filter-fails",
-      "description": "Strict mode: an unknown filter MUST fail rendering (Section 5.4). The class is template_render_error even where the engine resolves filter names while parsing, because a class names the condition rather than the stage that detected it (Section 5.5).",
+      "description": "Strict mode: an unknown filter MUST fail rendering (Section 5.4). The REQUIRED minimal subset defines no filters, so this vector is satisfied by an implementation that offers none as well as by one that offers some and lacks this one (screaming): it asserts the strict-failure rule rather than the absence of a particular filter. The class is template_render_error even where the engine resolves filter names while parsing, because a class names the condition rather than the stage that detected it (Section 5.5).",
       "given": {
         "template": "{{ issue.title | screaming }}",
         "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [] },
@@ -105,6 +105,46 @@
         "attempt": null
       },
       "expect": { "error": "template_parse_error" }
+    },
+    {
+      "id": "attempt-null-renders-empty",
+      "description": "attempt is always bound (Section 12.1); on a first run it is null and renders as the empty string rather than failing rendering (Section 12.2), since strict variable checking is a rule about names the render context does not define and attempt is a name this specification defines.",
+      "given": {
+        "template": "Attempt [{{ attempt }}].",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [] },
+        "attempt": null
+      },
+      "expect": { "rendered": "Attempt []." }
+    },
+    {
+      "id": "null-issue-field-renders-empty",
+      "description": "A bound value that is null renders as the empty string (Section 12.2), here a nullable Section 4.1.1 issue field supplied as null.",
+      "given": {
+        "template": "[{{ issue.description }}]",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [], "description": null },
+        "attempt": null
+      },
+      "expect": { "rendered": "[]" }
+    },
+    {
+      "id": "unknown-issue-member-fails",
+      "description": "The issue object's members are closed to Section 4.1.1's field set (Section 12.2); naming a member outside it fails template_render_error (Section 5.5) rather than rendering as null, which is what keeps the null rule safe for a genuinely absent field. The template names assignee, the singular near-miss of the real field assignees, which is the case a prompt author actually hits rather than an arbitrary unknown name.",
+      "given": {
+        "template": "{{ issue.assignee }}",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [], "assignees": ["alice"] },
+        "attempt": null
+      },
+      "expect": { "error": "template_render_error" }
+    },
+    {
+      "id": "timestamp-renders-rfc3339",
+      "description": "A timestamp field (Section 4.1.1) renders as RFC 3339 in UTC (Section 12.2), the form Section 11.3 already parses on the way in.",
+      "given": {
+        "template": "{{ issue.created_at }}",
+        "issue": { "identifier": "ENG-42", "title": "Fix the login bug", "state": "In Progress", "labels": [], "created_at": "2026-01-02T03:04:05Z" },
+        "attempt": null
+      },
+      "expect": { "rendered": "2026-01-02T03:04:05Z" }
     }
   ]
 }

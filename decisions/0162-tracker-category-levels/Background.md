@@ -202,3 +202,37 @@ session's plans shared.
   carries. `CLAUDE.md` now states the parenthesised form and why, so the next plan does not
   rediscover it; repairing `section_body` instead was considered and not done, that function being
   shared by four checks in `scripts/validate_spec_consistency.py` whose reads would change with it.
+
+## What applying the plan found (2026-08-28)
+
+Implementing the plan found one site it had not reached, and it is the same lens one level out that
+decisions 0160 and 0161 both met: a consequence stated in a derived artifact, whose premise this
+decision removes.
+
+`conformance/README.md`'s "What the slice covers" section explained why `tracker_error_categories`
+and `agent_error_categories` carry no `exhaustive` key — "Sections 11.4 and 10.6 do not state that
+their sets are open, and inferring it here would be the registry deciding a question the prose left
+alone" — and then told a generator what to rely on instead: "both are `RECOMMENDED`, so a type
+generated from either must already admit an unknown token."
+
+Steps 3, 4 and 9 falsify every clause of that. Both sections now state their sets are open, so the
+premise for the absent key is gone; and `tracker_error_categories` is no longer uniformly
+`RECOMMENDED`, so the rule offered in the premise's place is wrong for the group it was written
+about. That last half is the one that bites: it is not stale description but **instruction to a
+generator**, and a generator following it would read one group level for a group four of whose
+entries override it. This is decision 0132's shape once more — a second artifact restating what a
+section establishes, each complete against itself — and nothing was checking, because the claim
+lives in this file's prose where checks 3, 4 and 6 do not read.
+
+Repaired rather than filed. Both groups now carry `exhaustive: false`, on the authority the same
+paragraph already grants `error_classes`, whose set Section 5.5 states is open while its spellings
+are REQUIRED — the exact shape Section 11.4 now has. The paragraph that named four such groups names
+six, and the paragraph that explained the absent key is replaced by what a generator actually needs:
+that `tracker_error_categories` carries a level per entry as well as for the group, as
+`validation_profiles` already did for a reason of its own, so the entry's level governs where it
+carries one and the group level is not evidence that every member is advisory.
+
+The plan reached the two finding entries in this file and not this paragraph, because the plan was
+written from what the decision *changes* and the paragraph is prose about what the corpus *is*. That
+is the reach question `plan-review`'s P lens asks, and it was asked here of `SPEC.md`'s sections and
+not of the corpus's own descriptive prose.

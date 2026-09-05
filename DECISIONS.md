@@ -6615,8 +6615,18 @@ corpus rather than for some. Decision 0161's applied plan writes the pair in par
 converting it removed the whole class, 8, 13 and 10 findings falling to 3, 7 and 4. `CLAUDE.md` now
 states the parenthesised form and the reason. Repairing `section_body` instead was considered and
 not done: it is shared by four checks in `scripts/validate_spec_consistency.py` whose reads would
-change with it. Relates to 0102, 0104, 0132, 0164. Accepted; `Plan.md` written, not yet applied to
-`SPEC.md`.
+change with it. Implementing it found one paragraph the plan had not named, the same lens one level
+out that decisions 0160 and 0161 both met: `conformance/README.md`'s "What the slice covers" section
+explained the absent `exhaustive` key by Sections 11.4 and 10.6 not stating their sets are open,
+then told a generator to rely on both groups being uniformly RECOMMENDED instead. Every clause of
+that is falsified here, and the second half is instruction rather than description — a generator
+following it would read one group level for a group four of whose entries override it. Both groups
+now carry `exhaustive: false` on the authority the same paragraph already grants `error_classes`,
+whose set is open while its spellings are REQUIRED, and the paragraph is replaced by what a
+generator needs: the entry's level governs where it carries one. Nothing was checking, the claim
+living in prose that checks 3, 4 and 6 do not read. Relates to 0102, 0104, 0132, 0164. Accepted and
+applied to `SPEC.md` (Sections 10.6, 11.4, 17.3, 18.1.2, 19), `CONFORMANCE-STATEMENT-TEMPLATE.md`,
+`conformance/vocabulary.json` and `conformance/README.md`.
 
 ## 0163 — The prompt template contract is a cross-implementation contract
 
@@ -6684,8 +6694,14 @@ site the plan had not reached inside a file it was already editing — the harne
 `render_prompt` entry, which states the floor where a harness author meets the function rather than
 in the findings section; and one site that has to *survive*, Section 5.4's "Liquid-compatible
 semantics are sufficient" being quoted by the resolved decision-0135 entry, which would have gone
-stale had the subset replaced the phrase rather than joining it. Relates to 0102, 0135, 0154, 0160.
-Accepted; `Plan.md` written, not yet applied to `SPEC.md`.
+stale had the subset replaced the phrase rather than joining it. Applying the plan found one more
+site of the same shape: `conformance/vocabulary.json`'s `error_classes` registry restated Section
+5.5's `template_render_error` condition list in free text `check_registries` does not compare
+against `SPEC.md`, so it kept naming three conditions after Section 5.5 named four; the entry now
+names the fourth. Relates to 0102, 0135, 0154, 0160. Accepted and applied to `SPEC.md` (Sections
+5.4, 5.5, 12.1, 12.2, 12.3, 17.1, 18.1.3, 19), `CONFORMANCE-STATEMENT-TEMPLATE.md`,
+`conformance/vectors/prompt-rendering.json`, `conformance/README.md` and
+`conformance/vocabulary.json`.
 
 ## 0164 — A preflight refusal that cannot say which check refused
 

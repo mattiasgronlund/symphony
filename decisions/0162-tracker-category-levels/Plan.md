@@ -142,4 +142,6 @@ is the requirement level attached to four of them.
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Sections 10.6, 11.4, 17.3, 18.1.2, 19),
+`CONFORMANCE-STATEMENT-TEMPLATE.md`, `conformance/vocabulary.json` and `conformance/README.md` on
+branch `apply-0162-tracker-category-levels`.

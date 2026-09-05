@@ -6,7 +6,6 @@
   "spec_refs": [
     "SPEC.md Section 17 \"Test and Validation Matrix\""
   ],
-
   "events": {
     "spec_refs": [
       "SPEC.md Section 10.4 \"Emitted Runtime Events (Upstream to Orchestrator)\"",
@@ -29,18 +28,33 @@
       "malformed"
     ]
   },
-
   "event_envelope_fields": {
-    "spec_refs": ["SPEC.md Section 10.4 \"Emitted Runtime Events (Upstream to Orchestrator)\""],
+    "spec_refs": [
+      "SPEC.md Section 10.4 \"Emitted Runtime Events (Upstream to Orchestrator)\""
+    ],
     "note": "What each emitted event SHOULD include. Payload fields beyond these are event-specific.",
     "entries": [
-      { "token": "event", "type": "enum/string" },
-      { "token": "timestamp", "type": "UTC timestamp" },
-      { "token": "pid", "optional": true, "note": "Included if available." },
-      { "token": "usage", "type": "map", "optional": true, "note": "The neutral token-usage record (`token_usage_fields`), with any adapter-specific counts in an opaque extras field." }
+      {
+        "token": "event",
+        "type": "enum/string"
+      },
+      {
+        "token": "timestamp",
+        "type": "UTC timestamp"
+      },
+      {
+        "token": "pid",
+        "optional": true,
+        "note": "Included if available."
+      },
+      {
+        "token": "usage",
+        "type": "map",
+        "optional": true,
+        "note": "The neutral token-usage record (`token_usage_fields`), with any adapter-specific counts in an opaque extras field."
+      }
     ]
   },
-
   "log_context_fields": {
     "spec_refs": [
       "SPEC.md Section 13.1 \"Logging Conventions\"",
@@ -48,14 +62,30 @@
     ],
     "note": "REQUIRED log context, by what the log is about. Section 18.1.1 makes structured logs carrying all three a conformance item for every implementation.",
     "entries": [
-      { "token": "issue_id", "required_for": "issue-related logs" },
-      { "token": "issue_identifier", "required_for": "issue-related logs" },
-      { "token": "session_id", "required_for": "coding-agent session lifecycle logs" },
-      { "token": "credential_scope", "required_for": "logs describing a call that reached the code host", "note": "Names the scope the call's credential came from — a repository, or the orchestrator level — never the credential or any part of its value (Sections 8.7, 15.3)." },
-      { "token": "origin_run_id", "required_for": "coding-agent session lifecycle logs", "note": "The run attempt whose failure produced this one (Sections 7.2, 8.4, 13.1). Names the origin of a retry sequence rather than the immediate predecessor, so the sequence is a group rather than a linked list. Always present: the first attempt of a run is its own origin." }
+      {
+        "token": "issue_id",
+        "required_for": "issue-related logs"
+      },
+      {
+        "token": "issue_identifier",
+        "required_for": "issue-related logs"
+      },
+      {
+        "token": "session_id",
+        "required_for": "coding-agent session lifecycle logs"
+      },
+      {
+        "token": "credential_scope",
+        "required_for": "logs describing a call that reached the code host",
+        "note": "Names the scope the call's credential came from — a repository, or the orchestrator level — never the credential or any part of its value (Sections 8.7, 15.3)."
+      },
+      {
+        "token": "origin_run_id",
+        "required_for": "coding-agent session lifecycle logs",
+        "note": "The run attempt whose failure produced this one (Sections 7.2, 8.4, 13.1). Names the origin of a retry sequence rather than the immediate predecessor, so the sequence is a group rather than a linked list. Always present: the first attempt of a run is its own origin."
+      }
     ]
   },
-
   "token_usage_fields": {
     "spec_refs": [
       "SPEC.md Section 4.1.6 \"Live Session (Agent Session Metadata)\"",
@@ -63,39 +93,95 @@
       "SPEC.md Section 10.7 \"Agent Runner Contract\""
     ],
     "note": "The neutral token-usage record each adapter normalizes its protocol's usage payloads into. Absolute cumulative totals, never deltas (Section 13.5); adapter-specific counts such as cache tokens go in an extras field rather than here.",
-    "entries": ["input_tokens", "output_tokens", "total_tokens"]
-  },
-
-  "ledger_entry_fields": {
-    "spec_refs": ["SPEC.md Section 13.6 \"Per-Execution Usage Ledger (OPTIONAL)\""],
-    "note": "One entry of the OPTIONAL per-execution usage ledger: a full absolute snapshot of one session's token usage at one observation. Entries are keyed by (`issue_identifier`, `session_id`); `required: true` marks a field whose absence makes the entry invalid and MUST be skipped on read.",
-    "key": ["issue_identifier", "session_id"],
     "entries": [
-      { "token": "schema_version", "type": "integer" },
-      { "token": "observed_at", "type": "timestamp" },
-      { "token": "final", "type": "boolean" },
-      { "token": "issue_id", "type": "string or null" },
-      { "token": "issue_identifier", "type": "string", "required": true },
-      { "token": "session_id", "type": "string", "required": true },
-      { "token": "turn_count", "type": "integer" },
-      { "token": "input_tokens", "type": "integer" },
-      { "token": "output_tokens", "type": "integer" },
-      { "token": "total_tokens", "type": "integer" },
-      { "token": "source_event", "type": "string", "note": "An emitted event (Section 10.4) or `session_final`." }
+      "input_tokens",
+      "output_tokens",
+      "total_tokens"
     ]
   },
-
+  "ledger_entry_fields": {
+    "spec_refs": [
+      "SPEC.md Section 13.6 \"Per-Execution Usage Ledger (OPTIONAL)\""
+    ],
+    "note": "One entry of the OPTIONAL per-execution usage ledger: a full absolute snapshot of one session's token usage at one observation. Entries are keyed by (`issue_identifier`, `session_id`); `required: true` marks a field whose absence makes the entry invalid and MUST be skipped on read.",
+    "key": [
+      "issue_identifier",
+      "session_id"
+    ],
+    "entries": [
+      {
+        "token": "schema_version",
+        "type": "integer"
+      },
+      {
+        "token": "observed_at",
+        "type": "timestamp"
+      },
+      {
+        "token": "final",
+        "type": "boolean"
+      },
+      {
+        "token": "issue_id",
+        "type": "string or null"
+      },
+      {
+        "token": "issue_identifier",
+        "type": "string",
+        "required": true
+      },
+      {
+        "token": "session_id",
+        "type": "string",
+        "required": true
+      },
+      {
+        "token": "turn_count",
+        "type": "integer"
+      },
+      {
+        "token": "input_tokens",
+        "type": "integer"
+      },
+      {
+        "token": "output_tokens",
+        "type": "integer"
+      },
+      {
+        "token": "total_tokens",
+        "type": "integer"
+      },
+      {
+        "token": "source_event",
+        "type": "string",
+        "note": "An emitted event (Section 10.4) or `session_final`."
+      }
+    ]
+  },
   "recovery_classes": {
-    "spec_refs": ["SPEC.md Section 14.3 \"State Recovery Classes\""],
+    "spec_refs": [
+      "SPEC.md Section 14.3 \"State Recovery Classes\""
+    ],
     "note": "Every Orchestrator Runtime State field (Section 4.1.8), and any state an OPTIONAL extension introduces, MUST be assigned exactly one class, published in the Conformance Statement (Section 19).",
     "entries": [
-      { "token": "Reconstructable", "short_code": "R" },
-      { "token": "Ephemeral", "short_code": "E" },
-      { "token": "Cached external signal", "short_code": "C" },
-      { "token": "Durable", "short_code": "D" }
+      {
+        "token": "Reconstructable",
+        "short_code": "R"
+      },
+      {
+        "token": "Ephemeral",
+        "short_code": "E"
+      },
+      {
+        "token": "Cached external signal",
+        "short_code": "C"
+      },
+      {
+        "token": "Durable",
+        "short_code": "D"
+      }
     ]
   },
-
   "runtime_state_fields": {
     "spec_refs": [
       "SPEC.md Section 4.1.8 \"Orchestrator Runtime State\"",
@@ -103,18 +189,47 @@
     ],
     "note": "The single authoritative runtime state and the recovery class Section 4.1.8 states for each field. An implementation records its own assignment in its Conformance Statement (Section 19); this is the specification's, which is what that record is compared against.",
     "entries": [
-      { "token": "poll_interval_ms", "recovery_class": "Reconstructable" },
-      { "token": "max_concurrent_agents", "recovery_class": "Reconstructable" },
-      { "token": "running", "recovery_class": "Reconstructable" },
-      { "token": "claimed", "recovery_class": "Reconstructable" },
-      { "token": "retry_attempts", "recovery_class": "Ephemeral" },
-      { "token": "completed", "recovery_class": "Ephemeral" },
-      { "token": "agent_totals", "recovery_class": "Ephemeral", "note": "Becomes `Durable` when a budgeting extension enforces on it, and is then Symphony-attributed rather than account-wide." },
-      { "token": "repository_backoff", "recovery_class": "Ephemeral", "note": "The per-repository backoff Section 14.2 requires where an engine policy could not be used at all. Carries no park state: whether persistent failures are parked is `Implementation-defined`, so a park record is Core-introduced state governed by Section 14.3 rather than a field this enumeration shapes." },
-      { "token": "provider_rate_limits", "recovery_class": "Ephemeral", "note": "Observability in Core, where the reset consequence is that the status surface reports no rate-limit reading until the next agent update refreshes it. Becomes `Cached external signal` when the OPTIONAL provider-quota extension (Section 8.9) enforces on it, which is where its staleness bound and its `UNKNOWN` policy come from. An absent value denotes `UNKNOWN`, distinct from any reading and in particular not `0`." }
+      {
+        "token": "poll_interval_ms",
+        "recovery_class": "Reconstructable"
+      },
+      {
+        "token": "max_concurrent_agents",
+        "recovery_class": "Reconstructable"
+      },
+      {
+        "token": "running",
+        "recovery_class": "Reconstructable"
+      },
+      {
+        "token": "claimed",
+        "recovery_class": "Reconstructable"
+      },
+      {
+        "token": "retry_attempts",
+        "recovery_class": "Ephemeral"
+      },
+      {
+        "token": "completed",
+        "recovery_class": "Ephemeral"
+      },
+      {
+        "token": "agent_totals",
+        "recovery_class": "Ephemeral",
+        "note": "Becomes `Durable` when a budgeting extension enforces on it, and is then Symphony-attributed rather than account-wide."
+      },
+      {
+        "token": "repository_backoff",
+        "recovery_class": "Ephemeral",
+        "note": "The per-repository backoff Section 14.2 requires where an engine policy could not be used at all. Carries no park state: whether persistent failures are parked is `Implementation-defined`, so a park record is Core-introduced state governed by Section 14.3 rather than a field this enumeration shapes."
+      },
+      {
+        "token": "provider_rate_limits",
+        "recovery_class": "Ephemeral",
+        "note": "Observability in Core, where the reset consequence is that the status surface reports no rate-limit reading until the next agent update refreshes it. Becomes `Cached external signal` when the OPTIONAL provider-quota extension (Section 8.9) enforces on it, which is where its staleness bound and its `UNKNOWN` policy come from. An absent value denotes `UNKNOWN`, distinct from any reading and in particular not `0`."
+      }
     ]
   },
-
   "config_namespaces": {
     "spec_refs": [
       "SPEC.md Section 5.3 \"Configuration Schema\"",
@@ -124,25 +239,111 @@
     "note": "Top-level configuration keys and the artifact each belongs to (Section 5). `core: true` marks a key the core schema defines; the rest are owned by the OPTIONAL extension named in `spec_ref`, and an implementation publishes the namespaces it ships in its Conformance Statement (Section 19). Not a closed set: Section 5.3 permits an extension to define additional top-level keys.",
     "exhaustive": false,
     "entries": [
-      { "token": "tracker", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.1", "note": "Its `transitions` field is repository-owned and lives in `repo.policy.toml` (Section 11.6)." },
-      { "token": "polling", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.2" },
-      { "token": "workspace", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.3" },
-      { "token": "hooks", "artifact": "repository_owned", "core": true, "spec_ref": "Section 5.3.4", "note": "In-sandbox hook bodies in `WORKFLOW.md`, host-side hook bodies in `repo.policy.toml` (Section 15.4); `hooks.workspace.timeout_ms` is declared in `repo.policy.toml` only and bounds both halves (Section 5.3.4)." },
-      { "token": "agent", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.5" },
-      { "token": "codex", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.6" },
-      { "token": "repository", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 5.3.7", "note": "The managed repositories, keyed by `Repository Key` (Section 4.2). An entry holds the repository-level keys — `policy`, `vcs`, `agent` and `routing` — and a key it does not carry resolves from the orchestrator-level block of the same name, leaf by leaf." },
-      { "token": "vcs", "artifact": "operator_policy_config", "core": true, "spec_ref": "Section 6.4", "note": "Its fields are documented in Section 9.7. It exists at both levels: written per managed repository as `repository.<name>.vcs`, with this orchestrator-level block supplying what an entry does not carry (Section 5.3.7)." },
-      { "token": "budget", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 8.8" },
-      { "token": "quota", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 8.9" },
-      { "token": "forge_budget", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 8.11", "note": "Owned by the OPTIONAL forge budget guard. Only the guard is optional: recording the snapshot the engine reports on every forge-touching operation is Core and requires none of this namespace's keys." },
-      { "token": "[tasks]", "artifact": "repo_policy_toml", "core": false, "spec_ref": "Section 8.10" },
-      { "token": "[driver]", "artifact": "repo_policy_toml", "core": false, "spec_ref": "Section 8.10" },
-      { "token": "compute", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 9.11" },
-      { "token": "observability", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 18.2", "note": "Reserved for observability settings (Section 13); the specification names the namespace, not the fields. Ledger settings are `observability.ledger.*` (Section 13.6)." },
-      { "token": "server", "artifact": "operator_policy_config", "core": false, "spec_ref": "Section 13.8", "note": "Section 13.8 starts the HTTP server when a CLI `--port` argument is given or `server.port` is present in the operator policy config. The key was placed in `WORKFLOW.md` front matter until decision 0160: binding a host port is a setting Symphony executes with host access, which Section 5 forbids that artifact, and the listener serves instance-wide state while `WORKFLOW.md` is per repository (Section 5.1). This is the placement Section 18.2 already states for `observability.*`." }
+      {
+        "token": "tracker",
+        "artifact": "operator_policy_config",
+        "core": true,
+        "spec_ref": "Section 5.3.1",
+        "note": "Its `transitions` field is repository-owned and lives in `repo.policy.toml` (Section 11.6)."
+      },
+      {
+        "token": "polling",
+        "artifact": "operator_policy_config",
+        "core": true,
+        "spec_ref": "Section 5.3.2"
+      },
+      {
+        "token": "workspace",
+        "artifact": "operator_policy_config",
+        "core": true,
+        "spec_ref": "Section 5.3.3"
+      },
+      {
+        "token": "hooks",
+        "artifact": "repository_owned",
+        "core": true,
+        "spec_ref": "Section 5.3.4",
+        "note": "In-sandbox hook bodies in `WORKFLOW.md`, host-side hook bodies in `repo.policy.toml` (Section 15.4); `hooks.workspace.timeout_ms` is declared in `repo.policy.toml` only and bounds both halves (Section 5.3.4)."
+      },
+      {
+        "token": "agent",
+        "artifact": "operator_policy_config",
+        "core": true,
+        "spec_ref": "Section 5.3.5"
+      },
+      {
+        "token": "codex",
+        "artifact": "operator_policy_config",
+        "core": true,
+        "spec_ref": "Section 5.3.6"
+      },
+      {
+        "token": "repository",
+        "artifact": "operator_policy_config",
+        "core": true,
+        "spec_ref": "Section 5.3.7",
+        "note": "The managed repositories, keyed by `Repository Key` (Section 4.2). An entry holds the repository-level keys — `policy`, `vcs`, `agent` and `routing` — and a key it does not carry resolves from the orchestrator-level block of the same name, leaf by leaf."
+      },
+      {
+        "token": "vcs",
+        "artifact": "operator_policy_config",
+        "core": true,
+        "spec_ref": "Section 6.4",
+        "note": "Its fields are documented in Section 9.7. It exists at both levels: written per managed repository as `repository.<name>.vcs`, with this orchestrator-level block supplying what an entry does not carry (Section 5.3.7)."
+      },
+      {
+        "token": "budget",
+        "artifact": "operator_policy_config",
+        "core": false,
+        "spec_ref": "Section 8.8"
+      },
+      {
+        "token": "quota",
+        "artifact": "operator_policy_config",
+        "core": false,
+        "spec_ref": "Section 8.9"
+      },
+      {
+        "token": "forge_budget",
+        "artifact": "operator_policy_config",
+        "core": false,
+        "spec_ref": "Section 8.11",
+        "note": "Owned by the OPTIONAL forge budget guard. Only the guard is optional: recording the snapshot the engine reports on every forge-touching operation is Core and requires none of this namespace's keys."
+      },
+      {
+        "token": "[tasks]",
+        "artifact": "repo_policy_toml",
+        "core": false,
+        "spec_ref": "Section 8.10"
+      },
+      {
+        "token": "[driver]",
+        "artifact": "repo_policy_toml",
+        "core": false,
+        "spec_ref": "Section 8.10"
+      },
+      {
+        "token": "compute",
+        "artifact": "operator_policy_config",
+        "core": false,
+        "spec_ref": "Section 9.11"
+      },
+      {
+        "token": "observability",
+        "artifact": "operator_policy_config",
+        "core": false,
+        "spec_ref": "Section 18.2",
+        "note": "Reserved for observability settings (Section 13); the specification names the namespace, not the fields. Ledger settings are `observability.ledger.*` (Section 13.6)."
+      },
+      {
+        "token": "server",
+        "artifact": "operator_policy_config",
+        "core": false,
+        "spec_ref": "Section 13.8",
+        "note": "Section 13.8 starts the HTTP server when a CLI `--port` argument is given or `server.port` is present in the operator policy config. The key was placed in `WORKFLOW.md` front matter until decision 0160: binding a host port is a setting Symphony executes with host access, which Section 5 forbids that artifact, and the listener serves instance-wide state while `WORKFLOW.md` is per repository (Section 5.1). This is the placement Section 18.2 already states for `observability.*`."
+      }
     ]
   },
-
   "error_classes": {
     "spec_refs": [
       "SPEC.md Section 5.5 \"Workflow Validation and Error Surface\"",
@@ -154,14 +355,33 @@
     "requirement_level": "REQUIRED",
     "exhaustive": false,
     "entries": [
-      { "token": "missing_workflow_file", "gating": "blocks_dispatch", "condition": "The workflow file cannot be read at the resolved path (Section 5.1)." },
-      { "token": "workflow_parse_error", "gating": "blocks_dispatch", "condition": "The YAML front matter is not well-formed (Section 5.2)." },
-      { "token": "workflow_front_matter_not_a_map", "gating": "blocks_dispatch", "condition": "The front matter is well-formed YAML that does not decode to a map (Section 5.2)." },
-      { "token": "template_parse_error", "gating": "fails_attempt", "condition": "The prompt body is not well-formed template syntax." },
-      { "token": "template_render_error", "gating": "fails_attempt", "condition": "The body is well formed and names something the engine cannot resolve: an unknown variable, an unknown filter, or an invalid interpolation (Section 5.4)." }
+      {
+        "token": "missing_workflow_file",
+        "gating": "blocks_dispatch",
+        "condition": "The workflow file cannot be read at the resolved path (Section 5.1)."
+      },
+      {
+        "token": "workflow_parse_error",
+        "gating": "blocks_dispatch",
+        "condition": "The YAML front matter is not well-formed (Section 5.2)."
+      },
+      {
+        "token": "workflow_front_matter_not_a_map",
+        "gating": "blocks_dispatch",
+        "condition": "The front matter is well-formed YAML that does not decode to a map (Section 5.2)."
+      },
+      {
+        "token": "template_parse_error",
+        "gating": "fails_attempt",
+        "condition": "The prompt body is not well-formed template syntax."
+      },
+      {
+        "token": "template_render_error",
+        "gating": "fails_attempt",
+        "condition": "The body is well formed and names something the engine cannot resolve: an unknown variable, an unknown filter, an invalid interpolation, or a member of the `issue` object outside the field set Section 4.1.1 defines (Sections 5.4, 12.2)."
+      }
     ]
   },
-
   "config_error_reasons": {
     "spec_refs": [
       "SPEC.md Section 6.3 \"Dispatch Preflight Validation\"",
@@ -172,44 +392,110 @@
     ],
     "note": "Dispatch preflight's refusals of the operator configuration (Section 6.3) — reported before any tracker adapter is invoked, so these are not adapter errors. `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` were carried in `tracker_error_categories` with a token and no `condition`; their condition was never Section 11.4's, it was Section 6.3's, and they moved here with it (decision 0164). Where several conditions hold, the reported reason is the first in the order the entries below are listed, which is Section 6.3's own stated order — a check is ordered after whatever produces the value it reads, so the repository set precedes each entry's resolved `vcs`, which precedes `tracker.kind`, which fixes the capability descriptor the three capability-dependent entries read. `unknown_transition_trigger` is spelled deliberately differently from the engine's `unknown_trigger` (`conformance/vcsx/vocabulary.json` `config_reasons`): the two are checked by different parties against different vocabularies — Symphony against `repo.policy.toml`'s `tracker.transitions`, the engine against its own edges — and an operator reading either in a log needs to tell which validator produced it.",
     "entries": [
-      { "token": "no_repository_configured", "condition": "No `repository` entry is configured." },
-      { "token": "invalid_repository_key", "condition": "A `repository` entry's key is not a valid `Repository Key` (Section 4.2)." },
-      { "token": "missing_vcs_field", "condition": "A `vcs` field Section 9.7 requires is unresolved for an entry after resolution against the orchestrator level (Section 5.3.7)." },
-      { "token": "missing_tracker_kind", "condition": "`tracker.kind` is absent." },
-      { "token": "unsupported_tracker_kind", "condition": "`tracker.kind` names a kind the implementation does not support." },
-      { "token": "missing_tracker_api_key", "condition": "`tracker.api_key` is absent after `$` resolution for a `secret`-mode adapter (Section 11.7)." },
-      { "token": "missing_tracker_project_slug", "condition": "`tracker.project_slug` is absent where the selected kind REQUIRES it." },
-      { "token": "set_state_capability_unmet", "condition": "`tracker.transitions` is non-empty and the adapter declares no `set_state` capability (Section 11.7)." },
-      { "token": "assignee_capability_unmet", "condition": "`tracker.assignee` is non-null and the adapter declares it populates no `assignees` (Section 11.7)." },
-      { "token": "routing_field_unpopulated", "condition": "A `routing` rule keys on a record field the adapter declares it does not populate (Sections 5.3.7, 8.7, 11.7)." },
-      { "token": "unknown_transition_trigger", "condition": "A `tracker.transitions` entry's `on` is outside the Section 11.6 trigger vocabulary." },
-      { "token": "missing_agent_command", "condition": "The selected agent adapter's launch command is absent or empty (`codex.command`, Section 5.3.6)." }
+      {
+        "token": "no_repository_configured",
+        "condition": "No `repository` entry is configured."
+      },
+      {
+        "token": "invalid_repository_key",
+        "condition": "A `repository` entry's key is not a valid `Repository Key` (Section 4.2)."
+      },
+      {
+        "token": "missing_vcs_field",
+        "condition": "A `vcs` field Section 9.7 requires is unresolved for an entry after resolution against the orchestrator level (Section 5.3.7)."
+      },
+      {
+        "token": "missing_tracker_kind",
+        "condition": "`tracker.kind` is absent."
+      },
+      {
+        "token": "unsupported_tracker_kind",
+        "condition": "`tracker.kind` names a kind the implementation does not support."
+      },
+      {
+        "token": "missing_tracker_api_key",
+        "condition": "`tracker.api_key` is absent after `$` resolution for a `secret`-mode adapter (Section 11.7)."
+      },
+      {
+        "token": "missing_tracker_project_slug",
+        "condition": "`tracker.project_slug` is absent where the selected kind REQUIRES it."
+      },
+      {
+        "token": "set_state_capability_unmet",
+        "condition": "`tracker.transitions` is non-empty and the adapter declares no `set_state` capability (Section 11.7)."
+      },
+      {
+        "token": "assignee_capability_unmet",
+        "condition": "`tracker.assignee` is non-null and the adapter declares it populates no `assignees` (Section 11.7)."
+      },
+      {
+        "token": "routing_field_unpopulated",
+        "condition": "A `routing` rule keys on a record field the adapter declares it does not populate (Sections 5.3.7, 8.7, 11.7)."
+      },
+      {
+        "token": "unknown_transition_trigger",
+        "condition": "A `tracker.transitions` entry's `on` is outside the Section 11.6 trigger vocabulary."
+      },
+      {
+        "token": "missing_agent_command",
+        "condition": "The selected agent adapter's launch command is absent or empty (`codex.command`, Section 5.3.6)."
+      }
     ]
   },
-
   "tracker_error_categories": {
     "spec_refs": [
       "SPEC.md Section 11.4 \"Error Handling Contract\"",
       "SPEC.md Section 11.7 \"Adapter Capability Descriptor\"",
       "SPEC.md Section 11.8 \"State Transition Write Semantics\""
     ],
-    "note": "Transport-neutral categories each tracker adapter maps its transport's failures onto. RECOMMENDED, so the names are a target vocabulary rather than a checked spelling; a generated type MUST admit an unknown token. `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` moved to `config_error_reasons`: their condition was never here, it was Section 6.3's preflight check, and this group now carries only categories a tracker adapter's own transport failure can raise (decision 0164). Section 17.3 requires four of the remaining entries by name in `Core Conformance` checks — `tracker_unsupported_operation`, `tracker_state_unreachable`, `tracker_state_conflict`, `tracker_pagination_error` — which is a disagreement with this level recorded in `conformance/README.md` rather than resolved here.",
+    "note": "Transport-neutral categories each tracker adapter maps its transport's failures onto. Four are REQUIRED spellings, carried per entry below rather than for the group: a category is REQUIRED where it is what makes a guarantee `SPEC.md` states observable when it fails — the capability descriptor gating writes (Section 11.7), `set_state`'s two failure modes (Section 11.8), and candidate enumeration's completeness (Section 11.2). The rest stay RECOMMENDED, the group's own level: a target vocabulary rather than a checked spelling, so a generated type MUST admit an unknown token. `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` moved to `config_error_reasons`: their condition was never here, it was Section 6.3's preflight check, and this group now carries only categories a tracker adapter's own transport failure can raise (decision 0164). Not a closed set: Section 11.4 permits an implementation to define additional categories for conditions these do not name and requires it to document each one (decision 0162).",
+    "exhaustive": false,
     "requirement_level": "RECOMMENDED",
     "entries": [
-      { "token": "tracker_unsupported_operation", "condition": "Write not in the adapter capability descriptor (Section 11.7)." },
-      { "token": "tracker_state_unreachable", "condition": "`set_state` target unreachable from the current state (Section 11.8)." },
-      { "token": "tracker_state_conflict", "condition": "Issue state changed underneath a `set_state` write (Section 11.8)." },
-      { "token": "tracker_api_request", "condition": "Transport or connection failure." },
-      { "token": "tracker_api_status", "condition": "Unsuccessful response status, for example non-2xx HTTP." },
-      { "token": "tracker_backend_errors", "condition": "Backend-reported errors in a well-formed response, for example a GraphQL `errors` array." },
-      { "token": "tracker_payload_invalid", "condition": "Unexpected or unparseable response payload." },
-      { "token": "tracker_pagination_error", "condition": "Pagination integrity failure, for example a missing continuation cursor." }
+      {
+        "token": "tracker_unsupported_operation",
+        "requirement_level": "REQUIRED",
+        "condition": "Write not in the adapter capability descriptor (Section 11.7)."
+      },
+      {
+        "token": "tracker_state_unreachable",
+        "requirement_level": "REQUIRED",
+        "condition": "`set_state` target unreachable from the current state (Section 11.8)."
+      },
+      {
+        "token": "tracker_state_conflict",
+        "requirement_level": "REQUIRED",
+        "condition": "Issue state changed underneath a `set_state` write (Section 11.8)."
+      },
+      {
+        "token": "tracker_api_request",
+        "condition": "Transport or connection failure."
+      },
+      {
+        "token": "tracker_api_status",
+        "condition": "Unsuccessful response status, for example non-2xx HTTP."
+      },
+      {
+        "token": "tracker_backend_errors",
+        "condition": "Backend-reported errors in a well-formed response, for example a GraphQL `errors` array."
+      },
+      {
+        "token": "tracker_payload_invalid",
+        "condition": "Unexpected or unparseable response payload."
+      },
+      {
+        "token": "tracker_pagination_error",
+        "requirement_level": "REQUIRED",
+        "condition": "Pagination integrity failure, for example a missing continuation cursor (Section 11.2)."
+      }
     ]
   },
-
   "agent_error_categories": {
-    "spec_refs": ["SPEC.md Section 10.6 \"Timeouts and Error Mapping\""],
-    "note": "Normalized categories an agent adapter maps its protocol's failures onto. RECOMMENDED, so the names are a target vocabulary rather than a checked spelling; a generated type MUST admit an unknown token. Section 10.6 states no condition for any of them. `turn_failed`, `turn_cancelled` and `turn_input_required` are also `events` entries (Section 10.4): the category is named after the event that produced it, so a generator emitting one type per group has three names in two enums by design rather than by collision.",
+    "spec_refs": [
+      "SPEC.md Section 10.6 \"Timeouts and Error Mapping\""
+    ],
+    "note": "Normalized categories an agent adapter maps its protocol's failures onto. RECOMMENDED, so the names are a target vocabulary rather than a checked spelling; a generated type MUST admit an unknown token. Section 10.6 states no condition for any of them. `turn_failed`, `turn_cancelled` and `turn_input_required` are also `events` entries (Section 10.4): the category is named after the event that produced it, so a generator emitting one type per group has three names in two enums by design rather than by collision. Not a closed set: Section 10.6 permits an implementation to define additional categories and requires it to document each one (decision 0162).",
+    "exhaustive": false,
     "requirement_level": "RECOMMENDED",
     "entries": [
       "codex_not_found",
@@ -223,7 +509,6 @@
       "turn_input_required"
     ]
   },
-
   "transition_triggers": {
     "spec_refs": [
       "SPEC.md Section 11.6 \"Workflow State Machine and Transition Triggers\"",
@@ -234,19 +519,58 @@
     "requirement_level": "REQUIRED",
     "exhaustive": true,
     "entries": [
-      { "token": "ready-for-review", "core": true, "condition": "The agent signals through the broker CLI that the work is ready for review." },
-      { "token": "blocked", "core": true, "condition": "The agent signals that it is blocked." },
-      { "token": "done", "core": true, "condition": "The agent signals that the work is done." },
-      { "token": "dispatched", "core": true, "condition": "The orchestrator has claimed the issue and started its first turn (Sections 7.1, 7.3)." },
-      { "token": "pull_request_opened", "core": true, "condition": "A pull request was opened for the issue during the run." },
-      { "token": "run_succeeded", "core": true, "condition": "The run attempt finished in `Succeeded` (Section 7.2)." },
-      { "token": "run_failed", "core": true, "condition": "The run attempt finished in a failure terminal reason — `Failed`, `TimedOut` or `Stalled` (Section 7.2)." },
-      { "token": "retries_exhausted", "core": true, "condition": "The retry path completed without re-dispatch (Sections 7.1 `Released`, 8.4)." },
-      { "token": "tasks:all_closed", "core": false, "condition": "Every implementation task for the issue is closed; the daemon's computed-completion trigger (Section 8.10)." },
-      { "token": "task:#needs_help", "core": false, "condition": "An agent-created human-assigned task parks the run for feedback (Section 8.10). The `#` names a condition across tasks, not a proto class." }
+      {
+        "token": "ready-for-review",
+        "core": true,
+        "condition": "The agent signals through the broker CLI that the work is ready for review."
+      },
+      {
+        "token": "blocked",
+        "core": true,
+        "condition": "The agent signals that it is blocked."
+      },
+      {
+        "token": "done",
+        "core": true,
+        "condition": "The agent signals that the work is done."
+      },
+      {
+        "token": "dispatched",
+        "core": true,
+        "condition": "The orchestrator has claimed the issue and started its first turn (Sections 7.1, 7.3)."
+      },
+      {
+        "token": "pull_request_opened",
+        "core": true,
+        "condition": "A pull request was opened for the issue during the run."
+      },
+      {
+        "token": "run_succeeded",
+        "core": true,
+        "condition": "The run attempt finished in `Succeeded` (Section 7.2)."
+      },
+      {
+        "token": "run_failed",
+        "core": true,
+        "condition": "The run attempt finished in a failure terminal reason — `Failed`, `TimedOut` or `Stalled` (Section 7.2)."
+      },
+      {
+        "token": "retries_exhausted",
+        "core": true,
+        "condition": "The retry path completed without re-dispatch (Sections 7.1 `Released`, 8.4)."
+      },
+      {
+        "token": "tasks:all_closed",
+        "core": false,
+        "condition": "Every implementation task for the issue is closed; the daemon's computed-completion trigger (Section 8.10)."
+      },
+      {
+        "token": "task:#needs_help",
+        "core": false,
+        "condition": "An agent-created human-assigned task parks the run for feedback (Section 8.10). The `#` names a condition across tasks, not a proto class."
+      }
     ]
   },
-
   "failure_classes": {
     "spec_refs": [
       "SPEC.md Section 14.1 \"Failure Classes\"",
@@ -256,18 +580,55 @@
     "requirement_level": "REQUIRED",
     "exhaustive": false,
     "entries": [
-      { "token": "workflow_config_failures", "name": "Workflow/Config Failures", "core": true },
-      { "token": "repository_provisioning_failures", "name": "Repository Provisioning Failures", "core": true },
-      { "token": "workspace_failures", "name": "Workspace Failures", "core": true },
-      { "token": "agent_session_failures", "name": "Agent Session Failures", "core": true },
-      { "token": "tracker_failures", "name": "Tracker Failures", "core": true },
-      { "token": "observability_failures", "name": "Observability Failures", "core": true },
-      { "token": "engine_invocation_failures", "name": "Engine Invocation Failures", "core": true },
-      { "token": "node_provisioning_failures", "name": "Node Provisioning Failures", "core": false, "spec_ref": "Section 9.11" },
-      { "token": "executor_bring_up_failures", "name": "Executor Bring-up Failures", "core": false, "spec_ref": "Section 9.11" }
+      {
+        "token": "workflow_config_failures",
+        "name": "Workflow/Config Failures",
+        "core": true
+      },
+      {
+        "token": "repository_provisioning_failures",
+        "name": "Repository Provisioning Failures",
+        "core": true
+      },
+      {
+        "token": "workspace_failures",
+        "name": "Workspace Failures",
+        "core": true
+      },
+      {
+        "token": "agent_session_failures",
+        "name": "Agent Session Failures",
+        "core": true
+      },
+      {
+        "token": "tracker_failures",
+        "name": "Tracker Failures",
+        "core": true
+      },
+      {
+        "token": "observability_failures",
+        "name": "Observability Failures",
+        "core": true
+      },
+      {
+        "token": "engine_invocation_failures",
+        "name": "Engine Invocation Failures",
+        "core": true
+      },
+      {
+        "token": "node_provisioning_failures",
+        "name": "Node Provisioning Failures",
+        "core": false,
+        "spec_ref": "Section 9.11"
+      },
+      {
+        "token": "executor_bring_up_failures",
+        "name": "Executor Bring-up Failures",
+        "core": false,
+        "spec_ref": "Section 9.11"
+      }
     ]
   },
-
   "layer_profiles": {
     "spec_refs": [
       "SPEC.md Section 17 \"Test and Validation Matrix\"",
@@ -292,7 +653,6 @@
       }
     ]
   },
-
   "validation_profiles": {
     "spec_refs": [
       "SPEC.md Section 17 \"Test and Validation Matrix\"",
@@ -323,7 +683,6 @@
       }
     ]
   },
-
   "deployment_topologies": {
     "spec_refs": [
       "SPEC.md Section 3.4 \"Layers, the VCS Engine, and Deployment Topologies\"",
@@ -335,13 +694,18 @@
     "entries": [
       {
         "token": "daemon",
-        "claims": ["Broker Core Conformance", "Daemon Conformance"],
+        "claims": [
+          "Broker Core Conformance",
+          "Daemon Conformance"
+        ],
         "requires_engine": true,
         "condition": "The autonomous daemon over the Broker Core, driving the VCS Engine. The full service this specification describes."
       },
       {
         "token": "interactive-agent",
-        "claims": ["Broker Core Conformance"],
+        "claims": [
+          "Broker Core Conformance"
+        ],
         "requires_engine": true,
         "condition": "The Broker Core plus the VCS Engine's `ship`/`land`, driving one interactive agent session with no polling daemon."
       },
