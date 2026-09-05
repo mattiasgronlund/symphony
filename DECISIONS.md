@@ -6813,7 +6813,7 @@ cheaper option the better trade. Relates to 0033. No `SPEC.md` edit is required,
 
 ## 0166 — A vector file registered in neither list
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0166-corpus-registration/](decisions/0166-corpus-registration/)
 
 `conformance/README.md` gains the fourth interpretation-note bullet, for `resolve_repository_config`,

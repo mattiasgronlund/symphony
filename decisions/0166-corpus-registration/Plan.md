@@ -48,4 +48,7 @@ None. No code-token identifier or section title is renamed or removed.
 
 ## Status
 
-Not started.
+Applied to `conformance/README.md`: the harness contract's interpretation-note list gains the
+`resolve_repository_config` bullet (steps 1 and 2), and a slice 4 table names
+`vectors/repository-inheritance.json` (step 3). `config-defaults.json`'s entry is untouched (step 4).
+At the applied revision `conformance/vectors/` holds 16 files and the tables hold 16 rows.
