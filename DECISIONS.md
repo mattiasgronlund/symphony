@@ -11,22 +11,37 @@ focused prose description. The folder holds the supporting detail:
 - `Plan.md` — how the decision is to be implemented in `SPEC.md`.
 - `Sessions.md` — the Claude session name(s) and id(s) that worked on the decision.
 
-**States:** `Proposed` (under consideration) · `Accepted` (decided; to be / being applied) ·
+**States:** `Proposed` (under consideration) · `Accepted` (decided; its normative text is not yet
+reachable from `main`) · `Applied` (decided, and its normative text is reachable from `main`) ·
 `Rejected` (decided against; kept for the record) · `Superseded` (replaced by a later decision; kept
 for the record). A `Superseded` chapter names the decision that replaced it, as
 `Superseded (by NNNN)`; unlike `Rejected`, a superseded decision may have been sound and parts of it
 may survive in its successor (decision 0033). A State MAY carry a parenthetical naming a later
-decision that revisited *part* of it without replacing it — the State itself stays one of the four,
-since a decision still standing is still `Accepted`.
+decision that revisited *part* of it without replacing it — the State itself stays one of the five,
+since a decision still standing is still `Accepted` or `Applied`.
+
+`Accepted` and `Applied` answer different questions, and a consumer needs both (decision 0165).
+`Accepted` says this repository closed the question; it does **not** say the specification reads
+differently yet. Only `Applied` says that. The pull request that lands a decision's normative text
+is the one that moves its State from `Accepted` to `Applied`, so the field and the text change in
+the same commit and cannot drift apart. A decision that needs no specification edit is `Applied` on
+acceptance, having no text to land. Where a chapter reads `Accepted`, the pinned tree is what says
+what the specification requires — not the chapter.
 
 New decisions get the next zero-padded number and a folder `decisions/NNNN-short-slug/`. Copy
 `decisions/_template/` to start. See `CLAUDE.md` for the working conventions.
+
+**A new chapter is born `Accepted`**, and only its apply pull request may write `Applied`. Do not
+copy a neighbouring chapter's `State`: almost every chapter below reads `Applied` because its text
+has long since landed, so copying one writes a claim about `main` that the commit adding it cannot
+make. A chapter created and set to `Applied` in the same commit is premature unless the decision
+needs no specification edit at all, which its own text must say.
 
 ---
 
 ## 0001 — Adopt a decision log
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0001-adopt-decision-log/](decisions/0001-adopt-decision-log/)
 
 Keep a structured decision log so changes to `SPEC.md` are traceable to their reasoning. Each
@@ -36,7 +51,7 @@ why the spec reads the way it does.
 
 ## 0002 — Stable addressing of SPEC.md from decision plans
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0002-stable-spec-addressing/](decisions/0002-stable-spec-addressing/)
 
 `Plan.md` files address `SPEC.md` by stable identity — code-token identifiers first, then section
@@ -48,7 +63,7 @@ them, rather than in a standalone registry that would duplicate `SPEC.md` and ro
 
 ## 0003 — Responsibility inversion and the credential broker boundary
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0003-responsibility-inversion-credential-broker/](decisions/0003-responsibility-inversion-credential-broker/)
 
 Symphony inverts from a scheduler/tracker-reader where the agent holds credentials into a privileged
@@ -61,7 +76,7 @@ environment before the sandbox forks. This is the keystone for decisions 0004–
 
 ## 0004 — Sandbox isolation and the per-run broker socket
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0004-sandbox-isolation-broker-socket/](decisions/0004-sandbox-isolation-broker-socket/)
 
 Each agent run MUST be wrappable in a configurable sandbox, with a strict-by-default profile assumed
@@ -88,7 +103,7 @@ hooks) into repo-owned base-sourced `repo.policy.toml`. Carried forward into 002
 
 ## 0006 — Agent adapters (Codex, Claude Code)
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0006-agent-adapters/](decisions/0006-agent-adapters/)
 
 Section 10 generalizes into a neutral agent runner contract plus per-agent adapters (Codex, Claude
@@ -99,7 +114,7 @@ and token accounting are generalized off Codex-specific shapes.
 
 ## 0007 — VCS abstraction and git automation
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0007-vcs-abstraction-git-automation/](decisions/0007-vcs-abstraction-git-automation/)
 
 A VCS adapter (GitHub, Forgejo) backs the broker's git and PR verbs. The agent does local git including
@@ -111,7 +126,7 @@ actor are configurable per repo.
 
 ## 0008 — Tracker abstraction and writes
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0008-tracker-abstraction-writes/](decisions/0008-tracker-abstraction-writes/)
 **Summary:** [Summary.md](decisions/0008-tracker-abstraction-writes/Summary.md) — the 22-fork deep dive and the decisions it produced (0017–0024)
 
@@ -122,7 +137,7 @@ that the state-machine maps to the actual tracker transitions.
 
 ## 0009 — Multi-repo and shared polling
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0009-multi-repo-shared-polling/](decisions/0009-multi-repo-shared-polling/)
 
 One Symphony instance manages multiple repositories. Issues are routed to exactly one repo by explicit,
@@ -132,7 +147,7 @@ background work. Workspace, concurrency, and the object store/worktrees become k
 
 ## 0010 — State recovery model and class taxonomy
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0010-state-recovery-classification/](decisions/0010-state-recovery-classification/)
 
 The spec's current recovery stance ("without a durable orchestrator DB", "intentionally in-memory") is
@@ -150,7 +165,7 @@ decisions 0011–0013.
 
 ## 0011 — Per-execution durable ledger
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0011-execution-ledger/](decisions/0011-execution-ledger/)
 
 An append-only, per-execution usage ledger keyed by `(issue_identifier, session_id)`, recording absolute
@@ -163,7 +178,7 @@ persisting session metadata across restarts.
 
 ## 0012 — Token budget guards
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0012-token-budget-guards/](decisions/0012-token-budget-guards/)
 
 Token-unit budget enforcement as an OPTIONAL extension and an application of class D (0010). Per-session
@@ -176,7 +191,7 @@ one-shot recovery. A cost/currency pricing overlay is explicitly deferred.
 
 ## 0013 — Provider quota backpressure
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0013-quota-backpressure/](decisions/0013-quota-backpressure/)
 
 Activates the currently-inert `codex_rate_limits` tracking into a normalized provider-quota snapshot
@@ -188,7 +203,7 @@ Account-wide headroom is kept separate from Symphony-attributed spend (0012). OP
 
 ## 0014 — Turn and step terminology
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0014-turn-step-terminology/](decisions/0014-turn-step-terminology/)
 
 Disambiguates two things colloquially called a "turn". Keeps `turn` meaning the orchestration-
@@ -202,7 +217,7 @@ rename the cycle) as a conflict with the protocol the spec defers to.
 
 ## 0015 — Neutral agent runner contract
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0015-neutral-agent-runner-contract/](decisions/0015-neutral-agent-runner-contract/)
 
 Elaborates decision 0006's thin agent contract into a turn-centric, transport-neutral one, informed by a
@@ -219,7 +234,7 @@ impersonate another agent's protocol. Selection (0006) and the broker (0003/0004
 
 ## 0016 — Neutralize agent observability vocabulary
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0016-neutralize-agent-vocabulary/](decisions/0016-neutralize-agent-vocabulary/)
 
 The mechanical-but-cross-cutting sweep deferred by 0006 and enabled by 0015: renames the persisted and
@@ -235,7 +250,7 @@ wart is left for a separate decision.
 
 ## 0017 — Workflow transition graph
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0017-workflow-transition-graph/](decisions/0017-workflow-transition-graph/)
 
 Refines decision 0008 after the 22-fork tracker sweep found its flat milestone map (`tracker.milestones`)
@@ -250,7 +265,7 @@ representation of states and tracker write-capability are deferred to a later ca
 
 ## 0018 — Tracker capability descriptor
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0018-tracker-capability-descriptor/](decisions/0018-tracker-capability-descriptor/)
 
 Acts on the 22-fork sweep's biggest finding: Section 11.1's "every adapter MUST support all six operations"
@@ -264,7 +279,7 @@ optionality and provider state representation are out of scope.
 
 ## 0019 — Neutralize tracker error vocabulary
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0019-neutralize-tracker-error-vocabulary/](decisions/0019-neutralize-tracker-error-vocabulary/)
 
 The tracker-side mirror of decision 0016 (agent `codex_*` neutralization): renames Section 11.4's
@@ -278,7 +293,7 @@ unchanged.
 
 ## 0020 — Normalized issue metadata and optional fields
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0020-normalized-issue-metadata/](decisions/0020-normalized-issue-metadata/)
 
 Acts on the sweep's normalized-model findings: the flat `Issue` (Section 4.1.1) silently drops provider
@@ -292,7 +307,7 @@ of a WorkItem wrapper to stay surgical.
 
 ## 0021 — set_state write semantics
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0021-set-state-write-semantics/](decisions/0021-set-state-write-semantics/)
 
 Specifies the obligations `set_state` carries beyond a plain write, from the sweep's Jira/GitLab/GitHub
@@ -306,7 +321,7 @@ the run; a conflict triggers re-reconciliation. Adds the two error categories to
 
 ## 0022 — Forge adapter surface
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0022-forge-adapter-surface/](decisions/0022-forge-adapter-surface/)
 
 Splits decision 0007's single VCS adapter into two contracts on the same code host: a VCS adapter (git
@@ -320,7 +335,7 @@ unsupported), a tracker write for a separate-system tracker (Linear). Refines de
 
 ## 0023 — Adapter-declared auth mode
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0023-adapter-declared-auth-mode/](decisions/0023-adapter-declared-auth-mode/)
 
 Removes the spec's hardwired assumption that every tracker is a remote, credentialed API (the sweep's local
@@ -335,7 +350,7 @@ of decision 0018; relates to 0003/0005.
 
 ## 0024 — Candidate enumeration completeness
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0024-candidate-enumeration-completeness/](decisions/0024-candidate-enumeration-completeness/)
 
 Fixes a read-side correctness gap the sweep flagged (Monday/Bitable forks select a cursor but never follow
@@ -425,7 +440,7 @@ Reasoning recorded; no `SPEC.md` change was ever made.
 
 ## 0027 — Minimal enabler and the three-layer architecture
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0027-minimal-enabler-three-layers/](decisions/0027-minimal-enabler-three-layers/)
 
 The headline re-framing for consuming an external VCS-workflow engine (`vcsx`): Symphony *enables*
@@ -442,7 +457,7 @@ three deployment topologies.
 
 ## 0028 — `vcsx` as an independent deliverable; one shared policy executor
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0028-vcsx-deliverable-shared-executor/](decisions/0028-vcsx-deliverable-shared-executor/)
 
 `vcsx` is an independent, reusable engine consumed as a pinned mise tool (like `archdoc`) and usable
@@ -461,7 +476,7 @@ through the engine contract. Realization and sequencing — a separate codebase 
 
 ## 0029 — Repo-owned WoW config, trust sourcing, and the secret/integrity taxonomy
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0029-repo-owned-wow-config-trust-sourcing/](decisions/0029-repo-owned-wow-config-trust-sourcing/)
 
 The repository owns its Way of Working in `repo.policy.toml` (engine selection, hooks, the operation
@@ -482,7 +497,7 @@ outward-credential vs integrity-value taxonomy.
 
 ## 0030 — The action-policy machine
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0030-action-policy-machine/](decisions/0030-action-policy-machine/)
 
 One `(trigger) → (action)` machine subsumes three previously separate shapes: the tracker transition
@@ -504,7 +519,7 @@ a `set_state` binding within it.
 
 ## 0031 — Autonomous task management and computed completion
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0031-autonomous-task-management/](decisions/0031-autonomous-task-management/)
 
 A daemon-side task model makes completion **computed** rather than asserted: tasks carry an id,
@@ -525,7 +540,7 @@ classification.
 
 ## 0032 — Message formulation: commit, pull request, squash
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0032-message-formulation/](decisions/0032-message-formulation/)
 
 Message **content** is the agent's; message **formulation policy** is repo-owned WoW; Symphony bakes
@@ -545,7 +560,7 @@ PR-body default with agent-prose override, and the credential-free content seam.
 
 ## 0033 — A `Superseded` state in the decision-log lifecycle
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0033-superseded-decision-state/](decisions/0033-superseded-decision-state/)
 
 Adds a fourth state to the decision-log lifecycle (0001): `Superseded` — *replaced by a later
@@ -560,7 +575,7 @@ dependency. Accepted and applied.
 
 ## 0034 — Repository provisioning failure class and clone reference algorithm
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0034-repository-provisioning-failure-class/](decisions/0034-repository-provisioning-failure-class/)
 
 Section 9.7 describes the *result* of repository provisioning ("one fetched object store per
@@ -583,7 +598,7 @@ applied to `SPEC.md`.
 
 ## 0035 — The execution process and the always-present orchestrator↔executor seam
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0035-execution-process-and-seam/](decisions/0035-execution-process-and-seam/)
 
 The head of a four-decision set (0035–0038) reintroducing remote execution — the "reworked
@@ -616,7 +631,7 @@ pending the deferred 0027/0029 edits.
 
 ## 0036 — The orchestrator↔executor protocol and direct secret delivery
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0036-orchestrator-executor-protocol/](decisions/0036-orchestrator-executor-protocol/)
 
 Specifies the network transport of the 0035 seam. Following the deferral pattern of Section 10 (agent
@@ -640,7 +655,7 @@ Options: A inline the protocol (drops the spec below altitude); B a deferred ver
 
 ## 0037 — The node-scheduler remote adapter, provisioning failures, and the run registry
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0037-node-scheduler-remote-adapter/](decisions/0037-node-scheduler-remote-adapter/)
 
 How the orchestrator obtains a remote executor, what happens when it cannot, and how it finds an
@@ -674,7 +689,7 @@ extension-owned, not Core Conformance. Relates to 0004, 0034, 0025, 0027, 0035, 
 
 ## 0038 — Executor-authoritative writes and the driver-local / reconciler-remote reframing
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0038-executor-authoritative-state-writes/](decisions/0038-executor-authoritative-state-writes/)
 
 Resolves who writes the authoritative record of a run once the executor (0035–0037) runs the whole
@@ -704,7 +719,7 @@ applied to `SPEC.md` (Sections 7, 10.8, 11.5, 8.5) in current vocabulary; the ac
 
 ## 0039 — vcsx contract-surface stub to unblock the repo-owned-WoW batch
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0039-vcsx-contract-surface-stub/](decisions/0039-vcsx-contract-surface-stub/)
 
 Acts on decision 0028's own deferral. The 0027–0032 batch's `SPEC.md` edits are gated on the companion
@@ -736,7 +751,7 @@ edit made.
 
 ## 0040 — Author the full vcsx engine specification
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0040-vcsx-full-engine-spec/](decisions/0040-vcsx-full-engine-spec/)
 
 Completes the forward artifact decision 0039 deferred. The contract surface (`VCSX-CONTRACT.md`, 0039)
@@ -763,7 +778,7 @@ nothing); B fold the detail into `VCSX-CONTRACT.md` (inflates the stable surface
 
 ## 0041 — Integrate the phased-spec implementation workflow
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0041-integrate-phased-spec-workflow/](decisions/0041-integrate-phased-spec-workflow/)
 
 Installs a reusable phased-delivery workflow for the eventual `SPEC.md`→implementation transition: a
@@ -784,7 +799,7 @@ stays on refining `SPEC.md`; no requirement IDs, roadmap, or traceability rows a
 
 ## 0042 — Realize `vcsx` as a separate deliverable, engine-direct first
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0042-vcsx-realization-separate-deliverable/](decisions/0042-vcsx-realization-separate-deliverable/)
 
 Fixes realization and sequencing for the VCS engine layer, whose shape decisions 0027, 0028, 0039 and
@@ -819,7 +834,7 @@ conformance profiles, which are what reconciles Section 3.4's `OPTIONAL` with Se
 
 ## 0043 — Layer-keyed conformance profiles
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0043-layer-keyed-conformance-profiles/](decisions/0043-layer-keyed-conformance-profiles/)
 
 Closes the gap 0027 opened and 0042 named. Section 3.4 makes the Broker Core "independently
@@ -856,7 +871,7 @@ shared items, and Section 17.2 proved mixed as well — both recorded in `Plan.m
 
 ## 0044 — Engine invocation failure class
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0044-engine-invocation-failure-class/](decisions/0044-engine-invocation-failure-class/)
 
 Supplies the consumer-side half of a contract whose engine side was already specified. `VCSX-SPEC.md`
@@ -885,7 +900,7 @@ mirrors) and 0030 (the boundary it stops at). Accepted and applied to `SPEC.md` 
 
 ## 0045 — Multi-implementation conformance: the Conformance Statement
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0045-multi-implementation-conformance-statement/](decisions/0045-multi-implementation-conformance-statement/)
 
 Answers how to run several implementations of `SPEC.md`, potentially in different languages, without
@@ -924,7 +939,7 @@ from the Section 1, 9.6, and 14.3 documentation clauses.
 
 ## 0046 — Conformance corpus, first slice
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0046-conformance-corpus-first-slice/](decisions/0046-conformance-corpus-first-slice/)
 
 Drafts the shared, language-neutral conformance corpus 0045 named as the mechanism that turns
@@ -952,7 +967,7 @@ deterministic checks; the non-ASCII sanitization clarification is resolved by de
 
 ## 0047 — Workspace-key sanitization operates on UTF-8 bytes
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0047-workspace-key-utf8-byte-sanitization/](decisions/0047-workspace-key-utf8-byte-sanitization/)
 
 Resolves the gap 0046 surfaced. Section 9.5 Invariant 3 and Section 4.2 replaced "any character not
@@ -978,7 +993,7 @@ marked resolved).
 
 ## 0048 — Conformance corpus, prompt-rendering slice
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0048-conformance-corpus-prompt-rendering-slice/](decisions/0048-conformance-corpus-prompt-rendering-slice/)
 
 Adds the corpus's second pure slice, the one 0046's README named next: `render_prompt`, pure over
@@ -1004,7 +1019,7 @@ to the corpus (now 8 files / 39 vectors); no `SPEC.md` change follows.
 
 ## 0049 — Implement `vcsx` in Rust as a separate repository
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0049-vcsx-rust-separate-repository/](decisions/0049-vcsx-rust-separate-repository/)
 
 Fixes the three things 0042 deliberately left open when it made the engine a separate deliverable and
@@ -1041,7 +1056,7 @@ Leaves three follow-ons, taken up as 0050, 0051, and 0052.
 
 ## 0050 — Publish an engine Conformance Statement
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0050-engine-conformance-statement/](decisions/0050-engine-conformance-statement/)
 
 Closes a gap 0043 opened and 0049 made live. 0043 *deferred* engine conformance rather than restating
@@ -1077,7 +1092,7 @@ Section 13.3.
 
 ## 0051 — The engine token vocabulary as data
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0051-engine-vocabulary-as-data/](decisions/0051-engine-vocabulary-as-data/)
 
 Mechanizes `VCSX-SPEC.md` Section 14's alignment rule — every token shared between the engine
@@ -1114,7 +1129,7 @@ without changing. Accepted and applied: `conformance/vcsx/` is created; no speci
 
 ## 0052 — `notify` with no consumer that can effect it
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0052-no-consumer-notify-semantics/](decisions/0052-no-consumer-notify-semantics/)
 
 Resolves a gap 0049 made live by scheduling `engine-direct` first. `VCSX-SPEC.md` Section 5.2 makes
@@ -1150,7 +1165,7 @@ defers the result envelope to `VCSX-SPEC.md` Section 8 and no shared token chang
 
 ## 0053 — Engine conformance corpus, first slice
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0053-engine-conformance-corpus-first-slice/](decisions/0053-engine-conformance-corpus-first-slice/)
 
 Takes the successor 0051 named and deliberately did not take: vectors that exercise the machine *over*
@@ -1196,7 +1211,7 @@ created, and `VCSX-SPEC.md` Section 13.1 gains the corpus pointer that mirrors w
 
 ## 0054 — An unmatched lifecycle position proceeds
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0054-unmatched-lifecycle-position/](decisions/0054-unmatched-lifecycle-position/)
 
 Resolves the first of three gaps 0053 surfaced. `VCSX-SPEC.md` Section 5.4 fixed the unmatched
@@ -1224,7 +1239,7 @@ to `VCSX-SPEC.md` (Section 5.4) and the corpus (`match-edge.json` asserts the ou
 
 ## 0055 — Signals are matched exactly; the `#class` fallback is result-only
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0055-signals-matched-exactly/](decisions/0055-signals-matched-exactly/)
 
 Resolves the second gap 0053 surfaced. `VCSX-SPEC.md` Section 5.3's signal ladder fell back to "(for a
@@ -1259,7 +1274,7 @@ applied to `VCSX-SPEC.md` (Sections 5.1, 5.3, 12.1), the vocabulary registry, an
 
 ## 0056 — A configuration-error reason registry and the `usage_or_config` status
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0056-configuration-error-reason-registry/](decisions/0056-configuration-error-reason-registry/)
 
 Resolves the third and most substantive gap 0053 surfaced, and a second defect found while resolving
@@ -1300,7 +1315,7 @@ this makes legible) and 0051. Accepted and applied to `VCSX-SPEC.md` (Sections 6
 
 ## 0057 — Universal operation reasons: `blocked`, `failed`, `unsupported`
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0057-universal-operation-reasons/](decisions/0057-universal-operation-reasons/)
 
 Resolves parts 1a and 1b of issue #2, which are one defect seen twice: `VCSX-SPEC.md` Section 4.3's
@@ -1347,7 +1362,7 @@ vocabulary registry, and the corpus.
 
 ## 0058 — `diff(base)` is a required VCS backend capability
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0058-diff-required-vcs-capability/](decisions/0058-diff-required-vcs-capability/)
 
 Resolves part 1c of issue #2. `VCSX-SPEC.md` Section 4.1 makes `diff` a required operation and Section
@@ -1377,7 +1392,7 @@ requiredness. Relates to 0057 and 0040. Accepted and applied to `VCSX-SPEC.md` (
 
 ## 0059 — A parked flow is `needs_caller` with the `intervention` need
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0059-park-invocation-outcome/](decisions/0059-park-invocation-outcome/)
 
 Resolves issue #3. `VCSX-SPEC.md` Section 5.2 defines `park` as "stop the flow and hold for intervention
@@ -1425,7 +1440,7 @@ rule-outruns-its-enumeration shape, one section over). Accepted and applied to `
 
 ## 0060 — A conforming executor bounds the flow, and an exhausted bound is `needs_caller`
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0060-bounded-flow-traversal/](decisions/0060-bounded-flow-traversal/)
 
 Resolves issue #4. `VCSX-SPEC.md` Section 5.2 makes a `run_op` result itself a trigger — "a policy is a
@@ -1480,7 +1495,7 @@ which the policy did not run). Accepted and applied to `VCSX-SPEC.md` (Sections 
 
 ## 0061 — `pull` preserves the work branch's committed history
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0061-pull-preserves-history/](decisions/0061-pull-preserves-history/)
 
 Resolves issue #8. `VCSX-SPEC.md` Section 4.1 defines `pull` as "update the local work branch from its
@@ -1589,7 +1604,7 @@ Reconsider then. Relates to 0058 (the same correction one operation over), 0064 
 
 ## 0063 — `commit` captures the working tree, and `is_dirty()` is its predicate
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0063-commit-captures-working-tree/](decisions/0063-commit-captures-working-tree/)
 
 Resolves part 2 of issue #9. `VCSX-SPEC.md` Section 4.1 defined `commit` as "create a commit from the
@@ -1627,7 +1642,7 @@ to `VCSX-SPEC.md` (Sections 4.1, 9.1, 12.2, 13.1).
 
 ## 0064 — `integrate` resolves the base against the remote; the read-only operations do not
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0064-integrate-base-from-remote/](decisions/0064-integrate-base-from-remote/)
 
 Resolves part 3 of issue #9. `VCSX-SPEC.md` Section 4.1 defined `integrate` as bringing "the resolved
@@ -1667,7 +1682,7 @@ applied to `VCSX-SPEC.md` (Sections 4.1, 9.1, 12.2, 13.1).
 
 ## 0065 — Invocation preconditions are `usage_or_config`, with a registry of their own
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0065-invocation-preconditions/](decisions/0065-invocation-preconditions/)
 
 Resolves part 4 of issue #9. Decision 0057 made `failed`, `blocked` and `unsupported` universal, closing
@@ -1717,7 +1732,7 @@ made operation failure total and left this the residue), 0059 (whose null-triple
 
 ## 0066 — A policy that is not well formed is `malformed_policy`
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0066-malformed-policy-reason/](decisions/0066-malformed-policy-reason/)
 
 Resolves issue #12, which reports three configuration states `VCSX-SPEC.md` Section 6.10's reason
@@ -1847,7 +1862,7 @@ its ruling: the finding that the from-context sits *inside* the ladder rather th
 
 ## 0068 — Every commit the engine writes carries the caller-supplied commit identity
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0068-merge-commit-identity/](decisions/0068-merge-commit-identity/)
 
 Resolves issue #14. `VCSX-SPEC.md` Section 10.1 splits a commit into content and identity and
@@ -1918,7 +1933,7 @@ capability), and 0032 (which authored the content/identity split). Accepted and 
 
 ## 0069 — `observability.*` is the configuration namespace for observability settings
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0069-observability-config-namespace/](decisions/0069-observability-config-namespace/)
 
 Resolves part 2 of issue #15. Section 18.2 carried the specification's own TODO — "Make observability
@@ -1956,7 +1971,7 @@ and 0070. Accepted and applied to `SPEC.md` (Sections 6.4, 13.6, 18.2).
 
 ## 0070 — The Conformance Statement records the Section 13 resolutions
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0070-conformance-statement-section-13-resolutions/](decisions/0070-conformance-statement-section-13-resolutions/)
 
 Resolves part 1 of issue #15. Section 19 requires a resolution for every `Implementation-defined`
@@ -1996,7 +2011,7 @@ Section 19 and the template drift a third time — the remedy is then to generat
 
 ## 0071 — The Symphony token vocabulary as data
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0071-symphony-vocabulary-as-data/](decisions/0071-symphony-vocabulary-as-data/)
 
 Resolves part 3 of issue #15, and does for `SPEC.md` what 0051 did for the engine. Four of Symphony's
@@ -2041,7 +2056,7 @@ document it, and `SPEC.md` Sections 10.4 and 17 carry the ruling and the precede
 
 ## 0072 — Captured subprocess text is redacted where it enters the process
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0072-redact-captured-subprocess-text/](decisions/0072-redact-captured-subprocess-text/)
 
 Resolves issue #16. Section 15.3 is unambiguous — "Do not log API tokens or secret values", "Validate
@@ -2109,7 +2124,7 @@ the seam Option G would have used), and 0011. Accepted and applied to `SPEC.md` 
 
 ## 0073 — The network-touching capabilities are named, and base resolution yields a commit
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0073-network-touching-capabilities-named/](decisions/0073-network-touching-capabilities-named/)
 
 Resolves issue #22, which reports three things `VCSX-SPEC.md` Section 8.6 and Section 6.2 require a VCS
@@ -2183,7 +2198,7 @@ as `status`'s six calls already show), 0065 (whose three precondition rows now e
 
 ## 0074 — The commit-identity precondition is scoped to the entry point
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0074-commit-identity-scope/](decisions/0074-commit-identity-scope/)
 
 Resolves issue #23. Section 8.6 requires the commit identity "for an entry that can write a commit —
@@ -2246,7 +2261,7 @@ Accepted and applied to `VCSX-SPEC.md` (Sections 4.3, 8.4, 8.6, 13.1),
 
 ## 0075 — A failed counterpart acquisition is `pull:failed`
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0075-counterpart-acquisition-failure/](decisions/0075-counterpart-acquisition-failure/)
 
 Resolves issue #26. Decision 0073 split `pull` into `fetch_counterpart` and `merge_counterpart` and
@@ -2305,7 +2320,7 @@ Accepted and applied to `VCSX-SPEC.md` (Sections 4.1, 4.3, 9.1, 13.1) and `confo
 
 ## 0076 — A capability that cannot determine its answer says so
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0076-capability-answer-domain/](decisions/0076-capability-answer-domain/)
 
 Resolves issue #28. Decision 0075 considered and deferred an answer-domain invariant over the plugin
@@ -2368,7 +2383,7 @@ and `conformance/vcsx/README.md`.
 
 ## 0077 — A merge lands the head it read, or reports `merge:head_moved`
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0077-merge-head-moved/](decisions/0077-merge-head-moved/)
 
 Resolves issue #29. Section 12.3 had `land` read the pull request and then merge it — two calls, so a
@@ -2429,7 +2444,7 @@ Accepted and applied to `VCSX-SPEC.md` (Sections 4.3, 5.6, 7.2, 9.2, 12.3, 13.1,
 
 ## 0078 — A dispatch runs the operation's `before:<op>` position
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0078-dispatch-runs-the-position/](decisions/0078-dispatch-runs-the-position/)
 
 Resolves issue #30, which decision 0077 filed rather than folded in. Two passages described the
@@ -2481,7 +2496,7 @@ chosen option above is untouched.
 
 ## 0079 — An operation acts on the state its position inspected
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0079-gate-inspects-what-proceeds/](decisions/0079-gate-inspects-what-proceeds/)
 
 Resolves issue #31, which decision 0077 filed alongside #29 and kept separate: #29 was a Section 4.3
@@ -2534,7 +2549,7 @@ applied to `VCSX-SPEC.md` (Sections 4.3, 5.6, 6.6, 7.1, 9.1, 10.4, 12.2, 13.1, 1
 
 ## 0080 — A cycle of lifecycle positions is refused at validation
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0080-position-cycle/](decisions/0080-position-cycle/)
 
 Resolves issue #33, filed against decision 0078's follow-through rather than against the
@@ -2602,7 +2617,7 @@ applied to `VCSX-SPEC.md` (Sections 4.1, 5.6, 6.10, 13.1, 13.2),
 
 ## 0081 — A hook bound is a bound on a unit, not on the flow
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0081-hook-bound/](decisions/0081-hook-bound/)
 
 Resolves issue #35, and resolves the **corrected** report rather than the filed one: the reporter
@@ -2666,7 +2681,7 @@ and 0066. Accepted and applied to `VCSX-SPEC.md` (Sections 4.3, 5.6, 6.6, 6.10, 
 
 ## 0082 — `[messages.squash] strategy` defaults to `merge`
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0082-squash-strategy-default/](decisions/0082-squash-strategy-default/)
 
 Resolves issue #36, which is two reports whose answers meet. Section 9.3 splits an undeclared
@@ -2731,7 +2746,7 @@ Relates to 0062, 0074, 0076, 0056 and 0070. Accepted and applied to `VCSX-SPEC.m
 
 ## 0083 — The push guarantee is quantified over the effect
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0083-push-effect-and-read-only/](decisions/0083-push-effect-and-read-only/)
 
 Resolves issue #37. Section 3.3 requires `jj` as a checkout mode and Section 9.1 is the surface a
@@ -2798,7 +2813,7 @@ applied to `VCSX-SPEC.md` (Sections 4.1, 9.1, 11, 13.1, 13.2, 13.3), `conformanc
 
 ## 0084 — Every condition gets a home, and one exit code names "no result"
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0084-no-result-channel/](decisions/0084-no-result-channel/)
 
 Resolves issue #38. Section 8.2 opens "Every invocation returns one structured result" and
@@ -2865,7 +2880,7 @@ to `VCSX-SPEC.md` (Sections 6.10, 8.1, 8.3, 8.5, 8.6, 13.1, 13.2), `conformance/
 
 ## 0085 — The forge repository coordinate is the consumer's
 
-**State:** Accepted (re-evaluated in part by 0091; principle extended by 0092)
+**State:** Applied (re-evaluated in part by 0091; principle extended by 0092)
 **Folder:** [decisions/0085-forge-repository-coordinate/](decisions/0085-forge-repository-coordinate/)
 
 Resolves issue #39. Section 6.2 assigns the forge **selection** to the repository and the
@@ -2931,7 +2946,7 @@ Relates to 0062, 0065, 0073 and 0084. Accepted and applied to `VCSX-SPEC.md` (Se
 
 ## 0086 — An unanswered gate's condition is named, and the three conditions are tokens
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0086-unanswered-gate-diagnosis/](decisions/0086-unanswered-gate-diagnosis/)
 
 Resolves issue #42. Decision 0081 split what exceeding a hook bound produces into a routing half —
@@ -2976,7 +2991,7 @@ Accepted and applied to `VCSX-SPEC.md` (Sections 6.6, 8.2, 13.1, 13.2, 13.3) and
 
 ## 0087 — A resume re-enters the point that raised the need, and re-reads
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0087-resume-re-entry/](decisions/0087-resume-re-entry/)
 
 Resolves issue #43. Section 5.5 has an embedded driver bind a resolver and "resume the flow when the
@@ -3022,7 +3037,7 @@ Relates to 0078, 0059, 0060, 0077, 0079 and 0088. Accepted and applied to `VCSX-
 
 ## 0088 — An outcome no action disposed of takes the default, and the registry carries each need
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0088-default-need-per-reason/](decisions/0088-default-need-per-reason/)
 
 Resolves issue #44. Section 5.4 fixes what an **unmatched** operation outcome does, Section 5.6 names
@@ -3082,7 +3097,7 @@ agree. Relates to 0087, 0059, 0051, 0071, 0074, 0077 and 0079. Accepted and appl
 
 ## 0089 — `fail` gets the envelope `park` has, and `fail(reason)` is the repository's token
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0089-fail-envelope/](decisions/0089-fail-envelope/)
 
 Resolves issue #45. Section 5.2 gives `fail` one sentence and Section 8.2 has nowhere to put that
@@ -3134,7 +3149,7 @@ the non-null rule still states in one sentence. Relates to 0059, 0088 and 0060. 
 
 ## 0090 — `entry` is a described field, null exactly where no entry point was read
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0090-entry-nullable/](decisions/0090-entry-nullable/)
 
 Resolves issue #46. Decision 0084 made every condition reportable: an invocation whose arguments the
@@ -3183,7 +3198,7 @@ to `VCSX-SPEC.md` (Sections 8.2, 13.1, 13.2), `conformance/vcsx/vocabulary.json`
 
 ## 0091 — Forge access parameters, and the credential pair
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0091-forge-access-parameters/](decisions/0091-forge-access-parameters/)
 
 `VCSX-SPEC.md` cannot say *where* a forge is: `endpoint`, `URL`, `URI` and `instance` occur zero times
@@ -3214,7 +3229,7 @@ backends both require it. Relates to 0085, 0062, 0073 and 0084.
 
 ## 0092 — Backend, forge and tracker selection are the consumer's, read from a consumer config
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0092-selection-ownership-and-consumer-config/](decisions/0092-selection-ownership-and-consumer-config/)
 
 Section 6.2 puts `vcs`, `forge` and `remote` in `repo.policy.toml` and argues that "which code host a
@@ -3259,7 +3274,7 @@ beyond an invocation. Relates to 0091, 0093, 0062, 0085 and 0002.
 
 ## 0093 — The engine is the only VCS adapter, and the engine layer is required
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0093-engine-owns-provisioning/](decisions/0093-engine-owns-provisioning/)
 
 Two components implement version control, split at provisioning: `VCSX-SPEC.md` Section 2.2 makes
@@ -3309,7 +3324,7 @@ adapter. Relates to 0092, 0091 and 0062.
 
 ## 0094 — The policy branch is not the base branch
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0094-policy-branch-and-base-source/](decisions/0094-policy-branch-and-base-source/)
 
 Opened from decision 0093's second review finding and reframed twice under review; the path is kept
@@ -3361,7 +3376,7 @@ enough from the main line that host-side hooks no longer match the code they run
 
 ## 0095 — A host-side hook's unit comes from the trusted source
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0095-host-side-hook-unit-provenance/](decisions/0095-host-side-hook-unit-provenance/)
 
 Found reviewing what decision 0094 actually secured: it secures the hook's **declaration** and not
@@ -3405,7 +3420,7 @@ floor. Relates to 0094, 0093 and 0002.
 
 ## 0096 — The three repairs decision 0094 needed
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0096-policy-branch-repairs/](decisions/0096-policy-branch-repairs/)
 
 Three defects in decision 0094's applied text, grouped because they are one omission at three levels:
@@ -3444,7 +3459,7 @@ repairing applied text and introducing design in one record buries the first. Re
 
 ## 0097 — Where the policy comes from, when it is read, and what happens when it cannot be
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0097-policy-loading-and-unusability/](decisions/0097-policy-loading-and-unusability/)
 
 Three consequences decision 0094 left unhandled once the host-side Way of Working moved to a remote
@@ -3493,7 +3508,7 @@ Relates to 0094, 0093, 0092 and 0002.
 
 ## 0098 — The `repo.policy.toml` hook namespace, and per-branch sections
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0098-policy-schema-shape/](decisions/0098-policy-schema-shape/)
 
 Two changes to one schema, taken together because each would otherwise rewrite the other's work.
@@ -3545,7 +3560,7 @@ and 0002.
 
 ## 0099 — The edge is the binding, and a unit at a position that says nothing
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0099-scan-binding-and-unanswered-units/](decisions/0099-scan-binding-and-unanswered-units/)
 
 Issue #49 reported two gaps in Section 10.4 — a commit diff that can be scanned with no key naming a
@@ -3596,7 +3611,7 @@ broken gate. Relates to 0081, 0086, 0098, 0057 and 0002.
 
 ## 0100 — An edge does not declare its execution context
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0100-edge-context-provenance/](decisions/0100-edge-context-provenance/)
 
 Issue #52 reported that Section 6.5 makes an edge's `context` OPTIONAL and "defaulted per the
@@ -3641,7 +3656,7 @@ per-edge assertion about credentials, not a restored `context`. Relates to 0098,
 
 ## 0101 — Under `target_branch` the base is an argument, not a policy key
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0101-base-under-target-branch/](decisions/0101-base-under-target-branch/)
 
 Issue #51 reported that under `policy_source = "target_branch"` the base resolves from a source
@@ -3688,7 +3703,7 @@ convenience it no longer uses. Relates to 0094, 0097, 0098 and 0002.
 
 ## 0102 — The enumerated error tokens as data, and a class that names its condition
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0102-enumerated-error-tokens/](decisions/0102-enumerated-error-tokens/)
 
 Resolves issue #54, which reports that Section 5.5's five workflow/template error classes have no
@@ -3758,7 +3773,7 @@ on 0071 and 0048; relates to 0056, 0045, 0046 and 0002. Accepted and applied to 
 
 ## 0103 — Publish a prose enumeration when something outside the implementation spells it
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0103-prose-enumerations/](decisions/0103-prose-enumerations/)
 
 Takes up issue #54's follow-up comment on its own framing — one decision, not four — and names the
@@ -3814,7 +3829,7 @@ Successor 0104. Accepted and applied to `SPEC.md` (Sections 6.3, 11.6, 17, 17.3)
 
 ## 0104 — The failure classes get a token
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0104-failure-class-tokens/](decisions/0104-failure-class-tokens/)
 
 The half of issue #54's follow-up that 0103's reader test selects and 0103 could not publish.
@@ -3864,7 +3879,7 @@ follows). Relates to 0102 and 0002. Accepted and applied to `SPEC.md` (Sections 
 
 ## 0105 — One lowercase, named once and cited everywhere
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0105-case-normalization/](decisions/0105-case-normalization/)
 
 Issue #56: Section 4.2 said "Compare states after `lowercase`" and did not say which lowercase, over
@@ -3912,7 +3927,7 @@ Accepted and applied to `SPEC.md` (Sections 4.1.1, 4.2, 5.3.1, 5.3.5, 8.2, 8.3, 
 
 ## 0106 — A read that answers `unchanged`, and the validator that asks for it
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0106-conditional-forge-reads/](decisions/0106-conditional-forge-reads/)
 
 Issue #58's first engine primitive. The engine already tells a consumer to poll —
@@ -3954,7 +3969,7 @@ and applied to `VCSX-SPEC.md` (Sections 4.1, 8.1, 8.2, 9, 9.1, 9.2, 13.1, 13.2, 
 
 ## 0107 — The budget the call already saw
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0107-forge-budget-snapshot/](decisions/0107-forge-budget-snapshot/)
 
 Issue #58's second primitive, and the one that carries the load 0106 cannot. Exhaustion was
@@ -3996,7 +4011,7 @@ to `VCSX-SPEC.md` (Sections 8.2, 9.2, 13.1, 13.2, 13.3).
 
 ## 0108 — A throttle is not a failure, and retryable is a property of the need
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0108-transient-forge-reasons/](decisions/0108-transient-forge-reasons/)
 
 Issue #58's third primitive. The defect is not that a consumer cannot tell a 429 from a 422: it is
@@ -4039,7 +4054,7 @@ and `conformance/vcsx/README.md`.
 
 ## 0109 — The other program the engine waits on
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0109-network-call-bound/](decisions/0109-network-call-bound/)
 
 Issue #58's fourth primitive. Section 6.6 bounds a hook on the ground that it is "the one place the
@@ -4080,7 +4095,7 @@ applied to `VCSX-SPEC.md` (Sections 8.1, 9, 13.1, 13.2, 13.3).
 
 ## 0110 — A field that moved is not a field that is empty
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0110-forge-parse-answer-domain/](decisions/0110-forge-parse-answer-domain/)
 
 Issue #59's first half. The obligation already existed — Section 9 requires a value-answering
@@ -4113,7 +4128,7 @@ something unreadable. Accepted and applied to `VCSX-SPEC.md` (Sections 9, 9.2, 1
 
 ## 0111 — The corpus states the assertion; the harness holds the fixture
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0111-fault-injection-vector-shape/](decisions/0111-fault-injection-vector-shape/)
 
 Issue #59's second half, driven by the sharpest observation in the study behind issues #58–#62: **the
@@ -4150,7 +4165,7 @@ Relates to 0106–0110, 0053 and 0105. Accepted and applied to `conformance/vcsx
 
 ## 0112 — The wait becomes an operation, and the non-goal it tests gets written down
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0112-bounded-await-checks/](decisions/0112-bounded-await-checks/)
 
 Issue #60's engine half. The issue states its own fork — a shared consumer library, or a bounded
@@ -4201,7 +4216,7 @@ reconsider on a forge whose check state is not aggregable. Relates to 0081, 0106
 
 ## 0113 — The specification already knows how to do this, in one place and not the other
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0113-liveness-by-result-token/](decisions/0113-liveness-by-result-token/)
 
 Issue #61, which the study calls the sharpest Symphony-specific lesson: a backgrounded poller killed
@@ -4241,7 +4256,7 @@ everyone. Relates to 0076, 0104 and 0110. Accepted and applied to `SPEC.md` (Sec
 
 ## 0114 — One pull request per issue is a rule about which one
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0114-pr-identity-under-concurrency/](decisions/0114-pr-identity-under-concurrency/)
 
 Issue #62's PR-identity item. Section 9.10 says Symphony "maintains one pull request per issue" and
@@ -4283,7 +4298,7 @@ Accepted and applied to `SPEC.md` (Sections 9.10, 17, 17.9, 18, 18.1).
 
 ## 0115 — Observing the budget is free; spending on it is not
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0115-forge-budget-and-checks-wait/](decisions/0115-forge-budget-and-checks-wait/)
 
 Issue #60's SY-1 and issue #62's SY-2, together because one is the other's input. Most of SY-1 is no
@@ -4330,7 +4345,7 @@ applied to `SPEC.md` (Sections 6.4, 8.11, 9.10, 13.5, 14.2, 17.4, 18.1, 18.2) an
 
 ## 0116 — One credential is a scope decision nobody made
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0116-credential-partitioning/](decisions/0116-credential-partitioning/)
 
 Issue #62's credential item. Read carefully, the specification never chose a shared token and was
@@ -4369,7 +4384,7 @@ and `conformance/vocabulary.json`.
 
 ## 0117 — The sandbox is stated over secrets, and the damage came from something else
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0117-env-isolation-guarantee/](decisions/0117-env-isolation-guarantee/)
 
 Issue #62's environment item. Section 9.6 guarantees a great deal about secrets — "every
@@ -4406,7 +4421,7 @@ the specification as the token registry already is. Relates to 0113 and 0114. Ac
 
 ## 0118 — A tool that is not there yet is a tool the workspace cannot use
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0118-provisioning-survivability/](decisions/0118-provisioning-survivability/)
 
 Issue #62's provisioning item and the cross-cutting distribution item. One finding reframed it: the
@@ -4443,7 +4458,7 @@ applied to `SPEC.md` (Sections 9.7, 16.5, 17.2, 18.1).
 
 ## 0119 — A drain was found by catching it live, which is the defect
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0119-correlation-and-budget-record/](decisions/0119-correlation-and-budget-record/)
 
 Issue #62's observability item, whose finding is its last clause: the GraphQL drain "was only found
@@ -4481,7 +4496,7 @@ applied to `SPEC.md` (Sections 13.1, 13.5, 17.6, 18.1, 18.2) and `conformance/vo
 
 ## 0120 — A read that always completes still has to say which repair it needs
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0120-status-forge-throttle-output/](decisions/0120-status-forge-throttle-output/)
 
 Issue #69. `VCSX-SPEC.md` Section 4.3 defines `rate_limited` and `forge_unavailable` for "every
@@ -4507,7 +4522,7 @@ evidence about the next version-control operation. Relates to 0106–0112. Accep
 
 ## 0121 — A validation input with no carrier is a verdict each engine reaches on its own
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0121-validation-input-carriers/](decisions/0121-validation-input-carriers/)
 
 Issue #68. `VCSX-SPEC.md` Section 6.11 fixes validation as judged from "five inputs and no others"
@@ -4532,7 +4547,7 @@ Relates to 0086–0090. Accepted and applied to `VCSX-SPEC.md` (Sections 5.2, 6.
 
 ## 0122 — A trigger kind nothing can raise is surface, not a feature
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0122-remove-signal-triggers/](decisions/0122-remove-signal-triggers/)
 
 Issue #70. `VCSX-SPEC.md` Section 5.1 makes signals one of three trigger kinds and six further
@@ -4566,7 +4581,7 @@ the repository rather than the driver to decide what a milestone means. Relates 
 
 ## 0123 — A termination guarantee that holds in one encoding is not a guarantee
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0123-resume-carrier/](decisions/0123-resume-carrier/)
 
 Issue #71. `VCSX-SPEC.md` Section 5.5 defines a resume as re-entering "the point that raised the
@@ -4595,7 +4610,7 @@ on a resolver is shown to hang an invocation. Relates to 0059 and 0060. Accepted
 
 ## 0124 — One token for two resources is a conditional read against the wrong thing
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0124-per-resource-validators/](decisions/0124-per-resource-validators/)
 
 Issue #72. `VCSX-SPEC.md` Section 9.2 defines two capabilities that each take and issue a validator
@@ -4621,7 +4636,7 @@ applied to `VCSX-SPEC.md` (Sections 8.1, 8.2, 9.1, 9.2, 13.1, 13.2, 13.3).
 
 ## 0125 — A gate that stopped existing should not read as a gate that passed
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0125-await-checks-no-checks/](decisions/0125-await-checks-no-checks/)
 
 Issue #73. `VCSX-SPEC.md` Section 4.1 bounds `await_checks` by four terminal conditions and Section
@@ -4649,7 +4664,7 @@ configured. Relates to 0106–0112. Accepted and applied to `VCSX-SPEC.md` (Sect
 
 ## 0126 — A section cannot supply the value that selects it
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0126-branch-section-selector/](decisions/0126-branch-section-selector/)
 
 Issue #74. `VCSX-SPEC.md` Section 6.10 selects a `[[branch]]` section by the resolved base branch
@@ -4677,7 +4692,7 @@ Relates to 0101. Accepted and applied to `VCSX-SPEC.md` (Sections 6.4, 6.10, 6.1
 
 ## 0127 — The section whose job is the vocabulary is the one where a missing member is the failure
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0127-spec-trigger-vocabulary/](decisions/0127-spec-trigger-vocabulary/)
 
 Issue #75. `SPEC.md` Section 9.12 opens by fixing its job — naming the machine's vocabulary and
@@ -4699,7 +4714,7 @@ changing between releases. Depends on 0122. Accepted and applied to `SPEC.md` (S
 
 ## 0128 — A table that is complete against itself is where a missing obligation hides
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0128-conformance-template-rows/](decisions/0128-conformance-template-rows/)
 
 Issue #67, reported by a downstream implementation while re-pinning. Decisions 0106, 0107 and 0109
@@ -4728,7 +4743,7 @@ Accepted and applied to `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (Section 3), `V
 
 ## 0129 — A matching axis the contract cannot transmit
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0129-remove-from-context/](decisions/0129-remove-from-context/)
 
 Issue #77, which PR #76 predicted in its own "Follow-up this exposed and did not take". `VCSX-SPEC.md`
@@ -4769,7 +4784,7 @@ signal" 0122 left behind), and the conformance corpus.
 
 ## 0130 — The corpus names what an algorithm takes; the contract names what a caller sends
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0130-corpus-argument-names/](decisions/0130-corpus-argument-names/)
 
 Found by the sweep 0129 authorised, and its subject is the mechanism rather than any one name:
@@ -4813,7 +4828,7 @@ assignable. Depends on 0121; relates to 0129 and 0128. Accepted and applied to
 
 ## 0131 — A value set closed in prose, and the field that points at it
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0131-condition-vocabulary/](decisions/0131-condition-vocabulary/)
 
 Reported as issue #78 by an implementation building the slice for decisions 0107–0110.
@@ -4865,7 +4880,7 @@ and applied to `VCSX-SPEC.md` (Sections 8.2, 13.1), `conformance/vcsx/vocabulary
 
 ## 0132 — Nine derived artifacts, and the enumerations they drifted from
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0132-derived-artifact-drift/](decisions/0132-derived-artifact-drift/)
 
 Found by a review pass run when the issue queue emptied, and filed as issues #83, #84 and #85. Every
@@ -4927,7 +4942,7 @@ applied to `SPEC.md` (Sections 5, 9.4, 9.7, 17, 18.1.2, 19), `VCSX-SPEC.md` (Sec
 
 ## 0133 — A token that was the whole class, and a bound that was the only bound
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0133-await-class-and-authorization/](decisions/0133-await-class-and-authorization/)
 
 Issues #81 and #82, the whole open queue, both against `await_checks` and both the same defect twice:
@@ -4992,7 +5007,7 @@ budget interface from one reporting an empty budget. Depends on 0112 and 0125 as
 
 ## 0134 — A vocabulary two documents closed and one left the engine to extend
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0134-spec-owned-trigger-vocabulary/](decisions/0134-spec-owned-trigger-vocabulary/)
 
 No open issues to work from — all 54 closed, #81 and #82 having closed when PR #87 landed — so a
@@ -5065,7 +5080,7 @@ rather than a refusal, or on a third group wanting check 6. Relates to 0128, 013
 
 ## 0135 — The map a template can iterate, and the order it never had
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0135-map-iteration-order/](decisions/0135-map-iteration-order/)
 
 Issue #93, the only one open, filed by the `symphony-rs` build against Section 12.2: the rendering
@@ -5119,7 +5134,7 @@ metadata keys are not stable strings. Relates to 0048, 0102, 0105 and 0128. Acce
 
 ## 0136 — A timer fire that could not name the arming it came from
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0136-retry-fire-identity/](decisions/0136-retry-fire-identity/)
 
 Issue #95, filed by the `symphony-rs` build against phase D2 — planned rather than built, so nothing
@@ -5169,7 +5184,7 @@ mandating one would over-specify a choice with no observable consequence.
 
 ## 0137 — A backoff kept per repository, and the state model with no repository in it
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0137-repository-scoped-recovery-state/](decisions/0137-repository-scoped-recovery-state/)
 
 Issue #96, filed alongside #95 and against the same unbuilt phase. Section 14.2 requires that where
@@ -5217,7 +5232,7 @@ records it.
 
 ## 0138 — The function five call sites named and no section defined
 
-**State:** Accepted (magnitude corrected by 0144; a consequence it removed is repaired by 0145)
+**State:** Applied (magnitude corrected by 0144; a consequence it removed is repaired by 0145)
 **Folder:** [decisions/0138-reference-algorithm-gaps/](decisions/0138-reference-algorithm-gaps/)
 
 Reported by neither issue; found checking #95's claims against the corpus, and kept as its own
@@ -5276,7 +5291,7 @@ pseudocode rather than prose is quietly under-checked by the mechanical lenses i
 
 ## 0139 — An obligation answered in full, and the heading that did not say so
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0139-need-vocabulary-obligation-citation/](decisions/0139-need-vocabulary-obligation-citation/)
 
 `scripts/validate_spec_consistency.py` warned for three decisions running that `VCSX-SPEC.md`
@@ -5315,7 +5330,7 @@ convention instead of quoting it.
 
 ## 0140 — A dispatch condition no configuration and no record could supply
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0140-assignee-routing-condition/](decisions/0140-assignee-routing-condition/)
 
 Issue #100, filed by the `symphony-rs` build. Section 8.2's third eligibility bullet is two
@@ -5370,7 +5385,7 @@ would pin an order the document does not state.
 
 ## 0141 — The operation no entry point named and no policy could dispatch
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0141-load-policy-entry-and-pin/](decisions/0141-load-policy-entry-and-pin/)
 
 Issue #101. Decision 0134 closed the operation set and put `load_policy` in it, which removed the
@@ -5441,7 +5456,7 @@ until the next edit.
 
 ## 0142 — A resume token that named a point and not the invocation it belongs to
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0142-resume-bound-to-entry-point/](decisions/0142-resume-bound-to-entry-point/)
 
 Issue #104. `VCSX-SPEC.md` Sections 8.1 and 8.6 fix three things a `resume` is established against —
@@ -5512,7 +5527,7 @@ coupling rather than only the one applied second.
 
 ## 0143 — Where a substituted result lands in a front-end sequence
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0143-front-end-landing-rule/](decisions/0143-front-end-landing-rule/)
 
 Issue #107, split out of #103 and reachable without a resume. `VCSX-SPEC.md` Sections 12.2 and 12.3
@@ -5573,7 +5588,7 @@ things: the disposition, the transfer, and what the invocation reports, the thir
 
 ## 0144 — What a concurrency slot counts, and when a run starts occupying one
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0144-slot-accounting-and-provisioning-phase/](decisions/0144-slot-accounting-and-provisioning-phase/)
 
 Issue #109, split out of #108 because that issue's severity could not be stated without picking one
@@ -5615,7 +5630,7 @@ claim; if that want returns it returns as a **second** bound, not a redefinition
 
 ## 0145 — The claim nothing released
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0145-claim-lifetime/](decisions/0145-claim-lifetime/)
 
 Issue #108. Section 7.1 defines a `Released` claim state and Section 17.4 requires the release to
@@ -5651,7 +5666,7 @@ reopens duplicate dispatch with no rule violated. The explicit set is load-beari
 
 ## 0146 — Run-attempt identity and the messages a replaced run keeps sending
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0146-run-attempt-identity/](decisions/0146-run-attempt-identity/)
 
 Issue #106. `on_worker_exit` decides whether an exit is owed a retry by testing whether the running
@@ -5704,7 +5719,7 @@ Statement row — decision 0128's trap, named from the start.
 
 ## 0147 — What a restart restores, and which class the Core field is
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0147-cached-signal-restart/](decisions/0147-cached-signal-restart/)
 
 Issue #105. Section 14.3's `Cached external signal` bullet says the last-known-good "MUST be carried
@@ -5762,7 +5777,7 @@ same ambiguity unread only because no generator has read it.
 
 ## 0148 — Routing keys and the record they route over
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0148-issue-routing-substrate/](decisions/0148-issue-routing-substrate/)
 
 Issue #113, the sibling of #100 rather than a restatement: that one is about one dispatch bullet's
@@ -5805,7 +5820,7 @@ depends on it, and a single-repository deployment is fully expressible today.
 
 ## 0149 — The column that said who provides and not who requires
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0149-capability-required-by-column/](decisions/0149-capability-required-by-column/)
 
 Issue #102. Decision 0134 rewrote `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` Section 6.1 to infer, from
@@ -5841,7 +5856,7 @@ because three decisions in a row missed the case where it does.
 
 ## 0150 — The diff a commit would record, and the identity that comes with it
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0150-worktree-diff-capability/](decisions/0150-worktree-diff-capability/)
 
 Issue #110, first of two, split from #102. **The strongest form of the finding is not the derivation
@@ -5893,7 +5908,7 @@ to `VCSX-SPEC.md` (Sections 6.6, 9.1, 10.4, 13.1, 13.2).
 
 ## 0151 — Reading and materializing the policy source
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0151-policy-source-capabilities/](decisions/0151-policy-source-capabilities/)
 
 Issue #110, second of two: the capabilities that turn on `load_policy`. Section 9.1's realization
@@ -5940,7 +5955,7 @@ and `VCSX-CONFORMANCE-STATEMENT-TEMPLATE.md` (Sections 3, 6.1).
 
 ## 0152 — What a front-end sequence must reach, not only where it stops
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0152-front-end-progress-invariants/](decisions/0152-front-end-progress-invariants/)
 
 Issue #111, split from #107 and independent by design. Section 13.1's Front-ends row states an upper
@@ -5987,7 +6002,7 @@ decisions, one editing pass.
 
 ## 0153 — A resume continues the flow, and the token carries the root trigger
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0153-resume-continues-the-flow/](decisions/0153-resume-continues-the-flow/)
 
 Issue #103. Section 5.5 says what a resume re-enters and stops there; **no section says what happens
@@ -6039,7 +6054,7 @@ applied to `VCSX-SPEC.md`, `VCSX-CONTRACT.md`, `conformance/vcsx/vocabulary.json
 
 ## 0154 — The record grew three fields and the vector that enumerates it did not
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0154-issue-record-drift/](decisions/0154-issue-record-drift/)
 
 Issue #120, filed by the `symphony-rs` build. Section 12.2 fixes the maps a template may name whole
@@ -6092,7 +6107,7 @@ and `conformance/README.md`.
 
 ## 0155 — The conditions that keep holding, and the repository nothing recorded
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0155-standing-conditions/](decisions/0155-standing-conditions/)
 
 Issue #121, filed by the `symphony-rs` build against `4d610da`: reconciliation's
@@ -6157,7 +6172,7 @@ rename in. Relates to 0128, 0137, 0138, 0140, 0144, 0145, 0148. Accepted and app
 
 ## 0156 — The refresh that returns a state, and the ids it does not answer
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0156-refresh-record-and-absent-ids/](decisions/0156-refresh-record-and-absent-ids/)
 
 The second half of issue #121, and the two things decision 0155 left open. **Section 11.1
@@ -6209,7 +6224,7 @@ can populate. Relates to 0140, 0148, 0154, 0155. Accepted and applied to `SPEC.m
 
 ## 0157 — What a re-dispatch tests
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0157-re-dispatch-eligibility/](decisions/0157-re-dispatch-eligibility/)
 
 The third site the answer to issue #120 named — "Section 8.5 Part B, the worker's post-turn check in
@@ -6269,7 +6284,7 @@ backoff — `conformance/vectors/retry-fire-disposition.json` and `conformance/R
 
 ## 0158 — Where a workspace hook runs
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0158-hook-execution-context/](decisions/0158-hook-execution-context/)
 
 Opens the adjacent gap decision 0025's re-evaluation recorded and did not close: the hook split is stated as
@@ -6306,7 +6321,7 @@ removal sites now say, rather than narrowing Section 5.3.4 to take the half away
 
 ## 0159 — The multi-repository configuration schema
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0159-multi-repository-config-schema/](decisions/0159-multi-repository-config-schema/)
 
 Opens the gap decision 0148 filed rather than fixed: "the mapping has no configuration key, and neither does
@@ -6391,7 +6406,7 @@ Relates to 0009, 0091–0093, 0116, 0132, 0137, 0148, 0155. Accepted and applied
 
 ## 0160 — Where `WORKFLOW.md` is read from, and whose it is
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0160-workflow-md-sourcing/](decisions/0160-workflow-md-sourcing/)
 
 Lands the half of decision 0097 that never reached `SPEC.md`. 0097 said "`WORKFLOW.md` changes
@@ -6482,7 +6497,7 @@ and `conformance/README.md`.
 
 ## 0161 — Who sets the bound on a workspace hook
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0161-hook-bound-sourcing/](decisions/0161-hook-bound-sourcing/)
 
 Opens what decision 0160 filed rather than fixed. Decision 0158 gave every workspace lifecycle hook
@@ -6561,7 +6576,7 @@ was moved into the artifact without being added to the artifact's own enumeratio
 
 ## 0162 — The four tracker categories a guarantee is checked by
 
-**State:** Accepted **Folder:**
+**State:** Applied **Folder:**
 [decisions/0162-tracker-category-levels/](decisions/0162-tracker-category-levels/)
 
 Closes `conformance/README.md`'s open finding that Section 17.3 required four RECOMMENDED tracker
@@ -6630,7 +6645,7 @@ applied to `SPEC.md` (Sections 10.6, 11.4, 17.3, 18.1.2, 19), `CONFORMANCE-STATE
 
 ## 0163 — The prompt template contract is a cross-implementation contract
 
-**State:** Accepted **Folder:**
+**State:** Applied **Folder:**
 [decisions/0163-prompt-rendering-contract/](decisions/0163-prompt-rendering-contract/)
 
 Closes `conformance/README.md`'s two remaining open findings — "Template syntax is a floor, not a
@@ -6705,7 +6720,7 @@ names the fourth. Relates to 0102, 0135, 0154, 0160. Accepted and applied to `SP
 
 ## 0164 — A preflight refusal that cannot say which check refused
 
-**State:** Accepted **Folder:**
+**State:** Applied **Folder:**
 [decisions/0164-preflight-reason-tokens/](decisions/0164-preflight-reason-tokens/)
 
 Not a finding the corpus recorded; it surfaced from a measurement taken while resolving decision
@@ -6762,3 +6777,36 @@ engine. Relates to 0056, 0130, 0132, 0162. Accepted and applied to `SPEC.md` (Se
 13.1, 17.1, 18.1.3), `conformance/vocabulary.json`, the new
 `conformance/vectors/config-preflight.json`, `conformance/README.md` and
 `scripts/validate_spec_consistency.py`.
+
+## 0165 — A decision State that says whether the text landed
+
+**State:** Applied
+**Folder:** [decisions/0165-applied-state/](decisions/0165-applied-state/)
+
+The States legend gains `Applied`, and `Accepted` narrows to a decision whose normative text is not
+yet reachable from `main`. Reported as issue #142 from `symphony-rs`: at `5a4fdf7`, decisions 0162
+and 0163 read `Accepted` while their text sat on a branch `main` could not reach, after a stacked
+pull-request chain collapsed — the second such pin in a row, seven decisions having been in that
+state at `4d610da`. The legend was the cause rather than the chapters: it defined `Accepted` as
+"decided; to be / being applied", covering with one word the two situations a consumer must tell
+apart. Building to the pinned text is correct where nothing has been written; it is knowingly
+building against replaced words where the text exists on a branch, and a pinned tree cannot
+distinguish them. The pull request that lands the text now flips the State, so the two change in one
+commit. Chosen over marking only the exception as `Accepted (not yet applied)`, which needs no
+backfill and costs nothing to adopt, but whose default reads "applied" — so a forgotten marker
+reproduces the reported bug silently, where a forgotten `Applied` merely leaves a consumer building
+to the pinned tree, which is what it does anyway; and which makes the value a string wanting
+substring matching rather than an enum a build can gate on, the gate `symphony-rs` committed to
+shipping being possible under only one of the two. Chosen over deriving the fact by checking each
+decision's anchors against the tree, which has no field to drift and loses on what "landed" means: a
+rename leaves the old anchor absent and the new one present, a removal leaves nothing to find. The
+backfill read `Plan.md`'s `## Status` as a seed and verified the residue, because that field is the
+same fact recorded in a place nothing re-reads and it had already drifted — six decisions (0027
+through 0032) recorded "application not started" for text demonstrably in `SPEC.md`, Section 9.12
+and Section 8.10 among it. That drift is the argument for position over diligence: the new field
+sits in the index a consumer reads, flipped by the commit that lands the text. 159 chapters became
+`Applied`; 0025 stays `Proposed` and the four `Superseded` are untouched. Reconsider if a chapter is
+observed reading `Applied` whose text is not in `main` or the reverse, which would mean the
+atomicity this rests on is not holding; or if nothing ever parses the field, which would make the
+cheaper option the better trade. Relates to 0033. No `SPEC.md` edit is required, so this decision is
+`Applied` on acceptance under the rule it introduces.
