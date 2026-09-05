@@ -191,9 +191,30 @@ new class of input for that script, and because the authoring instruction is lik
 its own. The reconsideration trigger for it is the first premature `Applied` observed in review —
 which is now a thing a reviewer knows to look for, this section being the record of why.
 
+**When the authoring instruction is actually under test.** Not at the next chapter written. Decision
+0166 was described, in the thread that produced this decision, as the first test of whether the
+instruction holds without a gate; that was wrong and is corrected here rather than left in a
+message. It is authored immediately after the rule was written, by the same session that wrote it,
+which is the condition under which *any* authoring instruction holds. The instruction is under test
+at the first chapter written by someone who has not just read this section — that is when copying a
+neighbour becomes the path of least resistance again, and it is the observation that should be
+paired with the trigger above rather than the trigger alone. A run of correctly-born chapters
+authored close to this decision is not evidence the instruction works.
+
 **Second-order note.** `symphony-rs` reports that the gate it committed to — every load-bearing
 upstream decision must read `Applied` at the pin — currently passes vacuously, nothing in the file
-reading anything else, and that it will document the gate as unproven until it has caught one. The
-first real exercise is round 2: any of 0166 onward accepted before its text lands. That is the
-correct posture and is recorded here because it is evidence about this decision, not that one: a
-field whose first genuine use is still ahead of it has not yet been shown to work.
+reading anything else, and that it will document the gate as unproven until it has caught one.
+
+What that gate is turns out to matter for reading its evidence, and the first statement of it here
+was imprecise. It is a property of **the pin**, not a live watch on this repository: it asserts that
+every upstream decision that build cites as load-bearing reads `Applied` in the pinned tree, and it
+fires whenever a pin carries an `Accepted` chapter that build cites. So a transient `Accepted`
+window that opens and closes between two of its pins is one it never needed to observe — nothing
+there was ever built against it. The first genuine exercise is therefore not the next `Accepted`
+chapter but a pin taken *while* a cited decision is still `Accepted`, which may not happen for a
+long time where decisions are applied promptly. The honest reading is that the gate may sit green
+and untested indefinitely without that being evidence it works.
+
+Both notes are recorded here because they are evidence about this decision rather than that build's:
+a field whose first genuine use is still ahead of it has not yet been shown to work, and neither has
+the instruction that governs how it is written.
