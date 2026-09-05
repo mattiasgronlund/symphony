@@ -94,9 +94,12 @@ per-decision folder under `decisions/`. The goal is to preserve the *reasoning* 
 re-evaluated later without re-deriving its context.
 
 - `DECISIONS.md` — one chapter per decision: short heading, **State** (`Proposed` / `Accepted` /
-  `Rejected` / `Superseded`), a link to the decision's folder, and a short focused prose description.
-  See the `DECISIONS.md` States legend for what each means; `Superseded` (decision 0033) marks a
-  decision replaced by a later one and names its successor.
+  `Applied` / `Rejected` / `Superseded`), a link to the decision's folder, and a short focused prose
+  description. See the `DECISIONS.md` States legend for what each means; `Superseded` (decision 0033)
+  marks a decision replaced by a later one and names its successor. `Accepted` and `Applied` answer
+  different questions (decision 0165): `Accepted` says the question is closed, `Applied` says the
+  normative text is reachable from `main`. The pull request that lands the text is the one that flips
+  the State, so the two never drift apart.
 - `decisions/NNNN-short-slug/` — one folder per decision, containing:
   - `Background.md` — why the decision was made (context, options, reasoning, trade-offs).
   - `Plan.md` — a detailed plan for how it is implemented in `SPEC.md`.
