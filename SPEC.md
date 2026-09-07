@@ -2261,6 +2261,14 @@ Each coding-agent run MUST be runnable inside a sandbox that isolates the agent 
 from Symphony's credentials. The sandbox profile is configurable; a strict containment profile is
 the assumed default.
 
+The requirement is fail-closed: where the sandbox, the per-run broker socket, or the
+secret-isolation boundary cannot be instantiated, the run is refused rather than started without
+it. That failure is
+classified `agent_session_failures` where the run was to execute on the orchestrator's own host and
+`executor_bring_up_failures` where it was to execute on a node, and each class's recovery is its own
+(Sections 14.1, 14.2, 9.11). The two differ in what a deployment can do next, not in whether the run
+proceeds.
+
 Sandbox profile:
 
 - The reference baseline is `jai` (https://jai.scs.stanford.edu) in its `Strict` mode on Linux — a
@@ -4083,6 +4091,10 @@ record.
    - A turn that ended with no terminal signal, whatever the process's exit status — success is
      evidenced rather than inferred (Sections 10.6, 10.7)
    - Stalled session (no activity)
+   - The sandbox, per-run broker socket, or secret-isolation boundary cannot be instantiated for a
+     run on this host (Section 9.6) — fail-closed: the run MUST NOT proceed without the boundary.
+     The same condition on a node is class 9, which carries a different disposition because it has
+     another node to reach for (Sections 9.11, 14.2)
 
 5. `Tracker Failures` (`tracker_failures`)
    - API transport errors
@@ -4123,7 +4135,9 @@ record.
    Section 9.11)
    - Remote executor process fails to start, or fails mutual authentication (Section 15.3)
    - The sandbox, per-run broker socket, or secret-isolation boundary cannot be instantiated on the
-     node (Section 9.6) — fail-closed: the run MUST NOT proceed without the boundary
+     node (Section 9.6) — fail-closed: the run MUST NOT proceed without the boundary. The same
+     condition on the orchestrator's own host is class 4, this class being the one a deployment
+     running the OPTIONAL node-scheduler extension reaches
 
 Note: the set is not closed. An OPTIONAL extension MAY define additional failure categories outside
 this core list, and MUST document each one and its recovery disposition (Section 14.2). For example,
@@ -5367,6 +5381,11 @@ deployment satisfies by using a conforming engine rather than by implementing th
   needing such a location gets one inside its own workspace (Sections 9.1, 9.6)
 - The per-run broker socket is mounted into the sandbox and bound to one run; without it the broker
   is unreachable
+- A sandbox, per-run broker socket, or secret-isolation boundary that cannot be instantiated for a
+  run on the orchestrator's own host leaves the run refused rather than started unconfined, is
+  classified `agent_session_failures`, and takes the per-worker backoff retry rather than being
+  parked — a misconfigured local profile converging on a failed run an operator can read rather
+  than holding the issue indefinitely (Sections 9.6, 14.1, 14.2)
 - Secret-bearing environment variables are scrubbed before the sandbox starts
 - VCS-managed workspaces are working trees derived from a shared per-repo object store, and two
   trees derived from one store see the same objects
@@ -5853,7 +5872,9 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
   structured results (`scope_denied` fails the run)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
-  before start, and the broker socket as the only privileged channel
+  before start, and the broker socket as the only privileged channel; a boundary that cannot be
+  instantiated fails the run closed rather than starting it unconfined, classified
+  `agent_session_failures` on the orchestrator's own host (Sections 9.6, 14.1)
 - The agent's environment is composed rather than inherited: no variable naming a location outside
   the run's workspace reaches it undeclared, and such a location resolves inside the workspace
   (Section 9.6)
