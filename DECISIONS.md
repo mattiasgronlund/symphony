@@ -7069,3 +7069,31 @@ sandbox profile and the composed environment. What that gives up is stated plain
 implementation whose reading of the protocol is wrong still passes, which was already true and is
 now said. Sections 10.1–10.3's MUST statements are unchanged: the requirement to follow the real
 protocol stays, and only what a check may assert moves. Relates to 0128.
+
+## 0175 — A report the specification requires and does not name
+
+**State:** Accepted
+**Folder:** [decisions/0175-standing-condition-lost/](decisions/0175-standing-condition-lost/)
+
+Section 8.5 Part B's standing-condition-loss report carries `standing_condition_lost` with a reason
+naming which condition failed, and Section 14.2 states its disposition on the `await_checks` model.
+Reported as issue #153 from `symphony-rs`: Part B fixes the report's shape by reference to Section
+8.7 and names no token, which is exactly what Section 14.1 opens by ruling out — two implementations
+reporting the same condition MUST report the same token. None of the nine classes describes it
+because nothing failed; the refresh **succeeded**, which is how the loss was observed at all. The
+finding that makes it worth a decision is the disposition: `workflow_config_failures` is the nearest
+candidate and Section 14.2 gives it two dispositions, one converting to an exponential-backoff retry
+against Part B's "schedule no retry" and the other skipping new dispatches instance-wide for what is
+one issue's label edit. The report offers three readings and all three presuppose the report carries
+a class; Section 14.2 already holds a fourth position, twice — its `await_checks` entry gives a
+non-failure a token and a disposition while stating "It is not a failure class", and
+`token_budget_exceeded` sits on the same footing. What dissolves the report's strongest objection is
+that **a shared shape need not include the class**: a shape is the report's fields, and the
+classification travels beside it, so Section 8.7 need not move. Section 14.1 keeps its nine, a tenth
+entry being wrong for a taxonomy that partitions where a failure arose. The disposition is **cited**
+to Section 8.5 rather than restated, on the `await_checks` bullet's own treatment, so the two sites
+cannot drift. No registry group is added: neither of Section 14.2's existing non-failure tokens is
+published either, and adding one member of that set alone would not be right. Recorded as left
+unfixed: Section 8.7's own report names no token either, so of the two reports sharing a shape one
+now carries a REQUIRED spelling and the other does not — a configuration defect that may genuinely
+belong to a failure class, which is a different question with its own trigger. Relates to 0155.
