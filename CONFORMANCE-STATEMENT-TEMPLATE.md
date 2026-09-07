@@ -97,6 +97,8 @@ obligation not listed here rather than omitting its resolution.
 | Effective egress policy for the sandbox and broker socket | 9.6 | `<...>` |
 | Composed environment set an agent's run receives | 9.6 | `<the variables passed through, and how a location outside the run's own workspace is kept out>` |
 | Carrier by which an issue names its pull-request target | 9.7 | `<label the operator maps / tracker field / tracker-specific / not offered>` |
+| Protocol version and transport framing each agent adapter targets | 10 | `<per adapter: protocol version + framing>` |
+| Published schema an adapter's composed payloads are validated against | 10 | `<per adapter: schema + version, or "none published">` |
 | Approval, sandbox, and operator-confirmation policy | 10.5 | `<...>` |
 | Targeted-protocol user-input-required signal handling | 10.5 | `<...>` |
 | Tracker adapter result hard-cap / pagination limitation | 11 | `<cap, or none>` |

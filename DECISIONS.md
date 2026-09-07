@@ -7040,3 +7040,32 @@ call published on the issue is **not** taken — the condition is not stated. Se
 for any of its nine, a fact the registry note publishes (decision 0162), and glossing the renamed
 token alone would make the section inconsistent with itself and that sentence wrong; the neutrality
 the issue is about is carried entirely by the name. Relates to 0102, 0162.
+
+## 0174 — Four Core checks against a document the specification declines to pin
+
+**State:** Applied
+**Folder:** [decisions/0174-documented-protocol-target/](decisions/0174-documented-protocol-target/)
+
+Section 17.5's four protocol-conformance checks are restated as claims about the implementation's
+documented target, and Section 10 gains the MUST-document obligation that makes them dischargeable.
+Reported as issue #151 from `symphony-rs`: four Core checks assert that startup **follows**, that
+payloads are **valid when**, that framing **required by**, and that signals are **interpreted
+according to** the targeted Codex app-server protocol, while Section 10's intro deliberately
+declines to pin that protocol. The report's discrimination is exact and is what makes this a
+specification defect — Section 17.5 names the targeted protocol in six bullets, and the two it does
+not flag are claims that the implementation *extracts* something, checkable against any transcript.
+The four are unfalsifiable rather than merely unverified: a twin built from an implementation's own
+reading of the protocol cannot falsify that reading, only agree with it. Section 17.8 does not
+rescue them, its header exempting credentials, network access and external service permissions and
+its every bullet naming tracker apparatus, none of which describes a build-time dependency on a
+third-party binary. Moving them out of Core was declined because skippable is not the problem: an
+optional unfalsifiable check is still unfalsifiable, and two implementations targeting different
+app-server versions would both pass while doing different things. Pinning a version was declined
+because Section 10's refusal is deliberate — it would put this specification in the business of
+tracking someone else's release cadence and go stale between revisions of a document it does not
+own. What is taken is this specification's existing answer where behaviour legitimately varies:
+`Implementation-defined` plus MUST document, the disposition Section 9.6 already uses for the
+sandbox profile and the composed environment. What that gives up is stated plainly — an
+implementation whose reading of the protocol is wrong still passes, which was already true and is
+now said. Sections 10.1–10.3's MUST statements are unchanged: the requirement to follow the real
+protocol stays, and only what a check may assert moves. Relates to 0128.

@@ -2854,6 +2854,14 @@ Protocol source of truth:
   controls protocol shape and transport behavior.
 - Symphony-specific requirements in this section still control orchestration behavior, workspace
   selection, prompt construction, continuation handling, and observability extraction.
+- Because this specification pins no protocol version and no schema, which version an adapter
+  targets is the implementation's choice and MUST be documented (Section 19): the protocol version
+  each adapter targets, the transport framing it targets, and whether a published schema exists for
+  that version and which one composed payloads are validated against. Section 17.5's checks are
+  stated against that documented target rather than against a version this specification names,
+  because a self-contained conformance run cannot discharge a claim about a document this
+  specification declines to pin. The requirements above are unaffected: an adapter is held to the
+  real protocol, and what the documented target changes is what a check may assert.
 
 Orchestrator↔executor protocol:
 
@@ -5735,23 +5743,27 @@ broker, and an `interactive-agent` deployment drives an agent session with no da
   (`bash -c`, Section 10.1): a profile file that writes to stdout does not reach the protocol stream
   the adapter parses, and a profile file that assigns a location-bearing variable does not reach the
   agent, the composed set being what the run receives (Sections 9.6, 10.4)
-- Session startup follows the targeted Codex app-server protocol.
-- Client identity/capability payloads are valid when the targeted Codex app-server protocol requires
-  them.
+- The app-server protocol version the adapter targets is documented, and session startup composes
+  and sends the startup exchange that version requires before the first turn (Sections 10, 10.2)
+- Client identity/capability payloads are composed where the targeted version requires them, and are
+  validated against that version's published schema where one is published; the implementation
+  documents which schema, or that none is published (Sections 10, 19)
 - Policy-related startup payloads use the implementation's documented approval/sandbox settings
 - Thread and turn identities exposed by the targeted protocol are extracted and used to emit
   `session_started`
 - Request/response read timeout is enforced
 - Turn timeout is enforced
-- Transport framing required by the targeted protocol is handled correctly
+- The transport framing the adapter targets is documented, and framed messages of that shape
+  round-trip — including one split across reads and one arriving coalesced with the next
+  (Sections 10, 10.1)
 - For stdio-based transports, diagnostic stderr handling is kept separate from the protocol stream
 - Command/file-change approvals are handled according to the implementation's documented policy
 - Unsupported dynamic tool calls are rejected without stalling the session
 - User input requests are handled according to the implementation's documented policy and do not
   stall indefinitely
 - Usage and rate-limit telemetry exposed by the targeted protocol is extracted
-- Approval, user-input-required, usage, and rate-limit signals are interpreted according to the
-  targeted protocol
+- The approval, user-input-required, usage and rate-limit signals the adapter recognizes are
+  documented, and each is dispatched to its documented handling (Sections 10, 10.5, 13.5)
 - The `symphony` broker CLI is reachable from the sandbox over the per-run socket and is unreachable
   without it
 - Brokered operations return structured results with stable reason codes
@@ -5887,7 +5899,9 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
 - Hook timeout config (`hooks.workspace.timeout_ms`, default `60000`), read from the policy source
   and bounding both halves; a value in `WORKFLOW.md` is not honored (Sections 5.3.4, 15.4)
 - Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
-  app-server JSON line protocol as the worked example)
+  app-server JSON line protocol as the worked example), each adapter's targeted protocol version and
+  transport framing documented along with the published schema its composed payloads are validated
+  against, or that none is published (Sections 10, 19)
 - Turn-centric contract: `run_turn` threads an opaque `continuation_ref` (no separate start),
   `cancel` does interrupt-then-drain and `release` frees warm resources — both taking the
   `continuation_ref` as OPTIONAL, one turn being in flight at a time — with resumable-or-failed
@@ -6150,7 +6164,10 @@ The Statement MUST record:
   (Section 9.7); how the process identity `run_id` composes from is derived (Section 16.1); the
   bounds handed to the engine's bounded check wait and the forge budget guard's enablement (Sections
   8.11, 9.10); the approval, sandbox, operator-confirmation, and user-input-required policy (Section
-  10.5); the tracker adapter's result-limit and `metadata` choices (Section 11); the tracker error
+  10.5); the protocol version and transport framing each agent adapter targets, and the published
+  schema, if any, its composed payloads are validated against (Section 10) — distinct from the
+  executor protocol floor above, which is the orchestrator↔executor seam's; the tracker adapter's
+  result-limit and `metadata` choices (Section 11); the tracker error
   categories defined beyond Section 11.4's set and the agent-runner error categories defined beyond
   Section 10.6's (Sections 10.6, 11.4); the log sink or sinks and what happens when one of them
   fails (Section 13.2); the human-readable status surface, if any, the presentation of rate-limit
