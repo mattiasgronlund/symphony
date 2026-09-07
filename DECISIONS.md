@@ -6928,3 +6928,31 @@ MUST-document obligation. An engine-side `merge:base_mismatch` refusal is deferr
 no forge conditions a merge on base, so the check would narrow the same pair Section 9.10 already
 declares unclosable, and the case it uniquely covers is a consumer with no Section 9.10 layer.
 Relates to 0077, 0114, 0128.
+
+## 0170 — A fail-closed MUST with no class to report it under
+
+**State:** Accepted
+**Folder:** [decisions/0170-local-sandbox-class/](decisions/0170-local-sandbox-class/)
+
+Section 14.1's `agent_session_failures` gains a bullet for a sandbox, per-run broker socket, or
+secret-isolation boundary that cannot be instantiated for a run on this host, and
+`executor_bring_up_failures` stays node-scoped. Reported as issue #146 from `symphony-rs`: Section
+9.6 requires every coding-agent run to be runnable inside a sandbox, Section 3.1's local executor is
+always present, and the class naming a boundary that will not come up is scoped to a node twice —
+in its header (`OPTIONAL, remote execution`) and in its bullet. Reaching for class 9 anyway is not
+an approximation but a trap, and Section 14.2 is where that is checkable rather than arguable: the
+class's only route back into service is a **MAY** to re-dispatch onto a fresh node, with no backoff
+arm, so a local deployment filing a typo'd sandbox profile there would park every run indefinitely
+against a one-line fix. Class 9's disposition and its membership are the same fact — a
+node-scheduler's — and a Core condition cannot be filed under a fact that does not hold for it.
+Widening class 9 instead is the tidier taxonomy and is declined for what it drags along: it would
+need a second disposition inside the class branching on whether a scheduler exists, a fork in the
+recovery table on deployment topology in the one class whose identity is a topology. Between class 3
+and class 4 nothing observable differs — Section 14.2 disposes of both through the worker
+disposition and says so — which is recorded plainly so a later reader does not read the choice as
+load-bearing; class 4 wins on what the sandbox is, a boundary the session runs inside that must
+exist before it starts and outlives it, where a workspace is a directory that exists before either.
+The existing "Startup handshake failure" bullet is not stretched to cover it, a handshake being a
+protocol event. Measured at `60092ef`, Section 9.6 cited Section 14 nowhere, which is why the gap
+survived — each half looked complete from where it stood — so that section now states the
+consequence of its own MUST. Relates to 0010, 0128.
