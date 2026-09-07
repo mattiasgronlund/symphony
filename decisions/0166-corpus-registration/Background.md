@@ -116,3 +116,61 @@ above rests on it being an index. A second trigger is a second negative-assertio
 different file: `absent` being unique is what makes its note the one most likely to be missed, and
 two of them would suggest the schema wants a general statement about negative assertions rather than
 a per-function bullet.
+
+## Re-evaluation: the gate is taken, and the trigger that declined it was wrong
+
+Raised by `symphony-rs` after 0166 merged at `1818e9c`. The decision above declined the mechanical
+check `symphony-rs` had suggested, and recorded a reconsideration trigger for it. Both the trigger
+and the reason were defective, in the same way.
+
+**The trigger watched the wrong event.** It fired on "a later slice deliberately leaves a vector
+file out of the tables". That event **announces itself**: someone decides to omit a file, writes it
+down, and a reviewer sees it. The event that needs watching is the opposite one — a file registered
+nowhere because a decision forgot — and it announces nothing. That is what happened to
+`repository-inheritance.json`, and what found it was a downstream consumer reading the README for an
+unrelated reason, not this repository.
+
+So the trigger fired on the case that would be caught anyway and stayed silent on the case that had
+already got past review once. A reconsideration trigger that cannot fire on a recurrence of the
+defect it belongs to is not a trigger.
+
+**The reason was an argument against every gate.** It was that the check would assert the table is
+an index of every file, and a later slice might deliberately omit one, at which point the check
+enforces something no longer true. That is true of any check: a gate encodes a current invariant,
+and changing it when the invariant changes is a reviewed act rather than a cost. Stated as a general
+principle it would decline check 6 and check 7 in `scripts/validate_spec_consistency.py` too, both
+of which encode a property no document states and both of which a later decision could invalidate.
+
+**What the real trade is.** `symphony-rs` supplied the argument that would have survived reading,
+and it is the one that decides the question rather than the one that was given: a gate whose premise
+a slice might deliberately break is a gate that slice has to *edit*, and a repository with few
+contributors may reasonably prefer prose it can violate over a check it must change.
+
+Weighed on those terms the check wins, because the two failure modes are not symmetrical. Violating
+the prose is silent and was not noticed for the whole span between decision 0159 and issue #154.
+Editing the check is loud and lands in a diff a reviewer reads. Where one failure mode announces
+itself and the other does not, the cost belongs on the one that announces itself.
+
+**What was added.** Check 8 in `scripts/validate_spec_consistency.py`: every vector file on disk has
+a row in its corpus README's file table, and every row names a file that exists. It runs over both
+corpora — `conformance/` and `conformance/vcsx/` — and both are complete at the revision it was
+added, 16 rows against 16 files and 10 against 10, so it lands as a regression guard rather than a
+repair. Both directions were verified to fire by removing a row and by adding a row for a file that
+does not exist.
+
+The second direction was not in the original ask and is the cheaper half of the same property: a
+table naming a file that has been renamed or removed sends a harness author to a file that is not
+there, which is the same defect read from the other side.
+
+`symphony-rs` offered to gate this downstream instead, both artifacts being in its pinned tree. That
+is declined, and the reason is worth recording because it will come up again: the property is about
+whether *this* repository's README indexes *this* repository's corpus. A downstream check would
+catch it a pin later, after the omission had already shipped, and would report a defect its own
+repository cannot fix. A consumer catching an upstream registration failure is what happened here
+once already, and the point of the check is that it should not have to happen twice.
+
+**Reconsideration trigger, restated.** Reopen if a slice has genuine reason to leave a vector file
+out of the tables — a file exercised only through another file's vectors would be the plausible
+case. The check is then the thing to change, and its docstring limit already says so. The trigger is
+no longer "the first deliberate omission" as a reason to *add* the gate, but as the occasion to
+narrow it.

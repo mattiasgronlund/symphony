@@ -29,8 +29,14 @@ Checks:
      section fixes agrees with that section, with its own `given`, and with the order the section
      states. Added by decision 0154, whose defect was Section 4.1.1 growing three fields while the
      vector enumerating it kept thirteen.
+  8. Every vector file on disk has a row in its corpus README's file table, and every row names a
+     file that exists. Added by decision 0166, whose defect was
+     `conformance/vectors/repository-inheritance.json` carrying the only negative assertion in
+     either corpus and being registered in neither the README's file table nor its
+     interpretation-note list — found by a downstream consumer reading the README for a different
+     reason, a year of revisions after decision 0159 added it.
 
-Six limits are deliberate and stated here rather than left to be discovered:
+Seven limits are deliberate and stated here rather than left to be discovered:
 
   * Check 2 matches per *section*, not per obligation. A section with three obligations and two
     rows is reported as a shortfall; a section with one obligation and one row that answers a
@@ -52,6 +58,12 @@ Six limits are deliberate and stated here rather than left to be discovered:
     enumeration rather than a computed value. A vector the table does not name is unchecked, as
     every vector was before decision 0154, and the table is where a second one is registered rather
     than special-cased beside the first.
+  * Check 8 asserts that a corpus README's file table is an index of every vector file, which is a
+    property of the tables today and not one any document states. A slice that means to leave a
+    file out — one exercised only through another file's vectors, say — has to change this check to
+    do it. That is deliberate: the omission this catches announces nothing, so prose that can be
+    violated silently is what failed once already, while a deliberate omission announces itself and
+    can afford to cost an edit here.
   * The `arguments` group is read from Section 8.1's argument bullets, which is that section's
     enumeration of the arguments it names. It is not the whole of the section's argument surface:
     the forge repository coordinate, the two identities and the execution context are named there
@@ -508,6 +520,33 @@ def check_vector_enumerations(texts):
                   f"which is the order the section it cites fixes")
 
 
+# --------------------------------------------------------------------------- check 8
+
+# Each corpus README indexes the vector files beside it. The tables are the index; a file absent
+# from them is a file a harness author never learns exists (decision 0166).
+CORPORA = {
+    "conformance/README.md": "conformance/vectors",
+    "conformance/vcsx/README.md": "conformance/vcsx/vectors",
+}
+
+VECTOR_ROW = re.compile(r"^\| `vectors/([^`]+)`", re.M)
+
+
+def check_vector_registration():
+    for readme, vectors_dir in CORPORA.items():
+        if not os.path.isdir(vectors_dir) or not os.path.exists(readme):
+            error(f"{readme}: corpus README or {vectors_dir}/ not found")
+            continue
+        on_disk = {n for n in os.listdir(vectors_dir) if n.endswith(".json")}
+        registered = set(VECTOR_ROW.findall(read(readme)))
+        for name in sorted(on_disk - registered):
+            error(f"{readme}: `vectors/{name}` exists and has no row in the file table, so a "
+                  f"harness author reading this README never learns it is there")
+        for name in sorted(registered - on_disk):
+            error(f"{readme}: the file table names `vectors/{name}`, which does not exist in "
+                  f"{vectors_dir}/")
+
+
 # --------------------------------------------------------------------------- main
 
 def main():
@@ -526,6 +565,7 @@ def main():
     check_await_enumeration(texts)
     check_registry_completeness(texts)
     check_vector_enumerations(texts)
+    check_vector_registration()
 
     for line in warnings:
         print(f"warning: {line}")
