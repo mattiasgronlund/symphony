@@ -7043,7 +7043,7 @@ the issue is about is carried entirely by the name. Relates to 0102, 0162.
 
 ## 0174 — Four Core checks against a document the specification declines to pin
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0174-documented-protocol-target/](decisions/0174-documented-protocol-target/)
 
 Section 17.5's four protocol-conformance checks are restated as claims about the implementation's

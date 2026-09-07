@@ -88,4 +88,6 @@ None. No code-token identifier is renamed or removed and no section is retitled.
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Section 10's intro, Section 17.5's four checks, Section 18.1.2's agent-runner
+item, Section 19's enumeration) and `CONFORMANCE-STATEMENT-TEMPLATE.md` (two Section 4.1 Core rows).
+All nine steps; step 6 was a no-op by construction, both extraction bullets being untouched.
