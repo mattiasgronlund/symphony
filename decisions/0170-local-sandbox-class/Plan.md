@@ -58,4 +58,5 @@ exist.
 
 ## Status
 
-Not started.
+Applied to `SPEC.md`: Section 14.1 class 4's new bullet and class 9's back-reference, Section 9.6's
+fail-closed paragraph, Section 17.2's check, and Section 18.1's sandbox item. All five steps.

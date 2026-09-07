@@ -6931,7 +6931,7 @@ Relates to 0077, 0114, 0128.
 
 ## 0170 — A fail-closed MUST with no class to report it under
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0170-local-sandbox-class/](decisions/0170-local-sandbox-class/)
 
 Section 14.1's `agent_session_failures` gains a bullet for a sandbox, per-run broker socket, or
