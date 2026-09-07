@@ -6870,7 +6870,7 @@ otherwise have reproduced the defect it repaired. Relates to 0010, 0011, 0128, 0
 
 ## 0168 — A published property with one value left
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0168-gating-arity/](decisions/0168-gating-arity/)
 
 `conformance/vocabulary.json`'s `error_classes` entries stop carrying `gating`, and Section 5.5's

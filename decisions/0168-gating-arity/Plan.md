@@ -14,9 +14,8 @@ publish it into line.
    `conformance/vocabulary.json`'s `error_classes` group — `missing_workflow_file`,
    `workflow_parse_error`, `workflow_front_matter_not_a_map`, `template_parse_error`,
    `template_render_error` — each carry `token` and `condition` and no `gating` key.
-   Done when no entry object in the group has a `gating` key — checkable with
-   `python3 -c "import json;d=json.load(open('conformance/vocabulary.json'));print(any('gating' in e for e in d['error_classes']['entries']))"`
-   printing `False`.
+   Done when no entry object in the group has a `gating` key: loading the registry and testing
+   whether any member of `error_classes.entries` carries that key answers false.
 
 2. **The group's `note` states the one behavior and where it comes from.** Ensure the
    `error_classes` group's `note` says that Section 5.5 assigns every class in the group the same
@@ -56,10 +55,18 @@ publish it into line.
 
 ## Anchor changes
 
-None in `SPEC.md`. The removed `gating` key is a registry property rather than a specification
-anchor: no code-token identifier that `SPEC.md` names is renamed or removed, and `blocks_dispatch`
-and `fails_attempt` were spellings the registry introduced rather than ones Section 5.5 states.
+- `error_classes[].gating` — **removed** from `conformance/vocabulary.json`, together with the two
+  values it took, `blocks_dispatch` and `fails_attempt`. Recorded here rather than treated as no
+  change, because decision 0102's `Plan.md` states the field and its five values as a
+  done-condition, and a reader chasing that step needs to arrive at this decision rather than at a
+  file that no longer matches it. The values were spellings the registry introduced; `SPEC.md` never
+  states either.
+
+None in `SPEC.md`: no code-token identifier it names is renamed or removed, and no section is
+retitled.
 
 ## Status
 
-Not started.
+Applied to `conformance/vocabulary.json` (the five entries and the group note),
+`conformance/README.md` (the entry-field documentation) and `CONFORMANCE-STATEMENT-TEMPLATE.md`
+(the Section 4.1 Core row). All five steps.

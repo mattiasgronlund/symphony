@@ -80,11 +80,10 @@ In `config_namespaces`, `artifact` names the Section 5 configuration artifact a 
 specification splits one key across both repository-owned artifacts by trust (Section 15.4).
 
 In the error groups and in `transition_triggers`, `condition` is the condition the specification
-states the token names, carried only where it states one; `error_classes` additionally carries
-`gating`, Section 5.5's dispatch gating behavior, valued `blocks_dispatch` or `fails_attempt`. As in
-`config_namespaces`, `core: false` marks a token owned by an OPTIONAL extension rather than by the
-core schema — in `transition_triggers` the two task-state events, which an implementation shipping
-no task model never raises.
+states the token names, carried only where it states one. As in `config_namespaces`, `core: false`
+marks a token owned by an OPTIONAL extension rather than by the core schema — in
+`transition_triggers` the two task-state events, which an implementation shipping no task model
+never raises.
 
 ### Using it
 
