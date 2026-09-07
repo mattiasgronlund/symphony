@@ -351,33 +351,28 @@
       "SPEC.md Section 5.2 \"File Format\"",
       "SPEC.md Section 5.4 \"Prompt Template Contract\""
     ],
-    "note": "The classes the workflow loader and the prompt renderer fail with. A class names the condition, not the stage at which an implementation detects it: an unknown variable and an unknown filter are both `template_render_error` however early the template engine resolves them, and `template_parse_error` is reserved for a body that is not well-formed template syntax at all. `gating` is Section 5.5's dispatch gating behavior, which is the part a consumer acts on (Sections 6.2, 12.4): `blocks_dispatch` holds new dispatches until the file is repaired, `fails_attempt` fails only the affected run attempt. Not a closed set: Section 5.5 permits an implementation to define additional classes for conditions these five do not name, and requires it to document each one and assign it a gating behavior.",
+    "note": "The classes the workflow loader and the prompt renderer fail with. A class names the condition, not the stage at which an implementation detects it: an unknown variable and an unknown filter are both `template_render_error` however early the template engine resolves them, and `template_parse_error` is reserved for a body that is not well-formed template syntax at all. Dispatch gating is stated once here rather than per entry, because Section 5.5 states one behavior for the whole section: every class in it fails the affected run attempt and none blocks new dispatches for the instance, `WORKFLOW.md` being read inside a run attempt so that no earlier point could gate dispatch (Sections 5.1, 6.2, 6.3, 14.2). An entry carries the properties the specification fixes about it, and this one is fixed about the section (decision 0168). Not a closed set: Section 5.5 permits an implementation to define additional classes for conditions these five do not name and requires it to document each one, but the gating behavior is not the implementation's to choose \u2014 Section 5.5 assigns the same one to every class, including those an implementation defines.",
     "requirement_level": "REQUIRED",
     "exhaustive": false,
     "entries": [
       {
         "token": "missing_workflow_file",
-        "gating": "blocks_dispatch",
         "condition": "The workflow file cannot be read at the resolved path (Section 5.1)."
       },
       {
         "token": "workflow_parse_error",
-        "gating": "blocks_dispatch",
         "condition": "The YAML front matter is not well-formed (Section 5.2)."
       },
       {
         "token": "workflow_front_matter_not_a_map",
-        "gating": "blocks_dispatch",
         "condition": "The front matter is well-formed YAML that does not decode to a map (Section 5.2)."
       },
       {
         "token": "template_parse_error",
-        "gating": "fails_attempt",
         "condition": "The prompt body is not well-formed template syntax."
       },
       {
         "token": "template_render_error",
-        "gating": "fails_attempt",
         "condition": "The body is well formed and names something the engine cannot resolve: an unknown variable, an unknown filter, an invalid interpolation, or a member of the `issue` object outside the field set Section 4.1.1 defines (Sections 5.4, 12.2)."
       }
     ]

@@ -88,7 +88,7 @@ obligation not listed here rather than omitting its resolution.
 | Operator policy config format and discovery path | 5 | `<...>` |
 | Template constructs supported beyond the REQUIRED minimal subset | 5.4 | `<which constructs, or none>` |
 | Filters offered beyond the REQUIRED minimal subset (which defines none) | 5.4 | `<name + what each does and the arguments it takes, or none>` |
-| Workflow/template error classes defined beyond Section 5.5's five | 5.5 | `<token + dispatch gating behavior for each, or none>` |
+| Workflow/template error classes defined beyond Section 5.5's five | 5.5 | `<token + condition for each, or none>` |
 | Tracker error categories defined beyond Section 11.4's set | 11.4 | `<token + condition for each, or none>` |
 | Agent-runner error categories defined beyond Section 10.6's set | 10.6 | `<token + condition for each, or none>` |
 | `agent.default_agent` default | 5.3.5 | `<which agent>` |

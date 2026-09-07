@@ -6867,3 +6867,32 @@ its authority. The new arm at `engine.integrate` releases the claim and arms no 
 reaching `fail_worker`, whose exponential per-worker backoff Section 14.2 forbids for this class —
 a correction to what was published on the issue, and the second repair in this round that would
 otherwise have reproduced the defect it repaired. Relates to 0010, 0011, 0128, 0165.
+
+## 0168 — A published property with one value left
+
+**State:** Applied
+**Folder:** [decisions/0168-gating-arity/](decisions/0168-gating-arity/)
+
+`conformance/vocabulary.json`'s `error_classes` entries stop carrying `gating`, and Section 5.5's
+one dispatch gating behavior is stated once in the group's note. Reported as issue #144 from
+`symphony-rs`: the registry splits five tokens three-two while Section 5.5's prose gives all five
+the same behavior. Which side is later is not a judgement — `git log -S'"gating"' --
+conformance/vocabulary.json` returns one commit, decision 0102's, and `git log -S'none blocks new
+dispatches for the' -- SPEC.md` returns one, decision 0160's, whose own chapter lists the collapse
+among its consequences. The prose governs and the registry is stale, which the report asks about;
+the repair it implies is the wrong one, and 0102's own test says why — `gating` earned its place
+because Section 5.5 stated gating as a **two-valued** property, and 0160 made it one-valued.
+Flipping three entries leaves a five-row table with one repeated value, which is what 0102 declined
+to add for recovery dispositions on 0071's line that entries carry the properties the specification
+fixes rather than the prose of the rules those properties feed. Section 5.5's extension clause fixes
+the arity and not merely the current values — each class an implementation defines "takes the
+dispatch gating behavior below, there being one" — so no future entry can reintroduce a split while
+that sentence stands. The only consumer confirms it from the other end: `symphony-rs` reports one
+production call site and no dispatch, recovery or reporting path that branches on the value, and
+reversed from the flip its issue implicitly asked for. Chosen over a group-level scalar `gating`,
+which would keep the value machine-readable at the arity the specification fixes and is the
+strongest alternative, because a published token earns its place by removing a choice a consumer
+must otherwise make and there is no branch left here — the generated constant would be one nothing
+reads. A third stale site is corrected with them:
+`CONFORMANCE-STATEMENT-TEMPLATE.md` asked an implementation to state a gating behavior for each
+class it defines, which Section 5.5 does not let it choose. Relates to 0071, 0102, 0128, 0160.
