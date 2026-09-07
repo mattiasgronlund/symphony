@@ -60,4 +60,8 @@ not.
 
 ## Status
 
-Not started.
+Applied to `SPEC.md`: Section 10.1's invocation line and notes, the `command` field's launch note,
+Section 9.6's new search-path bullet, and Section 17.5's launch check. All five steps. Section 6.4's
+`codex.command` entry was checked and does not restate the invocation, so it needed no edit; Section
+18 names no invocation. `grep -n 'bash -lc' SPEC.md` now returns one line, Section 9.4's hook shell,
+which is deliberate.

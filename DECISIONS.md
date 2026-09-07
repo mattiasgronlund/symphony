@@ -6987,7 +6987,7 @@ repair a first turn where a clean drain is least likely trades the wrong way. Re
 
 ## 0172 — The launch contract mandates what the environment clause forbids
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0172-non-login-shell/](decisions/0172-non-login-shell/)
 
 Section 10.1's invocation becomes `bash -c <codex.command>`, and Section 9.6 requires the composed
