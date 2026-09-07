@@ -1355,6 +1355,11 @@ claim state.
      assignee no longer assigned, or the mapping no longer routing the issue to the repository the
      run holds: reconciliation terminates the run the same way, through
      `terminate_running_issue`, with no retry taking the claim over (Sections 8.2, 8.5, 8.7, 16.3).
+   - An engine invocation inside the run that produced no usable result — the engine unavailable,
+     non-conforming, or reporting that the policy did not run: the worker exits through
+     `fail_engine_invocation` and `on_worker_exit` releases the claim with the entry it removes,
+     arming no retry, because that class's recovery is the repository's or the instance's rather
+     than this worker's (Sections 14.1, 14.2, 16.6, 16.7).
    - Issue missing from the candidate set, or a retry path that completed without re-dispatch:
      `on_retry_timer` releases the claim with the retry entry the fire consumes, and the two
      branches that neither dispatch nor re-arm leave it released — the issue absent from the
@@ -1424,6 +1429,9 @@ Note:
   - Remove running entry.
   - Update aggregate runtime totals.
   - Schedule exponential-backoff retry.
+  - Except for an exit carrying `engine_invocation_failures` (Sections 14.1, 16.6): release the
+    claim and schedule none, that class's recovery being the repository's or the instance's rather
+    than this worker's (Section 14.2).
 
   Note: both worker-exit triggers fire for an exit the orchestrator did not initiate. Where
   reconciliation terminated the worker it has already removed the running entry and updated the
@@ -1745,8 +1753,11 @@ ends a dispatched run either releases the claim or hands it to a retry entry, an
 - `terminate_running_issue` (Section 16.3) releases it with the entry. All three of Part B's
   terminating branches and Part A's stall path reach it; Part A then arms a retry, which takes the
   claim back, which is why it terminates first and arms second.
-- `on_worker_exit` (Section 16.7) removes the entry itself and arms a retry, and arming takes the
-  claim.
+- `on_worker_exit` (Section 16.7) removes the entry itself. For every exit but one it arms a retry,
+  and arming takes the claim; for an exit carrying `engine_invocation_failures` it releases the
+  claim instead and arms none, that class's recovery being the repository's or the instance's rather
+  than this worker's (Sections 14.1, 14.2, 16.6). Either way the site takes one side of the
+  partition rather than sitting astride it.
 - `dispatch_issue`'s spawn-failure early return (Section 16.4) writes no entry and arms a retry,
   which takes the claim. Its `ensure_object_store` failure writes no entry and arms no retry, and
   leaves the issue unclaimed so a later tick retries it — the case that makes the partition complete
@@ -4608,6 +4619,19 @@ treat harness hardening as part of the core safety model rather than an optional
 
 ## 16. Reference Algorithms (Language-Agnostic)
 
+Every `engine.*` dispatch below distinguishes two layers of failure, because they are two failure
+classes with two dispositions (Sections 14.1, 14.2). An invocation that produced no readable result
+envelope, or one whose status reports that the policy did not run, is `engine_invocation_failures`:
+nothing ran, so there is no operation result to classify — the boundary Section 14.1 states for
+that class. A result the policy produced is classified by the operation's own domain: a `provision`
+result reporting failure is `repository_provisioning_failures`, and a back-merge result reporting a
+conflict is an operation outcome the action-policy machine owns (Section 9.12). The distinction
+costs nothing to make. The engine's invocation contract fixes four status-bearing exit codes and
+states that any other code means no result at all, so a caller separates the two without parsing
+(`VCSX-CONTRACT.md`, `VCSX-SPEC.md` Sections 8.2, 8.3) — the same evidenced-result discipline
+Section 10.7 requires of an agent adapter, applied to the subprocess it cites as the model. A call
+site added below inherits this rule rather than restating it.
+
 ### 16.1 Service Startup
 
 ```text
@@ -4817,9 +4841,13 @@ function dispatch_issue(issue, state, attempt):
   # (Section 4.2), which the running entry below records and the workspace path carries.
   store = ensure_object_store(repo_of(issue))
   if store failed:
-    # Repository Provisioning Failures (Section 14.1) are repo-scoped, not per-worker: skip this
-    # dispatch and leave the issue unclaimed so a later tick retries it (Section 14.2).
-    log_provisioning_error(repo_of(issue), store)
+    # Two classes reach here and neither is per-worker (Section 14.1): a provisioning result the
+    # engine produced is Repository Provisioning Failures, and an invocation that produced none is
+    # Engine Invocation Failures. Both skip this dispatch and leave the issue unclaimed so a later
+    # tick retries it. They differ in how far the skip reaches, which Section 14.2 states rather
+    # than this site - an unavailable or non-conforming engine suppresses dispatch for every
+    # repository that requires one, not only for this one.
+    log_object_store_failure(repo_of(issue), store)
     return state
 
   # Hand the run to an executor across the orchestrator↔executor seam (Section 3.1). Locally the
@@ -4890,6 +4918,8 @@ function ensure_object_store(repo):
   store_path = object_store_path(repo)          # host-side, outside the workspace root (Section 9.6)
   # No tree location: the store half alone. The per-issue tree is derived later (Section 16.6).
   result = engine.provision(repo, store_location = store_path)
+  if result has no readable envelope or reports that the policy did not run:
+    return engine_invocation_error(result)      # Engine Invocation Failures (Section 14.1)
   if result failed:
     return provisioning_error(result)           # Repository Provisioning Failures (Section 14.1)
   return store_path
@@ -4898,8 +4928,10 @@ function ensure_object_store(repo):
 The store path is host-side and `Implementation-defined` (for example a sibling of the workspace
 root); implementations MUST document where it lives. `ensure_object_store` runs per repository ahead
 of `provision_for_issue` (Section 16.4), so a provisioning failure is recovered repo-scoped
-(Section 14.2) and no worker is spawned. Whether the engine creates the store or refreshes an
-existing one is the engine's determination, not a branch Symphony takes.
+(Section 14.2) and no worker is spawned. An invocation failure is recovered through the same section
+and no worker is spawned either, but not at the same scope: where the engine itself is unavailable
+or non-conforming, the skip reaches every repository that requires one. Whether the engine creates
+the store or refreshes an existing one is the engine's determination, not a branch Symphony takes.
 
 The two halves guarantee different things, not only different work: this function maintains the
 store, and a repository's own contents — including any tool the workspace depends on (Section 9.7) —
@@ -4919,8 +4951,8 @@ and not a requirement.
 function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
   # Every message this function sends the orchestrator carries run_id, so a message from a run the
   # orchestrator has already replaced is distinguishable from one belonging to the live entry
-  # (Section 8.5). That covers the agent_update sends below and the exit notification fail_worker
-  # and exit_normal produce.
+  # (Section 8.5). That covers the agent_update sends below and the exit notification fail_worker,
+  # fail_engine_invocation and exit_normal produce.
   # This is the executor's run (Section 3.1). Locally it runs in-process in the orchestrator's host;
   # remotely it runs on a node reached across the orchestrator↔executor seam (Section 9.11), where
   # `orchestrator_channel` is the network up-channel (buffered and replayed on reconnect) instead of
@@ -4943,10 +4975,20 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
   if workflow failed:
     fail_worker(run_id, "workflow error")
 
-  # Bring the work branch up to date with base; postpone if it would conflict (resolved later
-  # only if a push is rejected). This is the engine's back-merge operation (Sections 9.7, 9.8);
-  # Symphony has no VCS adapter of its own.
-  engine.integrate(issue, workspace)
+  # Bring the work branch up to date with base. This is the engine's back-merge operation
+  # (Sections 9.7, 9.8); Symphony has no VCS adapter of its own. The arms below are this section's
+  # rule at this call site. A conflict is the outcome of an operation that ran, owned by the
+  # action-policy machine (Section 9.12) and postponed here - resolved later only if a push is
+  # rejected - so it takes no arm and the attempt continues. An invocation that produced no result
+  # ran nothing to postpone, and continuing would start the agent against a work branch never
+  # brought up to date with its base (Section 10.7).
+  integration = engine.integrate(issue, workspace)
+  if integration has no readable envelope or reports that the policy did not run:
+    # Engine Invocation Failures (Section 14.1). Not fail_worker: that exit arms the per-worker
+    # backoff Section 14.2 forbids for this class. This one releases the claim and arms nothing, so
+    # the recovery is the repository's or the instance's - the next tick's ensure_object_store
+    # re-discovers the condition and applies that section's disposition (Sections 8.5, 16.5, 16.7).
+    fail_engine_invocation(run_id, "engine invocation error")
 
   # Both halves of the lifecycle point, host-side first (Section 9.4). The host-side call passes the
   # workspace as an argument rather than as a working directory (Section 15.4); the in-sandbox call
@@ -5080,6 +5122,13 @@ on_worker_exit(issue_id, run_id, reason, state):
       identifier: running_entry.identifier,
       delay_type: continuation
     })
+  else if reason == engine_invocation_failures:
+    # Section 14.1's Engine Invocation Failures. Section 14.2 scopes this class's recovery to the
+    # repository or to the instance and forbids converting it to a per-worker backoff retry, so no
+    # retry is armed and the claim comes off with the entry removed above - the releasing side of
+    # Section 8.5's partition, and the disposition dispatch_issue already takes for the same class
+    # one call earlier (Section 16.4). A later tick re-discovers the condition.
+    state.claimed.remove(issue_id)
   else:
     state = schedule_retry(state, issue_id, next_attempt_from(running_entry), {
       identifier: running_entry.identifier,
@@ -5514,6 +5563,18 @@ These checks are `Daemon Conformance`.
   than dispatching, even where the global limit has headroom
 - A repository provisioning failure raised by a dispatch a retry timer fire started leaves the issue
   unclaimed, so a later tick retries it (Section 14.2), rather than leaving a claim no site removes
+- An engine invocation that produced no usable result is disposed of by its own class rather than by
+  the repository that discovered it (Sections 14.1, 14.2, 16.5): in an instance managing two
+  repositories that both require an engine, an unavailable or non-conforming engine suppresses new
+  dispatches for every repository requiring one rather than only for the one whose dispatch found
+  it, while a provisioning failure the engine ran and reported suppresses only the affected
+  repository and leaves the second dispatching. The two halves are asserted together, because either
+  alone is satisfied by an implementation that collapses both classes onto one scope
+- An engine invocation failure raised inside a run — the engine unavailable, non-conforming, or
+  reporting that the policy did not run — ends that attempt without arming a per-worker backoff
+  retry: the running entry is removed, the claim released, and the issue left for a later tick,
+  rather than being retried on the schedule `agent.max_retry_backoff_ms` bounds (Sections 8.5, 14.2,
+  16.6, 16.7)
 - Retry backoff cap uses configured `agent.max_retry_backoff_ms`
 - Retry queue entries include attempt, due time, identifier, and error
 - Stall detection kills stalled sessions and schedules retry
@@ -5931,7 +5992,12 @@ engine's checklist.
   mechanically transformed via `pr_to_squash` at `before:merge`
 - The deployment declares a `version_floor` for the engine, and classifies a below-floor refusal, an
   unavailable or non-conforming engine, and a usage/configuration result in which the policy did not
-  run as `engine_invocation_failures`, recovered repo-scoped per Section 14.2
+  run as `engine_invocation_failures`. Section 14.2 gives that class two scopes rather than one: the
+  repository-declared causes — the floor and the operation flow, both stated in that repository's
+  `repo.policy.toml` — are recovered repo-scoped, while an unavailable or non-conforming engine
+  suppresses dispatch for every repository that requires one, no repository's policy being
+  executable. An invocation failure raised inside a run takes the same class's recovery rather than
+  the per-worker backoff its exit site would otherwise arm (Sections 16.6, 16.7)
 
 ### 18.2 RECOMMENDED Extensions (Not REQUIRED for Conformance)
 

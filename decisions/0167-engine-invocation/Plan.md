@@ -115,9 +115,16 @@ is required of an engine, only of a caller reading what an engine already report
 
 ## Anchor changes
 
-None expected. No section is retitled and no code-token is removed. The exit function step 5
-introduces is a new token in Section 16's pseudocode rather than a rename of an existing one.
+- `log_provisioning_error` → `log_object_store_failure` (Section 16.4, Dispatch One Issue). Renamed
+  under step 3: the site now receives either of two classes, and one of them — an engine that could
+  not be invoked, or a credential the secret provider could not resolve — is not a provisioning
+  result. The function logs a failure of `ensure_object_store`, which is what the new name says.
+
+No section is retitled and nothing is removed. Three tokens are new rather than renamed:
+`engine_invocation_error` (Section 16.5), `fail_engine_invocation` (Sections 16.6, 16.7), and the
+`engine_invocation_failures` worker-exit reason `on_worker_exit` branches on (Section 16.7).
 
 ## Status
 
-Not started.
+Applied to `SPEC.md`: Sections 7.1, 7.3, 8.5, the Section 16 preamble, 16.4, 16.5, 16.6, 16.7, 17.4
+and 18.1.4. All ten steps.

@@ -6841,7 +6841,7 @@ per-function bullet. Relates to 0046, 0048, 0159.
 
 ## 0167 — Did the engine run, and separately, what did it answer
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0167-engine-invocation/](decisions/0167-engine-invocation/)
 
 Section 16's two engine dispatches distinguish an invocation that produced no usable result from a
