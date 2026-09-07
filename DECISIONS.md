@@ -6899,7 +6899,7 @@ class it defines, which Section 5.5 does not let it choose. Relates to 0071, 010
 
 ## 0169 — A clause with nothing to read
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0169-pr-state-base/](decisions/0169-pr-state-base/)
 
 `VCSX-SPEC.md` Section 9.2's `pr_state` answers the base the pull request currently targets,

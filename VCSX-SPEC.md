@@ -248,7 +248,12 @@ work branch reaches, rather than leaving the arrangement to each backend.
   dispatching the operation, so no entry named for something else acquires one as a side effect.
 - `status` — inspect working state. Outputs: `mode` (Section 3.3), `branch`, `dirty`, `conflicted`,
   `ahead`/`behind` versus the resolved base (Section 6.4), and the pull-request state when a forge
-  is configured (number and open/closed/merged). Where the checkout holds no copy of the resolved
+  is configured (number, open/closed/merged, and the base the pull request targets). That base is
+  the pull request's own and not the caller's: it is reported precisely so that a caller can compare
+  it against the base it resolved, and the two differing is the condition a comparison exists to
+  find rather than an inconsistency in the output (Section 9.2). It is carried on a determinate
+  answer and is null in each of the three conditions below exactly as the number and the state are,
+  so no output of its own is introduced. Where the checkout holds no copy of the resolved
   base, `ahead`/`behind` are null and a `base_absent` output reports it; the operation still
   completes, because an inspection that cannot see the base states that rather than failing. An
   output the operation could not determine is reported the same way and means something else: the
@@ -2933,7 +2938,8 @@ Realizes the pull-request and review operations. Required:
   finding the one that exists, so a backend that could not determine whether the work branch already
   has a pull request MUST NOT create one; it reports `create_pr:failed`.
 - `pr_state(work_branch, known_validator)` → the work branch's pull request — its number, its state
-  (open/closed/merged), the head it currently carries, and a **validator** a later read presents to
+  (open/closed/merged), the head it currently carries, the base it currently targets, and a
+  **validator** a later read presents to
   ask for the state only if it has moved — none where the forge carries no pull
   request for the work branch, `unchanged` where `known_validator` was presented and the pull
   request has not moved since that validator was issued, or that the state could not be determined.
@@ -2951,7 +2957,14 @@ Realizes the pull-request and review operations. Required:
   engine can observe. The
   lookup is keyed on the work branch as head **whatever base the pull request targets**, because
   `create_pr:base_mismatch` exists to find one opened against a different base (Section 13.1) and a
-  caller's own base therefore MUST NOT be substituted for the key. A search the backend could not
+  caller's own base therefore MUST NOT be substituted for the key. Answering the base and keying on
+  it run in opposite directions, which is why the same paragraph requires one and forbids the other:
+  a lookup narrowed to pull requests already targeting the caller's base hides the one opened or
+  retargeted against another, while reporting the base of whatever the head-keyed lookup returned is
+  what makes that one visible to a caller comparing it against the base it resolved. The base is
+  REQUIRED of every forge backend rather than capability-gated (Section 9.3): a pull request without
+  a base is not a thing a code host has, and the value is a member of the response the capability
+  already reads. A search the backend could not
   complete is a state it could not determine and not an absent pull request — including an
   enumeration that reached a bound the backend imposes, which it MUST document (Section 13.3),
   because an incomplete search answers nothing.
@@ -3569,23 +3582,26 @@ A conforming engine SHOULD include tests covering:
 - Operations and reasons: each operation returns a registry reason (Section 4.3) with its documented
   proto class; `push:non_fast_forward` is `needs_caller` and routes to `integrate`; `push:pr_closed`
   refuses a push over a CLOSED/MERGED pull request; `create_pr:base_mismatch` is surfaced, not
-  overwritten; a divergent `pull` merges rather than rewrites, and the `pull:conflict` it leaves is
-  finalized by `commit`; a working tree whose only change is content the VCS has not recorded is
-  dirty and is committed, not skipped or reported `commit:nothing_to_commit`; `integrate` brings in
-  the base as the remote holds it, so a `push:non_fast_forward` retry converges against a base that
-  moved, while `status` and `diff` report against the resolved base ref and acquire nothing; a read
-  in a checkout carrying more than one remote reports against the copy belonging to the configured
-  remote (Section 6.4); an `integrate` whose acquisition fails yields `base_unavailable` rather than
-  retrying to the flow bound; a `pull` whose acquisition fails yields `failed` while a `pull`
-  against a remote carrying no counterpart yields `ok`, so a fetch the engine could not complete is
-  not reported as the benign absence (Sections 4.1, 9.1); a `diff` in a checkout holding no copy of
-  the base yields `base_unavailable`, while `status` yields `ok` with null `ahead`/`behind` and a
-  `base_absent` output; a `push` whose pull-request state could not be determined does not push and
-  yields `failed` rather than proceeding as it would over a branch that has no pull request, a
-  `create_pr` in that condition creates nothing and yields `failed` rather than a second pull
-  request, and `status` in it yields `ok` with a null pull-request output and a
-  `pr_state_unavailable` output rather than reporting no pull request (Sections 4.1, 9.2); a `ship`
-  whose `is_dirty()` cannot answer dispatches `commit` and yields `commit:failed` rather than
+  overwritten; a `pr_state` against a work branch whose pull request targets a base other than the
+  caller's resolved base finds that pull request rather than none, and answers the base it actually
+  targets, which `status` reports as the pull request's own rather than substituting the resolved
+  one (Sections 4.1, 9.2); a divergent `pull` merges rather than rewrites, and the `pull:conflict`
+  it leaves is finalized by `commit`; a working tree whose only change is content the VCS has not
+  recorded is dirty and is committed, not skipped or reported `commit:nothing_to_commit`;
+  `integrate` brings in the base as the remote holds it, so a `push:non_fast_forward` retry
+  converges against a base that moved, while `status` and `diff` report against the resolved base
+  ref and acquire nothing; a read in a checkout carrying more than one remote reports against the
+  copy belonging to the configured remote (Section 6.4); an `integrate` whose acquisition fails
+  yields `base_unavailable` rather than retrying to the flow bound; a `pull` whose acquisition fails
+  yields `failed` while a `pull` against a remote carrying no counterpart yields `ok`, so a fetch
+  the engine could not complete is not reported as the benign absence (Sections 4.1, 9.1); a `diff`
+  in a checkout holding no copy of the base yields `base_unavailable`, while `status` yields `ok`
+  with null `ahead`/`behind` and a `base_absent` output; a `push` whose pull-request state could not
+  be determined does not push and yields `failed` rather than proceeding as it would over a branch
+  that has no pull request, a `create_pr` in that condition creates nothing and yields `failed`
+  rather than a second pull request, and `status` in it yields `ok` with a null pull-request output
+  and a `pr_state_unavailable` output rather than reporting no pull request (Sections 4.1, 9.2); a
+  `ship` whose `is_dirty()` cannot answer dispatches `commit` and yields `commit:failed` rather than
   pushing an uncommitted worktree (Sections 9.1, 12.2); a `merge` whose pull request's head advanced
   after it was read merges nothing and yields `head_moved` rather than `conflict`, `rejected` or
   `failed`, while a `pr_state` that could not determine the head yields `merge:failed` rather than
@@ -4034,6 +4050,10 @@ A conforming engine SHOULD include tests covering:
   `forge_credential`, the VCS backend its resolved remote, `git_access` and `git_credential` — and
   every value-answering capability able to report that it could not determine its answer, in how it
   derives that answer from a response as well as in what it returns.
+- The forge backend's pull-request read answering both ends of the pull request — the head it
+  carries and the base it targets — so a caller can compare either against what it established,
+  while the lookup stays keyed on the head alone, a pull request opened or retargeted against
+  another base being found rather than hidden (Sections 9.2, 13.1).
 - Conditional forge reads where the backend declares them: one validator per resource, each returned
   in `outputs` beside the data it describes and presented back as `pr_state_validator` or
   `checks_state_validator`, never to the capability that did not issue it; an unmoved pull request

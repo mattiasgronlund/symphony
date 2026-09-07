@@ -63,4 +63,6 @@ member of an existing answer rather than a rename of one.
 
 ## Status
 
-Not started.
+Applied to `VCSX-SPEC.md`: Section 9.2's `pr_state` entry and its lookup-key paragraph, Section
+4.1's `status` entry, Section 13.1's operations-and-reasons item, and a new Section 13.2 checklist
+bullet. All five steps.
