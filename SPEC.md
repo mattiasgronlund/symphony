@@ -1693,10 +1693,18 @@ Part B: Tracker state refresh
   progress against a deleted issue is not stalled. The branch is on neither side of the claim
   partition below, because it does not end a dispatched run — the partition is over the sites that
   end one.
-- A stop for a standing-condition loss is reported to the operator naming the condition that failed,
-  in the shape Section 8.7 already uses for a reported routing ambiguity. The other two stopping
-  branches need no such report: an operator reads a terminal or non-active cause off the issue,
-  while a standing-condition loss may trace to a third party's label or assignment edit, or to an
+- A stop for a standing-condition loss is reported to the operator naming the condition that
+  failed, in the shape Section 8.7 already uses for a reported routing ambiguity. The report
+  carries the token `standing_condition_lost` and a reason token naming which condition failed —
+  `required_labels`, `assignee` or `routing`. Both spellings are REQUIRED, on the ground Section
+  14.1 states for its own tokens: two implementations reporting the same condition report the same
+  token, or an operator comparing them has to know which implementation produced the record. It is
+  **not** a Section 14.1 classification, and none of the nine describes it: nothing failed. The
+  refresh succeeded — that is how the loss was observed — and the run is being stopped because the
+  conditions it was dispatched under stopped holding. Its disposition is stated in Section 14.2
+  beside the other conditions that are neither retried nor failed. The other two stopping branches
+  need no such report: an operator reads a terminal or non-active cause off the issue, while a
+  standing-condition loss may trace to a third party's label or assignment edit, or to an
   operator's own mapping change, neither of which is visible from the issue.
 - For a remote executor (Section 9.11), a terminal, non-active, or standing-condition-loss decision
   is forwarded to the executor over the seam while it is connected, so the executor stops; while the
@@ -4223,6 +4231,14 @@ instance's, a repository's workflow file is that repository's.
   against by the very retry meant to get past it. This is the disposition `token_budget_exceeded`
   already takes (Section 8.8), and for the same reason — an operator bound, reached.
 
+- A stop for a lost standing condition (`standing_condition_lost`; Sections 8.2, 8.5, 8.7) is
+  neither retried nor failed. It is not a failure class (Section 14.1) — nothing failed, the
+  issue-state refresh having succeeded — and it is listed here for the reason `await_checks` above
+  is: its disposition is the one this section governs. That disposition is the stop Section 8.5 Part
+  B states, and is not restated here; a retry is what this section rules out, because the condition
+  clears by a label being re-added, an assignment restored or a mapping edit corrected, none of
+  which a retry brings about.
+
 - Repository provisioning failures (`repository_provisioning_failures`):
   - Skip new dispatches for the affected repository; the object store is shared across all of its
     issues, so the failure is repo-scoped, not a single worker's. Other repositories are unaffected.
@@ -5588,7 +5604,10 @@ These checks are `Daemon Conformance`.
   that run with the same disposition, the mapping being re-evaluated live under the reloaded config
   rather than read back from the entry (Sections 6.2, 8.7)
 - A stop for a standing-condition loss names the condition that failed in the operator-visible
-  report, the terminal and non-active stops beside it needing none
+  report, the terminal and non-active stops beside it needing none. The report carries
+  `standing_condition_lost` with the reason naming which condition failed — `required_labels`,
+  `assignee` or `routing` — and carries no Section 14.1 failure class, so an operator filtering the
+  record can tell it from a fault (Sections 8.5, 14.1, 14.2)
 - Non-active state stops running agent without workspace cleanup
 - Terminal state stops running agent and cleans workspace
 - Reconciliation with no running issues is a no-op

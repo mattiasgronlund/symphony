@@ -57,4 +57,11 @@ spellings rather than replacements, so nothing in an earlier plan is falsified.
 
 ## Status
 
-Not started.
+Applied to `SPEC.md`: Section 8.5 Part B's report bullet, a new Section 14.2 entry, and Section
+17.4's standing-condition report check. All four steps. Section 18 was checked and states no such
+report; Section 19 and `CONFORMANCE-STATEMENT-TEMPLATE.md` were checked and owe no row, both
+spellings being REQUIRED and the disposition fixed.
+
+Step 4 landed on Section 17.4's existing report check — `A stop for a standing-condition loss names
+the condition that failed in the operator-visible report` — rather than on the neighbouring
+schedules-no-retry check, that bullet already being the one about the report.

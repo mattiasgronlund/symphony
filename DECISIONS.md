@@ -7072,7 +7072,7 @@ protocol stays, and only what a check may assert moves. Relates to 0128.
 
 ## 0175 — A report the specification requires and does not name
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0175-standing-condition-lost/](decisions/0175-standing-condition-lost/)
 
 Section 8.5 Part B's standing-condition-loss report carries `standing_condition_lost` with a reason
