@@ -7017,7 +7017,7 @@ trust question this one has no evidence about. Relates to 0117, 0128.
 
 ## 0173 — One adapter's name in a normalized vocabulary
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0173-agent-not-found/](decisions/0173-agent-not-found/)
 
 `codex_not_found` becomes `agent_not_found` in Section 10.6 and in `conformance/vocabulary.json`.

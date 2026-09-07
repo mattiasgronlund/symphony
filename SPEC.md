@@ -3072,7 +3072,7 @@ Timeouts:
 
 Error mapping (RECOMMENDED normalized categories):
 
-- `codex_not_found`
+- `agent_not_found`
 - `invalid_workspace_cwd`
 - `response_timeout`
 - `turn_timeout`

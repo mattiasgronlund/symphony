@@ -43,4 +43,6 @@ Nothing else names the token: Section 17.5, Section 18, `CONFORMANCE-STATEMENT-T
 
 ## Status
 
-Not started.
+Applied to `SPEC.md` (Section 10.6's error-mapping list) and `conformance/vocabulary.json`
+(`agent_error_categories`). Both steps. Outside `decisions/` and `DECISIONS.md`, the old spelling
+no longer occurs.
