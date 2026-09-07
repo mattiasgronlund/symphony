@@ -168,3 +168,35 @@ something other than the target — a policy-branch refusal duplicated there, sa
 enforces that ahead of the operation and Section 9.7 refuses such a configuration before anything
 runs, so the duplicate is redundant; but a build that had one would lose it when the argument goes,
 and that is worth knowing before rather than after.
+
+## The second trigger, checked and answered
+
+`symphony-rs` ran it against the only implementation that has the guard, and did so **before**
+removing anything rather than at removal time, which is when the answer is still inspectable. The
+answer is negative: every use of `binding.base` and `authorize_base` there is the target comparison
+itself, its violation variant, and two test fixtures. Nothing else reads the field.
+
+The duplicate the trigger was written for does exist, and it is on the other verb. Their
+policy-branch refusal is a **push** case resolving against the work branch, not against the base —
+and their reason for putting it there is this specification's: the policy branch is never the run's
+work branch (Section 9.7), so naming it is the ordinary any-other-ref case. It survives the
+argument's removal untouched.
+
+**Which is a third confirmation of this decision's conclusion, from a direction it did not argue
+from.** Section 5 defines the guard itself:
+
+> The **work-branch-only / assigned-issue-only** scope guard is a Broker Core built-in (Sections
+> 3.4, 10.8), enforced regardless of any configuration
+
+Two dimensions, branch and issue. No base. So the base was never one of the guard's dimensions in
+the specification's own definition of it, and Section 10.8's authorization sentence had been reading
+as though it were a third. That sentence was the whole of the ambiguity, and Section 5 disagreed
+with the reading all along.
+
+**The decision leaves no residue, which `symphony-rs` states more sharply than this chapter had.**
+Half of issue #168 was that the broker could not *know* the base under Section 9.7's third source,
+and their build denies a `pr` verb whose base it cannot establish. After this decision "there is
+nothing to not know", so that arm becomes dead code and comes out with the rest: the fail-closed
+guard was guarding a question the specification has dissolved rather than answered. That is the
+outcome to want from a decision of this shape, and it is worth stating because a guard removed
+without it would look like a loss of safety rather than the removal of a question.
