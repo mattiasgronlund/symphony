@@ -7014,3 +7014,29 @@ deliberately stated over what a variable *names*, and it leaves the stdout chann
 the defect as a conformance requirement; the fourth, Section 9.4's hook shell, is recorded as the
 same defect one execution context over and left for its own decision, the host-side half being a
 trust question this one has no evidence about. Relates to 0117, 0128.
+
+## 0173 — One adapter's name in a normalized vocabulary
+
+**State:** Applied
+**Folder:** [decisions/0173-agent-not-found/](decisions/0173-agent-not-found/)
+
+`codex_not_found` becomes `agent_not_found` in Section 10.6 and in `conformance/vocabulary.json`.
+Reported as issue #150 from `symphony-rs` while building the second adapter: eight of the nine
+normalized agent error categories are adapter-neutral and the ninth names one adapter, while Section
+10.9 defines two, forbids a non-native agent from impersonating another's protocol, and Section
+17.5's first Core check requires both. So the commonest launch failure of half the defined adapters
+had no normalized name, leaving that adapter to wear another agent's name in the one field an
+operator reads, to fall outside the vocabulary through the unknown-token arm, or to misclassify onto
+a neighbour. Reading the list as scoped to the Codex worked example is the strongest case against
+and has real textual support — Section 10.9 labels Sections 10.1–10.8 the worked example and Section
+10.6 is inside that span — but it loses to Section 10.6's own heading, `RECOMMENDED **normalized**
+categories`, normalization being not a property one adapter can have; and then to the list's
+composition, since a list written for one adapter does not come out adapter-neutral in eight places
+by accident. The rename is nearly free on a group whose own note says the names are "a target
+vocabulary rather than a checked spelling" with consumers required to admit an unknown token, which
+also settles the alternative of keeping both names: two spellings for one condition is the opposite
+of normalizing it, and a RECOMMENDED group has no mechanism for retiring an alias. One half of the
+call published on the issue is **not** taken — the condition is not stated. Section 10.6 states none
+for any of its nine, a fact the registry note publishes (decision 0162), and glossing the renamed
+token alone would make the section inconsistent with itself and that sentence wrong; the neutrality
+the issue is about is carried entirely by the name. Relates to 0102, 0162.
