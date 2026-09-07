@@ -6896,3 +6896,35 @@ must otherwise make and there is no branch left here — the generated constant 
 reads. A third stale site is corrected with them:
 `CONFORMANCE-STATEMENT-TEMPLATE.md` asked an implementation to state a gating behavior for each
 class it defines, which Section 5.5 does not let it choose. Relates to 0071, 0102, 0128, 0160.
+
+## 0169 — A clause with nothing to read
+
+**State:** Accepted
+**Folder:** [decisions/0169-pr-state-base/](decisions/0169-pr-state-base/)
+
+`VCSX-SPEC.md` Section 9.2's `pr_state` answers the base the pull request currently targets,
+REQUIRED of every forge backend, and Section 4.1's `status` reports it. Reported as issue #145 from
+`symphony-rs`: `SPEC.md` Section 9.10 states the identity re-read as three clauses and the third —
+"still targets the resolved base" — is dischargeable by no conforming implementation, because
+`pr_state` answers a number, a state, a head and a validator and no base. The report reads Section
+9.2 as resisting the repair and prefers narrowing the clause; that reading conflates two directions.
+The `MUST NOT` there forbids substituting a caller's base **for the lookup key**, which would hide
+the pull request opened or retargeted against a different base that `create_pr:base_mismatch` exists
+to find; reporting the base of whatever the head-keyed lookup returned is what makes such a pull
+request visible, so the field serves the purpose the prohibition is given for. The value costs
+nothing: `symphony-rs` confirms its Forgejo plugin already parses `base.ref` as a required field on
+every `pr_state` path and drops it at the contract boundary, and decision 0077 added `head` to the
+same record for the same reason one field over. Narrowing the clause instead would delete Section
+9.10's own sentence naming a pull request "retargeted to a different base" as a mismatch the rule
+refuses, and would leave `request_merge`, conditioned on head alone, merging a run's work into a
+base nobody resolved. Capability-gating it was rejected: Section 9.3's gates exist for forge
+features a code host may lack, and a pull request without a base is not one. Adding the field to
+`pr_state` alone would not have fixed the reported defect — `status` is the only operation that
+reports pull-request state, and it reported the number and state only — so the value would have
+died one layer further out than it does today. Recorded against the call published on the issue:
+no engine Conformance Statement template row is owed, the templates recording the choices the
+specification leaves open and a REQUIRED field being neither `Implementation-defined` nor a
+MUST-document obligation. An engine-side `merge:base_mismatch` refusal is deferred with a trigger:
+no forge conditions a merge on base, so the check would narrow the same pair Section 9.10 already
+declares unclosable, and the case it uniquely covers is a consumer with no Section 9.10 layer.
+Relates to 0077, 0114, 0128.
