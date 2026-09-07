@@ -1043,6 +1043,10 @@ Sections:
 - `scope.branch_pattern` — the work-branch name pattern (Default: `symphony/<identifier>`, Section
   9.8). Only the branch *name* is configurable here; the scope guard itself is a Broker Core built-in
   (Section 10.8).
+- the base branch — the repository's own contribution to the pull-request target, and the lowest of
+  its three sources (Section 9.7). An operator who supplies neither of the higher two leaves the
+  repository to state it here, which is why this section is read for it rather than configured for
+  it.
 - the action-policy edges and host-side hooks — the `(trigger) → (action)` machine (Section 9.12).
 - `hooks.workspace` — the host-side halves of Symphony's workspace lifecycle hooks and the
   `timeout_ms` bounding every half (Section 5.3.4). The namespace is Symphony's; the engine's named
@@ -2643,7 +2647,9 @@ Message composition:
   The title is scanned strictly; the body is scanned with the tracker-key relaxation the code host's
   integration needs.
 - The agent supplies pull-request text across the sandbox boundary through a credential-free content
-  seam on the broker CLI (Section 10.8); it never holds forge credentials to do so.
+  seam on the broker CLI (Section 10.8); it never holds forge credentials to do so. Text is the
+  whole of what it supplies for a pull request: the base is the resolved target (Section 9.7) and
+  the head is the work branch, both Symphony's, and the `pr` verb carries neither (Section 10.8).
 
 Squash message:
 
@@ -3216,12 +3222,21 @@ Authorization scope:
 - The broker enforces authorization scope, not only credential confidentiality. Each brokered
   operation MUST be constrained to the current run: for example, push only to the run's work branch,
   write only to the assigned issue, and open or update only the pull request for that issue against
-  the configured base.
+  the configured base. Those three examples are constrained by three different mechanisms, and an
+  implementation needs to know which applies to each rather than reading them as one kind of check:
+  the work branch is derived from the binding and a request naming another ref is refused (Sections
+  9.8, 15.4); the issue is derived from the binding and an identifier the agent supplies is not
+  trusted (*Channel*, above); and the pull-request base is constrained by the verb carrying none, so
+  there is nothing to check rather than a check to perform (below).
 - The brokered operations are a fixed neutral core, identical across VCS and tracker backends, plus
   an extension mechanism for adapter- or policy-specific operations. The core verbs are defined
   alongside the VCS and issue-tracker integration contracts. They include:
   - VCS/forge verbs (Sections 9.9, 9.10): `push`, `back-merge`, `pr`, `request-merge`, and the
-    OPTIONAL review writes.
+    OPTIONAL review writes. The `pr` verb carries the agent's pull-request text (below) and **no
+    base**: the base is the resolved pull-request target (Section 9.7), which Symphony supplies and
+    the agent never names, so a pull-request target cannot be selected from inside the sandbox. That
+    is what makes the authorization constraint above hold for it — an agent that cannot name a base
+    cannot name a wrong one.
   - Tracker verbs (Section 11.5): `add_comment`, `set_state`, `link_pull_request`.
   - A credential-free content seam for agent-supplied pull-request text (Section 9.10).
   - Daemon task verbs (Section 8.10): `add`, `split`, `close`, `need-help`, `update` — present only
@@ -5449,6 +5464,9 @@ deployment satisfies by using a conforming engine rather than by implementing th
   provisioning of a repository already present refreshes it rather than obtaining it again
 - The broker's verb set contains no provisioning verb, so the agent cannot reach provisioning
   (Sections 9.7, 9.9)
+- The broker's `pr` verb carries no base, so the agent cannot name a pull-request target: the base
+  is the resolved target Symphony supplies, and the constraint holds by the argument's absence
+  rather than by a refusal the broker performs (Sections 9.7, 9.10, 10.8)
 - A tool the workspace depends on is usable from a freshly provisioned workspace with no step the
   agent takes first; no agent session starts against a workspace whose working-tree derivation did
   not complete; and a provisioning run the host's storage could not complete leaves no partially
@@ -5942,7 +5960,9 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   `repository_provisioning_failures` and recovered repo-scoped (skip the repository's dispatches,
   retry on a later tick) rather than as a per-worker failure
 - Privileged Operation Broker (`symphony` CLI) over a per-run socket, with authorization scope and
-  structured results (`scope_denied` fails the run)
+  structured results (`scope_denied` fails the run); the verb set carries no provisioning verb and
+  the `pr` verb carries no base, so neither provisioning nor a pull-request target is reachable from
+  the sandbox (Sections 9.7, 10.8)
 - Per-run agent sandbox with a configurable profile (strict default), secret-bearing env scrubbed
   before start, and the broker socket as the only privileged channel; a boundary that cannot be
   instantiated fails the run closed rather than starting it unconfined, classified

@@ -78,4 +78,10 @@ its spelling; what changes is that its payload is stated.
 
 ## Status
 
-Not started.
+Applied to `SPEC.md`: Section 10.8's authorization-scope bullet and its VCS/forge verb entry,
+Section 9.10's content-seam bullet, Section 5.6's sections list, Section 17.2's check, and Section
+18.1.2's broker item. All six steps.
+
+Section 10.8's authorization-scope list keeps its `for example` — the three named constraints are
+illustrative of a rule over every brokered operation, not a closed set, and the mechanism sentence
+is scoped to those three examples rather than to the list.

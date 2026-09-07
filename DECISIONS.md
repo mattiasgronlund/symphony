@@ -7100,7 +7100,7 @@ belong to a failure class, which is a different question with its own trigger. R
 
 ## 0176 — A constraint with no operand, and a verb with no stated arguments
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0176-pr-verb-carries-no-base/](decisions/0176-pr-verb-carries-no-base/)
 
 Section 10.8 states what the `pr` verb carries — the agent's pull-request text and no base — and
