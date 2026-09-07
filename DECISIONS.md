@@ -6838,3 +6838,32 @@ intended shape. Reconsider if a later slice deliberately leaves a vector file ou
 which would make the table something other than an index; or if a second negative-assertion key
 appears elsewhere, which would want a general statement about negative assertions rather than a
 per-function bullet. Relates to 0046, 0048, 0159.
+
+## 0167 — Did the engine run, and separately, what did it answer
+
+**State:** Applied
+**Folder:** [decisions/0167-engine-invocation/](decisions/0167-engine-invocation/)
+
+Section 16's two engine dispatches distinguish an invocation that produced no usable result from a
+conforming result the operation produced, and the rule is stated once where the section introduces
+them. Reported from `symphony-rs` as issues #143 and #148 and recorded as one decision because
+`awk '/^## 16\. /,/^## 17\. /' SPEC.md | grep 'engine\.'` returns exactly two lines and both carry
+the same missing distinction: `ensure_object_store` labels every failure
+`repository_provisioning_failures`, and `run_agent_attempt` checks no failure of `engine.integrate`
+at all. The distinction is free to make and this specification already says so — `VCSX-SPEC.md`
+Section 8.3 fixes four status-bearing exit codes and closes the set, so a caller separates a result
+from no result without parsing, and Section 10.7 holds that envelope up as the model for the agent
+adapter's evidenced-success rule while Section 16's own call sites do not branch on it. Misfiling an
+absent engine as `repository_provisioning_failures` is not a labelling residue: Section 14.2 skips
+dispatch for every repository requiring an engine where the engine itself is unavailable, so the
+misfile keeps other repositories dispatching against an engine that is not there. Chosen over
+folding class 7's engine-unavailable bullet into class 2, which repairs the comment by making the
+specification wrong about the world, and over confirming the silence at `engine.integrate`, which
+Section 10.7 refuses at the neighbouring seam — a failed run retries, a wrongly successful one
+lands. Two findings are recorded that neither report contains: Section 14.2's wide clause has no
+Section 17 check, all four checks citing that section asserting the narrow scope, and Section
+18.1.4 states the narrow disposition outright for the wide condition while citing Section 14.2 as
+its authority. The new arm at `engine.integrate` releases the claim and arms no retry rather than
+reaching `fail_worker`, whose exponential per-worker backoff Section 14.2 forbids for this class —
+a correction to what was published on the issue, and the second repair in this round that would
+otherwise have reproduced the defect it repaired. Relates to 0010, 0011, 0128, 0165.
