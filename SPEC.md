@@ -857,7 +857,8 @@ fields locally if they want stricter startup checks.
 
 - `command` (string shell command)
   - Default: `codex app-server`
-  - The runtime launches this command via `bash -lc` in the workspace directory.
+  - The runtime launches this command via a non-login shell (`bash -c`, Section 10.1) in the
+    workspace directory.
   - The launched process MUST speak a compatible app-server protocol over stdio.
 - `approval_policy` (Codex `AskForApproval` value)
   - Default: implementation-defined.
@@ -2298,6 +2299,12 @@ Constructed environment:
   incomplete before it was written.
 - Where a run needs such a location, it resolves inside the run's workspace (Section 9.1), so two
   concurrent runs cannot name the same one.
+- Where the agent command is resolved **by name** rather than by absolute path, the composed set
+  MUST include the search path that resolves it. The launch contract runs the command through a
+  non-login shell (Section 10.1), so nothing outside the composed set supplies one; a deployment
+  whose agent lives behind a version manager or a per-user prefix names that directory here. This is
+  the same deliberate naming the bullets above require of every other location-bearing variable,
+  applied to the one the launch itself depends on.
 - The composed set is `Implementation-defined` and MUST be documented in the Conformance Statement
   (Section 19), the disposition the sandbox profile and the egress policy already have. This
   specification cannot enumerate every ecosystem's variables; what it fixes is that a deployment can
@@ -2878,13 +2885,21 @@ Orchestrator↔executor protocol:
 Subprocess launch parameters:
 
 - Command: `codex.command`
-- Invocation: `bash -lc <codex.command>`
+- Invocation: `bash -c <codex.command>` — a shell, so `codex.command` MAY use pipelines,
+  redirections and `&&`, but **not** a login shell
 - Working directory: workspace path
 - Transport/framing: the protocol transport required by the targeted Codex app-server version
 
 Notes:
 
 - The default command is `codex app-server`.
+- The shell is non-login for two reasons, and the first is a framing requirement rather than a
+  convenience. A login shell sources `/etc/profile`, `/etc/profile.d/*.sh` and the user's profile
+  files, any of which MAY write to stdout — the same stdout the app-server protocol stream is read
+  from (Sections 10.2, 10.4). A frame reader that ingests a system banner has already parsed the
+  stream wrong, and no adapter can distinguish a profile's output from a malformed frame. Second,
+  profile sourcing is a construction step that runs after Symphony composed the environment and can
+  re-populate part of it, which the composed-environment requirement forbids (Section 9.6).
 - Approval policy, sandbox policy, cwd, prompt input, and OPTIONAL tool declarations are supplied
   using fields supported by the targeted Codex app-server version.
 
@@ -5716,7 +5731,10 @@ broker, and an `interactive-agent` deployment drives an agent session with no da
   emitted upstream
 - An adapter encapsulates one (agent, transport) pairing; no non-native agent impersonates another's
   protocol
-- Launch command uses workspace cwd and invokes `bash -lc <codex.command>`
+- Launch command uses workspace cwd and invokes `codex.command` through a **non-login** shell
+  (`bash -c`, Section 10.1): a profile file that writes to stdout does not reach the protocol stream
+  the adapter parses, and a profile file that assigns a location-bearing variable does not reach the
+  agent, the composed set being what the run receives (Sections 9.6, 10.4)
 - Session startup follows the targeted Codex app-server protocol.
 - Client identity/capability payloads are valid when the targeted Codex app-server protocol requires
   them.
