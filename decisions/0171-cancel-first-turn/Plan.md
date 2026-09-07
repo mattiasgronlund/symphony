@@ -73,4 +73,5 @@ parameter's requirement level and which call reports the outcome.
 
 ## Status
 
-Not started.
+Applied to `SPEC.md`: Section 10.7's `cancel` and `release` bullets and the new single-in-flight
+paragraph, Section 17.5's `cancel` check, and Section 18.1.2's turn-centric item. All seven steps.

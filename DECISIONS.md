@@ -6959,7 +6959,7 @@ consequence of its own MUST. Relates to 0010, 0128.
 
 ## 0171 — A parameter that never named the turn
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0171-cancel-first-turn/](decisions/0171-cancel-first-turn/)
 
 Section 10.7's `cancel` and `release` take an OPTIONAL `continuation_ref`, an Agent Runner instance
