@@ -6984,3 +6984,33 @@ them, found while confirming the report and in neither the report nor the respon
 null. Dropping the parameter instead was declined: it is not an identity but it is the state an
 adapter that can drain cleanly produces a resumable outcome from, and removing it on every path to
 repair a first turn where a clean drain is least likely trades the wrong way. Relates to 0128.
+
+## 0172 — The launch contract mandates what the environment clause forbids
+
+**State:** Accepted
+**Folder:** [decisions/0172-non-login-shell/](decisions/0172-non-login-shell/)
+
+Section 10.1's invocation becomes `bash -c <codex.command>`, and Section 9.6 requires the composed
+set to name the search path that resolves a command resolved by name. Reported as issue #149 from
+`symphony-rs`, found by spawning a real child rather than by reading: Section 9.6 forbids a variable
+naming a location outside the run's workspace from reaching the run undeclared, and Section 10.1
+mandates a **login** shell, which sources `/etc/profile` and `/etc/profile.d/*.sh` and re-populates
+part of the composed set before the command runs. Section 9.6's own nuance is what makes the
+conflict decisive — "What this clause fixes is how the environment is **constructed**" — and a login
+shell is a construction step running after Symphony's. The plausible reason for `-l`, that a bare
+`codex app-server` needs a profile-set `PATH` to resolve, does not survive measurement:
+`symphony-rs` has a passing test showing a profile *prefixing* `PATH` ahead of the composed value,
+so `-l` does not reliably add a version manager's directory but non-deterministically overrides a
+directory the deployment already named. The argument that decides it came from the implementation
+and is not in the issue: a profile is free to write to stdout, which for the Codex adapter is the
+same stdout the app-server protocol stream is parsed from, so a banner-printing profile is a
+**protocol-framing** defect rather than a `PATH` inconvenience — and that build had already made its
+own glue shell non-login for exactly this reason and could not do the same for the agent because
+Section 10.1 mandated `-lc`. Scoping Section 9.6's promise to the shell instead was declined: it
+converts a checkable guarantee into one stopping at a boundary a reader cannot see, against a clause
+deliberately stated over what a variable *names*, and it leaves the stdout channel untouched.
+`--noprofile` reaches the same end with a flag pair that must then be explained. Three of the four
+`bash -lc` occurrences move together, the Section 17.5 check included, since leaving it would pin
+the defect as a conformance requirement; the fourth, Section 9.4's hook shell, is recorded as the
+same defect one execution context over and left for its own decision, the host-side half being a
+trust question this one has no evidence about. Relates to 0117, 0128.
