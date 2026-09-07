@@ -7097,3 +7097,32 @@ published either, and adding one member of that set alone would not be right. Re
 unfixed: Section 8.7's own report names no token either, so of the two reports sharing a shape one
 now carries a REQUIRED spelling and the other does not — a configuration defect that may genuinely
 belong to a failure class, which is a different question with its own trigger. Relates to 0155.
+
+## 0176 — A constraint with no operand, and a verb with no stated arguments
+
+**State:** Applied
+**Folder:** [decisions/0176-pr-verb-carries-no-base/](decisions/0176-pr-verb-carries-no-base/)
+
+Section 10.8 states what the `pr` verb carries — the agent's pull-request text and no base — and
+says how each of its three authorization constraints holds. Reported as issue #168 from
+`symphony-rs`: Section 10.8's Channel bullet enumerates what the run binding supplies as
+"repository, issue, and work branch", and four bullets later its authorization scope requires
+constraining a pull-request write "against the configured base", a value the enumeration does not
+carry and no source supplies where Section 9.7's third source applies. Section 9.7 settles that the
+agent is not a resolution source, its three sources being complete and closed by "Where no source
+supplies a target, the operations that need one are refused before the run does anything"; what it
+does not settle is whether the **verb** carries one, and measured at `6b42942` nothing in `SPEC.md`
+enumerates the `pr` verb's arguments. So one sentence produced two opposite implementations, which
+is not hypothetical: `symphony-rs` reads it as a check and takes the base as a required positional
+argument compared against a `RunBinding.base` it had to invent, while the call this repository
+published on the issue read it as a guarantee holding by construction. That call was **wrong** and
+is recorded as a review finding — it treated Section 9.10's content-seam bullet, a sentence about
+how *text* crosses the boundary credential-free, as exhaustive about what crosses, and would have
+removed a live guard while its operand still stood. The three constraints listed as one kind of
+check turn out to be three mechanisms: a work branch derived from the binding with a wrong ref
+refused, an issue derived from the binding with an agent identifier untrusted, and a base the verb
+does not carry — satisfied by absence. Chosen over letting the agent name a base as a confirmation,
+which is what the only implementation built and fails closed, because that check is paid for by
+plumbing a repository-owned value into every broker binding and catches nothing an absent argument
+does not already prevent. Section 5.6 gains the base branch among `repo.policy.toml`'s sections,
+which it omitted while Section 9.7 depended on it. Relates to 0031, 0114, 0169.
