@@ -3095,12 +3095,28 @@ adapter. It is keyed by the selected adapter (Section 10.9) and exposes these op
   prompt; later turns pass the prior turn's `continuation_ref` and continuation guidance. There is
   no separate session-start operation: an adapter establishes whatever session or process it needs
   lazily on the first `run_turn`.
-- `cancel(continuation_ref)` — every adapter MUST support cancelling an in-flight turn. The adapter
-  SHOULD interrupt the turn, drain to the targeted protocol's real terminal signal within a bounded
-  secondary timeout, and yield a resumable `continuation_ref`; if it cannot drain cleanly it MUST
-  still terminate, in which case the turn fails (Section 10.6).
+- `cancel(continuation_ref)` — every adapter MUST support cancelling an in-flight turn.
+  `continuation_ref` is OPTIONAL and is absent where the turn in flight is the first, which has none
+  by the rule above. It is not a handle on the turn: it names the continuation the cancelled turn
+  was **started from**, which is the state an adapter that can drain cleanly produces a resumable
+  outcome from. A cancelled first turn is therefore resumable only where the adapter can mint a
+  continuation of its own, and an adapter that cannot declares so through its capability descriptor
+  (Section 10.9). The adapter SHOULD interrupt the turn and drain to the targeted protocol's real
+  terminal signal within a bounded secondary timeout; if it cannot drain cleanly it MUST still
+  terminate. Whether the cancelled turn is resumable or failed is reported through the outstanding
+  `run_turn`'s own return and not by `cancel`, that being the only call still live when the drain
+  answers (Section 10.6).
 - `release(continuation_ref)` — free any warm resources (a live subprocess, a session handle) when
-  the worker run is ending.
+  the worker run is ending. `continuation_ref` is OPTIONAL on the same terms: a run that ends
+  before any turn returned one passes none — the path Section 16.6 takes when the first turn's
+  prompt fails — and the adapter frees whatever it holds for the run.
+
+An Agent Runner instance has **at most one turn in flight** at a time. That is what makes an absent
+`continuation_ref` unambiguous on the two operations above: there is exactly one turn a `cancel` can
+mean, and exactly one run a `release` can free. It is not a new constraint — Section 16.6's turn
+loop calls `run_turn`, awaits it, and assigns its result before the loop can come round, so the
+reference algorithm already dispatches turns strictly in sequence, and the behavior outline below
+has the same shape.
 
 `continuation_ref` is an opaque, adapter-owned token that is the contract-level continuation state.
 An adapter MAY realize it as a live warm session handle (the Codex adapter keeps the app-server
@@ -5682,8 +5698,11 @@ broker, and an `interactive-agent` deployment drives an agent session with no da
   overrides per issue, and `effort` is passed through as the agent's native value
 - `run_turn` threads an opaque `continuation_ref` (first turn full prompt; continuation turns
   guidance); there is no separate session-start operation
-- `cancel` stops an in-flight turn; a clean interrupt-then-drain yields a resumable
-  `continuation_ref`, otherwise the turn fails; `release` frees warm resources at run end
+- `cancel` stops an in-flight turn, and is accepted against an in-flight **first** turn with no
+  `continuation_ref`, that turn having none; a clean interrupt-then-drain leaves the turn resumable
+  and otherwise the turn fails, reported through that turn's own `run_turn` return rather than by
+  `cancel`; `release` frees warm resources at run end and likewise takes no `continuation_ref` where
+  the run ended before a turn returned one (Sections 10.6, 10.7, 16.6)
 - A turn whose agent process is killed and exits `0` having emitted no terminal signal **fails the
   attempt** rather than completing it, so unfinished work does not advance toward a merge; no turn
   outcome is derived from exit status alone, in either direction; and a workspace hook terminated by
@@ -5852,10 +5871,12 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
 - Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
   app-server JSON line protocol as the worked example)
 - Turn-centric contract: `run_turn` threads an opaque `continuation_ref` (no separate start),
-  `cancel` does interrupt-then-drain to a resumable state or fails the turn, `release` frees warm
-  resources; adapters emit the neutral event vocabulary and token-usage record (`input_tokens`,
-  `output_tokens`, `total_tokens`) and advertise a capability descriptor (resume mode, native step
-  cap, accepted effort); one adapter per (agent, transport) with no protocol impersonation
+  `cancel` does interrupt-then-drain and `release` frees warm resources — both taking the
+  `continuation_ref` as OPTIONAL, one turn being in flight at a time — with resumable-or-failed
+  reported through the cancelled turn's own `run_turn` return; adapters emit the neutral event
+  vocabulary and token-usage record (`input_tokens`, `output_tokens`, `total_tokens`) and advertise
+  a capability descriptor (resume mode, native step cap, accepted effort); one adapter per (agent,
+  transport) with no protocol impersonation
 - Turn success is evidenced rather than inferred: a turn is reported successful only where the
   adapter observed the protocol's terminal success signal, a process's exit status is never read as
   a turn outcome, an adapter never reports success because a backgrounded process did not report a

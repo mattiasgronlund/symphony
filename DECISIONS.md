@@ -6956,3 +6956,31 @@ The existing "Startup handshake failure" bullet is not stretched to cover it, a 
 protocol event. Measured at `60092ef`, Section 9.6 cited Section 14 nowhere, which is why the gap
 survived — each half looked complete from where it stood — so that section now states the
 consequence of its own MUST. Relates to 0010, 0128.
+
+## 0171 — A parameter that never named the turn
+
+**State:** Applied
+**Folder:** [decisions/0171-cancel-first-turn/](decisions/0171-cancel-first-turn/)
+
+Section 10.7's `cancel` and `release` take an OPTIONAL `continuation_ref`, an Agent Runner instance
+has at most one turn in flight, and whether a cancelled turn is resumable is reported through the
+outstanding `run_turn`'s own return. Reported as issue #147 from `symphony-rs`: the first turn
+passes `continuation_ref = null`, so a cancel against an in-flight first turn has no value to name
+it by, on the path Section 10.6 routes every early stop through and for the turn most likely to
+reach `turn_timeout_ms`. The report's own aside is what decides the shape: a later turn's parameter
+names the continuation that turn was **started from**, so even where a value exists it names the
+cancelled turn's input rather than the turn. The parameter never identified anything, and the first
+turn only makes that visible. The single-in-flight invariant is documented rather than added —
+Section 16.6's loop calls `run_turn`, awaits it, and assigns its result before coming round, and
+Section 10.7's own outline has the same shape — which is what makes an absent parameter
+unambiguous. The same bullet carried a second unbuildable clause: `cancel` was to "yield a resumable
+`continuation_ref`", which `symphony-rs` shows cannot be a return value, resumability being the
+result of a drain that completes after `cancel` returns; a `cancel` answering it would block for a
+turn-length wait or promise what it cannot know. Section 10.6 already assigns that outcome to the
+turn, so the two sections disagreed and the buildable one governs. A third site is repaired with
+them, found while confirming the report and in neither the report nor the response:
+`release(continuation_ref)` has the identical absence and Section 16.6 **exhibits** it, calling
+`agent.release(continuation_ref)` on the first turn's prompt-failure path where the value is still
+null. Dropping the parameter instead was declined: it is not an identity but it is the state an
+adapter that can drain cleanly produces a resumable outcome from, and removing it on every path to
+repair a first turn where a clean drain is least likely trades the wrong way. Relates to 0128.
