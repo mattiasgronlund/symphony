@@ -358,7 +358,7 @@
     },
     {
       "id": "auto_body_source_without_a_bound_unit_is_valid",
-      "description": "Only `template` requires the unit; `auto` composes from durable inputs the consumer supplies (Section 10.2).",
+      "description": "Only `template` requires the unit; `auto` composes from the work item the consumer supplies and the commit subjects the engine reads itself (Section 10.2).",
       "given": {
         "policy": {
           "base": { "branch": "main" },

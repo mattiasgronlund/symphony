@@ -32,4 +32,4 @@ None.
 
 ## Status
 
-Not started.
+Applied, all steps, in the same pull request as decisions 0177–0182 (issues #173–#178).

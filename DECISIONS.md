@@ -7129,7 +7129,7 @@ which it omitted while Section 9.7 depended on it. Relates to 0031, 0114, 0169.
 
 ## 0177 — `tracker_unsupported_operation` is the gate's, not a transport mapping
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0177-unsupported-operation-is-the-gates/](decisions/0177-unsupported-operation-is-the-gates/)
 
 Section 11.4 says who reports `tracker_unsupported_operation`. Reported as issue #173 from
@@ -7146,7 +7146,7 @@ check unable to tell a working gate from a backend that changed. Relates to 0018
 
 ## 0178 — A refused target transitions nothing, and a budget park gets a trigger of its own
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0178-target-refusal-transitions-nothing/](decisions/0178-target-refusal-transitions-nothing/)
 
 Section 9.7 drops its SHOULD to transition a refused issue to "a configured blocked state", and
@@ -7167,7 +7167,7 @@ of `run_failed` so an attempt ends with one run-outcome trigger, rather than reu
 
 ## 0179 — Structured-task operations are the extension's, and the descriptor declares each one
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0179-structured-task-operations/](decisions/0179-structured-task-operations/)
 
 Section 8.10 defines the two tracker operations it needs, `fetch_structured_tasks` and
@@ -7184,7 +7184,7 @@ a Conformance Statement row. The operations are the extension's, not OPTIONAL en
 
 ## 0180 — `add_comment` is not idempotent, and the key a caller keeps has a recovery class
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0180-add-comment-not-idempotent/](decisions/0180-add-comment-not-idempotent/)
 
 Section 11.8 states `add_comment`'s repeat semantics beside `set_state`'s. Reported as issue #176
@@ -7203,7 +7203,7 @@ an idempotency key on the operation, which no tracker in the corpus can carry. R
 
 ## 0181 — A REQUIRED item names the task tables only where the extension ships
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0181-task-tables-conditional/](decisions/0181-task-tables-conditional/)
 
 Section 18.1.4's action-policy item matches `[tasks]` and `[driver]` only where the implementation
@@ -7218,7 +7218,7 @@ Relates to 0031.
 
 ## 0182 — The engine reads the commit subjects, through a capability that did not exist
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0182-engine-reads-commit-subjects/](decisions/0182-engine-reads-commit-subjects/)
 
 `VCSX-SPEC.md` Section 10.2's `auto` body takes its commit subjects from the engine's own read,

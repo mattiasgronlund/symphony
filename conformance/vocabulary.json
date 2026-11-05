@@ -507,10 +507,11 @@
   "transition_triggers": {
     "spec_refs": [
       "SPEC.md Section 11.6 \"Workflow State Machine and Transition Triggers\"",
+      "SPEC.md Section 8.8 \"Token Budget Guards (OPTIONAL)\"",
       "SPEC.md Section 8.10 \"Autonomous Task Management (OPTIONAL)\"",
       "SPEC.md Section 9.12 \"The Action-Policy Machine\""
     ],
-    "note": "The closed vocabulary a repository's `tracker.transitions` draws each entry's `on` value from. Three origins: agent-emitted milestone signals, orchestrator-observed run outcomes, and the OPTIONAL task-state events (`core: false`). This is Symphony's vocabulary and Symphony is its authority. `tracker.transitions` travels in `repo.policy.toml` because the repository owns the wiring, but `set_state` is a consumer-effected action over a tracker outside the VCS/forge domain, so the engine carries and validates the table without matching its `on` (`VCSX-SPEC.md` Sections 5.2, 6.7) — its own triggers are the two kinds it produces itself, a lifecycle position and a typed operation result. That is why the tokens below include conditions no engine operation reports, and why `pull_request_opened` names a pull request opened during the run by any means rather than one operation's result. REQUIRED rather than RECOMMENDED because Section 6.3 rejects an `on` outside this set — a check Symphony MUST make itself, since nothing downstream would catch a misspelled trigger: it binds no transition and fires nothing, which is indistinguishable from a trigger that simply never occurred.",
+    "note": "The closed vocabulary a repository's `tracker.transitions` draws each entry's `on` value from. Four origins: agent-emitted milestone signals, orchestrator-observed run outcomes, and two OPTIONAL groups (`core: false`): the task-state events and the token budget guards extension's `token_budget_exceeded`. This is Symphony's vocabulary and Symphony is its authority. `tracker.transitions` travels in `repo.policy.toml` because the repository owns the wiring, but `set_state` is a consumer-effected action over a tracker outside the VCS/forge domain, so the engine carries and validates the table without matching its `on` (`VCSX-SPEC.md` Sections 5.2, 6.7) — its own triggers are the two kinds it produces itself, a lifecycle position and a typed operation result. That is why the tokens below include conditions no engine operation reports, and why `pull_request_opened` names a pull request opened during the run by any means rather than one operation's result. REQUIRED rather than RECOMMENDED because Section 6.3 rejects an `on` outside this set — a check Symphony MUST make itself, since nothing downstream would catch a misspelled trigger: it binds no transition and fires nothing, which is indistinguishable from a trigger that simply never occurred.",
     "requirement_level": "REQUIRED",
     "exhaustive": true,
     "entries": [
@@ -547,7 +548,7 @@
       {
         "token": "run_failed",
         "core": true,
-        "condition": "The run attempt finished in a failure terminal reason — `Failed`, `TimedOut` or `Stalled` (Section 7.2)."
+        "condition": "The run attempt finished in a failure terminal reason — `Failed`, `TimedOut` or `Stalled` (Section 7.2) — except an attempt that fires `token_budget_exceeded`."
       },
       {
         "token": "retries_exhausted",
@@ -563,6 +564,11 @@
         "token": "task:#needs_help",
         "core": false,
         "condition": "An agent-created human-assigned task parks the run for feedback (Section 8.10). The `#` names a condition across tasks, not a proto class."
+      },
+      {
+        "token": "token_budget_exceeded",
+        "core": false,
+        "condition": "A per-session or per-issue token cap aborted the run attempt; fired in place of `run_failed` for that attempt (Sections 8.8, 11.6)."
       }
     ]
   },

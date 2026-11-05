@@ -2757,6 +2757,12 @@ Realizes the version-control operations. Required capabilities:
   `load_policy` reads the policy source through, the merged `vcsx.toml` included (Sections 4.1, 6.1,
   8.1).
 - `diff(base_ref)` → `diff:*`, the branch delta against the resolved base (Section 6.4). Read-only.
+- `commit_subjects(base_ref)` → the subject — the first line of the message — of each commit on the
+  current branch that is not reachable from `base_ref`, oldest first, or that it could not determine
+  them. Reads the checkout; acquires nothing. It is resolved against the same base `diff` reports
+  against (Section 6.4), and it is the engine's own read of the history an `auto` pull-request body
+  summarizes (Section 10.2), which no consumer supplies. An empty answer and an undetermined one are
+  distinct: a branch with no commits ahead of its base is not a history that could not be read.
 - `derive_work_branch(pattern, identity)` → the pinned work branch (Section 6.3).
 - `worktree_revision()` → an identity for the working tree as `commit` would capture it, or that it
   could not determine one. The identity MUST differ whenever a `commit` would capture different
@@ -3137,11 +3143,16 @@ names. The engine writes no commit for it and supplies no identity.
 
 The pull-request title and body are **composed** per `[messages.pr]` (Section 6.8):
 
-- `body_source = "auto"` — compose the body from durable inputs the consumer supplies: the work item
-  (title and link), a closed task list when the consumer runs the task model (Section 7.3), and the
-  commit subjects. Caller-supplied prose, when present, overrides (replaces) the composed body.
+- `body_source = "auto"` — compose the body from durable inputs: the work item (title and link) and,
+  when the consumer runs the task model (Section 7.3), a closed task list, both of which the
+  consumer supplies; and the commit subjects, which the engine reads itself through
+  `commit_subjects` (Section 9.1). Where that read could not determine them, the composed body
+  carries the fixed token `commit_subjects_undetermined` in their place rather than omitting them,
+  so a scan and a later update of the same pull request can tell an unreadable history from an empty
+  one. Caller-supplied prose, when present, overrides (replaces) the composed body.
 - `body_source = "agent"` — use caller-supplied prose only.
-- `body_source = "template"` — use a repository template over the durable inputs.
+- `body_source = "template"` — use a repository template over the durable inputs. A subjects read
+  that could not be determined reaches the template as undetermined, not as an empty list.
 
 The composed title and body are what a scan at `before:create_pr` inspects (Section 10.4). One pull
 request is maintained per work branch (created, then updated).
@@ -3512,13 +3523,16 @@ function resolve_base(work_branch, base_config, remote, policy_source, base_bran
 ### 12.5 Compose the Pull-Request Body
 
 ```text
-function compose_pr_body(inputs, agent_prose, source):
+function compose_pr_body(inputs, base_ref, agent_prose, source):
   if source == "agent" and agent_prose present:
     return agent_prose
+  subjects = commit_subjects(base_ref)       # the engine's own read (Section 9.1)
+  if subjects is undetermined:
+    subjects = "commit_subjects_undetermined"
   composed = join([
-    inputs.work_item_title_and_link,
-    inputs.closed_task_list,                 # empty when no task model
-    inputs.commit_subjects
+    inputs.work_item_title_and_link,         # consumer-supplied
+    inputs.closed_task_list,                 # consumer-supplied; empty when no task model
+    subjects
   ])
   if source == "auto" and agent_prose present:
     return agent_prose                        # override replaces
@@ -3921,11 +3935,13 @@ A conforming engine SHOULD include tests covering:
   (Sections 5.2, 6.5, 8.2); an invocation that produces no result at all exits `1` with stdout
   empty, a code outside the four status-bearing ones is read the same way, and every result-bearing
   path emits exactly one JSON object on stdout and nothing else (Section 8.3).
-- Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it; the
-  squash body is the `pr_to_squash` transform of the pull-request body; every commit the engine
-  writes carries the supplied commit identity — the mechanical merge commit an `integrate` or a
-  `pull` writes included — on a host whose environment supplies no usable identity of its own
-  (Section 10.1).
+- Message formulation: the `auto` PR body composes from durable inputs and agent prose replaces it,
+  its commit subjects read by the engine through `commit_subjects` rather than supplied by the
+  consumer, and a subjects read that could not be determined yields `commit_subjects_undetermined`
+  in the body rather than an empty section (Sections 9.1, 10.2); the squash body is the
+  `pr_to_squash` transform of the pull-request body; every commit the engine writes carries the
+  supplied commit identity — the mechanical merge commit an `integrate` or a `pull` writes included
+  — on a host whose environment supplies no usable identity of its own (Section 10.1).
 - Content scanning: a scan is reached through a `[policy]` edge at a lifecycle position and through
   no `[messages]` key, so a `before:create_pr` scan blocking with a `needs_caller` result yields
   `create_pr:blocked` while the same repository with no edge at that position publishes the composed
@@ -4099,9 +4115,11 @@ A conforming engine SHOULD include tests covering:
   `await_bound_ms` and `await_max_reads` authorize a second read, and an invocation supplying a
   parameter that can only end a wait without one of them is refused with `await_bound_missing`.
 - Message formulation seams (`scan-content`, PR composition, `pr_to_squash`) with no built-in
-  format, every commit the engine writes attributed to the supplied commit identity, a scan reached
-  through a policy edge at a lifecycle position rather than through a key of its own, and a
-  transform that gives no usable answer leaving the pull request unmerged.
+  format, an `auto` body whose commit subjects come from the VCS backend's `commit_subjects` and
+  carry `commit_subjects_undetermined` where that read could not determine them, every commit the
+  engine writes attributed to the supplied commit identity, a scan reached through a policy edge at
+  a lifecycle position rather than through a key of its own, and a transform that gives no usable
+  answer leaving the pull request unmerged.
 - Checkout-mode handling (git, jj, jj secondary workspace), a pinned push refspec whose push never
   drops, rewrites or re-parents a commit already on the remote work branch, a history-preserving
   work-branch update, and the two operations conditioned on the state their position inspected — the

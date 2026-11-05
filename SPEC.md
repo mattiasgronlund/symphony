@@ -1897,9 +1897,11 @@ Budget scopes and exhaustion semantics:
 Failure disposition:
 
 - Budget exhaustion is its own failure category, `token_budget_exceeded`. It is parked, not retried:
-  the run is aborted and the issue is moved to the policy's blocked disposition (Section 11.6)
-  rather than scheduled for exponential-backoff retry (Section 8.4). An implementation SHOULD record
-  why the issue was parked.
+  the run is aborted rather than scheduled for exponential-backoff retry (Section 8.4), and the
+  orchestrator fires the `token_budget_exceeded` trigger (Section 11.6) in place of `run_failed` for
+  that attempt, so the repository's `tracker.transitions` say where the issue goes. Where no
+  transition binds the trigger, the issue is parked in the state it holds. An implementation SHOULD
+  record why the issue was parked.
 
 Soft warning:
 
@@ -2013,8 +2015,24 @@ Interactive sessions use `ship`/`land` and have no task manager. Tasks are the `
 Seeding:
 
 - Tasks seed from the ticket when the tracker exposes structured tasks — a checklist or sub-issues —
-  gated by the tracker's `structured-task-write` capability (Section 11.7). Otherwise an opening
-  planning turn (Section 7.2) creates them.
+  gated by the adapter declaring `fetch_structured_tasks` (below, Section 11.7). Otherwise an
+  opening planning turn (Section 7.2) creates them.
+
+Tracker operations:
+
+- The extension adds two operations to a tracker adapter. They are not among Section 11.1's
+  operations, an adapter that implements them declares each in its capability descriptor (Section
+  11.7), and the gate there applies to them as it does to the writes:
+  - `fetch_structured_tasks(issue_id)` — the issue's structured tasks (checklist items or
+    sub-issues), each returned as a `Task` (Section 4.1.9) with its `tracker_ref`, and with its `id`
+    where one was recorded on the artifact.
+  - `write_structured_task(issue_id, task)` — creates or updates the artifact for `task`, keyed by
+    its `id`, and returns the `tracker_ref`. The write records the `id` on the artifact in a form
+    `fetch_structured_tasks` returns, so a list read back after a restart matches the tasks already
+    materialized rather than duplicating them.
+- How an artifact carries a task's `id`, `status` and `assignee` is `Implementation-defined` and
+  MUST be documented per adapter. An artifact with no recorded `id` — for example a checklist item
+  the ticket's author wrote — is given one when it is seeded, and write-through records it.
 
 Agent verbs:
 
@@ -2039,15 +2057,16 @@ Write-through materialization:
 
 - The agent's `add` / `split` cause the broker (credentialed; the agent stays credential-free, Section
   10.8) to create and maintain structured tracker artifacts — sub-issues or checklist items —
-  mirroring the task list. This is gated by the tracker's `structured-task-write` capability (Section
-  11.7) and is default on where that capability exists; a repository disables it in `repo.policy.toml`.
+  mirroring the task list. This is gated by the adapter declaring `write_structured_task` (Section
+  11.7) and is default on where it is declared; a repository disables it in `repo.policy.toml`.
   Materialization and the durable fallback are keyed by the stable task `id` (Section 4.1.9), so a
   crash mid-planning reconstructs the partial list rather than duplicating it.
 
 Recovery classification:
 
 - The task list is classified under Section 14.3: `Reconstructable` where materialized into the
-  tracker (the tracker is the source of truth and nothing is primary-persisted), and `Durable`
+  tracker (the tracker is the source of truth and nothing is primary-persisted), which needs both
+  operations declared — the write to materialize the list and the read to rebuild it — and `Durable`
   (idempotent re-seed) where the tracker cannot represent structured tasks or write-through is off. It
   is never `Ephemeral` by default.
 
@@ -2499,12 +2518,17 @@ Where an issue is refused for either reason, Symphony:
 - SHOULD comment on the issue where the tracker adapter supports `add_comment` (Section 11.7),
   naming the target it refused and why. The comment is written once per (issue, target) rather than
   once per evaluation: the daemon re-evaluates every candidate each `polling.interval_ms` (Section
-  8.2), so an unbounded write here would repeat indefinitely on a ticket nobody has changed.
-- SHOULD transition the issue to a configured blocked state where the adapter supports `set_state`,
-  so a refused issue leaves the dispatch queue rather than being re-evaluated forever.
+  8.2), so an unbounded write here would repeat indefinitely on a ticket nobody has changed. A
+  comment whose outcome could not be determined counts as written (Section 11.8), and the
+  (issue, target) record is runtime state with a documented recovery class (Section 14.3).
 
 The issue is not dispatched and no work branch is created. Correcting the issue's target makes it
-dispatchable again with no other action, which is why the refusal changes nothing else about it.
+dispatchable again with no other action, which is why the refusal changes nothing else about it:
+Symphony does not transition a refused issue. It stays a candidate and is filtered on each
+evaluation, as an ineligible candidate is (Section 8.2). A transition would take it out of
+`active_states`, so correcting the target would no longer be enough, and under
+`vcs.policy_source = "target_branch"` the transition would be read from the `repo.policy.toml` of
+the very target that was refused.
 
 Important boundary: the pull-request target is not the policy branch and carries none of its trust
 weight (Section 15.4). A target reaches the working tree — through the back-merge — and therefore
@@ -2642,10 +2666,11 @@ another writer replaced is what enters history at the merge.
 Message composition:
 
 - The pull-request title and body are content composed from agent-supplied prose and/or durable
-  inputs. The default body is auto-composed from the ticket (title and link), the closed task list
-  (Section 8.10), and commit subjects; agent-supplied prose, when present, overrides (replaces) it.
-  The title is scanned strictly; the body is scanned with the tracker-key relaxation the code host's
-  integration needs.
+  inputs. The default body is auto-composed from the ticket (title and link) and the closed task
+  list (Section 8.10), which Symphony supplies, and the commit subjects, which the engine reads from
+  the work branch itself (`VCSX-SPEC.md` Section 10.2); agent-supplied prose, when present,
+  overrides (replaces) it. The title is scanned strictly; the body is scanned with the tracker-key
+  relaxation the code host's integration needs.
 - The agent supplies pull-request text across the sandbox boundary through a credential-free content
   seam on the broker CLI (Section 10.8); it never holds forge credentials to do so. Text is the
   whole of what it supplies for a pull request: the base is the resolved target (Section 9.7) and
@@ -3426,8 +3451,8 @@ Additional normalization details:
 
 ### 11.4 Error Handling Contract
 
-Error categories are transport-neutral: each adapter maps its transport's failures onto them. The
-categories carry two requirement levels, not one:
+Error categories are transport-neutral: each adapter maps its transport's failures onto the
+categories that name them. The categories carry two requirement levels, not one:
 
 - These spellings are REQUIRED: where the condition each names occurs, an implementation MUST
   report it under that name.
@@ -3460,6 +3485,13 @@ Note: `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker
 dispatch preflight's reason tokens (Section 6.3), not entries here: each names a configuration
 defect refused before any tracker adapter is invoked, so no adapter maps a transport failure onto
 it.
+
+Note: `tracker_unsupported_operation` is not mapped from a transport either. Its condition is read
+from the capability descriptor, so it is reported by the gate Section 11.7 places before a write is
+invoked, whichever component holds that gate. A declared write the backend refuses is a backend
+failure, reported under the category its failure fits (for example `tracker_api_status`): the
+descriptor is fixed for the run (Section 11.7), so a declared write is never "not in the adapter
+capability descriptor".
 
 Note: the Linear adapter, being GraphQL over HTTP, reports a non-2xx response as
 `tracker_api_status`, a GraphQL `errors` array as `tracker_backend_errors`, and a missing page
@@ -3549,13 +3581,17 @@ means rather than one operation's result.
   - `pull_request_opened` — a pull request was opened for the issue during the run.
   - `run_succeeded` — the run attempt finished in `Succeeded` (Section 7.2).
   - `run_failed` — the run attempt finished in a failure terminal reason (`Failed`, `TimedOut`, or
-    `Stalled`; Section 7.2).
+    `Stalled`; Section 7.2), except an attempt that fires `token_budget_exceeded`.
   - `retries_exhausted` — the retry path completed without re-dispatch (Section 7.1 `Released`,
     Section 8.4).
 - Task-state events (OPTIONAL, autonomous daemon, Section 8.10):
   - `tasks:all_closed` — every implementation task for the issue is closed; the daemon's
     computed-completion trigger, which runs `ship` in place of an asserted `done`.
   - `task:#needs_help` — an agent-created human-assigned task parks the run for feedback.
+- Budget events (OPTIONAL, token budget guards, Section 8.8), observed by the orchestrator:
+  - `token_budget_exceeded` — a per-session or per-issue cap aborted the run attempt. It fires in
+    place of `run_failed` for that attempt, so an attempt ends with one run-outcome trigger and no
+    `from` state is given two transitions at once.
 
 Process authority:
 
@@ -3589,6 +3625,10 @@ the core assuming them. This mirrors the agent adapter capability descriptor (Se
   `team` (Section 4.1.1) — with `labels`, `assignees` and `state`, the key space Section 8.7's
   routing mapping draws on. An operator can then tell from the descriptor whether a routing key is
   available before configuring a mapping on it.
+- Where the adapter implements the OPTIONAL autonomous task management extension's operations
+  (Section 8.10), the descriptor also declares whether it supports `fetch_structured_tasks` and
+  whether it supports `write_structured_task`. They are declared because they are optional, unlike
+  the three REQUIRED reads, and an adapter declaring neither is unaffected by the extension.
 - The descriptor MAY depend on resolved config and is fixed for the run. For example, a tracker on a
   plan tier without a comment API declares `add_comment` unsupported, determined once at adapter
   initialization.
@@ -3630,6 +3670,15 @@ MUST observe:
 - Required transition input: where a transition requires additional fields (for example a Jira
   transition screen), `set_state` cannot express them; the adapter supplies a documented default or
   fails. This is `Implementation-defined`.
+
+`add_comment(issue_id, body)` has no such rule, because a comment has no identity to compare: the
+agent authors its content (Section 11.5), so two identical bodies are two comments. It is not
+idempotent, and each successful call is a new comment. An adapter MUST NOT re-send a comment write
+whose outcome it could not determine and report the result as one write. An outcome could not be
+determined when the failure came after the request may have reached the tracker — a transport
+timeout, or a connection lost after sending — and not when the tracker answered with a definite
+refusal. A caller that needs at most one comment keeps its own key, as Section 9.7 does, and MUST
+NOT release that key on an outcome that could not be determined.
 
 A `set_state` failure is logged and does not by itself fail the run: the agent's work is already
 done, and the transition is a side effect the orchestrator reconciles.
@@ -4323,12 +4372,14 @@ documented in the implementation's Conformance Statement (Section 19).
 
 Note: the enumeration in Section 4.1.8 is not closed. Core behavior defined elsewhere in this
 document MAY require state it does not list — a park record for either park-versus-retry choice
-Section 14.2 leaves open, a counter satisfying the generation non-reuse requirement in Section
-8.4, and the process identity and per-process counter `run_id` composes from (Sections 4.1.5, 16.1,
-16.4), are the cases this document creates today. Such state is governed by
-this section on the same terms as a listed field: exactly one class, documented, and where the class
-is `Ephemeral`, its reset consequence documented with it. The class governs what happens
-to the value across a process restart and when a current value is unavailable.
+Section 14.2 leaves open, a counter satisfying the generation non-reuse requirement in Section 8.4,
+the process identity and per-process counter `run_id` composes from (Sections 4.1.5, 16.1, 16.4),
+and the (issue, target) record bounding Section 9.7's refusal comment are the cases this document
+creates today. The last cannot be `Reconstructable`, no tracker read returning comments (Section
+11.1); as `Ephemeral`, its reset consequence is one repeated refusal comment per restart. Such state
+is governed by this section on the same terms as a listed field: exactly one class, documented, and
+where the class is `Ephemeral`, its reset consequence documented with it. The class governs what
+happens to the value across a process restart and when a current value is unavailable.
 
 - `Reconstructable` (`R`)
   - An authoritative source of truth lives outside the orchestrator (config, tracker state, the VCS,
@@ -5501,8 +5552,8 @@ deployment satisfies by using a conforming engine rather than by implementing th
   before any operation runs, not at `create_pr` after a work branch has been published; an issue
   naming the policy branch as its target is refused before the run starts whether or not
   `vcs.base_branch_allowed` is configured, logged on every occurrence, and — where the tracker
-  adapter supports the capability — commented once per (issue, target) and transitioned to the
-  configured blocked state (Sections 9.7, 9.10)
+  adapter supports the capability — commented once per (issue, target); it is not transitioned, and
+  stays a candidate that correcting its target makes dispatchable again (Sections 9.7, 9.10)
 - The policy branch resolves to the copy the configured remote holds; a local branch of the same
   name in the checkout does not change which host-side Way of Working runs (Section 9.7)
 - Each configuration artifact is read from exactly one revision: `repo.policy.toml` from the policy
@@ -5562,6 +5613,9 @@ surface (Section 11.1) is `Daemon Conformance`, because it exists to find and re
 - `set_state` is idempotent (already-in-target succeeds without re-applying a transition), fails
   `tracker_state_unreachable` for an unreachable target, and `tracker_state_conflict` on a
   concurrent state change
+- `add_comment` is not idempotent: an adapter does not re-send a comment write whose outcome it
+  could not determine (a transport timeout, a connection lost after sending), and a caller keeping a
+  key for at most one comment keeps it through such an outcome (Section 11.8)
 - Candidate issue fetch uses active states and project slug
 - Linear query uses the specified project filter field (`slugId`)
 - Empty `fetch_issues_by_states([])` returns empty without API call
@@ -5713,7 +5767,8 @@ These checks are `Daemon Conformance`.
 - If token budget guards are implemented, a per-session/per-issue cap aborts and requeues only that
   issue while a global cap pauses new dispatch without terminating running workers
 - If token budget guards are implemented, a `token_budget_exceeded` outcome is parked rather than
-  retried via backoff, the durable counter is re-seeded idempotently on restart, and the soft
+  retried via backoff and fires the `token_budget_exceeded` trigger in place of `run_failed`
+  (Section 11.6), the durable counter is re-seeded idempotently on restart, and the soft
   warning fires once
 - If provider quota backpressure is implemented, a bucket at or above `dispatch_pause_percent`
   pauses new dispatch only, leaving running workers and reconciliation untouched, with implicit
@@ -5741,7 +5796,7 @@ These checks are `Daemon Conformance`.
   authenticated with the scheduler off the secret path, and a below-floor executor protocol version is
   refused fail-closed at bring-up
 - If autonomous task management is implemented (Section 8.10), tasks seed from the ticket where the
-  `structured-task-write` capability exists and otherwise from a planning turn; `tasks:all_closed`
+  adapter declares `fetch_structured_tasks` and otherwise from a planning turn; `tasks:all_closed`
   runs `ship`; `need-help` parks the run and notifies
 - If autonomous task management is implemented, write-through materializes the task list into the
   tracker (default on where the capability exists) and a restart reconstructs it; with write-through
@@ -5990,7 +6045,8 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   `tracker_unsupported_operation`, a REQUIRED spelling (Section 11.4), rather than a silent no-op
 - `set_state` is idempotent and surfaces `tracker_state_unreachable` / `tracker_state_conflict`,
   REQUIRED spellings (Section 11.4), rather than silently succeeding; a transition failure is
-  logged and does not fail the run
+  logged and does not fail the run; `add_comment` is not idempotent, and a comment write whose
+  outcome could not be determined is not re-sent (Section 11.8)
 - Tracker adapters declare an auth mode (`secret` | `none`); `api_key`/`endpoint` and the secret
   provider apply only to `secret`-mode, and a `none`-mode local adapter keeps its store host-side
 
@@ -6097,9 +6153,10 @@ engine's checklist.
   (Sections 8.11, 9.10, 13.5)
 - The action-policy machine (Section 9.12): `(trigger) → (action)` with the `#class` fallback over the
   two engine-produced trigger kinds, an unmatched operation outcome fail-safe, an unmatched lifecycle
-  position a no-op, and abstract `escalate` bound per front-end. The tables Symphony reads rather than
-  the executor — `tracker.transitions`, `[tasks]`, `[driver]` — are matched by Symphony against its own
-  trigger vocabulary (Sections 8.10, 11.6)
+  position a no-op, and abstract `escalate` bound per front-end. `tracker.transitions`, a table
+  Symphony reads rather than the executor, is matched by Symphony against its own trigger vocabulary
+  (Section 11.6); so are `[tasks]` and `[driver]` where the implementation ships the OPTIONAL
+  autonomous task management extension (Section 8.10), which is daemon-only
 - Message formulation (Sections 9.8–9.10): commit authored + `scan-content`; PR composed
   (auto-compose default, agent prose overrides) with strict-title / relaxed-body scans; squash
   mechanically transformed via `pr_to_squash` at `before:merge`
@@ -6133,7 +6190,8 @@ per-execution usage ledger extends `Broker Core Conformance`.
   RECOMMENDED realization of the `Durable` recovery class (Section 14.3).
 - Token budget guards extension (Section 8.8): per-session / per-issue / global token caps with
   distinct exhaustion semantics (abort-and-requeue vs pause-dispatch), a parked
-  `token_budget_exceeded` category, durable idempotent counters, and a deferred cost/currency layer.
+  `token_budget_exceeded` category and the transition trigger of the same name it owns (Section
+  11.6), durable idempotent counters, and a deferred cost/currency layer.
 - Provider quota backpressure extension (Section 8.9): a normalized provider-quota snapshot (class
   `Cached external signal`) fed in-band or by an OPTIONAL poller, with a dispatch-only pause above a
   threshold, implicit resume, and a configurable fail-open/closed policy on `UNKNOWN`.
@@ -6157,9 +6215,11 @@ per-execution usage ledger extends `Broker Core Conformance`.
 - Autonomous task management extension (Section 8.10): a daemon-only task model with computed
   completion (`tasks:all_closed` runs `ship`), credential-free broker task verbs
   (`add`/`split`/`close`/`need-help`/`update`), write-through materialization into the tracker
-  (default on where the `structured-task-write` capability exists), and the task list classified
+  (default on where the adapter declares `write_structured_task`; seeding and reconstruction read
+  through `fetch_structured_tasks`), and the task list classified
   `Reconstructable` / `Durable` (never `Ephemeral` by default). Owns `[tasks]` / `[driver]` in
-  `repo.policy.toml`.
+  `repo.policy.toml`, which Symphony, not the executor, matches against its own trigger vocabulary
+  (Section 11.6).
 - Observability settings (Section 13) own the `observability.*` config namespace: the log sink
   (Section 13.2), a human-readable status surface (Section 13.4), humanized event summaries (Section
   13.7), and the usage ledger's storage location and retention (`observability.ledger.*`, Section
