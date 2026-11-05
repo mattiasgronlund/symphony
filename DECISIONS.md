@@ -7126,3 +7126,109 @@ which is what the only implementation built and fails closed, because that check
 plumbing a repository-owned value into every broker binding and catches nothing an absent argument
 does not already prevent. Section 5.6 gains the base branch among `repo.policy.toml`'s sections,
 which it omitted while Section 9.7 depended on it. Relates to 0031, 0114, 0169.
+
+## 0177 — `tracker_unsupported_operation` is the gate's, not a transport mapping
+
+**State:** Accepted
+**Folder:** [decisions/0177-unsupported-operation-is-the-gates/](decisions/0177-unsupported-operation-is-the-gates/)
+
+Section 11.4 says who reports `tracker_unsupported_operation`. Reported as issue #173 from
+`symphony-rs`, as the residual of 0162: Section 11.4 opens with "each adapter maps its transport's
+failures onto them", while the token's condition, "write not in the adapter capability descriptor",
+is a descriptor lookup that Section 11.7 places before any adapter is invoked. In `symphony-rs` the
+broker's gate produces it and no adapter does. 0162's per-condition scoping already puts the
+REQUIRED spelling on the implementation, so only the framing sentence over-reaches. It is scoped to
+transport failures, and a note beside the preflight-token note names the gate. Chosen over also
+letting an adapter report the token for a declared write the backend refused, because Section 11.7
+fixes the descriptor for the run: a declared write the backend refuses is a transport failure under
+the RECOMMENDED categories, and merging the two would make Section 17.3's "never silently no-oped"
+check unable to tell a working gate from a backend that changed. Relates to 0018, 0162.
+
+## 0178 — A refused target transitions nothing, and a budget park gets a trigger of its own
+
+**State:** Accepted
+**Folder:** [decisions/0178-target-refusal-transitions-nothing/](decisions/0178-target-refusal-transitions-nothing/)
+
+Section 9.7 drops its SHOULD to transition a refused issue to "a configured blocked state", and
+Section 8.8 fires a new `token_budget_exceeded` trigger instead of naming "the policy's blocked
+disposition". Reported as issue #174 from `symphony-rs`: nothing configures a blocked state, and the
+only trigger that could reach one, `blocked`, is an agent signal, which `vocabulary.json` defines as
+"The agent signals that it is blocked." The report asked to let the orchestrator fire it. The bullet
+loses for a reason both of the report's options keep: Section 9.7's closing paragraph promises that
+correcting the target "makes it dispatchable again with no other action", and a transition out of
+`active_states` breaks that promise. A refused target is a Section 8.2 eligibility condition in all
+but name, filtered as the `Todo` blocker rule is, and the comment's once per (issue, target) bound
+already assumes the issue stays a candidate. Under `vcs.policy_source = "target_branch"`, any
+refusal transition would also be looked up in the refused target's own `repo.policy.toml`. Section
+8.8's budget park does need a transition, and happens inside a run with its policy already read, so
+it gets an orchestrator-observed run outcome owned by the extension (`core: false`), fired in place
+of `run_failed` so an attempt ends with one run-outcome trigger, rather than reusing the agent's
+`blocked`. Relates to 0017, 0096.
+
+## 0179 — Structured-task operations are the extension's, and the descriptor declares each one
+
+**State:** Accepted
+**Folder:** [decisions/0179-structured-task-operations/](decisions/0179-structured-task-operations/)
+
+Section 8.10 defines the two tracker operations it needs, `fetch_structured_tasks` and
+`write_structured_task`, and Section 11.7 declares each. They replace `structured-task-write`, which
+six sites cited as a Section 11.7 capability that Section 11.7 never defined. Reported as issue #175
+from `symphony-rs`. The citation dates from 0031, whose chapter credits 0018 with a capability 0018
+never declared. A single write, the report's first arm, would leave half the gate undefined: seeding
+reads the ticket's checklist or sub-issues, and the `Reconstructable` classification rebuilds the
+list from the tracker, and no Section 11.1 read returns either. Reconstruction also needs the task
+`id` to round-trip through the artifact, or a restart duplicates exactly what the keying exists to
+prevent. So how an artifact carries `id`, `status` and `assignee` is `Implementation-defined`, with
+a Conformance Statement row. The operations are the extension's, not OPTIONAL entries in Section
+11.1, as `[tasks]`/`[driver]` are. Relates to 0018, 0031.
+
+## 0180 — `add_comment` is not idempotent, and the key a caller keeps has a recovery class
+
+**State:** Accepted
+**Folder:** [decisions/0180-add-comment-not-idempotent/](decisions/0180-add-comment-not-idempotent/)
+
+Section 11.8 states `add_comment`'s repeat semantics beside `set_state`'s. Reported as issue #176
+from `symphony-rs`. `set_state` is idempotent because its target is an identity an adapter can read
+back. A comment's body is not an identity, since the agent authors it (Section 11.5), so the
+operation is not idempotent and a caller needing at-most-once keeps its own key, as Section 9.7
+does. The rule that does work is about an outcome the adapter could not determine: a transport
+timeout, or a connection lost after sending, as opposed to a definite refusal. An adapter MUST NOT
+re-send such a write and report one result, and a caller MUST NOT release its key on one. The second
+half came from `symphony-rs`'s own daemon, which dropped the Section 9.7 key on every error and so
+re-posted a comment that had landed. The Section 9.7 (issue, target) record joins Section 14.3's
+unlisted Core state, `Ephemeral` (one repeated comment per restart) or `Durable`, documented in the
+Conformance Statement. It cannot be `Reconstructable`, because no read returns comments. Chosen over
+an idempotency key on the operation, which no tracker in the corpus can carry. Relates to 0018,
+0096.
+
+## 0181 — A REQUIRED item names the task tables only where the extension ships
+
+**State:** Accepted
+**Folder:** [decisions/0181-task-tables-conditional/](decisions/0181-task-tables-conditional/)
+
+Section 18.1.4's action-policy item matches `[tasks]` and `[driver]` only where the implementation
+ships Section 8.10. Reported as issue #177 from `symphony-rs`: a REQUIRED item named an OPTIONAL
+extension's configuration with no condition. The deciding argument is that Section 18.1's preamble
+has `interactive-agent` satisfy Section 18.1.4, while Section 8.10 says "It is daemon-only.
+Interactive sessions use `ship`/`land` and have no task manager". Read unconditionally, the item
+requires a topology to match tables the specification defines it as not having. Section 18.2's
+extension entry carries the matching obligation. Not opened: whether `interactive-agent` owes
+`tracker.transitions` matching at all, since Section 11.6's run outcomes are orchestrator-observed.
+Relates to 0031.
+
+## 0182 — The engine reads the commit subjects, through a capability that did not exist
+
+**State:** Accepted
+**Folder:** [decisions/0182-engine-reads-commit-subjects/](decisions/0182-engine-reads-commit-subjects/)
+
+`VCSX-SPEC.md` Section 10.2's `auto` body takes its commit subjects from the engine's own read,
+through a new Section 9.1 capability, `commit_subjects(base_ref)`. Reported as issue #178 from
+`symphony-rs`: Section 10.2 listed the subjects among "durable inputs the consumer supplies", and
+reading the work branch's history is a VCS read the consumer has no business making. The report
+assumed a Section 9.1 read could obtain them. Checked at `86a2188`, none of Section 9.1's
+capabilities returns commit subjects (`diff` returns content), so no party could produce the third
+input and every conforming implementation published an `auto` body without it. An undetermined
+read puts the fixed token `commit_subjects_undetermined` in the body, so that a scan and a later
+update can recognise it, rather than printing what an empty history prints. That follows
+`is_dirty()`'s "could not determine is not cleanliness", stopping short of failing `create_pr`,
+because nothing branches on a body's content. Relates to 0031, 0114.
