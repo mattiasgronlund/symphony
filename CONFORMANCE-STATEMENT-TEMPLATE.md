@@ -123,6 +123,7 @@ obligation not listed here rather than omitting its resolution.
 |------------|---------|------------|
 | Quota backpressure — out-of-band usage-poller credential source and refresh subprocess (documented and bounded) | 8.9 | `<... / n/a>` |
 | Cost extension — how pricing is sourced and kept current | 8.x | `<... / n/a>` |
+| Autonomous task management — how a tracker artifact carries a task's `id`, `status` and `assignee`, per adapter | 8.10 | `<... / n/a>` |
 | Node-scheduler — node attribute vocabulary (nodes opaque to Symphony) | 9.11 | `<... / n/a>` |
 | Node provisioning failures — persistent park-vs-retry | 9.11 | `<... / n/a>` |
 | Compute provider — variant catalog, pool sizing, billing | 9.11 | `<... / n/a>` |
@@ -164,6 +165,7 @@ column for every field whose implemented class is `Ephemeral`; leave it `n/a` fo
 | `agent_totals` | `Ephemeral` (`Durable` under a budgeting extension) | `<...>` | `<...>` |
 | `repository_backoff` | `Ephemeral` | `<...>` | `<...>` |
 | `provider_rate_limits` | `Ephemeral` (`Cached external signal` under a provider-quota extension) | `<...>` | `<...>` |
+| Section 9.7 refusal-comment record (issue, target) | `Ephemeral` or `Durable` (Section 14.3) | `<...>` | `<one repeated refusal comment per restart / n/a>` |
 | `<additional state field — Core or extension>` | `<n/a>` | `<class>` | `<... / n/a>` |
 
 ## 6. Trust and Safety Posture

@@ -340,7 +340,8 @@ credentials):
 Semantics fixed at the surface:
 
 - **Seeding** — tasks seed from the ticket when the tracker exposes structured tasks (capability-gated;
-  the `structured-task-write` tracker capability), otherwise from an opening planning turn.
+  the tracker adapter's `fetch_structured_tasks`, `SPEC.md` Section 8.10), otherwise from an opening
+  planning turn.
 - **Computed completion** — the consumer watches its own task state for the `[driver]` `on` condition
   (`tasks:all_closed`) and invokes the entry point `run` names, replacing an asserted completion flag.
   The tables travel in `repo.policy.toml` because the repository owns the wiring; the engine matches
@@ -349,8 +350,8 @@ Semantics fixed at the surface:
   `need-help` is an agent-created human-assigned task that parks for feedback.
 - **Write-through materialization** — the agent's `add`/`split` cause the broker (credentialed; the
   agent stays secret-free) to create/maintain structured tracker artifacts (sub-issues / checklist
-  items). This is gated by the `structured-task-write` tracker capability and is default on where that
-  capability exists; a repository disables it in `repo.policy.toml`.
+  items). This is gated by the tracker adapter's `write_structured_task` (`SPEC.md` Section 8.10)
+  and is default on where the adapter declares it; a repository disables it in `repo.policy.toml`.
 
 ## 9. Message Formulation
 
@@ -363,7 +364,8 @@ three surfaces have distinct origins:
   and carries that same configured identity; the engine attributes no commit to an identity it
   derives from the host it runs on.
 - **Pull-request message — composed.** Title and body are composed from agent-supplied prose and/or
-  durable inputs (the ticket, the closed task list from Section 8, commit subjects), and are what a
+  durable inputs (the ticket and the closed task list from Section 8, which the consumer supplies,
+  and the commit subjects, which the engine reads from the work branch itself), and are what a
   `scan-content` check at the `before:create_pr` position inspects — strictly for the title, with
   the tracker-key relaxation the code host's integration needs for the body. Which rules apply to
   which is the repository's, as every scan rule is: the check is reached through a policy edge at
