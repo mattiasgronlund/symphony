@@ -1,0 +1,465 @@
+{
+  "function": "base_branch_permitted",
+  "spec_refs": [
+    "VCSX-SPEC.md Section 8.1 \"Entry Points and Arguments\"",
+    "VCSX-SPEC.md Section 8.6 \"Invocation Preconditions\""
+  ],
+  "description": "Whether a supplied `base_branch` is inside the consumer configuration's `base_branch_allowed`, whose failure refuses the run with `base_branch_not_permitted` before the policy runs.",
+  "given": "the supplied `base_branch`, the consumer configuration's `base_branch_allowed` (null where unset), and the `policy_branch`",
+  "expect": "whether the base is permitted, and the reason a refusal carries",
+  "notes": [
+    "Each entry is a glob in the syntax of a gitignore pattern, matched against the whole name (Section 8.1). Every vector whose entry is well formed and not a negation was checked against git's own wildmatch with `git for-each-ref refs/heads/<entry>` over a single branch `refs/heads/<base>`, git 2.47.3, which matches the full ref name with the gitignore glob rules. `git check-ignore` is not a substitute: it also matches a path inside a directory an entry matches, so it reports `release/*` matching `release/1.2/hotfix`, which is gitignore's directory rule and not the glob.",
+    "Where the vectors part from a gitignore *line*: `slash_free_entry_does_not_match_at_any_level` and the two `negation_entry_*` vectors. A gitignore line with no `/` matches at any level and a leading `!` re-includes; neither has a meaning in a whole-name allow-list that does not widen it.",
+    "Judged wherever a base was supplied, whatever the entry (Section 8.6), so the entry point is not an input here; whether the invocation needs a base at all is `base-precondition.json`'s question, and which base results is `base-resolution.json`'s."
+  ],
+  "vectors": [
+    {
+      "id": "unset_bound_admits_any_base",
+      "description": "No bound is configured, so any base but the policy branch is admitted (Section 8.1).",
+      "given": {
+        "base_branch": "release/1.2",
+        "base_branch_allowed": null,
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "unset_bound_still_excludes_policy_branch",
+      "description": "The policy branch is excluded whether or not a bound is configured (Section 8.1).",
+      "given": {
+        "base_branch": "policy",
+        "base_branch_allowed": null,
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "pattern_never_admits_policy_branch",
+      "description": "The policy branch is excluded whatever the bound lists, a `**` that matches every name included.",
+      "given": {
+        "base_branch": "policy",
+        "base_branch_allowed": [
+          "**"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "exact_name_admits_its_own_spelling",
+      "description": "An entry with no metacharacter admits exactly its own spelling.",
+      "given": {
+        "base_branch": "main",
+        "base_branch_allowed": [
+          "main"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "exact_name_does_not_match_a_suffix",
+      "description": "Whole-name matching: an unanchored match would admit `not-main`.",
+      "given": {
+        "base_branch": "not-main",
+        "base_branch_allowed": [
+          "main"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "slash_free_entry_does_not_match_at_any_level",
+      "description": "Where a gitignore line differs from a gitignore pattern's glob: a slash-free gitignore line matches at any level, and read that way `main` would admit `release/main`.",
+      "given": {
+        "base_branch": "release/main",
+        "base_branch_allowed": [
+          "main"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "star_matches_within_one_segment",
+      "description": "`*` matches any run of characters other than `/`.",
+      "given": {
+        "base_branch": "release/1.2",
+        "base_branch_allowed": [
+          "release/*"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "star_does_not_cross_a_slash",
+      "description": "`*` stops at `/`.",
+      "given": {
+        "base_branch": "release/1.2/hotfix",
+        "base_branch_allowed": [
+          "release/*"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "star_needs_the_separator_it_follows",
+      "description": "`release/*` names something under `release`, not `release` itself.",
+      "given": {
+        "base_branch": "release",
+        "base_branch_allowed": [
+          "release/*"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "trailing_double_star_matches_every_depth",
+      "description": "A trailing `/**` matches one or more trailing segments.",
+      "given": {
+        "base_branch": "release/1.2/hotfix",
+        "base_branch_allowed": [
+          "release/**"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "trailing_double_star_does_not_match_its_prefix",
+      "description": "A trailing `/**` matches one or more segments, not zero.",
+      "given": {
+        "base_branch": "release",
+        "base_branch_allowed": [
+          "release/**"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "leading_double_star_matches_zero_segments",
+      "description": "A leading `**/` matches zero or more leading segments.",
+      "given": {
+        "base_branch": "main",
+        "base_branch_allowed": [
+          "**/main"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "leading_double_star_matches_several_segments",
+      "description": "A leading `**/` matches zero or more leading segments.",
+      "given": {
+        "base_branch": "team/x/main",
+        "base_branch_allowed": [
+          "**/main"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "leading_double_star_still_matches_whole_segment",
+      "description": "`**/main` matches a segment named `main`, not one beginning with it.",
+      "given": {
+        "base_branch": "mainline",
+        "base_branch_allowed": [
+          "**/main"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "inner_double_star_matches_zero_segments",
+      "description": "`/**/` matches zero or more segments between two.",
+      "given": {
+        "base_branch": "a/b",
+        "base_branch_allowed": [
+          "a/**/b"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "inner_double_star_matches_several_segments",
+      "description": "`/**/` matches zero or more segments between two.",
+      "given": {
+        "base_branch": "a/x/y/b",
+        "base_branch_allowed": [
+          "a/**/b"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "double_star_inside_a_segment_is_a_star",
+      "description": "`**` not forming a whole segment is `*`.",
+      "given": {
+        "base_branch": "release-1",
+        "base_branch_allowed": [
+          "release**"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "double_star_inside_a_segment_does_not_cross_a_slash",
+      "description": "`**` not forming a whole segment is `*`, so it does not cross `/`.",
+      "given": {
+        "base_branch": "release/1",
+        "base_branch_allowed": [
+          "release**"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "question_mark_matches_one_character",
+      "description": "`?` matches exactly one character.",
+      "given": {
+        "base_branch": "v1.x",
+        "base_branch_allowed": [
+          "v?.x"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "question_mark_does_not_match_two",
+      "description": "`?` matches exactly one character.",
+      "given": {
+        "base_branch": "v10.x",
+        "base_branch_allowed": [
+          "v?.x"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "bracket_range_matches_one_character",
+      "description": "`[...]` matches one character from a range.",
+      "given": {
+        "base_branch": "hotfix/1a",
+        "base_branch_allowed": [
+          "hotfix/[0-9]*"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "bracket_range_refuses_outside_it",
+      "description": "`[...]` matches one character from a range.",
+      "given": {
+        "base_branch": "hotfix/a1",
+        "base_branch_allowed": [
+          "hotfix/[0-9]*"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "bracket_negated_by_bang",
+      "description": "A leading `!` inside a bracket negates the set; this `!` is not a negation of the entry.",
+      "given": {
+        "base_branch": "hotfix/a1",
+        "base_branch_allowed": [
+          "hotfix/[!0-9]*"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "bracket_negated_by_caret",
+      "description": "A leading `^` inside a bracket negates the set, as `!` does.",
+      "given": {
+        "base_branch": "hotfix/1a",
+        "base_branch_allowed": [
+          "hotfix/[^0-9]*"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "matching_is_case_sensitive",
+      "description": "Matching is case-sensitive.",
+      "given": {
+        "base_branch": "main",
+        "base_branch_allowed": [
+          "Main"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "braces_are_literal",
+      "description": "There is no brace expansion; a brace matches itself.",
+      "given": {
+        "base_branch": "release/a",
+        "base_branch_allowed": [
+          "release/{a,b}"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "escaped_metacharacter_is_literal",
+      "description": "`\\` makes the next character literal. Not a legal git branch name, and stated because the match is the engine's rather than a backend's.",
+      "given": {
+        "base_branch": "axb",
+        "base_branch_allowed": [
+          "a\\?b"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "escaped_bang_is_a_literal_entry",
+      "description": "An escaped leading `!` is a literal character, so the entry is not a negation.",
+      "given": {
+        "base_branch": "!important",
+        "base_branch_allowed": [
+          "\\!important"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "any_matching_entry_admits",
+      "description": "The bound is a set: one matching entry admits the base.",
+      "given": {
+        "base_branch": "release/2.0",
+        "base_branch_allowed": [
+          "main",
+          "release/*"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "negation_entry_refuses_every_base",
+      "description": "A leading `!` is a gitignore negation the bound cannot apply. Read literally, `release/secret` would be admitted by the entry its author meant to narrow, so the bound admits nothing.",
+      "given": {
+        "base_branch": "release/1.2",
+        "base_branch_allowed": [
+          "release/**",
+          "!release/secret"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "negation_entry_refuses_the_branch_it_names",
+      "description": "The branch the negation was written to exclude is refused, as every base is.",
+      "given": {
+        "base_branch": "release/secret",
+        "base_branch_allowed": [
+          "release/**",
+          "!release/secret"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "malformed_entry_refuses_every_base",
+      "description": "An unclosed `[` is not well formed, and a bound holding one admits no base, its well-formed entries included.",
+      "given": {
+        "base_branch": "main",
+        "base_branch_allowed": [
+          "main",
+          "release/[ab"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    }
+  ]
+}

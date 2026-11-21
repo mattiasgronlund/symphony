@@ -3,7 +3,7 @@
   "profile": "Daemon Conformance",
   "spec_refs": ["Section 6.3", "Section 4.2", "Section 5.3.6", "Section 5.3.7", "Section 8.7", "Section 9.7", "Section 11.6", "Section 11.7"],
   "description": "Decide whether a resolved operator configuration passes Section 6.3's dispatch preflight validation, and which reason token (Section 6.3's table) it fails with if not. Over an already-resolved configuration (Section 6.1's output) and the selected tracker adapter's static capability descriptor (Section 11.7 — data, not a runtime call), the predicate computes a value from inputs the same way should_dispatch does (vectors/candidate-eligibility.json), which is what puts it in this deterministic corpus rather than the Real Integration Profile. `$` resolution and the secret provider are not exercised: they are I/O-bound and deferred (conformance/README.md).",
-  "given": "{ config: { repository: Record<key, { vcs: { local_vcs }, routing: { match } }>, tracker: { kind, api_key, project_slug, transitions: Array<{from, on, to}>, assignee }, codex: { command } }, descriptor: { auth_mode, set_state, populates_assignees, populates_project, populates_team } }",
+  "given": "{ config: { repository: Record<key, { vcs: { local_vcs, base_branch_allowed? }, routing: { match } }>, tracker: { kind, api_key, project_slug, transitions: Array<{from, on, to}>, assignee }, codex: { command } }, descriptor: { auth_mode, set_state, populates_assignees, populates_project, populates_team } }",
   "expect": "{ valid: boolean, reason: <token> | null }",
   "notes": [
     "Each refusing vector holds exactly one failing condition except the three order-* vectors, which hold several so the reported reason is determined by Section 6.3's stated order rather than left ambiguous. The discipline for single-condition vectors is the one candidate-eligibility.json already records.",
@@ -91,6 +91,58 @@
         "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
       },
       "expect": { "valid": false, "reason": "missing_vcs_field" }
+    },
+    {
+      "id": "valid-base-branch-patterns",
+      "description": "Names and globs in the gitignore-pattern syntax, `**` and a bracket set included, are well formed (Section 9.7, `VCSX-SPEC.md` Section 8.1).",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": ["main", "release/*", "hotfix/**", "v[0-9]*"] } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": true, "reason": null }
+    },
+    {
+      "id": "base-branch-pattern-negation",
+      "description": "A leading `!` is a gitignore negation, which an allow-list cannot apply; read literally it would leave its exclusion unapplied, so it is refused at startup rather than matched.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": ["release/**", "!release/secret"] } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "invalid_base_branch_pattern" }
+    },
+    {
+      "id": "base-branch-pattern-unclosed-bracket",
+      "description": "An unclosed `[` is not a well-formed pattern.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": ["release/[ab"] } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "invalid_base_branch_pattern" }
+    },
+    {
+      "id": "base-branch-pattern-escaped-bang-is-literal",
+      "description": "An escaped `!` is a literal character, as in a gitignore pattern, so the entry is well formed and admits a branch spelled with one.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": ["\\!important"] } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": true, "reason": null }
     },
     {
       "id": "missing-tracker-kind",

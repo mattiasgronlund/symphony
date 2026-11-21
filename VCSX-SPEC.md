@@ -1780,6 +1780,21 @@ supply it two ways:
   the party making it. The `policy_branch` is excluded whatever this lists, and whether or not it is
   configured at all: a bound an operator must remember to set is a guarantee that fails by omission,
   and this one is the specification's rather than the operator's.
+  - Each entry is a glob in the syntax of a gitignore pattern. `*` matches any run of characters
+    other than `/`; `?` matches one character other than `/`; `[...]` matches one character from a
+    set or range, negated by a leading `!` or `^`, and never matches `/`; `\` makes the next
+    character literal. `**` is special only where it is a whole segment: a leading `**/` matches
+    zero or more leading segments, a trailing `/**` one or more trailing segments, and `/**/` zero
+    or more segments between two; anywhere else it is `*`. Every other character, a brace included,
+    matches itself, and matching is case-sensitive.
+  - An entry matches the whole name or does not match. It is a gitignore pattern's glob, not a
+    gitignore line: an entry with no `/` matches no name containing one, so `main` does not admit
+    `release/main`, and an entry with no metacharacter admits exactly its own spelling.
+  - An entry beginning with an unescaped `!`, or one that is not well formed — an unclosed `[`, a
+    trailing unescaped `\` — permits no base, and neither does a bound holding it, so every supplied
+    `base_branch` is `base_branch_not_permitted` (Section 8.6). A gitignore negation read as a
+    literal entry would leave the exclusion it was written for unapplied, and a bound holding one
+    would admit the branch its author meant to remove.
 
 Where no source supplies a base, an entry that needs one is refused before the policy runs; an entry
 that needs none runs (Section 8.6). That scoping is the default mode's: under `target_branch` the
@@ -3751,9 +3766,13 @@ A conforming engine SHOULD include tests covering:
   `commit`, a `push`, a `pull`, a `merge`, a `land` and a `provision` all run without one, `land`
   taking its base from the pull request it merges; a `base_branch` outside the consumer's
   `base_branch_allowed` yields `base_branch_not_permitted` whatever the entry, including entries
-  that need no base; an entry outside the base-needing set that routes to `integrate` through a
-  `run_op` edge reports that operation's own reason rather than a precondition (Sections 6.4, 8.1,
-  8.6).
+  that need no base; a `base_branch_allowed` entry matches the whole name, so `main` does not admit
+  `release/main`, `release/*` admits `release/1.2` and not `release/1.2/hotfix`, `release/**` admits
+  both and not `release`, `release**` admits `release-1` and not `release/1`, and `Main` does not
+  admit `main`; a bound holding an entry that begins with an unescaped `!`, or one with an unclosed
+  `[`, refuses every supplied base, its well-formed entries included; an entry outside the
+  base-needing set that routes to `integrate` through a `run_op` edge reports that operation's own
+  reason rather than a precondition (Sections 6.4, 8.1, 8.6).
 - The base under `target_branch`: a `status` invocation supplying no `base_branch`, against a
   consumer configuration supplying none, yields `base_branch_missing` and reads no policy —
   reported before any configuration reason the document would also have yielded, since the document
@@ -4034,11 +4053,13 @@ A conforming engine SHOULD include tests covering:
   without a policy document and establishes no precondition that reads a checkout, being the
   operation that obtains both.
 - Base resolution from three sources — the invocation, the consumer configuration, then
-  `[base] branch` — with the bound on what an invocation may name, and the refusal scoped to the
-  entries that need a base. Resolution runs before `[[branch]]` section selection and reads no
-  section, and a section carrying `[base]` or `[scope]` — the keys that select it — is refused.
-  Under `target_branch` the third source drops out and the refusal reaches
-  every entry but `provision`, before validation, the base being what locates the policy there.
+  `[base] branch` — with the bound on what an invocation may name, matched as a whole-name
+  gitignore-pattern glob that refuses every base where an entry is a negation or is not well formed,
+  and the refusal scoped to the entries that need a base. Resolution runs before `[[branch]]`
+  section selection and reads no section, and a section carrying `[base]` or `[scope]` — the keys
+  that select it — is refused. Under `target_branch` the third source drops out and the refusal
+  reaches every entry but `provision`, before validation, the base being what locates the policy
+  there.
 - `repo.policy.toml` loader and validation (with `vcsx.toml` merge), both files addressed relative
   to the repository root and read at the policy source through the backend, the consumer
   configuration as a second and disjoint input, including the refusal of a policy that is not well

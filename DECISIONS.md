@@ -7232,3 +7232,26 @@ read puts the fixed token `commit_subjects_undetermined` in the body, so that a 
 update can recognise it, rather than printing what an empty history prints. That follows
 `is_dirty()`'s "could not determine is not cleanliness", stopping short of failing `create_pr`,
 because nothing branches on a body's content. Relates to 0031, 0114.
+
+## 0183 — An allow-list of patterns with no pattern syntax
+
+**State:** Applied
+**Folder:** [decisions/0183-base-branch-glob/](decisions/0183-base-branch-glob/)
+
+Each `base_branch_allowed` entry, the engine's (`VCSX-SPEC.md` Section 8.1) and `SPEC.md` Section
+9.7's `vcs.base_branch_allowed` alike, is a glob in the syntax of a gitignore pattern matched against
+the whole branch name. Reported as issue #182 from `symphony-rs`: both documents admitted "patterns"
+and named no syntax, and two implementations could read `release/*` differently. On an allow-list
+that is the dangerous direction, and Symphony and the engine both judge the bound, so one deployment
+could disagree with itself. Mattias chose gitignore-style globs over the issue's own proposal. That
+adopts gitignore's narrower `**` (special only as a whole segment, so `release**` is `release*`) and
+not gitignore's line semantics. A slash-free gitignore line matches at any level, so `main` would
+have admitted `release/main` and widened every exact-name bound written today. An entry beginning
+with an unescaped `!` is a negation the bound cannot apply, and read literally it leaves its
+exclusion unapplied. Such an entry, or an ill-formed one, makes the bound admit no base, and Symphony
+refuses it at startup as `invalid_base_branch_pattern`. Since `git-check-ref-format(1)` forbids `*`,
+`?`, `[` and `\` in ref names, every exact entry naming a real git branch keeps its meaning.
+Measured against git 2.47.3's wildmatch through `for-each-ref`; `check-ignore` and `:(glob)`
+pathspecs were tried and rejected, because their directory rules are not the glob. Chosen over
+regular expressions, whose usual mistakes widen the bound, and over fnmatch without `**`. Relates to
+0096.

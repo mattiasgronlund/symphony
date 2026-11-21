@@ -234,6 +234,7 @@ Two interpretation notes apply:
 | `vectors/policy-validation.json` | `validate_policy` | Sections 4.1, 5.4, 5.6, 6.1, 6.4, 6.6, 6.7, 6.11, 8.5, 10.2 |
 | `vectors/identity-precondition.json` | `requires_commit_identity` | Sections 8.1, 8.6, 12.2, 12.3 |
 | `vectors/base-precondition.json` | `requires_base_branch` | Sections 6.4, 8.1, 8.6, 12.3 |
+| `vectors/base-branch-allowed.json` | `base_branch_permitted` | Sections 8.1, 8.6 |
 | `vectors/policy-pin-precondition.json` | `establish_policy_pin` | Sections 4.1, 6.1, 8.1, 8.2, 8.6 |
 | `vectors/resume-precondition.json` | `establish_resume` | Sections 5.5, 8.1, 8.6, 12.2, 12.3 |
 | `vectors/compose-envelope.json` | `compose_envelope` | Sections 4.3, 5.2, 5.4, 8.2, 8.4 |
