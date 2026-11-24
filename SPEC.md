@@ -2591,6 +2591,14 @@ Back-merge and conflict handoff:
 - At the start of a run, Symphony attempts to bring the work branch up to date with the resolved
   pull-request target (Section 9.7). If the update applies cleanly it is taken; if it would
   conflict, it is postponed so the agent is not interrupted up front.
+- Where an open pull request for the work branch targets a base other than the resolved target —
+  the issue's target corrected after the pull request was opened (Section 9.7), or the pull request
+  retargeted on the forge — the engine's back-merge refuses before it touches the work branch
+  (`integrate:base_mismatch`; `VCSX-SPEC.md` Section 4.1), and Symphony parks the issue rather than
+  starting the agent (Sections 9.10, 14.2). The check has to precede the back-merge: once the new
+  target's history is merged in, every later push carries it onto a pull request for the old one,
+  and no refusal afterwards takes it out. It is the engine's check rather than Symphony's, against
+  the base the engine resolved, so Symphony passes no expected base.
 - Conflict resolution is required only when a push is rejected as non-fast-forward. The engine's
   back-merge then stages the merge in the worktree; Symphony hands the conflicted tree to the agent
   (via continuation guidance) to resolve, and dispatches the completing operation once the agent
@@ -2651,6 +2659,12 @@ Pull-request identity under concurrency:
   repair is an operator's: a retry re-reads a state that writer is still changing, and the second
   attempt is as likely to overwrite as the first. The refusal is surfaced through the broker's forge
   verbs with a stable reason code (below) and does not enter the Section 8.4 backoff.
+- The engine applies the base clause itself on every operation that writes for the pull request:
+  `integrate`, `push` and `create_pr` each refuse an open pull request targeting a base other than
+  the one resolved, as `base_mismatch` (`VCSX-SPEC.md` Sections 4.1, 4.3). Symphony surfaces each
+  as `pr_identity_mismatch` and parks the issue (Section 14.2). A pull-request state the engine
+  could not determine is not a base that matched: `integrate` and `push` then write nothing and
+  report `failed`.
 
 Important nuance: "immediately before" bounds the pair — the re-read and the write are the closest
 the forge's interface allows, with no intervening Symphony operation — and **narrows** the window
@@ -2668,6 +2682,19 @@ retargeted to a different base, is the same mismatch, and the rule refuses that 
 concurrency supplies is the most visible way to reproduce the failure — and its consequence outlives
 the run, because a squash subject is derived from the pull-request title verbatim (below), so a title
 another writer replaced is what enters history at the merge.
+
+Note: a base mismatch needs no second writer. A per-issue target corrected after the pull request
+was opened (Section 9.7) produces one with nobody else acting, and it does not clear by itself,
+because the work branch carries the old target's history. There are two repairs, and both are an
+operator's:
+
+- Restore the issue's earlier target. The next run continues against the pull request it opened.
+- Move the work to the new target by hand: rebuild the work branch on it and retarget the pull
+  request to it. The base then matches, and the branch carries only the new target's history.
+
+Closing the pull request is not a repair on its own. The pull request is looked up by the work
+branch, and the work branch is derived from the issue (Section 9.8), so the next run finds the
+closed one and `push` refuses over it (`push:pr_closed`).
 
 - Issue link: when the tracker is the same platform as the forge, the forge establishes the
   pull-request-to-issue link natively (for example a reference in the pull-request body). When the
@@ -4308,6 +4335,14 @@ instance's, a repository's workflow file is that repository's.
   against by the very retry meant to get past it. This is the disposition `token_budget_exceeded`
   already takes (Section 8.8), and for the same reason — an operator bound, reached.
 
+- A base mismatch (`integrate:base_mismatch`, `push:base_mismatch`, `create_pr:base_mismatch`;
+  Sections 9.8, 9.10), which Symphony surfaces as `pr_identity_mismatch`, is **parked**, not retried
+  and not failed. It is not a failure class, being an operation result the action-policy machine
+  routes (Section 9.12), and it is listed here for the reason `await_checks` above is. A retry
+  re-reads a pull request that still targets the other base, so it finds the same mismatch while
+  holding a worker slot. Failing is wrong because the work is intact: the refusal came before the
+  write. The repair is one of the two Section 9.10 names.
+
 - A stop for a lost standing condition (`standing_condition_lost`; Sections 8.2, 8.5, 8.7) is
   neither retried nor failed. It is not a failure class (Section 14.1) — nothing failed, the
   issue-state refresh having succeeded — and it is listed here for the reason `await_checks` above
@@ -5137,6 +5172,11 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
     # the recovery is the repository's or the instance's - the next tick's ensure_object_store
     # re-discovers the condition and applies that section's disposition (Sections 8.5, 16.5, 16.7).
     fail_engine_invocation(run_id, "engine invocation error")
+  if integration is integrate:base_mismatch:
+    # An open pull request for the work branch targets a base other than the resolved target
+    # (Sections 9.8, 9.10). Nothing was integrated, and the agent does not start against a pull
+    # request this run cannot write to. Parked, not failed or retried (Section 14.2).
+    park_run(run_id, "pr_identity_mismatch")
 
   # Both halves of the lifecycle point, host-side first (Section 9.4). The host-side call passes the
   # workspace as an argument rather than as a working directory (Section 15.4); the in-sandbox call
@@ -5715,6 +5755,11 @@ These checks are `Daemon Conformance`.
   being mergeable; and `await_checks:ok`
   does not bypass the merge's own head condition or the pull-request identity re-verification
   (Sections 8.11, 9.10)
+- An issue whose per-issue target is corrected after its pull request was opened is parked at the
+  next run's start as `pr_identity_mismatch`: the back-merge refuses as `integrate:base_mismatch`,
+  the work branch carries no commit of the new target, and the agent does not start. A
+  `push:base_mismatch` or `create_pr:base_mismatch` reached later in a run parks the issue the same
+  way. None of the three enters the Section 8.4 backoff or fails the run (Sections 9.8, 9.10, 14.2)
 - The forge budget snapshot each engine invocation reported is recorded against the run and
   repository, under the forge's own bucket names, and is not summed into the token-usage record or a
   provider quota snapshot (Sections 8.11, 13.5)
@@ -6162,6 +6207,9 @@ engine's checklist.
   work branch, re-verifies it immediately before writing — the pull request exists, carries this
   run's work branch as its head, targets the resolved base — and refuses on a mismatch with
   `pr_identity_mismatch` rather than retrying into a second overwrite (Section 9.10)
+- A pull request targeting a base other than the resolved target refused by the engine ahead of
+  the back-merge, the push and `create_pr` alike, and the issue parked as `pr_identity_mismatch`
+  rather than retried or failed (Sections 9.8, 9.10, 14.2)
 - A `merge:checks_pending` is met by dispatching the engine's bounded `await_checks` rather than a
   poll loop of Symphony's own, its exhausted and budget-floored outcomes park the issue, and its
   success does not license an unconditioned merge; the forge budget snapshot each engine invocation
