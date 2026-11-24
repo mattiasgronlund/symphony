@@ -58,10 +58,17 @@
      writer, names the two repairs, and says closing the pull request is not one on its own.
 8. **`SPEC.md` Section 14.2.** Ensure a bullet for the three `base_mismatch` results follows the
    `await_checks` bullet: parked, not retried and not failed, with the repair cited to Section 9.10.
-9. **`SPEC.md` Section 16.6.** Ensure `integrate:base_mismatch` takes an arm calling `park_run` with
-   `pr_identity_mismatch` before the hooks run.
+9. **`SPEC.md` Section 16.6.**
+   - Ensure `integrate:base_mismatch` takes an arm calling `park_run` with `pr_identity_mismatch`
+     before the hooks run.
+   - Ensure the comment above `engine.integrate` says the attempt continues on exactly three
+     results, and that an arm after the `park_run` arm calls `fail_worker` for every result other
+     than `integrate:ok`, `integrate:up_to_date` and `integrate:merge_conflicts`.
+   - Ensure Section 9.8's first back-merge bullet says any other result ends the attempt (review
+     finding, `Background.md`).
 10. **`SPEC.md` Sections 17.4 and 18.1.3.** Ensure a check and an item state the park at run start,
-    the later refusals, and that none of them is retried or failed.
+    the later refusals, and that none of them is retried or failed. Ensure a second check and item
+    state that any other non-continuing back-merge result ends the attempt with a backoff retry.
 11. **Conformance data.**
     - Ensure `conformance/vcsx/vocabulary.json` holds `integrate:base_mismatch`,
       `integrate:rate_limited`, `integrate:forge_unavailable` and `push:base_mismatch`, with

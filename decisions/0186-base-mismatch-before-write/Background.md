@@ -169,6 +169,42 @@ closed and that should start over. It is not this decision's to settle (trigger 
   where the back-merge refuses (Sections 9.8, 16.6), and wherever a later operation refuses.
 - **Section 9.10** states the operator's two repairs.
 
+## Review finding: the arm the other refusals did not have
+
+Found by `symphony-rs` on #180 (comment 7135611903, against #185's `d213ef7`), after the decision
+was applied.
+
+- **The shape.** Section 16.6 gave `engine.integrate` two arms: no usable result, and the new
+  `integrate:base_mismatch`. Its comment said the conflict "takes no arm and the attempt
+  continues", and nothing gave the remaining results an arm, so they continued too. That includes
+  `integrate:failed`, which this decision itself made the fail-closed answer for an undetermined
+  `pr_state`, and the two forge-reachability reasons this decision added to the registry.
+- **What it did.** The agent started on a work branch the run had not brought up to date, whose
+  pull request's base was never checked. The work stayed safe only because `push` makes the same
+  check and fails closed at the first push. The agent had then spent a run producing work it could
+  not push.
+- **Introduced by this decision.** The gap in the `else` branch was older: before 0186,
+  `integrate:failed` already continued. But 0186 added the fail-closed case and both forge reasons
+  to the set that fell through. It was a repair that left the fall-through it was relying on in
+  place: the comment's own reason for the no-result arm, the agent starting "against a work branch
+  never brought up to date with its base (Section 10.7)", holds for every refusal.
+- **The repair.** The rule is stated positively: the attempt continues past `integrate` only on
+  `integrate:ok`, `integrate:up_to_date` or the conflict. Every other result that is not
+  `base_mismatch` takes `fail_worker` with the reason surfaced, the Section 9.12 fail-safe "failed"
+  disposition. `fail_worker` schedules the backoff retry (Section 16.7), which is what a
+  rate-limited or unavailable forge clears by, so one arm serves both. `symphony-rs` suggested
+  exactly this split, `fail_worker` for `integrate:failed` and a backoff retry for the reachability
+  reasons; in Symphony's vocabulary these are the same exit. Section 9.8 says the same in prose, and
+  Sections 17.4 and 18.1.3 carry a check and an item.
+- **Steelman for parking the rest instead.** `integrate:identity_missing` and
+  `integrate:unsupported` do not clear by retrying, so backoff only holds a slot. It loses on the
+  case that motivated the finding: a rate-limited forge does clear, and parking it would hand an
+  operator a condition that resolves itself. A repository that wants a specific reason parked can
+  say so with a policy edge (Section 9.12).
+
+`symphony-rs`'s own build has the same fall-through (`engine_call.rs:123`, `:130`;
+`integrate.rs:78-85`), which they fix on their side.
+
 ## Reconsideration triggers
 
 - **A caller that needs to integrate against a base other than the one its invocation resolves.**

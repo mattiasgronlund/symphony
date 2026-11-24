@@ -2590,7 +2590,9 @@ Back-merge and conflict handoff:
 
 - At the start of a run, Symphony attempts to bring the work branch up to date with the resolved
   pull-request target (Section 9.7). If the update applies cleanly it is taken; if it would
-  conflict, it is postponed so the agent is not interrupted up front.
+  conflict, it is postponed so the agent is not interrupted up front. Any other result ends the
+  attempt before the agent starts (Section 16.6): the agent is not started against a work branch
+  the run could not bring up to date.
 - Where an open pull request for the work branch targets a base other than the resolved target —
   the issue's target corrected after the pull request was opened (Section 9.7), or the pull request
   retargeted on the forge — the engine's back-merge refuses before it touches the work branch
@@ -5162,9 +5164,11 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
   # (Sections 9.7, 9.8); Symphony has no VCS adapter of its own. The arms below are this section's
   # rule at this call site. A conflict is the outcome of an operation that ran, owned by the
   # action-policy machine (Section 9.12) and postponed here - resolved later only if a push is
-  # rejected - so it takes no arm and the attempt continues. An invocation that produced no result
-  # ran nothing to postpone, and continuing would start the agent against a work branch never
-  # brought up to date with its base (Section 10.7).
+  # rejected - so it takes no arm and the attempt continues. The attempt continues past this call on
+  # exactly three results: integrate:ok, integrate:up_to_date and the conflict. An invocation that
+  # produced no result ran nothing to postpone, and continuing would start the agent against a work
+  # branch never brought up to date with its base (Section 10.7); every other result ends the
+  # attempt for the same reason.
   integration = engine.integrate(issue, workspace)
   if integration has no readable envelope or reports that the policy did not run:
     # Engine Invocation Failures (Section 14.1). Not fail_worker: that exit arms the per-worker
@@ -5177,6 +5181,14 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
     # (Sections 9.8, 9.10). Nothing was integrated, and the agent does not start against a pull
     # request this run cannot write to. Parked, not failed or retried (Section 14.2).
     park_run(run_id, "pr_identity_mismatch")
+  if integration is not integrate:ok, integrate:up_to_date or integrate:merge_conflicts:
+    # An operation that ran and refused, so not Engine Invocation Failures (Section 14.1): among
+    # others integrate:failed, which includes a pull-request state the engine could not determine,
+    # and the forge-reachability reasons integrate:rate_limited and integrate:forge_unavailable.
+    # The work branch is not current with its base and, for those three, its pull request's base
+    # was never checked, so the agent does not start. Failed with the reason surfaced (Section 9.12)
+    # and retried with backoff (Section 16.7), which a forge-reachability reason clears by.
+    fail_worker(run_id, "integrate error: " + integration.reason)
 
   # Both halves of the lifecycle point, host-side first (Section 9.4). The host-side call passes the
   # workspace as an argument rather than as a working directory (Section 15.4); the in-sandbox call
@@ -5760,6 +5772,10 @@ These checks are `Daemon Conformance`.
   the work branch carries no commit of the new target, and the agent does not start. A
   `push:base_mismatch` or `create_pr:base_mismatch` reached later in a run parks the issue the same
   way. None of the three enters the Section 8.4 backoff or fails the run (Sections 9.8, 9.10, 14.2)
+- A back-merge result other than `integrate:ok`, `integrate:up_to_date`, the conflict and
+  `integrate:base_mismatch` — for example `integrate:failed` from an undetermined pull-request
+  state, `integrate:rate_limited` or `integrate:forge_unavailable` — ends the attempt before the
+  agent starts, with the reason surfaced and a backoff retry scheduled (Sections 9.8, 9.12, 16.6)
 - The forge budget snapshot each engine invocation reported is recorded against the run and
   repository, under the forge's own bucket names, and is not summed into the token-usage record or a
   provider quota snapshot (Sections 8.11, 13.5)
@@ -6210,6 +6226,8 @@ engine's checklist.
 - A pull request targeting a base other than the resolved target refused by the engine ahead of
   the back-merge, the push and `create_pr` alike, and the issue parked as `pr_identity_mismatch`
   rather than retried or failed (Sections 9.8, 9.10, 14.2)
+- The agent started past the back-merge only on `integrate:ok`, `integrate:up_to_date` or the
+  conflict, any other result ending the attempt with a backoff retry (Sections 9.8, 16.6)
 - A `merge:checks_pending` is met by dispatching the engine's bounded `await_checks` rather than a
   poll loop of Symphony's own, its exhausted and budget-floored outcomes park the issue, and its
   success does not license an unconditioned merge; the forge budget snapshot each engine invocation

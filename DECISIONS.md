@@ -7283,4 +7283,10 @@ Section 9.10 now says a base mismatch needs no second writer, and it names two r
 earlier target, or rebuild the work branch on the new one and retarget the pull request. The decision
 sheet had offered "close the pull request and delete the work branch". That repair does not work,
 because the derived work branch finds the closed pull request and `push` refuses with
-`push:pr_closed`. It is recorded as a correction, with its own trigger. Relates to 0169, 0073.
+`push:pr_closed`. It is recorded as a correction, with its own trigger.
+
+A review finding from `symphony-rs` closed a fall-through in Section 16.6: only the conflict and the
+two new arms were handled, so `integrate:failed` and the forge-reachability reasons started the
+agent. The attempt now continues past the back-merge only on `integrate:ok`, `integrate:up_to_date`
+or the conflict; every other result fails the worker with the reason surfaced and a backoff retry.
+Relates to 0169, 0073.
