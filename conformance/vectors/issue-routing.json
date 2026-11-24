@@ -4,11 +4,11 @@
   "spec_refs": ["Section 4.1.1", "Section 4.2", "Section 8.7"],
   "description": "Route a polled issue to exactly one managed repository. Section 8.7 states routing as a pure function of the normalized issue record and the policy config's mapping, evaluated after normalization, with the mapping's key space being the record's own comparable fields: project, team, labels, assignees, state. Where more than one repository's rule matches, the issue is not routed and not dispatched and the condition is reported.",
   "given": "{ issue: { project, team, labels, assignees, state }, rules: Array<{ repository: string, match: { <record field>: <value> } }> }",
-  "expect": "{ repository: <name> | null, refused: 'multiple_rules_matched' | null }",
+  "expect": "{ repository: <name> | null, refused: 'routing_ambiguous' | null, matched?: Array<name> }",
   "notes": [
     "The rules are written in the `repository` entries they select: each entry's `routing` list holds the rules that reach it and the mapping is their union (Section 5.3.7, decision 0159, which closed the gap decision 0148 filed). What this file asserts is still the key space and that routing is a pure function of the normalized record, not the configuration shape: `given.rules` pairs a repository with a rule so that both are in view at once, and a harness maps its own configuration onto that pairing. A rule is a conjunction of field conditions over the record.",
     "A list-valued key (labels, assignees) is read as membership, the reading Section 5.3.1 already states for tracker.required_labels. A scalar key (project, team, state) is read as equality.",
-    "Section 8.7 requires the condition to be reported only where more than one rule matches. An issue no rule matches is simply unrouted, so refused is null there as well as repository. multiple_rules_matched is this file's label for the reported condition, not a published token: SPEC.md names none and conformance/vocabulary.json publishes no group for it.",
+    "Section 8.7 requires the condition to be reported only where more than one repository is matched. An issue no rule matches is simply unrouted, so refused is null there as well as repository. routing_ambiguous is the token Section 8.7 names for the reported condition, published in conformance/vocabulary.json's non_failure_conditions group (decision 0184). Where refused is routing_ambiguous, expect.matched lists every repository the mapping matched, in any order, because Section 13.1 requires the report to name all of them; it is absent where refused is null. Whether the report is owed for a given issue also depends on Section 8.2's conditions over the record, which route_issue does not evaluate, so these vectors fix the routing outcome and not the report's scope.",
     "Every value in given.issue is already normalized, as Section 8.7's mapping reads it (Section 4.2). Routing a raw tracker payload rather than the record is what the normalized-record vectors here fail an implementation for."
   ],
   "vectors": [
@@ -82,7 +82,7 @@
           { "repository": "api", "match": { "labels": "backend" } }
         ]
       },
-      "expect": { "repository": null, "refused": "multiple_rules_matched" }
+      "expect": { "repository": null, "refused": "routing_ambiguous", "matched": ["web", "api"] }
     },
     {
       "id": "two-rules-match-same-repository-named-twice",
@@ -95,6 +95,19 @@
         ]
       },
       "expect": { "repository": "web", "refused": null }
+    },
+    {
+      "id": "three-repositories-match",
+      "description": "Three repositories' rules all hold over this issue. The report names all three: an implementation that stops walking the rules at the second distinct repository it meets names two, and the operator's repair needs the whole overlap (Section 13.1).",
+      "given": {
+        "issue": { "project": "web-platform", "team": "core", "labels": ["backend", "frontend"], "assignees": [], "state": "todo" },
+        "rules": [
+          { "repository": "web", "match": { "labels": "frontend" } },
+          { "repository": "api", "match": { "labels": "backend" } },
+          { "repository": "platform", "match": { "project": "web-platform" } }
+        ]
+      },
+      "expect": { "repository": null, "refused": "routing_ambiguous", "matched": ["web", "api", "platform"] }
     }
   ]
 }

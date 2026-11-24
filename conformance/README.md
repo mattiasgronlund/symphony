@@ -122,6 +122,7 @@ never raises.
 | `agent_error_categories` | Section 10.6 |
 | `transition_triggers` | Sections 11.6, 8.10, 9.12 |
 | `failure_classes` | Sections 14.1, 14.2 |
+| `non_failure_conditions` | Sections 8.5, 8.7, 8.8, 14.2 |
 | `layer_profiles`, `validation_profiles` | Sections 17, 18.1, 3.4 |
 | `deployment_topologies` | Sections 3.4, 18.1 |
 
@@ -146,14 +147,16 @@ reader is a Conformance Statement author, and a divergence shows up as an implem
 its own conformance in a spelling nothing else recognizes. `validation_profiles` carries
 `requirement_level` per entry rather than for the group, its four members not sharing one.
 
-Six groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
+Seven groups are explicitly **not** closed sets, and say so with `exhaustive: false`: `events`,
 because Section 10.4 permits an adapter to emit events the specification does not name;
 `config_namespaces`, because Section 5.3 permits an extension to define additional top-level keys;
 `error_classes`, because Section 5.5 permits an implementation to define additional classes for
 conditions its five do not name; `failure_classes`, because Section 14.1 permits an OPTIONAL
-extension to define additional categories; and `tracker_error_categories` and
-`agent_error_categories`, because Sections 11.4 and 10.6 each permit an implementation to define
-additional categories and require it to document one it defines. In all six, the names the
+extension to define additional categories; `non_failure_conditions`, because Section 14.2 lists
+its members beside the classes without closing the list, and one of them is already an OPTIONAL
+extension's; and `tracker_error_categories` and `agent_error_categories`, because Sections 11.4 and
+10.6 each permit an implementation to define additional categories and require it to document one
+it defines. In all seven, the names the
 specification does state are fixed; it is the set that is open — so an implementation shipping no
 such extension may still close its own enum at the names it can produce.
 

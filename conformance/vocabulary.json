@@ -634,6 +634,49 @@
       }
     ]
   },
+  "non_failure_conditions": {
+    "spec_refs": [
+      "SPEC.md Section 8.5 \"Active Run Reconciliation\"",
+      "SPEC.md Section 8.7 \"Multiple Repositories and Shared Polling\"",
+      "SPEC.md Section 8.8 \"Token Budget Guards (OPTIONAL)\"",
+      "SPEC.md Section 14.2 \"Recovery Behavior\""
+    ],
+    "note": "The conditions Symphony reports under a REQUIRED token that are not Section 14.1 failure classes: nothing failed, and Section 14.2 states each one's disposition beside the classes'. A report carrying one of these carries no failure class, so an operator filtering the record can tell it from a fault. Published together once a fourth appeared, as decision 0175's second trigger asked (decision 0184). `reasons` lists the reason tokens a report under that token carries alongside it. `core: false` marks the budget extension's token (Section 8.8). Not a closed set: Section 14.2 lists these beside the classes without closing the list, and one member is already an OPTIONAL extension's.",
+    "requirement_level": "REQUIRED",
+    "exhaustive": false,
+    "entries": [
+      {
+        "token": "routing_ambiguous",
+        "core": true,
+        "spec_ref": "Section 8.7"
+      },
+      {
+        "token": "standing_condition_lost",
+        "core": true,
+        "spec_ref": "Section 8.5",
+        "reasons": [
+          "required_labels",
+          "assignee",
+          "routing"
+        ]
+      },
+      {
+        "token": "await_checks:still_pending",
+        "core": true,
+        "spec_ref": "Section 14.2"
+      },
+      {
+        "token": "await_checks:budget_floor",
+        "core": true,
+        "spec_ref": "Section 14.2"
+      },
+      {
+        "token": "token_budget_exceeded",
+        "core": false,
+        "spec_ref": "Section 8.8"
+      }
+    ]
+  },
   "layer_profiles": {
     "spec_refs": [
       "SPEC.md Section 17 \"Test and Validation Matrix\"",
