@@ -156,3 +156,13 @@ to want publishing, and at that point `standing_condition_lost`, `token_budget_e
 `await_checks:*` reasons want a registry group together rather than one at a time — which is the
 form the registry's own `failure_classes` note already anticipates by naming `token_budget_exceeded`
 as the thing outside the nine.
+
+## Re-evaluated by decision 0184 (2026-11-24)
+
+Both triggers above arrived together with issue #171. Section 8.7's report now carries
+`routing_ambiguous`. The prediction that it "may genuinely belong to a failure class" did not hold.
+An issue labelled for two repositories, under a configuration that is still valid, is repaired by a
+label edit on one issue, and nothing failed. So the report carries no class and Section 14.2 states
+its disposition, on the footing this decision gave `standing_condition_lost`. The fourth
+non-failure token also brought the registry group this decision deferred: `non_failure_conditions`
+in `conformance/vocabulary.json`. This decision's own reasoning for Part B is unchanged.
