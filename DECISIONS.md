@@ -7301,3 +7301,38 @@ The implementation side found that `bash -c` sources `BASH_ENV` even under `--no
 the clause states the property rather than ruling out a login shell alone. Section 10.1's `bash -c`
 stands, because the agent's environment is composed. Chosen over splitting the halves, which keeps
 only an unreliable convenience. Relates to 0172.
+
+## 0186 — The identity check that runs after the write it guards
+
+**State:** Applied
+**Folder:** [decisions/0186-base-mismatch-before-write/](decisions/0186-base-mismatch-before-write/)
+
+`integrate` and `push` read the work branch's pull-request state before they write. Each refuses an
+open pull request whose base differs from the base the engine resolved, as `base_mismatch`
+(`needs_caller` / `human_review`), before touching the work branch or the remote. Symphony parks the
+issue as `pr_identity_mismatch`. Reported as issues #180 and #181 from `symphony-rs`: Section 9.8's
+start-of-run back-merge ran before Section 9.10's identity re-read, so an issue whose per-issue target
+was corrected merged the new base into a pull request that still targeted the old one. Checking the
+engine showed the damage lands at the first `push`. `push` already read a `pr_state` carrying the
+base (0169) and refused only a closed pull request, so the re-read and `create_pr:base_mismatch` both
+fired after the write they exist to prevent.
+
+#181's `expected_base` argument is not adopted. `expected_head` carries a value the caller observed,
+while the base is one the engine already resolves, so the argument adds nothing but a way to leave
+the gap open by not passing it. The mismatch parks rather than retrying or failing: it does not clear
+by being attempted again, and the work is intact because the refusal precedes the write. For the
+same reason `create_pr:base_mismatch` is re-classed from `error` to match, a change to the
+major-stable surface that is affordable while no `MAJOR` is published. An undetermined state fails
+closed as `integrate:failed`, as `push` already did.
+
+Section 9.10 now says a base mismatch needs no second writer, and it names two repairs: restore the
+earlier target, or rebuild the work branch on the new one and retarget the pull request. The decision
+sheet had offered "close the pull request and delete the work branch". That repair does not work,
+because the derived work branch finds the closed pull request and `push` refuses with
+`push:pr_closed`. It is recorded as a correction, with its own trigger.
+
+A review finding from `symphony-rs` closed a fall-through in Section 16.6: only the conflict and the
+two new arms were handled, so `integrate:failed` and the forge-reachability reasons started the
+agent. The attempt now continues past the back-merge only on `integrate:ok`, `integrate:up_to_date`
+or the conflict; every other result fails the worker with the reason surfaced and a backoff retry.
+Relates to 0169, 0073.

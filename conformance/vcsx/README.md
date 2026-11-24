@@ -98,10 +98,11 @@ The registry is a faithful view, not a byte-for-byte transcription. Three places
   `status` / `diff` row to `status:ok` and `diff:ok`, the four universal rows to one entry per
   operation they cover — `failed` and `unsupported` for every operation the registry covers,
   `blocked` and `hook_unanswered` for every gated one, each marked `universal: true` — and the two
-  `(any forge)` rows to one entry per operation whose forge call the condition prevented (`push`,
-  `create_pr`, `merge`, `await_checks`), each marked `forge_universal: true`. So 44 table rows
-  yield 75 entries. Section 4.3's `Default need` column expands with them: `blocked`'s one row
-  becomes four entries carrying the same need, so 19 rows with a need yield 28 entries with one.
+  `(any forge)` rows to one entry per operation whose forge call the condition prevented
+  (`integrate`, `push`, `create_pr`, `merge`, `await_checks`), each marked `forge_universal: true`.
+  So 47 table rows yield 80 entries. Section 4.3's `Default need` column expands with them:
+  `blocked`'s one row becomes four entries carrying the same need, and each `(any forge)` row five,
+  so 22 rows with a need yield 33 entries with one.
   The two markers are separate fields rather than one scope enum, because they answer different
   questions — whether a reason is defined for every operation the registry covers, and whether it
   is defined for the ones that reach a forge — and a consumer generating a per-operation enum

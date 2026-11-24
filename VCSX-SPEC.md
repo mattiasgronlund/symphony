@@ -283,12 +283,20 @@ work branch reaches, rather than leaving the arrangement to each backend.
 - `integrate` — bring the resolved base into the work branch (a merge/update-branch), preserving
   recorded conflict resolutions where the backend supports them. The base is the branch as the
   resolved remote holds it (Sections 6.4, 8.1), acquired rather than read from the checkout's
-  copy. Gated at no fixed position; typically run in response to `push:non_fast_forward`.
+  copy. Where a forge is configured, the operation first reads the work branch's pull-request state
+  (Section 9.2 `pr_state`) and, where an open pull request targets a base other than the resolved
+  one, refuses before it touches the work branch (`integrate:base_mismatch`): a merge of the
+  resolved base into that branch would put a second base's history on a pull request for the
+  first, and no later refusal takes it out. A state it could not determine is not the absence of a
+  pull request: the operation integrates nothing and reports `integrate:failed` (Sections 4.3,
+  9.2). Gated at no fixed position; typically run in response to `push:non_fast_forward`.
 - `push` — push the work branch to the remote with the refspec pinned to the work branch. Where a
   forge is configured, the operation first reads the work branch's pull-request state (Section 9.2
-  `pr_state`) and refuses a push over a CLOSED/MERGED one (`push:pr_closed`). A state it could not
-  determine is not the absence of a pull request: the operation does not push and reports
-  `push:failed` (Sections 4.3, 9.2). Gated at `before:push`.
+  `pr_state`) and refuses a push over a CLOSED/MERGED one (`push:pr_closed`), and, where the
+  invocation resolved a base, over an open one targeting a different base (`push:base_mismatch`).
+  An invocation that resolved no base has nothing to compare and is not refused on that ground
+  (Section 8.6). A state it could not determine is not the absence of a pull request: the operation
+  does not push and reports `push:failed` (Sections 4.3, 9.2). Gated at `before:push`.
 - `create_pr` — create or update the one pull request for the work branch against the resolved base,
   composing its title and body (Section 10.2). Gated at `before:create_pr`.
 - `merge` — merge the pull request using the configured strategy (Section 6.8). Gated at
@@ -413,10 +421,10 @@ routing rather than about reporting, and the consumer classifies a typed result 
 
 Two further reasons are carried with `(any forge)` in place of an operation: `rate_limited` and
 `forge_unavailable` are defined for every operation that **acts** on a forge call the condition
-prevented — `push`, whose `pr_state` read a forge answers (Section 4.1), `create_pr`, `merge`, and
-`await_checks`, whose every read is one. `status` reads a forge and is not among them, because it
-reports the answer rather than acting on it and completes whatever the forge said; a refusal reaches
-its caller as an output (Sections 4.1, 9.2).
+prevented — `integrate` and `push`, whose `pr_state` read a forge answers (Section 4.1),
+`create_pr`, `merge`, and `await_checks`, whose every read is one. `status` reads a forge and is
+not among them, because it reports the answer rather than acting on it and completes whatever the
+forge said; a refusal reaches its caller as an output (Sections 4.1, 9.2).
 
 | Operation | Reason | Class | Default need | Meaning |
 |-----------|--------|-------|--------------|---------|
@@ -439,14 +447,16 @@ its caller as an output (Sections 4.1, 9.2).
 | `integrate` | `base_unresolved` | `error` | — | The base could not be resolved (Section 6.4). |
 | `integrate` | `base_unavailable` | `error` | — | The base could not be acquired from the remote (Section 9.1 `fetch_base`). |
 | `integrate` | `identity_missing` | `needs_caller` | `supply_identity` | No caller-supplied commit identity is available for the merge commit (Sections 8.6, 10.1). |
+| `integrate` | `base_mismatch` | `needs_caller` | `human_review` | An open pull request for the work branch targets a base other than the resolved one; nothing was integrated (Section 4.1). |
 | `push` | `ok` | `done` | — | The work branch was pushed. |
 | `push` | `up_to_date` | `done` | — | Remote already current; no-op. |
 | `push` | `non_fast_forward` | `needs_caller` | `integrate_then_retry` | Remote moved; integrate then retry. |
 | `push` | `pr_closed` | `needs_caller` | `human_review` | The pull request is CLOSED/MERGED; refuse to push over it. |
+| `push` | `base_mismatch` | `needs_caller` | `human_review` | An open pull request for the work branch targets a base other than the resolved one; nothing was pushed (Section 4.1). |
 | `push` | `rejected` | `error` | — | The remote rejected the push. |
 | `create_pr` | `created` | `done` | — | A pull request was created. |
 | `create_pr` | `updated` | `done` | — | The existing pull request was updated. |
-| `create_pr` | `base_mismatch` | `error` | — | An existing pull request targets a different base. |
+| `create_pr` | `base_mismatch` | `needs_caller` | `human_review` | An existing pull request targets a different base. |
 | `create_pr` | `conflict` | `needs_caller` | `human_review` | The pull request could not be created/updated cleanly. |
 | `merge` | `ok` | `done` | — | The pull request was merged. |
 | `merge` | `not_open` | `needs_caller` | `human_review` | The pull request is not open. |
@@ -2876,12 +2886,13 @@ the read its position makes then `commit` — `worktree_diff` where the position
 content and `worktree_revision` where nothing there reads it — which is what makes the tree the gate
 inspected the tree captured (Section 6.6); `status` reads through `detect_mode`, `current_branch`,
 `is_dirty`, `is_conflicted` and `ahead_behind`, with the forge's `pr_state` where one is configured
-(Section 9.2). `pr_state` has three readers rather than one, and two of them act on the answer
-instead of reporting it: `push` refuses over a CLOSED/MERGED pull request (Section 4.1) and `merge`
+(Section 9.2). `pr_state` has four readers rather than one, and three of them act on the answer
+instead of reporting it: `integrate` refuses where an open pull request targets another base, `push`
+refuses over a CLOSED/MERGED pull request or one targeting another base (Section 4.1), and `merge`
 takes the head it conditions on from the same read (Section 9.2), which is why the state it could
 not determine is refused at each rather than read as an absence. That split also fixes which reads
 carry a validator (Sections 8.1, 9.2): the engine presents a `known_validator` on the read whose
-answer it **reports** — `status`'s — and on neither of the two an operation **conditions a write
+answer it **reports** — `status`'s — and on none of the three an operation **conditions a write
 on**. An `unchanged` answer carries no state and so no head, and a `merge` that resolved one against
 the head a consumer remembered would be conditioned on a value the engine did not read, which is the
 guarantee `merge:head_moved` exists to make (Sections 4.3, 9.2). A conditional read makes a poll
@@ -2966,9 +2977,10 @@ Realizes the pull-request and review operations. Required:
   request has not moved since that validator was issued, or that the state could not be determined.
   Three of the four are distinct answers and a state the backend could not determine MUST NOT be
   answered as an absent pull
-  request, because the two carry different results: an absent pull request lets `push` proceed and
-  `create_or_update_pr` create, while an undetermined one refuses both (`push:failed`,
-  `create_pr:failed`) and is a `pr_state_unavailable` output for `status` (Sections 4.1, 4.3).
+  request, because the two carry different results: an absent pull request lets `integrate` and
+  `push` proceed and `create_or_update_pr` create, while an undetermined one refuses all three
+  (`integrate:failed`, `push:failed`, `create_pr:failed`) and is a `pr_state_unavailable` output
+  for `status` (Sections 4.1, 4.3).
   `unchanged` is the fourth and is neither of those two: it is a determinate fact about the
   resource — the state is the one the caller already holds — where an absent pull request is a
   determinate fact that there is none and an undetermined one is the backend stating neither. A
@@ -3610,7 +3622,12 @@ A conforming engine SHOULD include tests covering:
   dispatching `push`, is accepted and bounded (Sections 5.6, 6.11).
 - Operations and reasons: each operation returns a registry reason (Section 4.3) with its documented
   proto class; `push:non_fast_forward` is `needs_caller` and routes to `integrate`; `push:pr_closed`
-  refuses a push over a CLOSED/MERGED pull request; `create_pr:base_mismatch` is surfaced, not
+  refuses a push over a CLOSED/MERGED pull request; an open pull request targeting a base other than
+  the resolved one refuses `integrate`, `push` and `create_pr` alike, as `base_mismatch` with class
+  `needs_caller` and need `human_review`, and an `integrate` refused this way leaves the work branch
+  as it found it, carrying no commit of the resolved base; an `integrate` whose pull-request state
+  could not be determined integrates nothing and yields `failed`; a `push` in an invocation that
+  resolved no base is not refused on that ground; `create_pr:base_mismatch` is surfaced, not
   overwritten; a `pr_state` against a work branch whose pull request targets a base other than the
   caller's resolved base finds that pull request rather than none, and answers the base it actually
   targets, which `status` reports as the pull request's own rather than substituting the resolved
@@ -3703,8 +3720,8 @@ A conforming engine SHOULD include tests covering:
   9.2); the `validator` a `status` returned in `outputs` is the value a later invocation presents,
   so the round trip closes without engine-held state (Section 8.2); a forge backend declaring no
   conditional-read support is presented no validator, answers the full state, and yields no
-  `pr_state_unchanged` output rather than an `unsupported` result (Sections 4.3, 9.2); `push`
-  and `merge` read `pr_state` with no validator whatever the invocation supplied, so no write is
+  `pr_state_unchanged` output rather than an `unsupported` result (Sections 4.3, 9.2); `integrate`,
+  `push` and `merge` read `pr_state` with no validator whatever the invocation supplied, so no write is
   conditioned on a head the engine did not read (Sections 9.1, 9.2); and each capability is presented
   only the validator it issued — an `await_checks` presents `checks_state_validator` and never
   `pr_state_validator`, the validator an `await_checks` returned is the value a later invocation
@@ -4091,11 +4108,14 @@ A conforming engine SHOULD include tests covering:
   carries and the base it targets — so a caller can compare either against what it established,
   while the lookup stays keyed on the head alone, a pull request opened or retargeted against
   another base being found rather than hidden (Sections 9.2, 13.1).
+- `integrate` and `push` reading that state before they write, and refusing an open pull request
+  that targets a base other than the resolved one as `base_mismatch`, before the work branch or the
+  remote is touched; an undetermined state refuses both as `failed` (Sections 4.1, 4.3, 9.2).
 - Conditional forge reads where the backend declares them: one validator per resource, each returned
   in `outputs` beside the data it describes and presented back as `pr_state_validator` or
   `checks_state_validator`, never to the capability that did not issue it; an unmoved pull request
   reported as `pr_state_unchanged` rather than as an absent or an undetermined one — with no validator
-  presented on the reads `push` and `merge` condition a write on.
+  presented on the reads `integrate`, `push` and `merge` condition a write on.
 - The consumer's own declarations as validation inputs: which actions it can effect and which
   repository units it bound, both defaulting empty, both readable from the consumer configuration, and
   the three `*_unbound` reasons judged from them before the policy runs.

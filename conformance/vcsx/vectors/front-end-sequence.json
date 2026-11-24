@@ -143,6 +143,21 @@
       }
     },
     {
+      "id": "push_base_mismatch_builtin",
+      "description": "No edge. push:base_mismatch is needs_caller, so its class default escalates with the reason's default need, human_review, which ends the flow before create_pr; the envelope reports the decisive operation result. Nothing was pushed: the pull request targets a base other than the one this invocation resolved (Sections 4.1, 4.3, 5.4).",
+      "given": {
+        "entry": "ship",
+        "step": "push",
+        "result": "push:base_mismatch",
+        "edges": []
+      },
+      "expect": {
+        "disposition": { "source": "builtin", "action": "escalate", "op": null },
+        "transfer": "none",
+        "reports": { "op": "push", "reason": "base_mismatch" }
+      }
+    },
+    {
       "id": "push_pr_closed_policy_run_op_status",
       "description": "The discriminating case, on a return-shaped branch. No escalation is raised, the transfer is return, and ship reports status:ok - a done-class ending before create_pr. Odd policy, determinate outcome, edge honoured. It is why a caller tests the operation the result names rather than its class (Section 13.1).",
       "given": {
