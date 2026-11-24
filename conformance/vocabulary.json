@@ -400,6 +400,10 @@
         "condition": "A `vcs` field Section 9.7 requires is unresolved for an entry after resolution against the orchestrator level (Section 5.3.7)."
       },
       {
+        "token": "invalid_base_branch_pattern",
+        "condition": "A `vcs.base_branch_allowed` entry begins with an unescaped `!` or is not a well-formed pattern (Section 9.7)."
+      },
+      {
         "token": "missing_tracker_kind",
         "condition": "`tracker.kind` is absent."
       },

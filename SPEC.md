@@ -1163,6 +1163,10 @@ Validation checks:
 - The `vcs` fields Section 9.7 requires are resolved for every `repository` entry after resolution
   against the orchestrator level (Section 5.3.7), so a deployment supplying no `vcs.local_vcs` for
   one repository fails configuration rather than defaulting one for it.
+- Every `vcs.base_branch_allowed` entry, after the same resolution, is a well-formed pattern that
+  does not begin with an unescaped `!` (Section 9.7); otherwise configuration error. The engine
+  refuses every base under such a bound (`VCSX-SPEC.md` Section 8.1), so a deployment carrying one
+  would otherwise find out at the first issue naming a target rather than at startup.
 - `tracker.kind` is present.
 - `tracker.kind` names a kind the implementation supports.
 - `tracker.api_key` is present after `$` resolution when the selected tracker adapter is
@@ -1189,6 +1193,7 @@ operator or a monitoring surface (Section 13.3) can branch on the cause without 
 | No `repository` entry is configured | `no_repository_configured` |
 | A `repository` entry's key is not a valid `Repository Key` (Section 4.2) | `invalid_repository_key` |
 | A `vcs` field Section 9.7 requires is unresolved for an entry after resolution against the orchestrator level (Section 5.3.7) | `missing_vcs_field` |
+| A `vcs.base_branch_allowed` entry begins with an unescaped `!` or is not a well-formed pattern (Section 9.7) | `invalid_base_branch_pattern` |
 | `tracker.kind` is absent | `missing_tracker_kind` |
 | `tracker.kind` names a kind the implementation does not support | `unsupported_tracker_kind` |
 | `tracker.api_key` is absent after `$` resolution for a `secret`-mode adapter (Section 11.7) | `missing_tracker_api_key` |
@@ -1251,7 +1256,7 @@ Operator policy config:
 - `vcs.policy_source`: string, `policy_branch` | `target_branch`, default `policy_branch`; where host-side Way of Working is read from (Sections 9.7, 15.4)
 - `vcs.policy_branch`: REQUIRED under `policy_source = "policy_branch"`, no default; the branch `repo.policy.toml`'s host-side parts are read from. Never a pull-request target (Sections 9.7, 9.10, 15.4)
 - `vcs.base_branch`: the operator's default pull-request target; middle of three sources (issue, then this, then `repo.policy.toml`), default unset
-- `vcs.base_branch_allowed`: OPTIONAL bound on the targets a per-issue source may name, default unset (unbounded)
+- `vcs.base_branch_allowed`: OPTIONAL bound on the targets a per-issue source may name, default unset (unbounded); each entry a whole-name gitignore-pattern glob (`VCSX-SPEC.md` Section 8.1)
 - `vcs.local_vcs`: REQUIRED; the VCS backend the engine loads, and the checkout mode for one it creates. For a checkout it did not create the backend detects the mode (Section 9.7)
 - `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
 - `vcs.await_bound_ms` / `vcs.await_max_reads` / `vcs.await_interval_ms`: the bounds Symphony hands the engine's `await_checks` on `merge:checks_pending` (Sections 8.11, 9.10); defaults `Implementation-defined` and documented. Reaching either bound parks the issue; a pull request with no required checks returns `no_checks` and the flow continues
@@ -2472,6 +2477,14 @@ Configuration:
     name, as branch names or patterns. An issue naming a target outside it is refused
     (`VCSX-CONTRACT.md`).
     - Default: unset — a per-issue target is otherwise unbounded.
+    - Each entry is a glob in the syntax of a gitignore pattern, matched against the whole branch
+      name as `VCSX-SPEC.md` Section 8.1 defines for the engine's bound. Symphony applies the same
+      match when it refuses a per-issue target, so the orchestrator and the engine refuse the same
+      targets: `main` does not admit `release/main`, `release/*` does not admit
+      `release/1.2/hotfix`, and an entry with no metacharacter admits exactly its own spelling.
+    - An entry beginning with an unescaped `!`, or one that is not a well-formed pattern, is a
+      configuration error (Section 6.3). A gitignore negation has no meaning in an allow-list, and
+      read as a literal entry it would leave unapplied the exclusion it was written for.
     - `vcs.policy_branch` is excluded whatever this lists and whether or not it is configured. A
       bound an operator must remember to set is a guarantee that fails by omission, and this one is
       the specification's rather than the operator's.
@@ -5575,8 +5588,11 @@ deployment satisfies by using a conforming engine rather than by implementing th
   9.10)
 - The pull-request target resolves issue, then `vcs.base_branch`, then `repo.policy.toml`, most
   specific winning; a per-issue target outside `vcs.base_branch_allowed` is refused before the run
-  starts and no work branch is created; where no source supplies one, an operation needing a target
-  is refused while commit, push and provisioning are unaffected (Section 9.7)
+  starts and no work branch is created; a `vcs.base_branch_allowed` entry matches the whole branch
+  name, so `main` does not admit a per-issue target `release/main` and `release/*` does not admit
+  `release/1.2/hotfix`, and Symphony and the engine refuse the same targets for one bound; where no
+  source supplies one, an operation needing a target is refused while commit, push and provisioning
+  are unaffected (Section 9.7)
 - The action-policy machine (Section 9.12): an `op:#class` edge catches an unnamed operation reason,
   an unmatched operation outcome is fail-safe (parked, not silently dropped), and an unmatched
   lifecycle position runs nothing while the operation proceeds; a repository binds `await_checks:*`
@@ -6073,7 +6089,7 @@ Required of the `daemon` topology only.
 - Dispatch preflight refuses a configured `tracker.assignee` on a tracker adapter whose capability
   descriptor does not declare that it populates `assignees`, surfacing `assignee_capability_unmet`
   (Sections 6.3, 11.7)
-- Dispatch preflight surfaces the reason token Section 6.3's table states for each of its twelve
+- Dispatch preflight surfaces the reason token Section 6.3's table states for each of its thirteen
   conditions, and reports the first in the table's stated order where a configuration fails several
 - Multiple repositories per instance, enumerated in `repository` with a key an entry does not carry
   resolving from the orchestrator level leaf by leaf (Section 5.3.7), and each entry pointing at its
