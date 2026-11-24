@@ -7097,6 +7097,7 @@ published either, and adding one member of that set alone would not be right. Re
 unfixed: Section 8.7's own report names no token either, so of the two reports sharing a shape one
 now carries a REQUIRED spelling and the other does not — a configuration defect that may genuinely
 belong to a failure class, which is a different question with its own trigger. Relates to 0155.
+Decision 0184 answers both triggers and corrects the failure-class prediction.
 
 ## 0176 — A constraint with no operand, and a verb with no stated arguments
 
@@ -7255,3 +7256,48 @@ Measured against git 2.47.3's wildmatch through `for-each-ref`; `check-ignore` a
 pathspecs were tried and rejected, because their directory rules are not the glob. Chosen over
 regular expressions, whose usual mistakes widen the bound, and over fnmatch without `**`. Relates to
 0096.
+
+## 0184 — One condition reported under a spelling, and its sibling under none
+
+**State:** Applied
+**Folder:** [decisions/0184-routing-ambiguous/](decisions/0184-routing-ambiguous/)
+
+Section 8.7's routing-ambiguity report carries the REQUIRED token `routing_ambiguous` and names every
+repository the mapping matched. Reported as issue #171 from `symphony-rs`: decision 0175 gave Section
+8.5 Part B's report a token whose `routing` reason covers a running issue gone ambiguous, so one
+implementation reported the mapping naming several repositories under a REQUIRED spelling when it
+stopped a run and under none when it declined a dispatch. Part B's token is not reused, because the
+two are not one condition: Part B reports a stop, of which ambiguity is one of three outcomes, and
+this reports a refusal with nothing lost. It is not a failure class either, which corrects 0175's
+prediction. An issue labelled for two repositories is a label edit on one issue under a valid
+configuration, and both `workflow_config_failures` dispositions are wrong for it. Section 14.2
+states its disposition. The implementation side found the scope had to be stated: the report is
+owed for an issue that fails none of Section 8.2's conditions over the record, whatever the
+instance's own state. Gating it on capacity would make it follow load, so `on_tick` now routes ahead
+of its dispatch loop. Reporting every candidate would flood a shared tracker with issues not meant
+for this instance. 0175's second trigger arrived with this fourth non-failure token, so
+`conformance/vocabulary.json` publishes `non_failure_conditions`. How often the report repeats is
+left unfixed. Relates to 0175, 0155.
+
+## 0185 — A hook cannot decline what runs before its first line
+
+**State:** Applied
+**Folder:** [decisions/0185-hook-shell-no-startup-file/](decisions/0185-hook-shell-no-startup-file/)
+
+Section 9.4 requires a workspace hook's script to be the first thing its shell runs, with no startup
+file sourced ahead of it, in both halves. `sh -c <script>` is the conforming default, and a `bash -c`
+implementation MUST keep `BASH_ENV` from the shell. Reported as issue #172 from `symphony-rs`, the
+case 0172 left open. Three of the report's arguments do not hold: `sh -lc` was a default, not a
+mandate; nothing parses hook output, so 0172's framing argument does not carry; and Section 15.4's
+ladder covers repository-owned configuration, not a host's profile. What decides it:
+
+- a script can opt in to a profile with one line but cannot opt out of one;
+- `-l` does not reliably deliver the toolchain it is wanted for, because `/etc/profile` assigns
+  `PATH` (measured, dash 0.5.12 and bash 5.2.37);
+- in-sandbox, it delivers what Section 9.6 forbids;
+- host-side, it makes one reviewed revision behave differently from host to host.
+
+The implementation side found that `bash -c` sources `BASH_ENV` even under `--norc --noprofile`, so
+the clause states the property rather than ruling out a login shell alone. Section 10.1's `bash -c`
+stands, because the agent's environment is composed. Chosen over splitting the halves, which keeps
+only an unreliable convenience. Relates to 0172.

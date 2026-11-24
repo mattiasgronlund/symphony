@@ -1536,7 +1536,9 @@ claimed by construction and the conditions evaluated whole would refuse every is
 about. The fire releases that claim with the retry entry it consumes rather than excepting the
 condition (Section 16.7). Routing is not among the conditions either site tests: `dispatch_issue`
 evaluates the mapping for both callers (Sections 8.7, 16.4), and Section 8.7's standing routing
-condition is stated over a run's recorded `repository`, which a fire has none of.
+condition is stated over a run's recorded `repository`, which a fire has none of. Each site
+also evaluates the mapping to report an ambiguity, which Section 8.7 scopes by the record and not
+by the instance's capacity (Sections 16.2, 16.7).
 
 Which of these conditions a reconciliation pass may re-test is fixed here rather than left to
 Section 8.5. The conditions this section states over the issue record are **standing**: re-evaluated
@@ -1839,13 +1841,26 @@ Issue-to-repository routing:
   mapping names the fields above, and `title`, `description` and `metadata` — which the
   orchestrator core does not interpret (Section 4.1.1) — are not among them.
 - Where the mapping matches an issue to more than one repository, that issue is not routed and not
-  dispatched, and the condition is reported to the operator. Two rules naming the same repository
+  dispatched, and the condition is reported to the operator under the token `routing_ambiguous`,
+  naming every repository the mapping matched. Two rules naming the same repository
   are not an ambiguity: what must be unique is the repository, not the rule that reached it. The
   rule is stated over the issue rather than over the configuration, because two rules may be
   disjoint over every issue that exists today and overlap on one filed tomorrow, so no configuration
   check stands in for it. A dispatch grants an agent commit and pull-request authority in the
   repository it routes to, so an implementation that picked a match would be choosing where to grant
   that.
+- The `routing_ambiguous` report is owed for an issue that fails none of Section 8.2's conditions
+  over the record — field presence, state membership, `tracker.required_labels`, `tracker.assignee`
+  and the `Todo` blocker rule — whatever the instance's own state. The `running` and `claimed`
+  memberships and both concurrency limits do not gate it: they describe the instance rather than the
+  issue, so a report they gated would follow load, and a saturated instance would hear nothing of an
+  issue it can never run. An issue a condition over the record holds back is not reported, because
+  on a shared tracker those conditions can be what separates this instance's issues from another's,
+  and nothing is withheld from an issue that could not dispatch anyway. The spelling is REQUIRED, on
+  the ground Section 14.1 states for its own tokens. It is **not** a Section 14.1 classification:
+  the fetch succeeded and the mapping answered, and the repair may be a label edit on one issue
+  rather than a configuration edit. Its disposition is stated in Section 14.2. How often a standing
+  overlap is reported is not fixed.
 - Routing is a standing condition of a dispatched run and not only a dispatch-time computation
   (Section 8.2). For as long as a run is in flight the mapping is re-evaluated against the current
   normalized record on every issue-state refresh, and the result MUST still name the repository the
@@ -2214,8 +2229,11 @@ Execution contract:
   `WORKFLOW.md` runs inside the run's sandbox. A lifecycle point MAY be defined in one artifact or
   in both; every half that is defined runs, and each bullet below applies to each half
   independently rather than to the lifecycle point as a whole.
-- Execute in a local shell context appropriate to the host OS. On POSIX systems, `sh -lc <script>`
-  (or a stricter equivalent such as `bash -lc <script>`) is a conforming default.
+- Execute in a local shell context appropriate to the host OS, with the script the first thing the
+  shell runs: no startup file is sourced ahead of it, which rules out a login shell. On POSIX
+  systems, `sh -c <script>` is a conforming default. `bash -c` sources the file `BASH_ENV` names
+  even under `--norc` and `--noprofile`, so an implementation using it MUST ensure that variable
+  does not reach the shell.
 - The working directory differs by execution context and is stated in Section 15.4: an in-sandbox
   half runs with the workspace directory as `cwd`; a host-side half does not, and receives the
   workspace path as an argument or environment value. Section 15.4 owns the rule and the reason it
@@ -2225,6 +2243,17 @@ Execution contract:
   pair. One artifact's value governs both halves because the wait is one party's: the executor runs
   both trust levels and waits on each from outside the sandbox (Sections 3.1, 15.4).
 - Log hook start, failures, and timeouts, naming the execution context the half ran in.
+
+Note: the shell rule holds for both halves, for reasons that differ by half. In either, a startup
+file runs before the script's first line, so the script cannot decline it, while under a shell
+that sources none a script opts in with one line — a hook that needs a version manager's toolchain
+writes `. "$HOME/.profile"`, or the narrower file it needs, in reviewed text. A login shell does not
+reliably deliver that toolchain either: where `/etc/profile` assigns `PATH` rather than extending
+it, the path the shell was started with is lost. In-sandbox, a startup file that exports a
+location-bearing variable is what Section 9.6 forbids reaching the run. Host-side, Section 9.6 does
+not apply; there the reason is that the body is read from the policy branch so that a reviewed
+revision decides what runs (Section 15.4), and a per-host file run ahead of it makes one revision
+behave differently from host to host.
 
 Order:
 
@@ -3804,6 +3833,10 @@ Message formatting requirements:
   routing, the record also names the repository the run held (Sections 4.1.8, 8.7) — without it an
   operator cannot tell a mapping edit from a label edit, which are different repairs. The stable
   `key=value` phrasing above carries both; neither is a new context field.
+- A record reporting a routing ambiguity (`routing_ambiguous`, Section 8.7) names every repository
+  the mapping matched, not only the first two an evaluation met: the operator's repair is to
+  separate the rules that overlap, and that needs the whole overlap. This specification does not
+  fix how the list is rendered within the stable `key=value` phrasing.
 - Avoid logging large raw payloads unless necessary.
 - Agent-produced free text reaches the log already redacted of the run's resolved secret values: the
   requirement binds where the text is captured, not at each sink (Section 15.3).
@@ -4315,6 +4348,15 @@ instance's, a repository's workflow file is that repository's.
   B states, and is not restated here; a retry is what this section rules out, because the condition
   clears by a label being re-added, an assignment restored or a mapping edit corrected, none of
   which a retry brings about.
+
+- A routing ambiguity (`routing_ambiguous`; Section 8.7) is neither dispatched, retried nor failed.
+  It is not a failure class (Section 14.1): the candidate fetch succeeded and the mapping answered.
+  It is listed here for the reason `standing_condition_lost` above is. The issue takes no claim,
+  no running entry and no retry entry, and stays a candidate that each later tick evaluates again,
+  so it dispatches on the first tick after the overlap is removed, whether by a label edit on the
+  issue or by a mapping edit, with no other action. Neither `workflow_config_failures` disposition
+  fits it: skipping new dispatches stops the whole instance over one issue, and the workflow-file
+  disposition retries a run attempt that does not exist.
 
 - Repository provisioning failures (`repository_provisioning_failures`):
   - Skip new dispatches for the affected repository; the object store is shared across all of its
@@ -4858,6 +4900,15 @@ on_tick(state):
     schedule_tick(state.poll_interval_ms)
     return state
 
+  # Routing is evaluated for every candidate ahead of the dispatch loop, at step 3 of the tick
+  # sequence (Section 8.1), so the slot break below cannot reach the report: an ambiguity is owed
+  # for an issue that fails none of Section 8.2's conditions over the record, whatever the
+  # instance's own state (Section 8.7). dispatch_issue does not report it again (Section 16.4).
+  for issue in issues:
+    routed = route_issue(issue)
+    if routed.ambiguous and record_conditions_hold(issue):
+      log_routing_ambiguous(issue, routed.matched)
+
   for issue in sort_for_dispatch(issues):
     if available_slots(state) == 0:
       break
@@ -4987,6 +5038,12 @@ function dispatch_issue(issue, state, attempt):
   # repo_of(issue) is Section 8.7's mapping evaluated over the normalized record: the union of the
   # `repository` entries' routing rules (Section 5.3.7). It returns the issue's Repository Key
   # (Section 4.2), which the running entry below records and the workspace path carries.
+  if repo_of(issue) is not exactly one repository:
+    # Unrouted, or matched to several (Section 8.7). Not reported here - both callers have already
+    # reported an ambiguity (Sections 16.2, 16.7) - and nothing is claimed, so the issue stays a
+    # candidate a later tick evaluates again, and a retry fire's issue stays released
+    # (Section 14.2).
+    return state
   store = ensure_object_store(repo_of(issue))
   if store failed:
     # Two classes reach here and neither is per-worker (Section 14.1): a provisioning result the
@@ -5339,6 +5396,13 @@ on_retry_timer(issue_id, generation, state):
   if not should_dispatch(issue, state):
     return state
 
+  # A fire is a dispatch, so it reports a routing ambiguity as on_tick does, here after the record
+  # conditions just tested (Section 8.7), and returns with the issue released (Section 14.2).
+  routed = route_issue(issue)
+  if routed.ambiguous:
+    log_routing_ambiguous(issue, routed.matched)
+    return state
+
   return dispatch_issue(issue, state, attempt=retry_entry.attempt)
 ```
 
@@ -5502,6 +5566,10 @@ deployment satisfies by using a conforming engine rather than by implementing th
 - `before_remove` hook runs on cleanup and failures/timeouts are ignored; at both removal paths —
   the startup sweep and reconciliation teardown — the host-side half runs and the in-sandbox half is
   skipped and logged, no run context existing at either (Sections 8.6, 9.4, 16.3)
+- A workspace hook's shell sources no startup file ahead of the script, in either half: with `HOME`
+  holding a profile the test controls and `BASH_ENV` naming a file the test controls, each of which
+  would export a marker variable, a host-side half and an in-sandbox half each observe neither
+  marker (Section 9.4)
 - An agent-authored bound reaches neither half: with `hooks.workspace.timeout_ms` set to `1` in the
   workspace's `WORKFLOW.md`, both halves still run under the policy source's bound, so the host-side
   `after_run` half runs to completion rather than being timed out into the failure Section 9.4 logs
@@ -5696,6 +5764,16 @@ These checks are `Daemon Conformance`.
   `standing_condition_lost` with the reason naming which condition failed — `required_labels`,
   `assignee` or `routing` — and carries no Section 14.1 failure class, so an operator filtering the
   record can tell it from a fault (Sections 8.5, 14.1, 14.2)
+- An issue the mapping matches to more than one repository is not dispatched and is reported as
+  `routing_ambiguous`, naming every repository matched — all three where three match — and carrying
+  no Section 14.1 failure class. It takes no claim and no retry entry, and dispatches on the first
+  tick after a label edit removes the overlap (Sections 8.7, 13.1, 14.2)
+- The `routing_ambiguous` report follows the record and not the instance: an instance with no free
+  dispatch slot still reports an ambiguous issue no condition over the record holds back, and an
+  ambiguous issue missing a `tracker.required_labels` label, or a `Todo` issue with a non-terminal
+  blocker, is not reported (Section 8.7)
+- A retry timer fire for an issue that has become ambiguous reports `routing_ambiguous`, dispatches
+  nothing and leaves the issue released (Sections 8.7, 16.7)
 - Non-active state stops running agent without workspace cleanup
 - Terminal state stops running agent and cleans workspace
 - Reconciliation with no running issues is a no-op
@@ -6004,6 +6082,8 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
 - Both halves of a lifecycle point execute (Section 9.4): setup points run host-side first and
   teardown points in-sandbox first, a fatal half leaves the other unrun, and a workspace-removal
   path runs the host-side half alone because no run context exists there (Sections 8.6, 16.3)
+- Both halves of a lifecycle point run in a shell that sources no startup file ahead of the script:
+  not a login shell, and with `BASH_ENV` kept from a `bash -c` shell (Section 9.4)
 - Hook timeout config (`hooks.workspace.timeout_ms`, default `60000`), read from the policy source
   and bounding both halves; a value in `WORKFLOW.md` is not honored (Sections 5.3.4, 15.4)
 - Neutral agent runner contract with at least the `codex` and `claude_code` adapters (Codex
@@ -6097,7 +6177,9 @@ Required of the `daemon` topology only.
   and one shared tracker polled once per cycle; workspace/concurrency keyed by (repository, issue)
 - The routing mapping is evaluated over the normalized record's own fields (`project`, `team`,
   `labels`, `assignees`, `state`) rather than over a raw tracker payload, and an issue more than one
-  repository's rule claims is left unrouted (Sections 4.1.1, 8.7)
+  repository's rule claims is left unrouted and reported as `routing_ambiguous`, naming every
+  repository matched, for an issue no condition over the record holds back, whatever the instance's
+  load, and with no Section 14.1 failure class (Sections 4.1.1, 8.7, 14.2)
 - Strict prompt rendering with `issue` and `attempt` variables: the REQUIRED minimal template
   subset with no portable filters (Section 5.4); a bound null value rendering as the empty string;
   a closed `issue` member set failing `template_render_error` whatever stage the engine resolves
