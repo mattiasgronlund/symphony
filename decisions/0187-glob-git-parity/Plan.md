@@ -86,7 +86,8 @@ These stay unchanged:
      - `reversed_range_refuses_every_base`;
      - `close_bracket_first_is_a_member`: `[]]` admits `]`;
      - `empty_brackets_are_unclosed`: `a/[]` refuses every base;
-     - `dash_after_a_range_is_a_member`: `a/[a-c-m]` admits `a/-`, and `a/d` is refused;
+     - `dash_after_a_range_is_a_member`: `a/[a-c-m]` admits `a/-`;
+     - `dash_after_a_range_does_not_extend_it`: `a/[a-c-m]` refuses `a/d`;
      - `backslash_escapes_inside_brackets`: `a/[a\-c]` refuses `a/b`;
      - `bare_double_star_matches_every_name`: `**` admits `release/1.2`;
      - `plain_entry_does_not_admit_a_branch_below_it`: `release` refuses `release/1.2`;
@@ -112,11 +113,15 @@ These stay unchanged:
 
 ## Anchor changes
 
-- Added: the twelve vector ids in step 7, in `conformance/vcsx/vectors/base-branch-allowed.json`.
+- Added: the thirteen vector ids in step 7, in `conformance/vcsx/vectors/base-branch-allowed.json`.
+- Added: `base-branch-pattern-reversed-range` and `base-branch-allowed-empty-list`, in
+  `conformance/vectors/config-preflight.json`.
 
 Nothing is renamed or removed. `question_mark_matches_one_character` keeps its id; its entry and base
 are ASCII, so bytes and characters agree on it.
 
 ## Status
 
-Not started.
+Applied to `SPEC.md`, `VCSX-SPEC.md` and the conformance data in pull request #187, together
+with this record. Re-run after the edit, all 35 vectors that pure wildmatch can check agree with
+git 2.56.1's `test-tool wildmatch wildmatch`.

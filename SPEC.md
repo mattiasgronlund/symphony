@@ -1256,7 +1256,7 @@ Operator policy config:
 - `vcs.policy_source`: string, `policy_branch` | `target_branch`, default `policy_branch`; where host-side Way of Working is read from (Sections 9.7, 15.4)
 - `vcs.policy_branch`: REQUIRED under `policy_source = "policy_branch"`, no default; the branch `repo.policy.toml`'s host-side parts are read from. Never a pull-request target (Sections 9.7, 9.10, 15.4)
 - `vcs.base_branch`: the operator's default pull-request target; middle of three sources (issue, then this, then `repo.policy.toml`), default unset
-- `vcs.base_branch_allowed`: OPTIONAL bound on the targets a per-issue source may name, default unset (unbounded); each entry a whole-name gitignore-pattern glob (`VCSX-SPEC.md` Section 8.1)
+- `vcs.base_branch_allowed`: OPTIONAL bound on the targets a per-issue source may name, default unset (unbounded), and an empty list admits no target; each entry a whole-name gitignore-pattern glob, matched by byte (`VCSX-SPEC.md` Section 8.1)
 - `vcs.local_vcs`: REQUIRED; the VCS backend the engine loads, and the checkout mode for one it creates. For a checkout it did not create the backend detects the mode (Section 9.7)
 - `vcs.author` / `vcs.actor`: identity mapping for commits and the push/PR actor
 - `vcs.await_bound_ms` / `vcs.await_max_reads` / `vcs.await_interval_ms`: the bounds Symphony hands the engine's `await_checks` on `merge:checks_pending` (Sections 8.11, 9.10); defaults `Implementation-defined` and documented. Reaching either bound parks the issue; a pull request with no required checks returns `no_checks` and the flow continues
@@ -2506,6 +2506,8 @@ Configuration:
     name, as branch names or patterns. An issue naming a target outside it is refused
     (`VCSX-CONTRACT.md`).
     - Default: unset — a per-issue target is otherwise unbounded.
+    - A configured empty list permits no per-issue target, and is distinct from the key being unset.
+      Read as unset, a bound whose last entry was removed would admit every target.
     - Each entry is a glob in the syntax of a gitignore pattern, matched against the whole branch
       name as `VCSX-SPEC.md` Section 8.1 defines for the engine's bound. Symphony applies the same
       match when it refuses a per-issue target, so the orchestrator and the engine refuse the same
@@ -5710,9 +5712,10 @@ deployment satisfies by using a conforming engine rather than by implementing th
   specific winning; a per-issue target outside `vcs.base_branch_allowed` is refused before the run
   starts and no work branch is created; a `vcs.base_branch_allowed` entry matches the whole branch
   name, so `main` does not admit a per-issue target `release/main` and `release/*` does not admit
-  `release/1.2/hotfix`, and Symphony and the engine refuse the same targets for one bound; where no
-  source supplies one, an operation needing a target is refused while commit, push and provisioning
-  are unaffected (Section 9.7)
+  `release/1.2/hotfix`, and Symphony and the engine refuse the same targets for one bound; a
+  configured empty `vcs.base_branch_allowed` refuses every per-issue target, while an unset one
+  refuses none but `vcs.policy_branch`; where no source supplies one, an operation needing a target
+  is refused while commit, push and provisioning are unaffected (Section 9.7)
 - The action-policy machine (Section 9.12): an `op:#class` edge catches an unnamed operation reason,
   an unmatched operation outcome is fail-safe (parked, not silently dropped), and an unmatched
   lifecycle position runs nothing while the operation proceeds; a repository binds `await_checks:*`

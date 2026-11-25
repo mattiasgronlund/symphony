@@ -8,7 +8,7 @@
   "given": "the supplied `base_branch`, the consumer configuration's `base_branch_allowed` (null where unset), and the `policy_branch`",
   "expect": "whether the base is permitted, and the reason a refusal carries",
   "notes": [
-    "Each entry is a glob in the syntax of a gitignore pattern, matched against the whole name (Section 8.1). Every vector whose entry is well formed and not a negation was checked against git's own wildmatch with `git for-each-ref refs/heads/<entry>` over a single branch `refs/heads/<base>`, git 2.47.3, which matches the full ref name with the gitignore glob rules. `git check-ignore` is not a substitute: it also matches a path inside a directory an entry matches, so it reports `release/*` matching `release/1.2/hotfix`, which is gitignore's directory rule and not the glob.",
+    "Each entry is a glob in the syntax of a gitignore pattern, matched byte by byte against the whole name (Section 8.1). Every vector whose entry is well formed and not a negation was checked against git's own wildmatch with git's test helper, `t/helper/test-tool wildmatch wildmatch <base> <entry>`, which calls wildmatch with `WM_PATHNAME` and nothing else; git 2.47.3 and 2.56.1 agree. `git for-each-ref refs/heads/<entry>` is not a substitute: it tries a leading-component prefix match before the glob, so `release` lists `release/1.2` (`plain_entry_does_not_admit_a_branch_below_it`) and an empty entry lists every ref. Nor is `git check-ignore`: it also matches a path inside a directory an entry matches, so it reports `release/*` matching `release/1.2/hotfix`, which is gitignore's directory rule and not the glob. The not-well-formed vectors state where the bound parts from git: git reads a reversed range as its first endpoint, and reads `[]` and an unknown class as matching nothing.",
     "Where the vectors part from a gitignore *line*: `slash_free_entry_does_not_match_at_any_level` and the two `negation_entry_*` vectors. A gitignore line with no `/` matches at any level and a leading `!` re-includes; neither has a meaning in a whole-name allow-list that does not widen it.",
     "Judged wherever a base was supplied, whatever the entry (Section 8.6), so the entry point is not an input here; whether the invocation needs a base at all is `base-precondition.json`'s question, and which base results is `base-resolution.json`'s."
   ],
@@ -31,6 +31,18 @@
       "given": {
         "base_branch": "policy",
         "base_branch_allowed": null,
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "empty_bound_admits_no_base",
+      "description": "A bound configured as the empty set admits no base, and is not the unconfigured bound: read as unconfigured, an allow-list whose last entry was removed would admit every name (Section 8.1).",
+      "given": {
+        "base_branch": "main",
+        "base_branch_allowed": [],
         "policy_branch": "policy"
       },
       "expect": {
@@ -86,6 +98,20 @@
         "base_branch": "release/main",
         "base_branch_allowed": [
           "main"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "plain_entry_does_not_admit_a_branch_below_it",
+      "description": "An entry with no metacharacter admits exactly its own spelling, not a branch below it. `git for-each-ref refs/heads/release` would list `release/1.2`, which is its prefix rule and not the glob.",
+      "given": {
+        "base_branch": "release/1.2",
+        "base_branch_allowed": [
+          "release"
         ],
         "policy_branch": "policy"
       },
@@ -262,8 +288,22 @@
       }
     },
     {
+      "id": "bare_double_star_matches_every_name",
+      "description": "`**` alone is a whole segment at both ends, so it matches every name, at any depth.",
+      "given": {
+        "base_branch": "release/1.2",
+        "base_branch_allowed": [
+          "**"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
       "id": "question_mark_matches_one_character",
-      "description": "`?` matches exactly one character.",
+      "description": "`?` matches exactly one byte.",
       "given": {
         "base_branch": "v1.x",
         "base_branch_allowed": [
@@ -277,7 +317,7 @@
     },
     {
       "id": "question_mark_does_not_match_two",
-      "description": "`?` matches exactly one character.",
+      "description": "`?` matches exactly one byte.",
       "given": {
         "base_branch": "v10.x",
         "base_branch_allowed": [
@@ -287,6 +327,34 @@
       },
       "expect": {
         "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "question_mark_matches_one_byte",
+      "description": "Matching is by byte: `é` is two bytes in UTF-8, so `?` does not match it.",
+      "given": {
+        "base_branch": "a/é",
+        "base_branch_allowed": [
+          "a/?"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "two_question_marks_match_a_two_byte_character",
+      "description": "Matching is by byte: `??` matches the two bytes of `é`.",
+      "given": {
+        "base_branch": "a/é",
+        "base_branch_allowed": [
+          "a/??"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
       }
     },
     {
@@ -338,6 +406,76 @@
         "base_branch": "hotfix/1a",
         "base_branch_allowed": [
           "hotfix/[^0-9]*"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "posix_class_matches_its_ascii_members",
+      "description": "`[:alpha:]` is a class with its ASCII meaning, not the set `[ : a l p h` followed by a literal `]`.",
+      "given": {
+        "base_branch": "a/b",
+        "base_branch_allowed": [
+          "a/[[:alpha:]]"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "close_bracket_first_is_a_member",
+      "description": "A `]` directly after the opening `[` is a member of the set, not its end.",
+      "given": {
+        "base_branch": "]",
+        "base_branch_allowed": [
+          "[]]"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "dash_after_a_range_is_a_member",
+      "description": "A `-` directly after a range is a member, so `[a-c-m]` is `a` to `c`, `-` and `m`.",
+      "given": {
+        "base_branch": "a/-",
+        "base_branch_allowed": [
+          "a/[a-c-m]"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "permitted": true
+      }
+    },
+    {
+      "id": "dash_after_a_range_does_not_extend_it",
+      "description": "A `-` directly after a range is a member, not a second range from `c` to `m`.",
+      "given": {
+        "base_branch": "a/d",
+        "base_branch_allowed": [
+          "a/[a-c-m]"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "backslash_escapes_inside_brackets",
+      "description": "`\\` makes the next byte literal inside a set, so `[a\\-c]` is `a`, `-` and `c`, and not the range `a` to `c`.",
+      "given": {
+        "base_branch": "a/b",
+        "base_branch_allowed": [
+          "a/[a\\-c]"
         ],
         "policy_branch": "policy"
       },
@@ -454,6 +592,51 @@
         "base_branch_allowed": [
           "main",
           "release/[ab"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "reversed_range_refuses_every_base",
+      "description": "A range whose first endpoint is above its second is not well formed. Git reads `[z-a]` as `z` alone; the bound refuses it instead, since it is written meaning `[a-z]`.",
+      "given": {
+        "base_branch": "main",
+        "base_branch_allowed": [
+          "main",
+          "a/[z-a]"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "unknown_posix_class_refuses_every_base",
+      "description": "A class name outside the twelve is not well formed.",
+      "given": {
+        "base_branch": "main",
+        "base_branch_allowed": [
+          "main",
+          "a/[[:bogus:]]"
+        ],
+        "policy_branch": "policy"
+      },
+      "expect": {
+        "error": "base_branch_not_permitted"
+      }
+    },
+    {
+      "id": "empty_brackets_are_unclosed",
+      "description": "A `]` directly after the opening `[` is a member, so `[]` is an unclosed `[`, and not well formed.",
+      "given": {
+        "base_branch": "main",
+        "base_branch_allowed": [
+          "main",
+          "a/[]"
         ],
         "policy_branch": "policy"
       },

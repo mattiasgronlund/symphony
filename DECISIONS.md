@@ -7339,7 +7339,7 @@ Relates to 0169, 0073.
 
 ## 0187 — A glob with git as its reference, and five places it is not git's
 
-**State:** Accepted
+**State:** Applied
 **Folder:** [decisions/0187-glob-git-parity/](decisions/0187-glob-git-parity/)
 
 A `base_branch_allowed` entry is git's wildmatch with `WM_PATHNAME`, stated in `VCSX-SPEC.md`
