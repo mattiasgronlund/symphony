@@ -132,6 +132,32 @@
       "expect": { "valid": false, "reason": "invalid_base_branch_pattern" }
     },
     {
+      "id": "base-branch-pattern-reversed-range",
+      "description": "A range whose first endpoint is above its second is not a well-formed pattern; git would read `[z-a]` as `z` alone (`VCSX-SPEC.md` Section 8.1).",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": ["release/[z-a]"] } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "invalid_base_branch_pattern" }
+    },
+    {
+      "id": "base-branch-allowed-empty-list",
+      "description": "An empty list is well formed: it permits no per-issue target, which is a configuration Section 9.7 applies, not one it refuses at startup.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": [] } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": true, "reason": null }
+    },
+    {
       "id": "base-branch-pattern-escaped-bang-is-literal",
       "description": "An escaped `!` is a literal character, as in a gitignore pattern, so the entry is well formed and admits a branch spelled with one.",
       "given": {

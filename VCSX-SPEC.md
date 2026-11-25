@@ -1789,22 +1789,38 @@ supply it two ways:
   consumer configuration rather than to a single invocation, so the party bounding the choice is not
   the party making it. The `policy_branch` is excluded whatever this lists, and whether or not it is
   configured at all: a bound an operator must remember to set is a guarantee that fails by omission,
-  and this one is the specification's rather than the operator's.
-  - Each entry is a glob in the syntax of a gitignore pattern. `*` matches any run of characters
-    other than `/`; `?` matches one character other than `/`; `[...]` matches one character from a
-    set or range, negated by a leading `!` or `^`, and never matches `/`; `\` makes the next
-    character literal. `**` is special only where it is a whole segment: a leading `**/` matches
-    zero or more leading segments, a trailing `/**` one or more trailing segments, and `/**/` zero
-    or more segments between two; anywhere else it is `*`. Every other character, a brace included,
-    matches itself, and matching is case-sensitive.
+  and this one is the specification's rather than the operator's. A bound configured as the empty
+  set admits no base, so every supplied `base_branch` is `base_branch_not_permitted`; it is distinct
+  from a bound not configured, which bounds nothing beyond the `policy_branch`. Read as
+  unconfigured, an allow-list whose last entry was removed would admit every name.
+  - Each entry is a glob in the syntax of a gitignore pattern, matched byte by byte. `*` matches any
+    run of bytes other than `/`; `?` matches one byte other than `/`; `[...]` matches one byte from
+    a set and never matches `/`; `\` makes the next byte literal, inside a set as outside one. `**`
+    is special only where it is a whole segment, with the entry's start or a `/` before it and the
+    entry's end or a `/` after it: a leading `**/` matches zero or more leading segments, a trailing
+    `/**` one or more trailing segments, `/**/` zero or more segments between two, and an entry that
+    is `**` alone matches every name; anywhere else it is `*`. Every other character, a brace
+    included, matches itself, and matching is case-sensitive. A non-ASCII character is several
+    bytes, so `release/?` does not admit `release/é`, and a non-ASCII member of a set is a set of
+    its bytes.
+  - A set holds members, ranges and classes, and a leading `!` or `^` negates it. A `]` directly
+    after the opening `[`, or after its `!` or `^`, is a member, so `[]]` matches `]`; a later
+    unescaped `]` closes the set. A range `lo-hi` matches a byte from `lo` to `hi` inclusive, and a
+    `-` that is first or last, or that directly follows a range or a class, is a member, so
+    `[a-c-m]` is `a` to `c`, `-` and `m`. A class is one of `[:alnum:]`, `[:alpha:]`, `[:blank:]`,
+    `[:cntrl:]`, `[:digit:]`, `[:graph:]`, `[:lower:]`, `[:print:]`, `[:punct:]`, `[:space:]`,
+    `[:upper:]` and `[:xdigit:]`, each with its ASCII meaning, so no class matches a non-ASCII byte.
   - An entry matches the whole name or does not match. It is a gitignore pattern's glob, not a
     gitignore line: an entry with no `/` matches no name containing one, so `main` does not admit
     `release/main`, and an entry with no metacharacter admits exactly its own spelling.
-  - An entry beginning with an unescaped `!`, or one that is not well formed — an unclosed `[`, a
-    trailing unescaped `\` — permits no base, and neither does a bound holding it, so every supplied
-    `base_branch` is `base_branch_not_permitted` (Section 8.6). A gitignore negation read as a
-    literal entry would leave the exclusion it was written for unapplied, and a bound holding one
-    would admit the branch its author meant to remove.
+  - An entry beginning with an unescaped `!`, or one that is not well formed — an unclosed `[`, `[]`
+    and `[!]` among them, a trailing unescaped `\`, a range whose first endpoint is above its
+    second, or a class name not listed above — permits no base, and neither does a bound holding
+    it, so every supplied `base_branch` is `base_branch_not_permitted` (Section 8.6). A gitignore
+    negation read as a literal entry would leave the exclusion it was written for unapplied, and a
+    bound holding one would admit the branch its author meant to remove. Git reads a reversed range
+    as its first endpoint alone; it is refused here instead, because `[z-a]` is written meaning
+    `[a-z]`, and a bound admitting `z` alone would be one its author did not write.
 
 Where no source supplies a base, an entry that needs one is refused before the policy runs; an entry
 that needs none runs (Section 8.6). That scoping is the default mode's: under `target_branch` the
@@ -3785,9 +3801,14 @@ A conforming engine SHOULD include tests covering:
   `base_branch_allowed` yields `base_branch_not_permitted` whatever the entry, including entries
   that need no base; a `base_branch_allowed` entry matches the whole name, so `main` does not admit
   `release/main`, `release/*` admits `release/1.2` and not `release/1.2/hotfix`, `release/**` admits
-  both and not `release`, `release**` admits `release-1` and not `release/1`, and `Main` does not
-  admit `main`; a bound holding an entry that begins with an unescaped `!`, or one with an unclosed
-  `[`, refuses every supplied base, its well-formed entries included; an entry outside the
+  both and not `release`, `release**` admits `release-1` and not `release/1`, `**` alone admits
+  `release/1.2`, and `Main` does not admit `main`; matching is by byte, so `a/?` does not admit
+  `a/é` and `a/??` does; `a/[[:alpha:]]` admits `a/b`, `[]]` admits `]`, `a/[a-c-m]` admits `a/-`
+  and not `a/d`, and `a/[a\-c]` does not admit `a/b`; a bound holding an entry that begins with an
+  unescaped `!`, or one with an unclosed `[` (`[]` included), a reversed range such as `[z-a]` or an
+  unknown class such as `[[:bogus:]]`, refuses every supplied base, its well-formed entries
+  included; a bound configured as the empty set refuses every supplied base, while an unconfigured
+  one refuses only the `policy_branch`; an entry outside the
   base-needing set that routes to `integrate` through a `run_op` edge reports that operation's own
   reason rather than a precondition (Sections 6.4, 8.1, 8.6).
 - The base under `target_branch`: a `status` invocation supplying no `base_branch`, against a
@@ -4070,9 +4091,10 @@ A conforming engine SHOULD include tests covering:
   without a policy document and establishes no precondition that reads a checkout, being the
   operation that obtains both.
 - Base resolution from three sources — the invocation, the consumer configuration, then
-  `[base] branch` — with the bound on what an invocation may name, matched as a whole-name
-  gitignore-pattern glob that refuses every base where an entry is a negation or is not well formed,
-  and the refusal scoped to the entries that need a base. Resolution runs before `[[branch]]`
+  `[base] branch` — with the bound on what an invocation may name, matched byte by byte as a
+  whole-name gitignore-pattern glob that refuses every base where an entry is a negation or is not
+  well formed, a bound configured empty kept distinct from one not configured, and the refusal
+  scoped to the entries that need a base. Resolution runs before `[[branch]]`
   section selection and reads no section, and a section carrying `[base]` or `[scope]` — the keys
   that select it — is refused. Under `target_branch` the third source drops out and the refusal
   reaches every entry but `provision`, before validation, the base being what locates the policy
