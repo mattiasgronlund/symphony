@@ -7336,3 +7336,26 @@ two new arms were handled, so `integrate:failed` and the forge-reachability reas
 agent. The attempt now continues past the back-merge only on `integrate:ok`, `integrate:up_to_date`
 or the conflict; every other result fails the worker with the reason surfaced and a backoff retry.
 Relates to 0169, 0073.
+
+## 0187 — A glob with git as its reference, and five places it is not git's
+
+**State:** Accepted
+**Folder:** [decisions/0187-glob-git-parity/](decisions/0187-glob-git-parity/)
+
+A `base_branch_allowed` entry is git's wildmatch with `WM_PATHNAME`, stated in `VCSX-SPEC.md`
+Section 8.1's own words, with one deliberate difference. Reported as issue #186 from `symphony-rs`:
+0183 made git the reference, and Section 8.1's wording parted from git where it said `?` matches
+"one character" and where it said nothing at all. The rule behind every answer is the direction of
+the difference: a bound narrower than an operator's git check refuses visibly, while a wider one
+admits a base the operator tested and saw refused, and nothing reports that. So matching is over
+bytes, since characters would admit `release/é` under `release/?` where git refuses it. `[...]`
+admits git's twelve POSIX classes with ASCII meanings, because the literal reading of
+`[[:alpha:]]` widens. `[...]` also follows git's grammar: `]` first is a member, `-` at an edge or
+after a range is literal, and `\` escapes inside a set, which makes `[]` and `[!]` unclosed. `**`
+is special wherever it is a whole segment, so a bare `**` matches every name; that gap was found
+while checking the issue. The one difference from git: a reversed range is not well formed, where
+git degrades it to its first endpoint by an accident of its loop. A configured empty bound admits no
+base, under the engine's key and `SPEC.md` Section 9.7's alike, and unset stays unbounded. Reading
+`[]` as unset would make an allow-list widen to everything when its last entry is removed. The
+fixture's method moves from `for-each-ref`, which prefix-matches plain entries, to git's
+`test-tool wildmatch`. Measured on git 2.47.3 and 2.56.1, with identical results. Relates to 0183.
