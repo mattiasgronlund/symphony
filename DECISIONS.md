@@ -7359,3 +7359,30 @@ base, under the engine's key and `SPEC.md` Section 9.7's alike, and unset stays 
 `[]` as unset would make an allow-list widen to everything when its last entry is removed. The
 fixture's method moves from `for-each-ref`, which prefix-matches plain entries, to git's
 `test-tool wildmatch`. Measured on git 2.47.3 and 2.56.1, with identical results. Relates to 0183.
+
+## 0188 — A workspace is created when its `after_create` completes
+
+**State:** Applied
+**Folder:** [decisions/0188-uncreated-workspace/](decisions/0188-uncreated-workspace/)
+
+A workspace is created once its `after_create` halves have completed, and Symphony keeps a
+completion record of that moment. A directory at the workspace path with no record is uncreated:
+Section 9.2 discards it and creates it again, so `after_create` runs on a fresh tree. Reported as
+issue #188 from `symphony-rs`. Nothing said what a fatal `after_create` left behind, so the
+directory stayed, the next attempt marked `created_now=false`, and every later attempt ran without
+the hook's preparation, with nothing reporting it. Removing the directory when the attempt ends,
+`symphony-rs`'s first fix, needs a process alive to do it, and a crash, a `SIGKILL` or a lost node
+leaves none. The rule depends on whether creation completed, never on why it did not, so one rule
+covers every cause.
+
+The record is kept by the party holding the workspace, outside the workspace and anything the
+sandbox can write. It is written atomically or as a bare marker, and it is durable before the first
+agent session. It is cleared durably before the directory is created, because otherwise a stale
+record and a failed `after_create` reproduce the bug. On removal it is cleared before the directory.
+A marker inside the tree was rejected because the sandbox mounts the tree writable. Discarding an
+uncreated directory is not a workspace removal and runs no `before_remove`, since teardown unwinds
+a setup that completed. The record's location and the migration of pre-existing workspaces are
+`Implementation-defined`, each with a template row. A grandfather clause was rejected as
+uncheckable. Section 16.6 gains the `after_create` call sites it never had. Three findings on the
+issue thread tightened the record's rules, and they share one shape: a crash-survival argument not
+applied to the record's own operations. Relates to 0128, 0118.

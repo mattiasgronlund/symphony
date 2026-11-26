@@ -347,6 +347,8 @@ Fields (logical):
 - `path` (absolute workspace path)
 - `workspace_key` (sanitized issue identifier)
 - `created_now` (boolean, used to gate `after_create` hook)
+  - True when this call created the directory, including recreating one that was uncreated (Section
+    9.2); false only for a workspace that is created.
 
 #### 4.1.5 Run Attempt
 
@@ -778,8 +780,10 @@ declared in one artifact and bounds both halves (see its field below and Section
 Fields:
 
 - `after_create` (multiline shell script string, OPTIONAL)
-  - Runs only when a workspace directory is newly created.
-  - Failure aborts workspace creation.
+  - Runs only when a workspace directory is created, which includes recreating one whose creation
+    never completed (Section 9.2).
+  - Failure aborts workspace creation and leaves the workspace uncreated, so the next attempt runs
+    it again on a freshly created directory (Section 9.2).
 - `before_run` (multiline shell script string, OPTIONAL)
   - Runs before each agent attempt after workspace preparation and before launching the coding
     agent.
@@ -789,7 +793,8 @@ Fields:
     exists.
   - Failure is logged but ignored.
 - `before_remove` (multiline shell script string, OPTIONAL)
-  - Runs before workspace deletion if the directory exists.
+  - Runs before workspace deletion if the directory exists and is a created workspace (Section
+    9.2). Discarding an uncreated directory runs it in neither half (Section 9.4).
   - Failure is logged but ignored; cleanup still proceeds.
 - `timeout_ms` (integer, OPTIONAL)
   - Default: `60000`
@@ -1800,7 +1805,8 @@ When the service starts:
 1. Query tracker for issues in terminal states.
 2. For each returned issue identifier, remove the corresponding workspace directory. Only the
    host-side `before_remove` half runs: no issue is dispatched at service start, so there is no run
-   context for an in-sandbox half and the skip is logged (Section 9.4).
+   context for an in-sandbox half and the skip is logged (Section 9.4). A directory whose creation
+   never completed is discarded instead, with no `before_remove` half (Sections 9.2, 9.4).
 3. If the terminal-issues fetch fails, log a warning and continue startup.
 
 This prevents stale terminal workspaces from accumulating after restarts.
@@ -2164,7 +2170,8 @@ Per-issue workspace path:
 
 Workspace persistence:
 
-- Workspaces are reused across runs for the same issue.
+- Workspaces are reused across runs for the same issue. What is reused is a *created* workspace; a
+  directory whose creation never completed is recreated instead (Section 9.2).
 - Successful runs do not auto-delete workspaces.
 
 VCS-backed workspaces:
@@ -2177,22 +2184,68 @@ VCS-backed workspaces:
 
 Input: `issue.identifier`
 
+Created and uncreated workspaces:
+
+- A workspace is *created* once its `after_create` halves have completed, or once step 5 below
+  completes where neither half is configured. A directory at the workspace path that is not created
+  is *uncreated*: an `after_create` half failed, timed out, or was terminated by a signal, or the
+  attempt ended before the halves completed, by an error or by the process ending.
+- Symphony records the moment of creation in a *completion record*. The record MUST be held by the
+  party holding the workspace (Section 3.1) — on the node, for a remote executor (Section 9.11) — so
+  that the record and the directory it describes cannot fail separately. It MUST be held outside the
+  workspace and outside anything the sandbox can write (Section 9.6): a record the sandbox could
+  write lets an in-sandbox `after_create` half write it and then fail, leaving a directory that
+  reads as created.
+- The record MUST be written atomically, or be a marker whose existence alone is the signal, so that
+  a partly written record never reads as present. Where this section requires an operation on the
+  record to be durable, it means the operation survives a crash of the host holding it.
+- Removing or discarding a workspace MUST clear its record before removing the directory. A crash
+  between the two leaves an uncreated directory, which the next attempt discards; the reverse order
+  would leave a record with no directory, which step 3 clears.
+- Where the record is held is `Implementation-defined`; an implementation MUST document it. An
+  operator who deletes a record causes the workspace to be recreated from scratch.
+- How an implementation treats a directory that predates its writing of completion records is
+  `Implementation-defined`; an implementation MUST document it. Under step 3 such a directory is
+  uncreated and is discarded, and it may hold agent work that was never pushed. The loss does not
+  arise after migration, because no agent session starts against an uncreated directory.
+
 Algorithm summary:
 
 1. Sanitize identifier to `workspace_key`.
 2. Compute workspace path under workspace root.
 3. Ensure the workspace path exists as a directory, and for a VCS-managed repository derive the
-   working tree there (Section 9.7).
-4. Mark `created_now=true` only if the directory was created during this call; otherwise
-   `created_now=false`.
+   working tree there (Section 9.7):
+   - Where the path holds an uncreated directory, it is discarded first: its completion record is
+     cleared, then the directory is removed, and no `before_remove` half runs (Section 9.4). The
+     path then holds no directory, and the next bullet applies.
+   - Where the path holds no directory, any completion record for it is cleared before the
+     directory is created, and the clear MUST be durable before the directory is created. A record
+     left by a directory removed outside Symphony would otherwise mark the new directory created
+     before its `after_create` ran, so that an `after_create` failure leaves a directory that reads
+     as created. Issuing the clear first is not enough: a removal and a creation are separate
+     operations, which a filesystem need not make durable in the order they ran.
+4. Mark `created_now=true` if the directory was created during this call, including after a
+   discard; otherwise the workspace is a created one and `created_now=false`.
 5. Read the repository's `WORKFLOW.md` from that tree (Section 5.1). It declares the in-sandbox
    halves of this workspace's lifecycle hooks (Sections 5.3.4, 15.4), so the tree is derived before
    the halves run rather than after.
 6. If `created_now=true`, run the `after_create` hook halves that are configured: the host-side half
-   first, then the in-sandbox half (Section 9.4).
+   first, then the in-sandbox half (Section 9.4). A fatal half ends creation here, and no record is
+   written.
+7. If `created_now=true`, write the completion record. The write MUST be durable before any agent
+   session starts against the workspace: a record lost to a crash after the agent had started would
+   make the next attempt discard a workspace holding the agent's work.
 
 Notes:
 
+- The rule turns on whether creation completed, never on why it did not. An `after_create` half
+  failing, timing out, or being terminated by a signal; an attempt ending for another reason between
+  step 3 and step 7; and the process holding the workspace ending mid-creation all leave an
+  uncreated directory, and the next attempt's step 3 recovers each the same way. A rule that acted
+  when an attempt ended would need a process still running to act, which the last case does not
+  leave.
+- An uncreated directory is recreated, not resumed. An `after_create` script is written for a new
+  directory and is not required to be re-entrant.
 - For VCS-managed repositories, workspace creation derives a working tree from the repository's
   shared object store through the VCS engine (Section 9.7) rather than only an empty directory.
 - Additional workspace preparation (for example dependency bootstrap, build, or code generation) is
@@ -2209,9 +2262,11 @@ Failure handling:
 
 - Workspace population/synchronization failures return an error for the current attempt.
 - If failure happens while creating a brand-new workspace, implementations MAY remove the partially
-  prepared directory.
+  prepared directory. Whether or not it is removed, the directory is uncreated, and the next attempt
+  discards it and creates it again (Section 9.2); correctness does not depend on the removal.
 - Reused workspaces SHOULD NOT be destructively reset on population failure unless that policy is
-  explicitly chosen and documented.
+  explicitly chosen and documented. A reused workspace is a created one; discarding an uncreated
+  directory under Section 9.2 is not a reset.
 
 ### 9.4 Workspace Hooks
 
@@ -2278,10 +2333,17 @@ Availability:
   `WORKFLOW.md` is therefore valid configuration that no removal path defined here runs.
 - The host-side half needs no sandbox and runs at every lifecycle point, including both removal
   paths.
+- Discarding an uncreated directory (Section 9.2) is not a workspace removal, and no `before_remove`
+  half runs on it, in either execution context. A removal path that finds an uncreated directory
+  discards it the same way. Teardown unwinds a setup that completed, and running `before_remove`
+  against one that did not may undo what never happened or miss what partly did; a host-side
+  `after_create` half that must undo its own partial effects does so itself.
 
 Failure semantics:
 
-- `after_create` failure or timeout in either half is fatal to workspace creation.
+- `after_create` failure or timeout in either half is fatal to workspace creation. The workspace is
+  left uncreated, so the next attempt discards the directory and runs `after_create` again on a
+  freshly created one (Section 9.2).
 - `before_run` failure or timeout in either half is fatal to the current run attempt.
 - `after_run` failure or timeout is logged and ignored, in either half.
 - `before_remove` failure or timeout is logged and ignored, in either half.
@@ -5060,6 +5122,8 @@ function terminate_running_issue(state, issue_id, cleanup_workspace):
     # never used removed and the tree it worked in left behind (Sections 8.7, 16.4).
     # The worker was terminated above, so this run's sandbox is gone: the removal runs the host-side
     # before_remove half only, and the in-sandbox half is skipped and logged (Section 9.4).
+    # A worker terminated before its after_create halves completed leaves an uncreated directory,
+    # which is discarded with no before_remove half in either context (Sections 9.2, 9.4).
     cleanup_workspace_for(running_entry.repository, issue_id)
 
   # No retry is scheduled here. Part A of Section 8.5 queues its own after terminating; Part B
@@ -5205,7 +5269,9 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
   # For a VCS-managed repository this dispatches the engine's provisioning operation naming both the
   # store location and the workspace path as the tree location, so the working tree is derived from
   # the store `ensure_object_store` maintained (Sections 9.2, 9.7, 16.5); for a non-VCS workspace it
-  # is a bare directory.
+  # is a bare directory. It is Section 9.2's steps 1 to 4: an uncreated directory is discarded and
+  # created again, the completion record is durably cleared before the directory is created, and
+  # workspace.created_now reports whether this call created it.
   workspace = workspace_manager.provision_for_issue(issue)
   if workspace failed:
     fail_worker(run_id, "workspace error")
@@ -5218,6 +5284,18 @@ function run_agent_attempt(issue, attempt, run_id, orchestrator_channel):
   workflow = workflow_loader.read(workspace, repo_of(issue))
   if workflow failed:
     fail_worker(run_id, "workflow error")
+
+  # Section 9.2's steps 6 and 7. The halves run here rather than inside provision_for_issue because
+  # the in-sandbox half is declared in the WORKFLOW.md just read. Host-side first (Section 9.4); a
+  # fatal half ends the attempt with the other unrun and no completion record written, so the
+  # directory stays uncreated and the next attempt recreates it. The record is durable before
+  # mark_created returns, so it is in place before any agent session starts below.
+  if workspace.created_now:
+    if run_hook("after_create", workspace.path) failed:
+      fail_worker(run_id, "after_create hook error")
+    if run_sandbox_hook("after_create", workspace) failed:
+      fail_worker(run_id, "after_create hook error")
+    workspace_manager.mark_created(workspace)
 
   # Bring the work branch up to date with base. This is the engine's back-merge operation
   # (Sections 9.7, 9.8); Symphony has no VCS adapter of its own. The arms below are this section's
@@ -5604,13 +5682,25 @@ deployment satisfies by using a conforming engine rather than by implementing th
   multi-repository one, the repository component being the `Repository Key` unsanitized (Sections
   4.2, 9.1)
 - Missing workspace directory is created
-- Existing workspace directory is reused
+- Existing workspace directory is reused where it is a created workspace (Section 9.2)
 - Existing non-directory path at workspace location is handled safely (replace or fail per
   implementation policy)
 - OPTIONAL workspace population/synchronization errors are surfaced
-- `after_create` hook runs only on new workspace creation; both configured halves run, host-side
-  first, and a failure or timeout in either is fatal to workspace creation with the half that has
-  not run left unrun
+- `after_create` hook runs only when the directory is created, including recreating an uncreated
+  one; both configured halves run, host-side first, and a failure or timeout in either is fatal to
+  workspace creation with the half that has not run left unrun
+- A workspace whose `after_create` failed is recreated: with an `after_create` half that fails once
+  and then passes, the next attempt discards the directory, derives a fresh tree, and runs both
+  halves again; no `before_remove` half runs on the discard (Sections 9.2, 9.4)
+- A workspace whose creation was cut short by the process ending is recreated: with the service
+  killed while an `after_create` half runs and then restarted, the next dispatch for the issue runs
+  `after_create` again (Section 9.2)
+- A completion record left behind is not taken for a new directory's: with a created workspace's
+  directory deleted outside Symphony and the next `after_create` failing, the attempt after that
+  still runs `after_create` (Section 9.2)
+- No agent session starts against an uncreated directory, and a completion record is not writable
+  from the sandbox: an in-sandbox `after_create` half that tries to write it and then fails leaves
+  the directory uncreated (Sections 9.2, 9.6)
 - `before_run` hook runs before each attempt; both configured halves run, host-side first, and a
   failure or timeout in either aborts the current attempt with the half that has not run left unrun
 - `after_run` hook runs after each attempt; both configured halves run, in-sandbox first, and
@@ -5619,7 +5709,8 @@ deployment satisfies by using a conforming engine rather than by implementing th
   10.7, 16.6)
 - `before_remove` hook runs on cleanup and failures/timeouts are ignored; at both removal paths —
   the startup sweep and reconciliation teardown — the host-side half runs and the in-sandbox half is
-  skipped and logged, no run context existing at either (Sections 8.6, 9.4, 16.3)
+  skipped and logged, no run context existing at either (Sections 8.6, 9.4, 16.3); a removal path
+  that finds an uncreated directory discards it and runs neither half (Section 9.2)
 - A workspace hook's shell sources no startup file ahead of the script, in either half: with `HOME`
   holding a profile the test controls and `BASH_ENV` naming a file the test controls, each of which
   would export a marker variable, a host-side half and an in-sandbox half each observe neither
@@ -6145,7 +6236,14 @@ Required wherever a coding agent runs — the `daemon` and `interactive-agent` t
   directory outside the workspace, so the trust its declaration carries reaches the program it runs
 - Both halves of a lifecycle point execute (Section 9.4): setup points run host-side first and
   teardown points in-sandbox first, a fatal half leaves the other unrun, and a workspace-removal
-  path runs the host-side half alone because no run context exists there (Sections 8.6, 16.3)
+  path runs the host-side half alone for a created workspace because no run context exists there
+  (Sections 8.6, 16.3)
+- A workspace is created only once its `after_create` halves complete, and an uncreated directory is
+  discarded and recreated rather than reused, whatever ended its creation (Section 9.2). The
+  completion record is held by the party holding the workspace, outside anything the sandbox can
+  write; it is written atomically or as a bare marker and is durable before an agent session
+  starts; it is cleared durably before the directory is created and before the directory on
+  removal; and a discard runs no `before_remove` half (Sections 9.2, 9.4)
 - Both halves of a lifecycle point run in a shell that sources no startup file ahead of the script:
   not a login shell, and with `BASH_ENV` kept from a `bash -c` shell (Section 9.4)
 - Hook timeout config (`hooks.workspace.timeout_ms`, default `60000`), read from the policy source
