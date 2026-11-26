@@ -383,9 +383,10 @@
       "SPEC.md Section 4.2 \"Stable Identifiers and Normalization Rules\"",
       "SPEC.md Section 9.7 \"Repository Provisioning and the VCS Engine\"",
       "SPEC.md Section 11.6 \"Workflow State Machine and Transition Triggers\"",
-      "SPEC.md Section 11.7 \"Adapter Capability Descriptor\""
+      "SPEC.md Section 11.7 \"Adapter Capability Descriptor\"",
+      "SPEC.md Section 15.4 \"Configuration Trust Sourcing and Hook Safety\""
     ],
-    "note": "Dispatch preflight's refusals of the operator configuration (Section 6.3) — reported before any tracker adapter is invoked, so these are not adapter errors. `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` were carried in `tracker_error_categories` with a token and no `condition`; their condition was never Section 11.4's, it was Section 6.3's, and they moved here with it (decision 0164). Where several conditions hold, the reported reason is the first in the order the entries below are listed, which is Section 6.3's own stated order — a check is ordered after whatever produces the value it reads, so the repository set precedes each entry's resolved `vcs`, which precedes `tracker.kind`, which fixes the capability descriptor the three capability-dependent entries read. `unknown_transition_trigger` is spelled deliberately differently from the engine's `unknown_trigger` (`conformance/vcsx/vocabulary.json` `config_reasons`): the two are checked by different parties against different vocabularies — Symphony against `repo.policy.toml`'s `tracker.transitions`, the engine against its own edges — and an operator reading either in a log needs to tell which validator produced it.",
+    "note": "Dispatch preflight's refusals of the operator configuration (Section 6.3) — reported before any tracker adapter is invoked, so these are not adapter errors. `unsupported_tracker_kind`, `missing_tracker_api_key` and `missing_tracker_project_slug` were carried in `tracker_error_categories` with a token and no `condition`; their condition was never Section 11.4's, it was Section 6.3's, and they moved here with it (decision 0164). Where several conditions hold, the reported reason is the first in the order the entries below are listed, which is Section 6.3's own stated order — a check is ordered after whatever produces the value it reads, so the repository set precedes each entry's resolved `vcs` — within which the policy source comes first, since it fixes which `vcs` fields are required — which precedes `tracker.kind`, which fixes the capability descriptor the three capability-dependent entries read. `unknown_transition_trigger` is spelled deliberately differently from the engine's `unknown_trigger` (`conformance/vcsx/vocabulary.json` `config_reasons`): the two are checked by different parties against different vocabularies — Symphony against `repo.policy.toml`'s `tracker.transitions`, the engine against its own edges — and an operator reading either in a log needs to tell which validator produced it.",
     "entries": [
       {
         "token": "no_repository_configured",
@@ -394,6 +395,10 @@
       {
         "token": "invalid_repository_key",
         "condition": "A `repository` entry's key is not a valid `Repository Key` (Section 4.2)."
+      },
+      {
+        "token": "unsupported_policy_source",
+        "condition": "A `vcs.policy_source` names a policy source the implementation does not support (Sections 9.7, 15.4)."
       },
       {
         "token": "missing_vcs_field",
