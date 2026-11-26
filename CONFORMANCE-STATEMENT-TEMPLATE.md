@@ -93,6 +93,8 @@ obligation not listed here rather than omitting its resolution.
 | Agent-runner error categories defined beyond Section 10.6's set | 10.6 | `<token + condition for each, or none>` |
 | `agent.default_agent` default | 5.3.5 | `<which agent>` |
 | `agent.default_effort` default | 5.3.5 | `<native effort value>` |
+| Where the workspace completion record is held | 9.2 | `<location, and how it is kept outside the sandbox's writable mounts and with the party holding the workspace>` |
+| Treatment of workspace directories that predate completion records | 9.2 | `<treated as created / discarded / other, and how an operator is told>` |
 | Agent sandbox profile | 9.6 | `<jai Strict / container / VM / …>` |
 | Effective egress policy for the sandbox and broker socket | 9.6 | `<...>` |
 | Composed environment set an agent's run receives | 9.6 | `<the variables passed through, and how a location outside the run's own workspace is kept out>` |
