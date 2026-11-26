@@ -270,6 +270,12 @@ Some functions carry an interpretation note beyond plain equality:
   built-in defaults, and an implementation that defaults first produces a *superset* of the correct
   answer — one that satisfies every path in `resolved`. Only `absent` distinguishes the two orders,
   so a harness asserting `resolved` alone reports that defect as a pass.
+- `validate_dispatch_config` — `given.supported_policy_sources` is an input like
+  `given.descriptor`: the set of `vcs.policy_source` values the predicate is to treat as supported,
+  with an absent field meaning `["policy_branch"]`. Pass it to the predicate and run every vector,
+  whatever set the implementation's own Conformance Statement declares; a vector is never skipped
+  because the sets differ. Which set the implementation offers is the Conformance Statement's to
+  record (`SPEC.md` Section 15.4), not the corpus's to check.
 
 The harness itself is not specified here — only the contract above. The corpus prescribes no test
 framework, assertion library, or file-loading mechanism.

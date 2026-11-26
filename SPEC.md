@@ -1165,6 +1165,10 @@ Validation checks:
 - At least one `repository` entry is configured; otherwise configuration error.
 - Every `repository` entry's key is a valid `Repository Key` (Sections 4.2, 5.3.7); otherwise
   configuration error.
+- Every `repository` entry's `vcs.policy_source`, after resolution against the orchestrator level
+  (Section 5.3.7), names a policy source the implementation supports (Sections 9.7, 15.4); otherwise
+  configuration error. A value outside `policy_branch` | `target_branch` is refused, never read as
+  the default: the rule that unknown keys SHOULD be ignored (Section 5.3) concerns keys, not values.
 - The `vcs` fields Section 9.7 requires are resolved for every `repository` entry after resolution
   against the orchestrator level (Section 5.3.7), so a deployment supplying no `vcs.local_vcs` for
   one repository, or under the default `vcs.policy_source` no `vcs.policy_branch`, fails
@@ -1201,6 +1205,7 @@ operator or a monitoring surface (Section 13.3) can branch on the cause without 
 |---|---|
 | No `repository` entry is configured | `no_repository_configured` |
 | A `repository` entry's key is not a valid `Repository Key` (Section 4.2) | `invalid_repository_key` |
+| A `vcs.policy_source` names a policy source the implementation does not support (Sections 9.7, 15.4) | `unsupported_policy_source` |
 | A `vcs` field Section 9.7 requires is unresolved for an entry after resolution against the orchestrator level (Section 5.3.7) | `missing_vcs_field` |
 | A `vcs.base_branch_allowed` entry begins with an unescaped `!` or is not a well-formed pattern (Section 9.7) | `invalid_base_branch_pattern` |
 | `tracker.kind` is absent | `missing_tracker_kind` |
@@ -1215,7 +1220,8 @@ operator or a monitoring surface (Section 13.3) can branch on the cause without 
 
 Where several conditions hold at once, an implementation MUST report the reason of whichever is
 first in the table's order above. The order follows what each check reads: the `repository` set,
-then each entry's resolved `vcs`, then `tracker.kind` — which fixes the capability descriptor the
+then each entry's resolved `vcs` — its policy source first, since that fixes which `vcs` fields
+Section 9.7 requires — then `tracker.kind` — which fixes the capability descriptor the
 three capability-dependent checks below it read — then the key and slug that kind requires, then
 those capability-dependent checks, then the trigger vocabulary, then the agent launch command.
 
@@ -1262,7 +1268,7 @@ Operator policy config:
 - `vcs.forge_parameters`: OPTIONAL per-backend extension bag, carried to the selected backend uninterpreted
 - `vcs.git_credential` / `vcs.forge_credential`: resolved via the secret-provider interface (file provider REQUIRED), not via `$VAR`/env; `vcs.forge_credential` defaults to `vcs.git_credential`. Both MAY be written **under a `repository` entry**, where they resolve as every other entry key does (Section 5.3.7): that value applies to the repository's calls and this orchestrator-level value applies to repositories configuring none (Sections 8.7, 15.3). An implementation MUST support the per-repository form; using it is the operator's choice
 - `vcs.remote`: the remote the repository is provisioned from and the operations that touch one act against
-- `vcs.policy_source`: string, `policy_branch` | `target_branch`, default `policy_branch`; where host-side Way of Working is read from (Sections 9.7, 15.4)
+- `vcs.policy_source`: string, `policy_branch` | `target_branch`, default `policy_branch`; where host-side Way of Working is read from (Sections 9.7, 15.4). An implementation MAY decline `target_branch`; a value it does not support is refused at preflight (Sections 6.3, 15.4)
 - `vcs.policy_branch`: REQUIRED under `policy_source = "policy_branch"`, no default; the branch `repo.policy.toml`'s host-side parts are read from. Never a pull-request target (Sections 9.7, 9.10, 15.4)
 - `vcs.base_branch`: the operator's default pull-request target; middle of three sources (issue, then this, then `repo.policy.toml`), default unset
 - `vcs.base_branch_allowed`: OPTIONAL bound on the targets a per-issue source may name, default unset (unbounded), and an empty list admits no target; each entry a whole-name gitignore-pattern glob, matched by byte (`VCSX-SPEC.md` Section 8.1)
@@ -2551,6 +2557,9 @@ Configuration:
       knowingly, not a convenience. The target is then REQUIRED from the issue or from
       `vcs.base_branch`, since it is what says where the Way of Working is read from and
       `repo.policy.toml` cannot supply it (below).
+    - An implementation MAY decline `target_branch` (Section 15.4). A value the implementation does
+      not support, including one outside the two, is refused at dispatch preflight rather than read
+      as the default (Section 6.3).
   - `policy_branch` (string) — the branch `repo.policy.toml`'s host-side-executed parts are read
     from (Section 15.4). REQUIRED under `policy_source = "policy_branch"`, and it has no default
     there, because every default that resolves to the pull-request target would make the trust root
@@ -4815,6 +4824,14 @@ Working from the revision that makes it safe:
   from — so the issue or `vcs.base_branch` MUST supply one, whatever the operation (Section 9.7).
   All three are consequences of the mode rather than defects in it, which is why the specification
   states them here rather than warning against the choice.
+
+  Whether an implementation supports `target_branch` is `Implementation-defined`, and an
+  implementation MUST document it. One that supports the mode MUST behave as Section 9.7 and this
+  section state; one that declines it refuses it at dispatch preflight with
+  `unsupported_policy_source` (Section 6.3). `policy_branch` is always supported. Declining is
+  permitted because an implementation that cannot be configured into the mode guarantees, to anyone
+  checking its configuration, that no configuration puts the trust root on a branch the service
+  merges into.
 - In-sandbox parts — the `WORKFLOW.md` prompt, the in-sandbox halves of its `hooks.workspace`
   lifecycle hooks, and the `hooks.engine` units the `before:commit` gate/scan runs — are read from
   the **worktree**: the working tree the run acts in, at the pointer Section 5.1 resolves, so the
@@ -5634,10 +5651,14 @@ except where a bullet states otherwise.
   `repo.policy.toml` (Sections 5, 9.7); a deployment supplying no `vcs.local_vcs` for a managed
   repository, at either level, or under the default `vcs.policy_source` no `vcs.policy_branch`,
   fails configuration rather than defaulting one
-- A required `vcs` field that is empty fails Section 6.3's third check with `missing_vcs_field`,
-  as an absent one does, while a whitespace-only one is resolved for that check and judged where its
-  value is used; a `policy_source = "target_branch"` deployment supplying no `vcs.policy_branch`
-  passes it (Sections 6.3, 9.7)
+- A required `vcs` field that is empty fails Section 6.3's check on the required `vcs` fields with
+  `missing_vcs_field`, as an absent one does, while a whitespace-only one is resolved for that check
+  and judged where its value is used; a `policy_source = "target_branch"` deployment supplying no
+  `vcs.policy_branch` passes it (Sections 6.3, 9.7)
+- A `vcs.policy_source` outside `policy_branch` | `target_branch`, or a `target_branch` the
+  implementation declines, fails with `unsupported_policy_source`, reported ahead of
+  `missing_vcs_field` and every later condition; a supported `target_branch` passes that check
+  (Sections 6.3, 15.4)
 - A `repository` entry's key overrides the orchestrator-level value for that key leaf by leaf, and a
   key the entry does not carry inherits: an entry setting `agent.default_effort` keeps the
   orchestrator-level `agent.default_agent` (Section 5.3.7)
@@ -6340,12 +6361,14 @@ Required of the `daemon` topology only.
 - Dispatch preflight refuses a configured `tracker.assignee` on a tracker adapter whose capability
   descriptor does not declare that it populates `assignees`, surfacing `assignee_capability_unmet`
   (Sections 6.3, 11.7)
-- Dispatch preflight surfaces the reason token Section 6.3's table states for each of its thirteen
+- Dispatch preflight surfaces the reason token Section 6.3's table states for each of its fourteen
   conditions, and reports the first in the table's stated order where a configuration fails several
 - Dispatch preflight refuses an absent or empty `vcs.policy_branch` under the default
-  `vcs.policy_source` with `missing_vcs_field`, applies the same absent-or-empty rule to every `vcs`
-  field its third check reads, and does not require the key under `target_branch` (Sections 6.3,
-  9.7)
+  `vcs.policy_source` with `missing_vcs_field`, applies the same absent-or-empty rule to every
+  required `vcs` field, and does not require the key under `target_branch` (Sections 6.3, 9.7)
+- Dispatch preflight refuses a `vcs.policy_source` the implementation does not support with
+  `unsupported_policy_source`, ahead of the required-`vcs`-fields check, and never reads a misspelt
+  value as the default (Sections 6.3, 15.4)
 - Multiple repositories per instance, enumerated in `repository` with a key an entry does not carry
   resolving from the orchestrator level leaf by leaf (Section 5.3.7), and each entry pointing at its
   own `repo.policy.toml` and `WORKFLOW.md`; issue→repo routing from the entries' own `routing` rules
@@ -6407,12 +6430,12 @@ engine's checklist.
   `policy_branch`. Under that mode `vcs.policy_branch` is operator config with no default, resolves
   to the copy the configured remote holds, and is never a pull-request target — enforced by refusing
   a configuration in which it equals the resolved target, and by excluding it from permitted
-  per-issue targets whatever `vcs.base_branch_allowed` lists. Under `target_branch` neither the
-  requirement nor those two refusals apply, and Section 15.4 states what the mode gives up; the
-  pull-request target resolves from the issue, then `vcs.base_branch`, then `repo.policy.toml` under
-  the default mode, while under `target_branch` the third source drops out and a target from one of
-  the first two is REQUIRED, being what says where the Way of Working is read from
-  (Sections 9.7, 9.10, 15.4)
+  per-issue targets whatever `vcs.base_branch_allowed` lists. Where the implementation supports
+  `target_branch` (Section 15.4), under that mode neither the requirement nor those two refusals
+  apply, and Section 15.4 states what the mode gives up; the pull-request target resolves from the
+  issue, then `vcs.base_branch`, then `repo.policy.toml` under the default mode, while under
+  `target_branch` the third source drops out and a target from one of the first two is REQUIRED,
+  being what says where the Way of Working is read from (Sections 9.7, 9.10, 15.4)
 - The engine's forge plugin owns one-PR-per-issue with composed title/body and OPTIONAL review-thread
   writes (post/reply/resolve), advertising a static forge-capability descriptor
 - Every mutating forge write carries the pull-request identity the run established rather than the

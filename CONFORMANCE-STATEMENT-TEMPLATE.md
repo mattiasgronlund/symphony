@@ -117,6 +117,7 @@ obligation not listed here rather than omitting its resolution.
 | Secret-redaction mechanism and substituted marker for captured subprocess text | 15.3 | `<known-value replacement + marker; any matching added above the floor>` |
 | How it is established that no route beyond the two Section 15.4 closes can write the policy branch | 15.4 | `<branch protection / repository permissions / a mirror the service alone writes>` |
 | How a host-side hook's unit is resolved from the policy branch | 15.4 | `<how the unit is addressed; what working directory it is given>` |
+| Whether `vcs.policy_source = target_branch` is supported | 15.4 | `<supported / declined, refused at preflight>` |
 | Object store path location (host-side) | 16.5 | `<path policy, e.g. sibling of workspace root>` |
 
 ### 4.2 Extension-scoped (resolve only if shipped)

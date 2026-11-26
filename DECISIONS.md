@@ -7407,3 +7407,27 @@ Option C, a rule for one key only, would split check 3's single predicate in two
 gains `policy_source?` and `policy_branch?`. Twenty-two vectors state a branch, and three are added:
 a missing branch, an empty branch, and `target_branch` mode with no branch, which is valid. Decision
 0190 revises the last of these. Relates to 0164, 0159, 0190.
+
+## 0190 — A policy source the implementation does not support
+
+**State:** Applied
+**Folder:** [decisions/0190-unsupported-policy-source/](decisions/0190-unsupported-policy-source/)
+
+An implementation MAY decline `vcs.policy_source = "target_branch"`. Whether it supports the mode
+is `Implementation-defined`, with a template row. Before this, Section 18.1.4 listed both modes
+under "REQUIRED for Conformance", so declining was non-conforming and the MAY in Section 15.4 was
+the operator's alone. Reported as issue #191 from `symphony-rs`, split out of #189. Section 6.3
+had no refusal for a policy source an implementation cannot honour. A misspelt value could be read
+as the default, which silently puts an operator under the trust model they were leaving. The case
+for declining: an implementation that cannot be configured into the mode guarantees that no
+configuration puts the trust root on a branch the service merges into.
+
+One new token, `unsupported_policy_source`, covers both a value outside the type and a declined
+mode, as `unsupported_tracker_kind` covers both for `tracker.kind`. It is judged before
+`missing_vcs_field`, because the mode fixes which fields check 3 requires. Judged later, a
+`target-branch` with no `policy_branch` would report `missing_vcs_field`, and a guard after the
+whole predicate would report a later check's token. The corpus gains `supported_policy_sources?`,
+an input like `descriptor`, defaulting to `["policy_branch"]`. Every vector is run against its own
+set and none is skipped, so check 3's conditional stays tested for an implementation that declines.
+Four vectors are added, among them two ordering vectors pinning the row from both sides. Relates
+to 0189, 0164, 0128.
