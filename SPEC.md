@@ -1167,7 +1167,11 @@ Validation checks:
   configuration error.
 - The `vcs` fields Section 9.7 requires are resolved for every `repository` entry after resolution
   against the orchestrator level (Section 5.3.7), so a deployment supplying no `vcs.local_vcs` for
-  one repository fails configuration rather than defaulting one for it.
+  one repository, or under the default `vcs.policy_source` no `vcs.policy_branch`, fails
+  configuration rather than defaulting one for it. A required field is unresolved when it is absent
+  or empty; a value with any character in it is resolved, and a malformed one is judged where its
+  value is used. Under `policy_source = "target_branch"` this check does not reach
+  `vcs.policy_branch`, which that mode neither requires nor consults (Section 9.7).
 - Every `vcs.base_branch_allowed` entry, after the same resolution, is a well-formed pattern that
   does not begin with an unescaped `!` (Section 9.7); otherwise configuration error. The engine
   refuses every base under such a bound (`VCSX-SPEC.md` Section 8.1), so a deployment carrying one
@@ -5628,7 +5632,12 @@ except where a bullet states otherwise.
 - The code-host selection (`vcs.forge`), its access parameters and extension bag, the credential
   pair, the remote, and `vcs.local_vcs` resolve from the operator policy config and not from
   `repo.policy.toml` (Sections 5, 9.7); a deployment supplying no `vcs.local_vcs` for a managed
-  repository, at either level, fails configuration rather than defaulting one
+  repository, at either level, or under the default `vcs.policy_source` no `vcs.policy_branch`,
+  fails configuration rather than defaulting one
+- A required `vcs` field that is empty fails Section 6.3's third check with `missing_vcs_field`,
+  as an absent one does, while a whitespace-only one is resolved for that check and judged where its
+  value is used; a `policy_source = "target_branch"` deployment supplying no `vcs.policy_branch`
+  passes it (Sections 6.3, 9.7)
 - A `repository` entry's key overrides the orchestrator-level value for that key leaf by leaf, and a
   key the entry does not carry inherits: an entry setting `agent.default_effort` keeps the
   orchestrator-level `agent.default_agent` (Section 5.3.7)
@@ -6333,6 +6342,10 @@ Required of the `daemon` topology only.
   (Sections 6.3, 11.7)
 - Dispatch preflight surfaces the reason token Section 6.3's table states for each of its thirteen
   conditions, and reports the first in the table's stated order where a configuration fails several
+- Dispatch preflight refuses an absent or empty `vcs.policy_branch` under the default
+  `vcs.policy_source` with `missing_vcs_field`, applies the same absent-or-empty rule to every `vcs`
+  field its third check reads, and does not require the key under `target_branch` (Sections 6.3,
+  9.7)
 - Multiple repositories per instance, enumerated in `repository` with a key an entry does not carry
   resolving from the orchestrator level leaf by leaf (Section 5.3.7), and each entry pointing at its
   own `repo.policy.toml` and `WORKFLOW.md`; issue→repo routing from the entries' own `routing` rules

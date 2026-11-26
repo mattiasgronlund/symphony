@@ -3,7 +3,7 @@
   "profile": "Daemon Conformance",
   "spec_refs": ["Section 6.3", "Section 4.2", "Section 5.3.6", "Section 5.3.7", "Section 8.7", "Section 9.7", "Section 11.6", "Section 11.7"],
   "description": "Decide whether a resolved operator configuration passes Section 6.3's dispatch preflight validation, and which reason token (Section 6.3's table) it fails with if not. Over an already-resolved configuration (Section 6.1's output) and the selected tracker adapter's static capability descriptor (Section 11.7 — data, not a runtime call), the predicate computes a value from inputs the same way should_dispatch does (vectors/candidate-eligibility.json), which is what puts it in this deterministic corpus rather than the Real Integration Profile. `$` resolution and the secret provider are not exercised: they are I/O-bound and deferred (conformance/README.md).",
-  "given": "{ config: { repository: Record<key, { vcs: { local_vcs, base_branch_allowed? }, routing: { match } }>, tracker: { kind, api_key, project_slug, transitions: Array<{from, on, to}>, assignee }, codex: { command } }, descriptor: { auth_mode, set_state, populates_assignees, populates_project, populates_team } }",
+  "given": "{ config: { repository: Record<key, { vcs: { local_vcs, policy_source?, policy_branch?, base_branch_allowed? }, routing: { match } }>, tracker: { kind, api_key, project_slug, transitions: Array<{from, on, to}>, assignee }, codex: { command } }, descriptor: { auth_mode, set_state, populates_assignees, populates_project, populates_team } }",
   "expect": "{ valid: boolean, reason: <token> | null }",
   "notes": [
     "Each refusing vector holds exactly one failing condition except the three order-* vectors, which hold several so the reported reason is determined by Section 6.3's stated order rather than left ambiguous. The discipline for single-condition vectors is the one candidate-eligibility.json already records.",
@@ -11,6 +11,7 @@
     "repository.<key>.routing.match is Section 8.7's rule, in the shape vectors/issue-routing.json already uses: a map from a record field the rule keys on to the value it matches. Only the field names matter here — routing_field_unpopulated turns on which fields a rule keys on, not on what it matches.",
     "codex.command is the launch command for the selected agent adapter (Section 5.3.6); missing_agent_command is stated over the selected adapter's launch command generally (Section 6.3), with codex.command named as the instance this specification defines.",
     "tracker.project_slug is REQUIRED only where the selected kind requires it (`linear`, Section 6.4); a configuration under a kind that does not require it is not exercised here as a failure on that account.",
+    "vcs.policy_source is `policy_branch` | `target_branch`, and an absent one means `policy_branch` (SPEC.md Section 9.7). Section 6.3's third check requires vcs.local_vcs and, under `policy_branch`, vcs.policy_branch; a required field is unresolved when absent (omitted or null) or empty, and a value with any character in it is resolved. Every vector with a repository entry states policy_branch unless the vector is about it, so it holds only the condition its id names.",
     "tracker.kind is not restricted to `linear` and `forgejo` in these vectors: a `none`-mode adapter is admissible as an OPTIONAL extension (Section 11.7), and the predicate reads auth_mode off the selected adapter's descriptor rather than off the kind string, so a vector may name a third kind to exercise that path without asserting the extension is Core."
   ],
   "vectors": [
@@ -19,7 +20,7 @@
       "description": "One repository, resolved vcs, a supported tracker kind with its required fields present, no transitions, no assignee filter, no routing, a non-empty agent command. Nothing to refuse.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -32,7 +33,7 @@
       "description": "Transitions, an assignee filter and a routing rule are all configured, and the descriptor declares every capability they require. Using a field is not itself a failure.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" }, "routing": { "match": { "assignees": "alice" } } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" }, "routing": { "match": { "assignees": "alice" } } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [{ "from": "todo", "on": "ready-for-review", "to": "in review" }], "assignee": "alice" },
           "codex": { "command": "codex app-server" }
         },
@@ -45,7 +46,7 @@
       "description": "A none-mode adapter dispatches without tracker.api_key; the key check applies only to secret-mode adapters (Section 11.7).",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "local", "api_key": null, "project_slug": null, "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -71,7 +72,7 @@
       "description": "One entry is configured, so no_repository_configured does not hold, but its key contains a space and is outside [A-Za-z0-9._-] (Section 4.2).",
       "given": {
         "config": {
-          "repository": { "my repo": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "my repo": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -84,7 +85,7 @@
       "description": "The repository entry carries no resolved vcs.local_vcs, the example Section 6.3 itself gives.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": null } } },
+          "repository": { "app": { "vcs": { "local_vcs": null, "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -93,11 +94,50 @@
       "expect": { "valid": false, "reason": "missing_vcs_field" }
     },
     {
+      "id": "missing-vcs-policy-branch",
+      "description": "Under the default vcs.policy_source the entry supplies vcs.local_vcs but no vcs.policy_branch, which Section 9.7 makes REQUIRED with no default in that mode.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "missing_vcs_field" }
+    },
+    {
+      "id": "empty-vcs-policy-branch",
+      "description": "vcs.policy_branch is the empty string under the default vcs.policy_source. Empty is unresolved for Section 6.3's third check, as absent is.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": false, "reason": "missing_vcs_field" }
+    },
+    {
+      "id": "valid-target-branch-mode-without-policy-branch",
+      "description": "Under vcs.policy_source = target_branch, vcs.policy_branch is neither required nor consulted (Section 9.7), so its absence fails no check. The target that mode REQUIRES from the issue or vcs.base_branch is judged per issue at dispatch, not at preflight, since the issue may supply it.",
+      "given": {
+        "config": {
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_source": "target_branch" } } },
+          "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
+          "codex": { "command": "codex app-server" }
+        },
+        "descriptor": { "auth_mode": "secret", "set_state": true, "populates_assignees": true, "populates_project": true, "populates_team": true }
+      },
+      "expect": { "valid": true, "reason": null }
+    },
+    {
       "id": "valid-base-branch-patterns",
       "description": "Names and globs in the gitignore-pattern syntax, `**` and a bracket set included, are well formed (Section 9.7, `VCSX-SPEC.md` Section 8.1).",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": ["main", "release/*", "hotfix/**", "v[0-9]*"] } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy", "base_branch_allowed": ["main", "release/*", "hotfix/**", "v[0-9]*"] } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -110,7 +150,7 @@
       "description": "A leading `!` is a gitignore negation, which an allow-list cannot apply; read literally it would leave its exclusion unapplied, so it is refused at startup rather than matched.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": ["release/**", "!release/secret"] } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy", "base_branch_allowed": ["release/**", "!release/secret"] } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -123,7 +163,7 @@
       "description": "An unclosed `[` is not a well-formed pattern.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": ["release/[ab"] } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy", "base_branch_allowed": ["release/[ab"] } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -136,7 +176,7 @@
       "description": "A range whose first endpoint is above its second is not a well-formed pattern; git would read `[z-a]` as `z` alone (`VCSX-SPEC.md` Section 8.1).",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": ["release/[z-a]"] } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy", "base_branch_allowed": ["release/[z-a]"] } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -149,7 +189,7 @@
       "description": "An empty list is well formed: it permits no per-issue target, which is a configuration Section 9.7 applies, not one it refuses at startup.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": [] } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy", "base_branch_allowed": [] } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -162,7 +202,7 @@
       "description": "An escaped `!` is a literal character, as in a gitignore pattern, so the entry is well formed and admits a branch spelled with one.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git", "base_branch_allowed": ["\\!important"] } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy", "base_branch_allowed": ["\\!important"] } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -175,7 +215,7 @@
       "description": "tracker.kind is absent.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": null, "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -188,7 +228,7 @@
       "description": "tracker.kind is present but names a kind the implementation does not support.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "jira", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -201,7 +241,7 @@
       "description": "tracker.kind selects a secret-mode adapter and tracker.api_key is absent after $ resolution.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": null, "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -214,7 +254,7 @@
       "description": "tracker.kind=linear REQUIRES project_slug (Section 6.4), and it is absent.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": null, "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -227,7 +267,7 @@
       "description": "tracker.transitions is non-empty and the descriptor declares no set_state capability.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [{ "from": "todo", "on": "ready-for-review", "to": "in review" }], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -240,7 +280,7 @@
       "description": "tracker.assignee is non-null and the descriptor declares it populates no assignees.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": "alice" },
           "codex": { "command": "codex app-server" }
         },
@@ -253,7 +293,7 @@
       "description": "A routing rule keys on team, and the descriptor declares it does not populate team.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" }, "routing": { "match": { "team": "backend" } } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" }, "routing": { "match": { "team": "backend" } } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -266,7 +306,7 @@
       "description": "The set_state capability is met, so the surviving failure is the transition's on value, which is outside the Section 11.6 vocabulary.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [{ "from": "todo", "on": "review-ready", "to": "in review" }], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -279,7 +319,7 @@
       "description": "The selected agent adapter's launch command is absent.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [], "assignee": null },
           "codex": { "command": null }
         },
@@ -305,7 +345,7 @@
       "description": "Both tracker.api_key and tracker.project_slug are absent. missing_tracker_api_key precedes missing_tracker_project_slug in the table's order.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": null, "project_slug": null, "transitions": [], "assignee": null },
           "codex": { "command": "codex app-server" }
         },
@@ -318,7 +358,7 @@
       "description": "Both capability-dependent conditions hold: transitions configured against a descriptor with no set_state, and an assignee filter against a descriptor that populates no assignees. set_state_capability_unmet precedes assignee_capability_unmet in the table's order.",
       "given": {
         "config": {
-          "repository": { "app": { "vcs": { "local_vcs": "git" } } },
+          "repository": { "app": { "vcs": { "local_vcs": "git", "policy_branch": "policy" } } },
           "tracker": { "kind": "linear", "api_key": "resolved-secret", "project_slug": "sym", "transitions": [{ "from": "todo", "on": "ready-for-review", "to": "in review" }], "assignee": "alice" },
           "codex": { "command": "codex app-server" }
         },
