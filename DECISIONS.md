@@ -7386,3 +7386,24 @@ a setup that completed. The record's location and the migration of pre-existing 
 uncheckable. Section 16.6 gains the `after_create` call sites it never had. Three findings on the
 issue thread tightened the record's rules, and they share one shape: a crash-survival argument not
 applied to the record's own operations. Relates to 0128, 0118.
+
+## 0189 — Check 3 reaches `vcs.policy_branch`, and the corpus says so
+
+**State:** Applied
+**Folder:** [decisions/0189-policy-branch-preflight/](decisions/0189-policy-branch-preflight/)
+
+Section 6.3's check 3 refuses a default-mode configuration with no `vcs.policy_branch` as
+`missing_vcs_field`. This is the prose's existing reading: Section 9.7 makes the key REQUIRED under
+`policy_source = "policy_branch"`, which is the default. Check 3 now names the key beside its
+`vcs.local_vcs` example. Reported as issue #189 from `symphony-rs`: `config-preflight.json` never
+modelled the key. By Section 6.3's order rule, 20 of its 24 vectors held a configuration the prose
+refuses with `missing_vcs_field`, ahead of the condition each one names. Two more held a second
+failing condition. A harness placeholder kept them green.
+
+A required `vcs` field is unresolved when absent or empty, for check 3 as a whole. A
+whitespace-only value is a malformed name, not a missing one, and is judged where it is used. Option
+B, `symphony-rs`'s trimming, is rejected because it reports a cause the operator did not have.
+Option C, a rule for one key only, would split check 3's single predicate in two. The corpus input
+gains `policy_source?` and `policy_branch?`. Twenty-two vectors state a branch, and three are added:
+a missing branch, an empty branch, and `target_branch` mode with no branch, which is valid. Decision
+0190 revises the last of these. Relates to 0164, 0159, 0190.
